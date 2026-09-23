@@ -30,7 +30,11 @@ fnOS 应用中心 → 手动安装 → 选择 fpk。会自动安装依赖应用 
 ## 功能限制
 
 Qoder 国际版的每日 Credits 只下发给携带设备风控身份的请求，风控身份由 Qoder 客户端（Windows / macOS）自带的
-runtime-info 生成。NAS 上没有 Qoder 客户端，因此 **fpk 版只能签到 Qoder 国内版账号**；Qoder 国际版账号请用 Windows 桌面版。WorkBuddy 账号不受影响（本机导入 / 切换账号需在装有 WorkBuddy 的电脑上操作，可导出后导入 NAS）。
+runtime-info 生成。NAS 上没有 Qoder 客户端，需要先安装 **设备身份组件**：打开面板的 Qoder 页点「安装设备身份组件」，
+或 SSH 执行 `node bin/creditdaddy.js umid install`。它从 npm 官方包 `@qoder-ai/qodercli` 下载（约 30MB，校验 npm 的 sha512 完整性），
+取出其中内置的 Linux x64 / arm64 版 UMID 程序存到数据目录的 `qoder-umid/`，装好后 NAS 即可签到 Qoder 国际版。
+NAS 算一台独立设备：每天同样只能有一个国际版账号领取（与 Windows 电脑各算各的）。
+WorkBuddy / ZCode 账号不受影响（本机导入 / 切换客户端需在装有客户端的电脑上操作；也可以在 NAS 面板里用「浏览器登录」直接添加）。
 
 ## 手动运维
 

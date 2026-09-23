@@ -17,7 +17,7 @@ import { logger } from '../src/logger.js';
 const args = process.argv.slice(2);
 const cmd = args[0] || 'daemon';
 
-const HELP = `CreditDaddy — Qoder 多账号管理 + 每日 Credits 自动签到
+const HELP = `CreditDaddy — Qoder / WorkBuddy / ZCode 多账号管理 + 每日积分自动签到
 
 用法:
   creditdaddy daemon [--port 47860] [--host 127.0.0.1]   启动守护进程 + Web 面板
@@ -29,7 +29,8 @@ const HELP = `CreditDaddy — Qoder 多账号管理 + 每日 Credits 自动签�
   creditdaddy export [file.json] [--password 口令] [--cn|--intl]
                                                         导出账号；带口令则加密（与 10router 迁移文件互通）
   creditdaddy import <file.json> [--password 口令]        导入 CreditDaddy / 10router 导出文件
-  creditdaddy scan                                       导入本机 Qoder / WorkBuddy 客户端已登录的账号
+  creditdaddy scan                                       导入本机 Qoder / WorkBuddy / ZCode 客户端已登录的账号
+  creditdaddy umid [install|remove]                      Qoder 设备身份组件（Linux / fnOS 国际版签到用）
   creditdaddy logs                                       查看签到状态
   creditdaddy help                                       显示本帮助`;
 
@@ -146,6 +147,24 @@ async function main() {
       for (const { label, rec } of records) {
         const r = await addAccount(rec, { trusted: true });
         console.log(r.duplicate ? (r.updated ? '↻ 已更新' : '· 已存在') : '✓ 已导入', r.account.name || r.account.id, `（${label}）`);
+      }
+      break;
+    }
+    case 'umid': {
+      const umid = await import('../src/qoderUmid.js');
+      const sub = args[1] || 'status';
+      if (sub === 'install') {
+        console.log('正在从 npm 下载官方 @qoder-ai/qodercli 并提取设备身份组件（约 30MB）…');
+        const m = await umid.installUmid();
+        console.log(`✓ 已安装：qodercli ${m.version} / ${m.arch}，Qoder 国际版签到可用`);
+      } else if (sub === 'remove') {
+        umid.removeUmid();
+        console.log('✓ 已移除设备身份组件');
+      } else {
+        const info = umid.umidInfo();
+        if (!info.supported) console.log('当前平台不需要该组件（Windows / macOS 使用 Qoder 客户端自带的 runtime-info）');
+        else if (info.installed) console.log(`已安装：qodercli ${info.installed.version} / ${info.installed.arch}（${info.installed.installedAt.slice(0, 10)}）`);
+        else console.log('未安装。运行 creditdaddy umid install 安装后即可签到 Qoder 国际版');
       }
       break;
     }

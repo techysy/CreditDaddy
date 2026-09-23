@@ -20,6 +20,8 @@
  *   GET    /api/local/detect           检测本机 Qoder 客户端 / IDE / CLI
  *   POST   /api/local/scan             读取本机已登录账号（解密客户端凭据 + 扫描旧版 IDE）
  *   POST   /api/local/import           导入扫描候选 {candidateId, provider?, name?}
+ *   GET    /api/qoder/umid             Qoder 设备身份组件状态（Linux / fnOS）
+ *   POST   /api/qoder/umid/install     下载官方 qodercli 并提取设备身份组件
  *   GET    /api/logs                   最近日志
  *   GET    /api/status                 守护进程状态
  *   POST   /api/export                 导出账号 {password?, provider?}（有口令 → 10router 兼容加密文件）
@@ -42,7 +44,8 @@ import { readWorkbuddySessions, writeWorkbuddySession, workbuddyAuthDir, current
 import { liveToAccount as zcodeLiveAccount, switchTo as zcodeSwitchTo, currentZcodeUid, detectZcode, ensureVirtualDeviceMid } from './zcodeLocal.js';
 import { exportAccounts, parseImport, TransferError } from './transfer.js';
 import { runCheckinTick, getSchedulerInfo, dayKey } from './checkin.js';
-import { detectQoderApps, readQoderAppAccounts, riskIdentityAvailable } from './qoderApp.js';
+import { detectQoderApps, readQoderAppAccounts, riskIdentityAvailable, riskIdentitySource } from './qoderApp.js';
+import { umidInfo, installUmid } from './qoderUmid.js';
 import { startDeviceFlow, pollDeviceFlow, LOGIN_KINDS } from './authDevice.js';
 import { detectInstalls, scanLocalTokens, putCandidate, takeCandidate } from './localDetect.js';
 import { PROVIDER_LABEL, APP_VERSION, PROVIDERS } from './constants.js';
@@ -335,6 +338,17 @@ async function handleApi(req, res, url) {
     return json(res, updated ? 200 : 201, { account: publicAccount(account), updated });
   }
 
+  // Qoder 设备身份组件（Linux / fnOS：从官方 qodercli 提取 UMID，国际版签到用）
+  if (p === '/api/qoder/umid' && method === 'GET') {
+    return json(res, 200, { ...umidInfo(), riskIdentity: riskIdentityAvailable(), riskSource: riskIdentitySource() });
+  }
+  if (p === '/api/qoder/umid/install' && method === 'POST') {
+    try {
+      await installUmid();
+      return json(res, 200, { ok: true, ...umidInfo(), riskIdentity: riskIdentityAvailable(), riskSource: riskIdentitySource() });
+    } catch (e) { return json(res, 500, { error: e.message }); }
+  }
+
   // 日志
   if (p === '/api/logs' && method === 'GET') {
     return json(res, 200, { logs: getLogs(200) });
@@ -354,6 +368,9 @@ async function handleApi(req, res, url) {
       todayDone: state?.qoderDailyDone || {},
       scheduler: getSchedulerInfo(),
       riskIdentity: riskIdentityAvailable(),
+      riskSource: riskIdentitySource(),
+      umid: umidInfo(),
+      platform: process.platform,
       workbuddyCurrentUid: currentWorkbuddyUid(),
       zcodeCurrentUid: currentZcodeUid(),
       keyRequired: Boolean(PANEL_KEY),

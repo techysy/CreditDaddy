@@ -19,6 +19,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn, execFile } from 'node:child_process';
 import { dataDir } from './store.js';
+import { installedUmid, CLI_RISK_ENV } from './qoderUmid.js';
 
 const RISK_TTL_MS = 50 * 60 * 1000;        // 客户端每 60±5 分钟刷新一次，这里保守取 50 分钟
 const RISK_TIMEOUT_MS = 25_000;             // 与客户端一致
@@ -191,9 +192,19 @@ function runRuntimeInfo(exe, env, account) {
 const riskCache = new Map();   // `${provider}:${uid}` → { value, at } | { promise }
 
 /**
- * 获取某账号的设备风控身份；本机未安装 Qoder 客户端时返回 null。
- * 优先用同版本客户端（国际版 env=3 / 国内版 env=0），缺失时退而用另一版本的 runtime-info。
+ * 风控身份来源：优先本机 Qoder 客户端自带的 runtime-info（国际版 env=3 / 国内版 env=0，缺失时用另一版本的），
+ * 其次是从官方 qodercli 提取的设备身份组件（Linux / fnOS，见 qoderUmid.js，env 与 qodercli 一致）。
  */
+function riskRunner(provider) {
+  const apps = detectQoderApps().filter((a) => a.runtimeInfo);
+  const app = apps.find((a) => a.provider === provider) || apps[0];
+  if (app) return { exe: app.runtimeInfo, env: (VARIANTS.find((v) => v.provider === provider) || VARIANTS[0]).riskEnv, source: 'app' };
+  const cli = installedUmid();
+  if (cli) return { exe: cli.path, env: CLI_RISK_ENV[provider] ?? CLI_RISK_ENV.qoder, source: 'cli' };
+  return null;
+}
+
+/** 获取某账号的设备风控身份；本机既没有 Qoder 客户端也没装设备身份组件时返回 null。 */
 export async function getRiskIdentity(provider, uid) {
   if (!uid) return null;
   const key = `${provider}:${uid}`;
@@ -201,12 +212,10 @@ export async function getRiskIdentity(provider, uid) {
   if (hit?.value && Date.now() - hit.at < RISK_TTL_MS) return hit.value;
   if (hit?.promise) return hit.promise;
 
-  const apps = detectQoderApps().filter((a) => a.runtimeInfo);
-  const exe = (apps.find((a) => a.provider === provider) || apps[0])?.runtimeInfo;
-  if (!exe) return null;
-  const env = (VARIANTS.find((v) => v.provider === provider) || VARIANTS[0]).riskEnv;
+  const runner = riskRunner(provider);
+  if (!runner) return null;
 
-  const promise = runRuntimeInfo(exe, env, uid)
+  const promise = runRuntimeInfo(runner.exe, runner.env, uid)
     .then((value) => { riskCache.set(key, { value, at: Date.now() }); return value; })
     .catch((e) => { riskCache.delete(key); throw e; });
   riskCache.set(key, { promise });
@@ -214,7 +223,12 @@ export async function getRiskIdentity(provider, uid) {
 }
 
 export function riskIdentityAvailable() {
-  return detectQoderApps().some((a) => a.runtimeInfo);
+  return Boolean(riskRunner('qoder'));
+}
+
+/** 风控身份来源：'app'（Qoder 客户端）/ 'cli'（qodercli 设备身份组件）/ null */
+export function riskIdentitySource() {
+  return riskRunner('qoder')?.source || null;
 }
 
 // ─── Electron safeStorage 解密 ───

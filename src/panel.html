@@ -648,7 +648,7 @@ function renderDash() {
         + '<span class="lbl">有效套餐</span><span class="val">' + planned + ' / ' + list.length + '</span>';
     }
     if (p.id === 'qoder' && list.some((a) => a.provider === 'qoder')) {
-      rows += '<span class="lbl">国际版风控身份</span><span class="val' + (s.riskIdentity ? '' : ' warn') + '">' + (s.riskIdentity ? '已就绪' : '未检测到客户端') + '</span>';
+      rows += '<span class="lbl">国际版风控身份</span><span class="val' + (s.riskIdentity ? '' : ' warn') + '">' + (s.riskIdentity ? (s.riskSource === 'cli' ? '已就绪（设备身份组件）' : '已就绪') : umidOffer(s) ? '需安装设备身份组件' : '未检测到客户端') + '</span>';
     }
     if (CLIENT_LABEL[p.id]) {
       const uid = currentUidOf(p.id);
@@ -662,7 +662,7 @@ function renderDash() {
   // 需要处理：token 失效 / 即将过期、签到失败、国际版缺风控身份
   const att = [];
   if (!s.riskIdentity && state.accounts.some((a) => a.provider === 'qoder')) {
-    att.push({ view: 'qoder', name: 'Qoder 国际版', badges: '', pill: 'limited', text: '未检测到 Qoder 客户端，国际版无法领取' });
+    att.push({ view: 'qoder', name: 'Qoder 国际版', badges: '', pill: 'limited', text: umidOffer(s) ? '安装设备身份组件后才能领取' : '未检测到 Qoder 客户端，国际版无法领取' });
   }
   for (const a of state.accounts) {
     const ex = expiryCell(a);
@@ -711,16 +711,37 @@ function renderStatus() {
   if (state.view === 'zcode') {
     n.style.display = '';
     n.textContent = 'ZCode 没有每日签到：积分靠「活动领取」，领取需要阿里云验证码，无法后台自动完成。这里用于多账号管理、额度查看与一键切换（切换前需先退出 ZCode）。';
+  } else if (hasIntl && !s.riskIdentity && umidOffer(s)) {
+    n.style.display = '';
+    const busy = s.umid.installing || umidBusy;
+    n.innerHTML = 'Qoder 国际版只向带设备风控身份的请求下发「每天领 100 Credits」。这台 Linux / NAS 上没有 Qoder 客户端，'
+      + '可以安装「设备身份组件」：从 npm 官方包 @qoder-ai/qodercli 提取其内置的 UMID 程序（约 30MB 下载，校验 npm 完整性），装好后国际版即可签到（本机每天限领一个账号）。'
+      + ' <button class="btn primary" id="btn-umid" style="margin-left:6px"' + (busy ? ' disabled' : '') + '>' + (busy ? '安装中…' : '安装设备身份组件') + '</button>';
   } else if (hasIntl && !s.riskIdentity) {
     n.style.display = '';
     n.textContent = 'Qoder 国际版签到需要本机安装 Qoder 客户端：Qoder 只向带设备风控身份（由客户端生成）的请求下发「每天领 100 Credits」。当前未检测到客户端，国际版账号将无法领取。';
   } else if (hasIntl) {
     n.style.display = '';
-    n.textContent = '提示：Qoder 国际版每台设备每天只能有一个账号领取每日 100 Credits（服务端按设备限领），其余国际版账号会显示「本机已领」。';
+    n.textContent = '提示：Qoder 国际版每台设备每天只能有一个账号领取每日 100 Credits（服务端按设备限领），其余国际版账号会显示「本机已领」。'
+      + (s.riskSource === 'cli' && s.umid && s.umid.installed ? '（风控身份来自设备身份组件 qodercli ' + s.umid.installed.version + '）' : '');
   } else {
     n.style.display = 'none';
   }
 }
+
+// Qoder 设备身份组件（Linux / fnOS）
+const umidOffer = (s) => Boolean(s && s.umid && s.umid.supported && !s.umid.installed);
+let umidBusy = false;
+async function installUmid() {
+  umidBusy = true; renderStatus();
+  try {
+    const r = await api('/api/qoder/umid/install', { method: 'POST' });
+    toast('设备身份组件已安装（qodercli ' + r.installed.version + '），Qoder 国际版可以签到了');
+  } catch (e) { toast(e.message, false); }
+  umidBusy = false;
+  await loadStatus(); render(); loadLogs();
+}
+$('notice').addEventListener('click', (e) => { if (e.target.closest('#btn-umid')) installUmid(); });
 
 // ── 数据加载 ──
 async function loadStatus() {

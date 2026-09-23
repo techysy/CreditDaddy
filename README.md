@@ -50,7 +50,7 @@
 - 风控身份由 **本机 Qoder 客户端自带的 `resources/umid/runtime-info`** 生成，CreditDaddy 直接调用它（每 50 分钟刷新），因此**国际版签到需要本机安装 Qoder 客户端**（无需保持登录、无需打开）
 - **每台设备每天只能有一个国际版账号领取**（服务端按设备限领）。本机已有账号领取后，其余国际版账号显示「本机已领」并当日不再请求；账号列表中靠前的账号优先领取
 - 国内版不需要风控身份，所有账号都能领取
-- fnOS / NAS 上没有 Qoder 客户端，只能签到国内版账号
+- **fnOS / NAS（Linux，无 Qoder 客户端）**：在面板 Qoder 页一键安装「设备身份组件」（或 `creditdaddy umid install`）—— 从 npm 官方包 `@qoder-ai/qodercli` 下载（校验 npm 完整性），取出其内置的 Linux x64 / arm64 UMID 程序，参数与 qodercli 一致（国际版 env=4），之后 NAS 也能签到国际版；NAS 是独立设备，同样每天限领一个国际版账号。CreditDaddy 不分发该二进制
 
 ## 快速开始
 
@@ -73,6 +73,7 @@ CLI 用法：
     node bin/creditdaddy.js export backup.json --password 口令   # 加密导出（10router 可导入）
     node bin/creditdaddy.js export backup.json      # 明文导出（含明文 token）
     node bin/creditdaddy.js import backup.json [--password 口令] # 导入 CreditDaddy / 10router 导出文件
+    node bin/creditdaddy.js umid install            # Linux / fnOS：安装 Qoder 设备身份组件（国际版签到用）
     node bin/creditdaddy.js help                    # 帮助
 
 ## 导入导出格式
@@ -114,6 +115,8 @@ Qoder 侧（国际版 openapi.qoder.sh，国内版 openapi.qoder.com.cn）：
     POST   /api/local/scan              读取本机已登录账号（Qoder + WorkBuddy + ZCode）
     POST   /api/local/import            导入扫描候选 {candidateId, provider?}
     GET    /api/status                  状态（版本、调度器、风控身份是否可用）
+    GET    /api/qoder/umid              Qoder 设备身份组件状态（Linux / fnOS）
+    POST   /api/qoder/umid/install      下载官方 qodercli 并提取设备身份组件
     GET    /api/logs                    日志
     POST   /api/export                  导出 {password?, provider?, product?}
     POST   /api/import                  导入 {data, password?}
@@ -138,6 +141,7 @@ Qoder 侧（国际版 openapi.qoder.sh，国内版 openapi.qoder.com.cn）：
     src/constants.js     端点与请求头常量（版本号取自 package.json）
     src/qoderClient.js   Qoder OpenAPI 客户端（签到核心）
     src/qoderApp.js      本机 Qoder 客户端集成：安装探测、设备风控身份、safeStorage 解密
+    src/qoderUmid.js     Qoder 设备身份组件（Linux / fnOS：从官方 qodercli 提取 UMID）
     src/providers.js     产品线注册表：按 provider 分发签到 / 积分 / 校验
     src/workbuddyClient.js  WorkBuddy API：签到、积分、token 刷新
     src/workbuddyLocal.js   本机 WorkBuddy 会话读取与账号切换

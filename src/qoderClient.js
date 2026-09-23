@@ -96,7 +96,7 @@ export async function buildCampaignHeaders(account, token, uid) {
   let risk = null, riskError = null;
   try {
     risk = await getRiskIdentity(account.provider, uid);
-    if (!risk) riskError = '本机未安装 Qoder 客户端，无法生成设备风控身份';
+    if (!risk) riskError = process.platform === 'linux' ? '未安装 Qoder 设备身份组件（面板 Qoder 页可一键安装），无法生成设备风控身份' : '本机未安装 Qoder 客户端，无法生成设备风控身份';
   } catch (e) {
     riskError = e.message;
   }

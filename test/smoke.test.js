@@ -476,3 +476,44 @@ test('WorkBuddy 浏览器登录：state → 等 token → 等账号 → 组装�
     assert.ok(!('accessToken' in input.meta.session.auth) && !('refreshToken' in input.meta.session.auth));
   } finally { m.restore(); }
 });
+
+// ── Qoder 设备身份组件：从 qodercli 包里提取 UMID ──
+function fakeElf(machine, len = 64) {
+  const b = Buffer.alloc(len, 7);
+  Buffer.from([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1, 0]).copy(b, 0);
+  b.writeUInt16LE(machine, 18);
+  return b;
+}
+function tarOf(files) {
+  const blocks = [];
+  for (const [name, data] of files) {
+    const h = Buffer.alloc(512);
+    h.write(name, 0);
+    h.write(data.length.toString(8).padStart(11, '0') + '\0', 124);
+    h.write('0', 156);
+    blocks.push(h, data, Buffer.alloc((512 - (data.length % 512)) % 512));
+  }
+  blocks.push(Buffer.alloc(1024));
+  return Buffer.concat(blocks);
+}
+
+test('设备身份组件：tar 取文件 / 按架构挑 ELF / npm integrity 校验', async () => {
+  const um = await import('../src/qoderUmid.js');
+  const x64 = fakeElf(62), arm = fakeElf(183);
+  const js = `var a="z/rt/gwAAAA",b="${arm.toString('base64')}",c="${x64.toString('base64')}",d="TVqQAAMAAAAEAAAA";`;
+  assert.deepEqual(um.extractElf(js, 62), x64);
+  assert.deepEqual(um.extractElf(js, 183), arm);
+  assert.equal(um.extractElf(js, 40), null);
+
+  const tar = tarOf([['package/package.json', Buffer.from('{}')], ['package/bundle/qodercli.js', Buffer.from(js)]]);
+  assert.equal(um.tarEntry(tar, 'package/bundle/qodercli.js').toString(), js);
+  assert.equal(um.tarEntry(tar, 'package/nope.js'), null);
+
+  const integrity = 'sha512-' + nodeCrypto.createHash('sha512').update(tar).digest('base64');
+  assert.ok(um.checkIntegrity(tar, integrity));
+  assert.ok(!um.checkIntegrity(Buffer.concat([tar, Buffer.from('x')]), integrity));
+  assert.ok(!um.checkIntegrity(tar, 'sha1-abc'));
+
+  assert.ok(um.umidSupported('linux', 'x64') && um.umidSupported('linux', 'arm64'));
+  assert.ok(!um.umidSupported('win32', 'x64') && !um.umidSupported('linux', 'ia32'));
+});
