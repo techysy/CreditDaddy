@@ -102,6 +102,10 @@ jobs:
       - name: Ensure release exists
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
+          gh release view "${{ github.ref_name }}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "${{ github.ref_name }}" --repo "$GITHUB_REPOSITORY" \
+              --title "QoderDaddy ${{ github.ref_name }}" \
+              --notes "QoderDaddy fpk release: multi-account manager + daily credit auto check-in"
           gh release view "${{ github.ref_name }}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||             gh release create "${{ github.ref_name }}" --repo "$GITHUB_REPOSITORY"               --title "QoderDaddy ${{ github.ref_name }}"               --notes "QoderDaddy fpk release.
 
       - name: Generate checksum
