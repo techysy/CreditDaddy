@@ -41,13 +41,20 @@ jobs:
           ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
           ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
 
-      - name: Upload build log
+      - name: Push build log to logs branch
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: desktop/build-log.txt
-          if-no-files-found: ignore
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.email "ci@qoderdaddy.local"
+          git config user.name "QoderDaddy CI"
+          git fetch origin ci-logs || true
+          git checkout -b ci-logs origin/ci-logs 2>/dev/null || git checkout --orphan ci-logs
+          cp desktop/build-log.txt "desktop-win-$(date -u +%Y%m%d-%H%M%S).log" 2>/dev/null || echo "no log captured" > "desktop-win-$(date -u +%Y%m%d-%H%M%S).log"
+          tail -c 120000 "desktop-win-"*.log > /tmp/lt && mv /tmp/lt "desktop-win-"*.log
+          git add -A
+          git commit -m "desktop build log $(date -u +%FT%TZ)" || true
+          git push origin ci-logs
 
       - uses: actions/upload-artifact@v4
         with:
