@@ -371,3 +371,108 @@ test('导出范围：按 provider 或按产品整体筛选', () => {
   assert.deepEqual(ids({ provider: 'workbuddy-intl' }), ['workbuddy-intl']);
   assert.equal(ids({}).length, 5);
 });
+
+// ── 浏览器登录（WorkBuddy / ZCode）：用假 fetch 走完整流程 ──
+function mockFetch(routes) {
+  const orig = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), init });
+    for (const [re, fn] of routes) {
+      if (re.test(String(url))) {
+        const r = fn(String(url), init);
+        return new Response(JSON.stringify(r.body), { status: r.status || 200 });
+      }
+    }
+    return new Response('{}', { status: 404 });
+  };
+  return { calls, restore: () => { globalThis.fetch = orig; } };
+}
+
+test('ZCode enc:v1 加密与解密互逆', () => {
+  const v = zc.encryptWithSecret('你好 token', 'sec');
+  assert.ok(v.startsWith('enc:v1:'));
+  assert.equal(zc.decryptWithSecret(v, 'sec'), '你好 token');
+  assert.throws(() => zc.decryptWithSecret(v, 'other'));
+});
+
+test('ZCode 浏览器登录：init → pending → ready，凭据按客户端格式加密入账号', async () => {
+  const za = await import('../src/zcodeAuth.js');
+  let polls = 0;
+  const m = mockFetch([
+    [/oauth\/cli\/init$/, () => ({ body: { code: 0, data: { flow_id: 'f1', authorize_url: 'https://bigmodel.cn/login?appId=zcode&state=s', expires_at: Math.floor(Date.now() / 1000) + 600, poll_interval_sec: 2 } } })],
+    [/oauth\/cli\/poll\/f1$/, () => (++polls < 2
+      ? { body: { code: 0, data: { status: 'pending' } } }
+      : { body: { code: 0, data: { status: 'ready', token: 'zjwt', user: { user_id: 42, name: '小明', email: 'm@x.com' }, bigmodel: { access_token: 'bm-at', refresh_token: 'bm-rt' } } } })],
+  ]);
+  try {
+    const s = await za.startZcodeLogin('zcode-bigmodel');
+    assert.equal(s.data.provider, 'bigmodel');
+    assert.match(m.calls[0].init.headers.Authorization, /^Bearer [0-9a-f]{64}$/);
+    assert.equal((await za.pollZcodeLogin(s.data)).status, 'pending');
+    const r = await za.pollZcodeLogin(s.data);
+    assert.equal(r.status, 'ok');
+    assert.equal(m.calls[2].init.headers.Authorization, m.calls[0].init.headers.Authorization);   // 轮询用同一 poll token
+    const { input } = r;
+    assert.equal(input.provider, 'zcode');
+    assert.equal(input.uid, '42');
+    assert.equal(input.token, 'zcode-creds:42');
+    assert.equal(input.name, '小明');
+    assert.ok(!('deviceMid' in input.meta) && !('config' in input.meta));
+    const secret = zc.defaultSecret((await import('../src/zcodeLocal.js')).zcodePaths().home);
+    const c = input.meta.credentials;
+    assert.ok(zc.isLoggedIn(c));
+    assert.equal(zc.safeDecrypt(c['oauth:active_provider'], secret), 'bigmodel');
+    assert.equal(zc.safeDecrypt(c['oauth:bigmodel:access_token'], secret), 'bm-at');
+    assert.equal(zc.safeDecrypt(c['oauth:bigmodel:refresh_token'], secret), 'bm-rt');
+    assert.equal(zc.safeDecrypt(c.zcodejwttoken, secret), 'zjwt');
+    assert.equal(zc.identityWithSecret(c, secret).userId, '42');
+  } finally { m.restore(); }
+});
+
+test('ZCode 浏览器登录：Z.ai 换业务 token；授权失败终止', async () => {
+  const za = await import('../src/zcodeAuth.js');
+  const m = mockFetch([
+    [/poll\/ok$/, () => ({ body: { code: 0, data: { status: 'ready', token: 'j', user: { user_id: 'u1' }, zai: { access_token: 'oauth-at' } } } })],
+    [/poll\/bad$/, () => ({ body: { code: 0, data: { status: 'failed' } } })],
+    [/api\.z\.ai\/api\/auth\/z\/login$/, (_u, init) => ({ body: { code: 0, success: true, data: { access_token: 'biz-' + JSON.parse(init.body).token } } })],
+  ]);
+  try {
+    const secret = zc.defaultSecret((await import('../src/zcodeLocal.js')).zcodePaths().home);
+    const r = await za.pollZcodeLogin({ provider: 'zai', flowId: 'ok', pollToken: 't' });
+    assert.equal(zc.safeDecrypt(r.input.meta.credentials['oauth:zai:access_token'], secret), 'biz-oauth-at');
+    await assert.rejects(za.pollZcodeLogin({ provider: 'bigmodel', flowId: 'bad', pollToken: 't' }), /授权失败/);
+  } finally { m.restore(); }
+});
+
+test('WorkBuddy 浏览器登录：state → 等 token → 等账号 → 组装成可切换的客户端会话', async () => {
+  const wa = await import('../src/workbuddyAuth.js');
+  const token = fakeJwt({ iss: 'https://www.codebuddy.cn/auth/realms/copilot', sub: 'uid-1', exp: Math.floor(Date.now() / 1000) + 86400 });
+  let tokenPolls = 0, accountPolls = 0;
+  const m = mockFetch([
+    [/auth\/state\?platform=WorkBuddy$/, () => ({ body: { code: 0, data: { state: 'st', authUrl: 'https://www.codebuddy.cn/login?platform=WorkBuddy&state=st' } } })],
+    [/auth\/token\?state=st$/, () => (++tokenPolls < 2 ? { body: { code: 11217, msg: 'retry' } } : { body: { code: 0, data: { accessToken: token, refreshToken: 'rt', expiresIn: 3600, refreshExpiresIn: 7200, tokenType: 'Bearer' } } })],
+    [/login\/account\?state=st$/, () => (++accountPolls < 2 ? { body: { code: 12151 } } : { body: { code: 0, data: { uid: 'uid-1', nickname: '阿强', type: 'personal' } } })],
+    [/plugin\/accounts$/, () => ({ body: { code: 0, data: { accounts: [{ uid: 'uid-1', nickname: '阿强', pluginEnabled: true, phoneNumber: '13800000000' }, { uid: 'ent', pluginEnabled: false }] } } })],
+  ]);
+  try {
+    const s = await wa.startWorkbuddyLogin('workbuddy');
+    assert.equal(s.data.host, 'www.codebuddy.cn');
+    assert.equal((await wa.pollWorkbuddyLogin(s.data)).status, 'pending');   // token 未就绪
+    assert.equal((await wa.pollWorkbuddyLogin(s.data)).status, 'pending');   // token 就绪，账号未就绪
+    const r = await wa.pollWorkbuddyLogin(s.data);
+    assert.equal(r.status, 'ok');
+    const { input } = r;
+    assert.equal(input.provider, 'workbuddy');
+    assert.equal(input.token, token);
+    assert.equal(input.refreshToken, 'rt');
+    assert.equal(input.uid, 'uid-1');
+    assert.equal(input.name, '阿强');
+    assert.equal(input.source, 'browser');
+    assert.equal(input.meta.domain, 'www.codebuddy.cn');
+    assert.equal(input.meta.session.account.phoneNumber, '13800000000');   // 用账号列表补齐
+    assert.deepEqual(input.meta.session.accounts.map((a) => a.uid), ['uid-1']);
+    assert.equal(input.meta.session.allAccounts.length, 2);
+    assert.ok(!('accessToken' in input.meta.session.auth) && !('refreshToken' in input.meta.session.auth));
+  } finally { m.restore(); }
+});

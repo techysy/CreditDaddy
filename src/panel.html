@@ -300,7 +300,7 @@
     <div class="modal-title"><span>添加账号</span><button class="close" data-close>✕</button></div>
     <div class="tabs">
       <button class="tab active" data-tab="local">本机导入</button>
-      <button class="tab" data-tab="device">Qoder 网络授权</button>
+      <button class="tab" data-tab="device">浏览器登录</button>
       <button class="tab" data-tab="token">粘贴 Token</button>
     </div>
 
@@ -311,9 +311,14 @@
     </div>
 
     <div class="pane" data-pane="device">
+      <div class="hint" id="dev-hint" style="margin-bottom:10px"></div>
       <div class="field">
-        <label>版本</label>
-        <select class="input" id="dev-provider"><option value="qoder">Qoder 国际版</option><option value="qoder-cn">Qoder 国内版</option></select>
+        <label>登录到</label>
+        <select class="input" id="dev-provider">
+          <option value="qoder">Qoder 国际版</option><option value="qoder-cn">Qoder 国内版</option>
+          <option value="workbuddy">WorkBuddy / CodeBuddy 国内版</option><option value="workbuddy-intl">WorkBuddy / CodeBuddy 国际版</option>
+          <option value="zcode-bigmodel">ZCode · BigModel（智谱）</option><option value="zcode-zai">ZCode · Z.ai（国际）</option>
+        </select>
       </div>
       <div class="row"><button class="btn primary" id="btn-device">生成授权链接</button><button class="btn" id="dev-cancel" style="display:none">取消</button></div>
       <div class="box" id="device-box" style="display:none">
@@ -575,9 +580,9 @@ function render() {
 }
 
 const EMPTY_TIP = {
-  qoder: '还没有 Qoder 账号。<br>点「添加账号」可一键读取本机 Qoder / Qoder CN 客户端已登录的账号，或走 Qoder 网络授权登录。',
-  workbuddy: '还没有 WorkBuddy 账号。<br>点「添加账号」可读取本机 WorkBuddy 客户端（当前 + 历史会话），或粘贴登录 token。',
-  zcode: '还没有 ZCode 账号。<br>先在 ZCode 客户端登录，再点「添加账号」读取本机凭据；登录另一个账号后再导入一次即可多账号切换。',
+  qoder: '还没有 Qoder 账号。<br>点「添加账号」可一键读取本机 Qoder / Qoder CN 客户端已登录的账号，或用浏览器登录。',
+  workbuddy: '还没有 WorkBuddy 账号。<br>点「添加账号」可读取本机 WorkBuddy 客户端（当前 + 历史会话），或用浏览器登录 WorkBuddy / CodeBuddy 账号。',
+  zcode: '还没有 ZCode 账号。<br>点「添加账号」可读取本机 ZCode 客户端已登录的账号，或用浏览器登录（BigModel / Z.ai），多个账号可一键切换。',
 };
 
 function renderProd() {
@@ -846,7 +851,7 @@ const LOCAL_HINT = {
 };
 function openAdd(product) {
   state.addProduct = product || '';
-  const tabShown = { local: true, device: !product || product === 'qoder', token: product !== 'zcode' };
+  const tabShown = { local: true, device: true, token: product !== 'zcode' };
   document.querySelectorAll('#m-add .tab').forEach((t) => { t.style.display = tabShown[t.dataset.tab] ? '' : 'none'; });
   $('local-hint').textContent = LOCAL_HINT[state.addProduct];
   let first = null;
@@ -856,6 +861,16 @@ function openAdd(product) {
     if (ok && !first) first = o.value;
   }
   if (first) { $('f-provider').value = first; $('f-provider').dispatchEvent(new Event('change')); }
+  // 浏览器登录的选项值以产品名开头（qoder / workbuddy / zcode-…）
+  let firstDev = null;
+  for (const o of $('dev-provider').options) {
+    const ok = !product || o.value.split('-')[0] === product;
+    o.hidden = !ok;
+    if (ok && !firstDev) firstDev = o.value;
+  }
+  if (firstDev) $('dev-provider').value = firstDev;
+  $('dev-hint').textContent = (hasIncognito() ? '在内置隐私窗口里登录（不带出系统浏览器已登录的账号），' : '在浏览器里登录并授权，')
+    + '完成后账号自动添加。' + (product === 'qoder' ? '' : 'WorkBuddy / ZCode 用浏览器登录的账号同样可以一键切换客户端。');
   openModal('m-add');
   switchTab('local');
   localScan();
@@ -885,7 +900,7 @@ async function localScan() {
     for (const e of r.errors || []) html += '<div class="hint" style="color:var(--err)">读取失败：' + esc(e.file) + '：' + esc(e.error) + '</div>';
     if (!cands.length) {
       const where = state.addProduct ? prodLabel(state.addProduct) : 'Qoder / WorkBuddy / ZCode';
-      const alt = state.addProduct === 'zcode' ? '' : state.addProduct === 'workbuddy' ? '，或改用「粘贴 Token」' : '，或改用「Qoder 网络授权」「粘贴 Token」';
+      const alt = state.addProduct === 'zcode' ? '，或改用「浏览器登录」' : '，或改用「浏览器登录」「粘贴 Token」';
       html += '<div class="hint">未发现已登录的 ' + where + ' 账号。请先在客户端登录' + alt + '。<br>已检查：Qoder / Qoder CN 客户端数据目录、WorkBuddy 凭据目录、ZCode 数据目录'
         + (r.scannedDirs && r.scannedDirs.length ? '、' + r.scannedDirs.map(esc).join('、') : '') + '</div>';
     }
@@ -925,8 +940,8 @@ async function deviceLogin() {
     const flow = await api('/api/auth/device/start', { json: { provider } });
     $('device-box').style.display = '';
     $('dev-cancel').style.display = '';
-    const where = hasIncognito() ? '已在隐私窗口打开授权页' : '请在浏览器打开下方链接';
-    $('dev-status').textContent = where + '并选择账号授权（' + Math.floor(flow.expiresIn / 60) + ' 分钟内有效）';
+    const where = hasIncognito() ? '已在隐私窗口打开登录页' : '请在浏览器打开下方链接';
+    $('dev-status').textContent = where + '，登录并授权（' + Math.floor(flow.expiresIn / 60) + ' 分钟内有效）';
     $('dev-link').href = flow.url;
     $('dev-link').textContent = flow.url;
     openAuth(flow.url);
@@ -939,8 +954,8 @@ async function pollDevice(sessionId, n, gen) {
     const r = await api('/api/auth/device/poll', { json: { sessionId } });
     if (gen !== devGen) return;
     if (r.status === 'pending') {
-      if (n > 150) return deviceStop('授权超时，请重试');
-      $('dev-status').textContent = '等待浏览器授权中…（' + n + '）';
+      if (n > 450) return deviceStop('授权超时，请重试');
+      $('dev-status').textContent = '等待授权中…（' + n + '）';
       devTimer = setTimeout(() => pollDevice(sessionId, n + 1, gen), 2000);
     } else if (r.status === 'ok') {
       deviceStop('✓ 授权成功：' + (r.account.name || r.account.id) + (r.already ? '（已存在）' : ''));

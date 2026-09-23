@@ -59,7 +59,13 @@ export function decryptWithSecret(value, secret) {
   }
 }
 
-/** 加密占位：CreditDaddy 只读取 ZCode 凭据，不写回加密值；切换账号时原样复制账号库里保存的密文即可。 */
+/** 加密成 "enc:v1:…"（与 decryptWithSecret 互逆）：浏览器登录拿到的凭据按客户端格式落盘，切换时才能被 ZCode 读懂 */
+export function encryptWithSecret(plain, secret) {
+  const nonce = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', deriveKey(secret), nonce);
+  const ct = Buffer.concat([cipher.update(String(plain), 'utf8'), cipher.final()]);
+  return ENC_PREFIX + [nonce, cipher.getAuthTag(), ct].map((b) => b.toString('base64url')).join('.');
+}
 
 /** 值可能加密也可能明文，统一转明文；失败返回 null（不抛错） */
 export function safeDecrypt(value, secret) {

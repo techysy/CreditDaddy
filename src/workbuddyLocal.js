@@ -56,7 +56,10 @@ export function sessionToAccount(session, source) {
       enterpriseId: acc.enterpriseId || null,
       phone: acc.phoneNumber || null,
       refreshExpiresAt: iso(auth.refreshExpiresAt),
-      session: { account: acc, auth: authRest, accounts: Array.isArray(session.accounts) ? session.accounts : [] },
+      session: {
+        account: acc, auth: authRest, accounts: Array.isArray(session.accounts) ? session.accounts : [],
+        ...(Array.isArray(session.allAccounts) ? { allAccounts: session.allAccounts } : {}),
+      },
     },
   };
 }
@@ -120,6 +123,7 @@ export function writeWorkbuddySession(account) {
       lastRefreshTime: Date.now(),
     },
     accounts: s.accounts || [],
+    ...(Array.isArray(s.allAccounts) ? { allAccounts: s.allAccounts } : {}),
   };
   const tmp = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(session, null, 2), { mode: 0o600 });

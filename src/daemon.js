@@ -15,8 +15,8 @@
  *   GET    /api/accounts/:id/quota     查询积分（统一结构）
  *   POST   /api/accounts/:id/switch    切换 WorkBuddy / ZCode 客户端当前登录账号 {force?}
  *   POST   /api/checkin                全部签到 {provider?, skipIfCheckedToday?}
- *   POST   /api/auth/device/start      发起设备码登录 {provider}
- *   POST   /api/auth/device/poll       轮询设备码登录 {sessionId}
+ *   POST   /api/auth/device/start      发起浏览器登录 {provider: qoder / qoder-cn / workbuddy / workbuddy-intl / zcode-bigmodel / zcode-zai}
+ *   POST   /api/auth/device/poll       轮询浏览器登录结果 {sessionId}
  *   GET    /api/local/detect           检测本机 Qoder 客户端 / IDE / CLI
  *   POST   /api/local/scan             读取本机已登录账号（解密客户端凭据 + 扫描旧版 IDE）
  *   POST   /api/local/import           导入扫描候选 {candidateId, provider?, name?}
@@ -43,7 +43,7 @@ import { liveToAccount as zcodeLiveAccount, switchTo as zcodeSwitchTo, currentZc
 import { exportAccounts, parseImport, TransferError } from './transfer.js';
 import { runCheckinTick, getSchedulerInfo, dayKey } from './checkin.js';
 import { detectQoderApps, readQoderAppAccounts, riskIdentityAvailable } from './qoderApp.js';
-import { startDeviceFlow, pollDeviceFlow } from './authDevice.js';
+import { startDeviceFlow, pollDeviceFlow, LOGIN_KINDS } from './authDevice.js';
 import { detectInstalls, scanLocalTokens, putCandidate, takeCandidate } from './localDetect.js';
 import { PROVIDER_LABEL, APP_VERSION, PROVIDERS } from './constants.js';
 
@@ -253,7 +253,8 @@ async function handleApi(req, res, url) {
   if (p === '/api/auth/device/start' && method === 'POST') {
     const body = await readBody(req).catch(() => ({}));
     try {
-      const flow = startDeviceFlow(body.provider === 'qoder-cn' ? 'qoder-cn' : 'qoder');
+      const kind = LOGIN_KINDS.includes(body?.provider) ? body.provider : 'qoder';
+      const flow = await startDeviceFlow(kind);
       return json(res, 200, flow);
     } catch (e) { return json(res, 500, { error: e.message }); }
   }
