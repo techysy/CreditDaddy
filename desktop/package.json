@@ -55,7 +55,7 @@
     },
     "extraResources": [
       {
-        "from": "app",
+        "from": "server",
         "to": "qoderdaddy"
       }
     ]

@@ -5,4 +5,4 @@ fnos-packaging/*.fpk
 fnos-packaging/.tmp-*/
 desktop/node_modules/
 desktop/dist/
-desktop/app/
+desktop/server/
