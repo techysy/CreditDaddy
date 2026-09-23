@@ -102,7 +102,7 @@ const optStr = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 /** 过期时间统一成 ISO 字符串（接受 ISO / 秒 / 毫秒） */
 export function normalizeExpiry(v) {
   if (v === null || v === undefined || v === '') return null;
-  const n = typeof v === 'number' ? v : /^d+$/.test(String(v)) ? Number(v) : NaN;
+  const n = typeof v === 'number' ? v : /^\d+$/.test(String(v)) ? Number(v) : NaN;
   const d = Number.isFinite(n) ? new Date(n < 1e12 ? n * 1000 : n) : new Date(String(v));
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
@@ -164,7 +164,7 @@ export function publicAccount(a) {
     source: a.source || 'manual',
     phone: maskPhone(meta.phone),
     domain: meta.domain || null,
-    canSwitch: Boolean(meta.session?.account),
+    canSwitch: Boolean(meta.session?.account || meta.credentials),
     verified: a.verified ?? null,
     createdAt: a.createdAt,
     lastCheckin: a.lastCheckin,

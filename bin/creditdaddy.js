@@ -126,9 +126,11 @@ async function main() {
     case 'scan': {
       const { readQoderAppAccounts } = await import('../src/qoderApp.js');
       const { readWorkbuddySessions } = await import('../src/workbuddyLocal.js');
+      const { liveToAccount: zcodeLive } = await import('../src/zcodeLocal.js');
       const { addAccount } = await import('../src/accounts.js');
       const qa = await readQoderAppAccounts();
       const wb = readWorkbuddySessions();
+      const zAccount = zcodeLive();
       const records = [
         ...qa.accounts.map((c) => ({
           label: c.source,
@@ -137,9 +139,10 @@ async function main() {
         ...wb.accounts.map(({ file: _f, fileTime: _t, current, source, ...rec }) => ({
           label: source, rec: { ...rec, source: current ? 'workbuddy-current' : 'workbuddy-history' },
         })),
+        ...(zAccount ? [{ label: 'ZCode 当前登录', rec: zAccount }] : []),
       ];
       for (const e of [...qa.errors, ...wb.errors]) console.log('⚠', e.file, e.error);
-      if (!records.length) { console.log('（本机 Qoder / WorkBuddy 客户端未登录或未安装）'); break; }
+      if (!records.length) { console.log('（本机 Qoder / WorkBuddy / ZCode 客户端未登录或未安装）'); break; }
       for (const { label, rec } of records) {
         const r = await addAccount(rec, { trusted: true });
         console.log(r.duplicate ? (r.updated ? '↻ 已更新' : '· 已存在') : '✓ 已导入', r.account.name || r.account.id, `（${label}）`);

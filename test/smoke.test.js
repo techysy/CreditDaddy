@@ -263,3 +263,96 @@ test('切换 WorkBuddy 账号：写入当前会话并清除登出标记', async 
     for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k];
   }
 });
+
+// ── ZCode ──
+const zc = await import('../src/zcrypto.js');
+const zcodeClient = await import('../src/zcodeClient.js');
+const nodeCrypto = await import('node:crypto');
+
+/** 与 ZCode 客户端相同格式的加密（测试用）：enc:v1:<nonce>.<tag>.<ct>，base64url，AES-256-GCM(key=SHA256(secret)) */
+function zEncrypt(plain, secret) {
+  const key = nodeCrypto.createHash('sha256').update(secret).digest();
+  const nonce = nodeCrypto.randomBytes(12);
+  const c = nodeCrypto.createCipheriv('aes-256-gcm', key, nonce);
+  const ct = Buffer.concat([c.update(plain, 'utf8'), c.final()]);
+  return `enc:v1:${nonce.toString('base64url')}.${c.getAuthTag().toString('base64url')}.${ct.toString('base64url')}`;
+}
+
+test('ZCode enc:v1 解密与身份提取', () => {
+  const secret = 'zcode-credential-fallback:win32:C:\Users\t:t';
+  const creds = {
+    'oauth:active_provider': zEncrypt('bigmodel', secret),
+    'oauth:bigmodel:user_info': zEncrypt(JSON.stringify({ id: 42, username: 'alice', displayName: '爱丽丝' }), secret),
+    'oauth:bigmodel:access_token': zEncrypt('eyJ.x.y', secret),
+    zcodejwttoken: zEncrypt('jwt-value-longer-than-twenty-chars', secret),
+  };
+  assert.equal(zc.decryptWithSecret(creds['oauth:active_provider'], secret), 'bigmodel');
+  assert.throws(() => zc.decryptWithSecret(creds['oauth:active_provider'], 'wrong-secret'));
+  assert.equal(zc.safeDecrypt('plain-text', secret), 'plain-text');
+  assert.equal(zc.safeDecrypt(creds.zcodejwttoken, 'wrong'), null);
+  const id = zc.identityWithSecret(creds, secret);
+  assert.deepEqual({ p: id.provider, u: id.userId, n: zc.identityLabel(id) }, { p: 'bigmodel', u: '42', n: '爱丽丝' });
+  assert.equal(zc.isLoggedIn(creds), true);
+  assert.equal(zc.isLoggedIn({ zcodejwttoken: '  ' }), false);
+  assert.equal(zc.defaultSecret('/home/u', { platform: 'linux', username: 'u' }).startsWith('zcode-credential-fallback:linux:/home/u:u')
+    || Boolean(process.env.ZCODE_CREDENTIAL_SECRET), true);
+});
+
+test('ZCode 规范化哈希：与键序无关，忽略设备相关键', () => {
+  const a = { b: '2', a: '1', 'web-remote-control:x': 'dev-1' };
+  const b = { a: '1', b: '2', 'web-remote-control:x': 'dev-2' };
+  assert.equal(zc.canonicalHash(a), zc.canonicalHash(b));
+  assert.notEqual(zc.canonicalHash(a), zc.canonicalHash({ a: '1', b: '3' }));
+});
+
+test('ZCode 冷切换：写回凭据 / 配置 / 每账号独立设备 ID', async () => {
+  const fake = await fs.mkdtemp(path.join(os.tmpdir(), 'zcode-home-'));
+  const saved = process.env.ZCODE_HOME;
+  process.env.ZCODE_HOME = fake;
+  try {
+    const zl = await import('../src/zcodeLocal.js');
+    const v2 = path.join(fake, '.zcode', 'v2');
+    await fs.mkdir(v2, { recursive: true });
+    await fs.writeFile(path.join(v2, 'credentials.json'), JSON.stringify({ zcodejwttoken: 'jwt-A-xxxxxxxxxxxxxxxxxxxxxxxx' }));
+    await fs.writeFile(path.join(v2, 'telemetry-state.json'), JSON.stringify({ deviceMid: 'mid-A', lastDailyActiveDate: '2026-09-24' }));
+    const live = zl.liveToAccount();
+    assert.equal(live.provider, 'zcode');
+    assert.equal(live.meta.deviceMid, 'mid-A', '导入时沿用本机当前设备 ID');
+
+    const target = store.normalizeAccountInput({
+      provider: 'zcode', token: 'zcode-creds:B', uid: 'B',
+      meta: { credentials: { zcodejwttoken: 'jwt-B-xxxxxxxxxxxxxxxxxxxxxxxx' }, config: { provider: {} } },
+    });
+    const r = zl.switchTo(target, { force: true });
+    assert.equal(r.switched, true);
+    const written = JSON.parse(await fs.readFile(path.join(v2, 'credentials.json'), 'utf8'));
+    assert.equal(written.zcodejwttoken, 'jwt-B-xxxxxxxxxxxxxxxxxxxxxxxx');
+    const tele = JSON.parse(await fs.readFile(path.join(v2, 'telemetry-state.json'), 'utf8'));
+    assert.equal(tele.deviceMid, target.meta.deviceMid, '写入目标账号的虚拟设备 ID');
+    assert.notEqual(tele.deviceMid, 'mid-A');
+    assert.equal(tele.lastDailyActiveDate, '2026-09-24', '保留 telemetry 其他字段');
+    assert.equal(zl.switchTo(target, { force: true }).alreadyActive, true);
+  } finally {
+    if (saved === undefined) delete process.env.ZCODE_HOME; else process.env.ZCODE_HOME = saved;
+  }
+});
+
+test('ZCode 额度解析：BigModel 窗口额度 / Z.ai 余额 / 无套餐', () => {
+  const q = zcodeClient.normalizeQuotaLimit({
+    code: 200, success: true,
+    data: { level: 'lite', limits: [
+      { type: 'TOKENS_LIMIT', usage: 120, currentValue: 20, remaining: 100, nextResetTime: 1790000000000 },
+      { type: 'TIME_LIMIT', usage: 300, currentValue: 60, remaining: 240 },
+    ] },
+  }, { code: 200, success: true, data: [{ status: 'VALID', productName: 'GLM Coding Lite' }] });
+  assert.deepEqual({ r: q.remaining, t: q.total, u: q.unit, plan: q.plan, n: q.parts.length }, { r: 240, t: 300, u: '分钟', plan: 'GLM Coding Lite', n: 2 });
+  assert.equal(q.parts[0].unit, '次');
+  const b = zcodeClient.normalizeBalance({ code: 0, data: { plans: [], balances: [] } });
+  assert.equal(b.empty, true);
+});
+
+test('过期时间：数字字符串（秒 / 毫秒）也能解析', () => {
+  assert.equal(store.normalizeExpiry('1790000000'), new Date(1790000000 * 1000).toISOString());
+  assert.equal(store.normalizeExpiry('1790000000000'), new Date(1790000000000).toISOString());
+  assert.equal(store.normalizeExpiry('garbage'), null);
+});

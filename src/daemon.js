@@ -13,7 +13,7 @@
  *   DELETE /api/accounts/:id           删除账号
  *   POST   /api/accounts/:id/checkin   手动为单个账号签到
  *   GET    /api/accounts/:id/quota     查询积分（统一结构）
- *   POST   /api/accounts/:id/switch    切换 WorkBuddy 客户端当前登录账号
+ *   POST   /api/accounts/:id/switch    切换 WorkBuddy / ZCode 客户端当前登录账号 {force?}
  *   POST   /api/checkin                全部签到 {provider?, skipIfCheckedToday?}
  *   POST   /api/auth/device/start      发起设备码登录 {provider}
  *   POST   /api/auth/device/poll       轮询设备码登录 {sessionId}
@@ -39,6 +39,7 @@ import {
 import { addAccount, importAccounts, refreshContext } from './accounts.js';
 import { productImpl } from './providers.js';
 import { readWorkbuddySessions, writeWorkbuddySession, workbuddyAuthDir, currentWorkbuddyUid } from './workbuddyLocal.js';
+import { liveToAccount as zcodeLiveAccount, switchTo as zcodeSwitchTo, currentZcodeUid, detectZcode, ensureVirtualDeviceMid } from './zcodeLocal.js';
 import { exportAccounts, parseImport, TransferError } from './transfer.js';
 import { runCheckinTick, getSchedulerInfo, dayKey } from './checkin.js';
 import { detectQoderApps, readQoderAppAccounts, riskIdentityAvailable } from './qoderApp.js';
@@ -202,13 +203,34 @@ async function handleApi(req, res, url) {
     }
   }
 
-  // 切换 WorkBuddy 客户端当前登录账号
+  // 切换 WorkBuddy / ZCode 客户端当前登录账号
   const switchMatch = p.match(/^\/api\/accounts\/([\w-]+)\/switch$/);
   if (switchMatch && method === 'POST') {
+    const body = await readBody(req).catch(() => ({}));
     const accounts = await loadAccounts();
     const target = accounts.find((a) => a.id === switchMatch[1]);
     if (!target) return json(res, 404, { error: '账号不存在' });
-    if (!target.provider.startsWith('workbuddy')) return json(res, 400, { error: '只有 WorkBuddy 账号支持切换' });
+    if (target.provider === 'zcode') {
+      // 防丢号：先把 ZCode 当前登录（凭据 + config.json + 设备 ID）同步 / 保存进账号库，再覆盖
+      const live = zcodeLiveAccount();
+      if (live && live.uid !== target.uid) {
+        await addAccount(live, { trusted: true }).catch((e) => logger.warn('DAEMON', '同步 ZCode 当前登录失败：' + e.message));
+      }
+      try {
+        ensureVirtualDeviceMid(target);
+        const r = zcodeSwitchTo(target, { force: body?.force === true });
+        // 虚拟设备 ID 首次生成时需落盘
+        await withAccounts((list) => {
+          const cur = list.find((a) => a.id === target.id);
+          if (cur) cur.meta = { ...(cur.meta || {}), deviceMid: target.meta.deviceMid };
+        });
+        logger.info('DAEMON', r.alreadyActive ? `ZCode 当前已是 ${target.name || target.id}` : `ZCode 已切换到 ${target.name || target.id}`);
+        return json(res, 200, { ok: true, ...r });
+      } catch (e) {
+        return json(res, e.zcodeRunning ? 409 : 400, { error: e.message, code: e.zcodeRunning ? 'ZCODE_RUNNING' : undefined });
+      }
+    }
+    if (!target.provider.startsWith('workbuddy')) return json(res, 400, { error: '只有 WorkBuddy / ZCode 账号支持切换' });
     // 先把客户端当前会话的最新 token 收回账号库，避免被覆盖后丢失
     const cur = readWorkbuddySessions().accounts.find((a) => a.current);
     if (cur && cur.uid !== target.uid) {
@@ -242,7 +264,7 @@ async function handleApi(req, res, url) {
 
   // ── 本机检测 / 凭据扫描 ──
   if (p === '/api/local/detect' && method === 'GET') {
-    return json(res, 200, { apps: detectQoderApps(), workbuddyDir: workbuddyAuthDir(), legacy: detectInstalls() });
+    return json(res, 200, { apps: detectQoderApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), legacy: detectInstalls() });
   }
   if (p === '/api/local/scan' && method === 'POST') {
     const existing = await loadAccounts();
@@ -277,7 +299,12 @@ async function handleApi(req, res, url) {
       const { file: _f, fileTime: _t, current, ...record } = c;
       addRecord({ ...record, source: current ? 'workbuddy-current' : 'workbuddy-history' }, { source: c.source, current });
     }
-    // 3) 旧版 VS Code 系 Qoder IDE / CLI：明文 token 扫描（归属需用户选择）
+    // 3) ZCode 客户端：解密 ~/.zcode/v2/credentials.json 的当前登录
+    try {
+      const z = zcodeLiveAccount();
+      if (z) addRecord(z, { source: 'ZCode 当前登录', current: true });
+    } catch (e) { errors.push({ file: '~/.zcode/v2/credentials.json', error: e.message }); }
+    // 4) 旧版 VS Code 系 Qoder IDE / CLI：明文 token 扫描（归属需用户选择）
     const det = detectInstalls();
     const dirs = det.ideDataDirs.filter(d => d.exists).map(d => d.path);
     if (det.cliDir.exists) dirs.push(det.cliDir.path);
@@ -324,6 +351,7 @@ async function handleApi(req, res, url) {
       scheduler: getSchedulerInfo(),
       riskIdentity: riskIdentityAvailable(),
       workbuddyCurrentUid: currentWorkbuddyUid(),
+      zcodeCurrentUid: currentZcodeUid(),
       keyRequired: Boolean(PANEL_KEY),
     });
   }

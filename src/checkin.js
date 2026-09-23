@@ -68,9 +68,11 @@ async function runTickNow(opts) {
 }
 
 async function runTickInner(opts) {
+  // 没有每日签到能力的产品（如 ZCode：积分靠需验证码的活动领取）不参与签到轮
   const accounts = (await loadAccounts()).filter(
     (a) => (!opts.provider || a.provider === opts.provider)
         && (!opts.onlyAccountId || a.id === opts.onlyAccountId)
+        && typeof productImpl(a.provider)?.checkin === 'function'
   );
 
   if (accounts.length === 0) {

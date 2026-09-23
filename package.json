@@ -1,7 +1,7 @@
 {
   "name": "creditdaddy",
-  "version": "0.3.0",
-  "description": "CreditDaddy — Qoder / WorkBuddy 多账号本地管理与每日积分自动签到助手",
+  "version": "0.4.0",
+  "description": "CreditDaddy — Qoder / WorkBuddy / ZCode 多账号本地管理与每日积分自动签到助手",
   "type": "module",
   "bin": {
     "creditdaddy": "bin/creditdaddy.js"

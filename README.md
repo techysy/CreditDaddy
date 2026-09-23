@@ -1,6 +1,6 @@
 # CreditDaddy
 
-**AI 编程工具多账号本地管理 + 每日积分自动签到助手** —— 目前支持 **Qoder**（国际版 / 国内版）与 **WorkBuddy**（腾讯 CodeBuddy 系，国内版 / 国际版）。
+**AI 编程工具多账号本地管理 + 每日积分自动签到助手** —— 目前支持 **Qoder**（国际版 / 国内版）、**WorkBuddy**（腾讯 CodeBuddy 系，国内版 / 国际版）、**ZCode**（智谱 GLM / Z.ai）。
 
 > 项目原名 **QoderDaddy**，v0.3.0 起更名为 CreditDaddy：数据目录自动从 `~/.qoderdaddy` 迁移到 `~/.creditdaddy`（旧目录保留），
 > 旧的 `QODERDADDY_HOME` / `QODERDADDY_PASSWORD` 环境变量与 QoderDaddy 导出文件仍可使用。
@@ -12,7 +12,8 @@
 
 - **多产品多账号**：Qoder / WorkBuddy 账号统一管理，卡片式面板（参考 WorkDaddy），按产品筛选，显示签到状态、连签天数、剩余积分、积分包到期、token 有效期，支持亮色 / 暗色
 - **本机导入**：一键读取本机 Qoder / Qoder CN 客户端（本地解密 `auth.v1.dat`）与 WorkBuddy 客户端（当前 + 历史会话）已登录的账号，token 不出机器；同一用户 token 续期时自动更新
-- **WorkBuddy 账号切换**：一键把 WorkBuddy 客户端切换到选中的账号（客户端自动应用，无需重新扫码）
+- **WorkBuddy / ZCode 账号切换**：一键把客户端切换到选中的账号（WorkBuddy 自动应用；ZCode 需先退出客户端），切换前先保全当前登录，绝不丢号，每个账号独立设备指纹
+- **隐私（无痕）登录窗口**：桌面版内置一次性会话的登录窗口，网页授权不带出系统浏览器里已登录的账号、Cookie 也不落盘（Qoder 网络授权已接入）
 - **网络授权登录**：面板一键发起 Qoder 设备码授权（PKCE + nonce，与官方 qodercli 同流程），浏览器确认后 token 自动入库
 - **每日自动签到**：守护进程每 ~2 小时扫描一轮；当天已领的账号记忆跳过；"无可领活动"不记忆，每日积分刷新（10:00 UTC+8）后自动重试。"签到日"以 10:00 (UTC+8) 为界，与本机时区无关
 - **国际版签到**：携带 Qoder 客户端生成的设备风控身份（见下文），与客户端内「每天领 100 Credits」一致
@@ -32,6 +33,14 @@
 - **切换账号**：写入 `workbuddy-desktop.info` 并清除登出标记，WorkBuddy 监听该文件并自动应用；切换前会先把客户端当前会话的最新 token 保存到 CreditDaddy
 - 国际版（workbuddy.ai / codebuddy.ai）的签到接口沿用同一路径，尚未经真实账号验证
 
+## ZCode 说明
+
+- **账号来源**：ZCode 桌面客户端把当前登录存在 `~/.zcode/v2/credentials.json`（值用客户端私有的 `enc:v1:` AES-256-GCM 加密，密钥从机器信息派生），CreditDaddy 本地解密读取，token 不出机器
+- **没有每日签到**：ZCode 积分靠「活动领取」，领取需要阿里云验证码，无法后台无人值守，故 CreditDaddy 不对 ZCode 做自动签到（卡片显示「无每日签到」）
+- **额度展示**：查询 BigModel Coding Plan（quota/limit + subscription/list）与 Z.ai / Start Plan（billing/balance）；无有效套餐时显示「仅免费额度」。⚠️ 额度解析按 zcode-switch 字段映射实现，开发账号无有效套餐，未经真实数据验证
+- **账号切换**：写回 `credentials.json` / `config.json`，并为每个账号写入独立的设备 ID（`telemetry-state.json` 的 deviceMid），避免账号间被风控关联；需先退出 ZCode 客户端（运行中会覆盖回内存里的旧登录）。切换前当前登录会先保存进 CreditDaddy，不会丢号
+- 协议移植自 [zcode-switch](https://github.com/pjpv/zcode-switch)（MIT）
+
 ## Qoder 国际版签到说明（重要）
 
 实测 Qoder 国际版服务端只向**携带设备风控身份**（`Cosy-MachineToken / Cosy-MachineCode / Cosy-MachineType`）的请求下发「每天领 100 Credits」活动；不带时只返回推广活动，这也是旧版本（以及 10router）国际版一直"无可领活动"的原因。
@@ -49,7 +58,7 @@
 
 CLI 用法：
 
-    node bin/creditdaddy.js scan                    # 导入本机 Qoder / WorkBuddy 客户端已登录的账号
+    node bin/creditdaddy.js scan                    # 导入本机 Qoder / WorkBuddy / ZCode 客户端已登录的账号
     node bin/creditdaddy.js add <token>             # 添加 Qoder 国际版账号
     node bin/creditdaddy.js add <token> --cn        # 添加 Qoder 国内版账号
     node bin/creditdaddy.js add <token> --workbuddy # 添加 WorkBuddy 国内版账号（--intl 为国际版）
@@ -119,7 +128,7 @@ Qoder 侧（国际版 openapi.qoder.sh，国内版 openapi.qoder.com.cn）：
 | no-activity | 当前无可领活动（可能窗口未开） | ✗ 下轮重试 |
 | failed | 鉴权失败 / 网络错误等 | ✗ 下轮重试 |
 
-> ⚠️ 非官方接口，Qoder / WorkBuddy 调整服务端时可能失效。请遵守平台服务条款，仅管理自己的账号。
+> ⚠️ 非官方接口，Qoder / WorkBuddy / ZCode 调整服务端时可能失效。请遵守平台服务条款，仅管理自己的账号。
 
 ## 目录结构
 
@@ -130,6 +139,10 @@ Qoder 侧（国际版 openapi.qoder.sh，国内版 openapi.qoder.com.cn）：
     src/providers.js     产品线注册表：按 provider 分发签到 / 积分 / 校验
     src/workbuddyClient.js  WorkBuddy API：签到、积分、token 刷新
     src/workbuddyLocal.js   本机 WorkBuddy 会话读取与账号切换
+    src/zcrypto.js          ZCode 本机凭据加解密（enc:v1: AES-256-GCM）
+    src/zcodeClient.js      ZCode 额度查询
+    src/zcodeLocal.js       本机 ZCode 凭据读取与账号切换
+    desktop/preload.js      桌面版 preload：暴露隐私登录窗口能力
     src/checkin.js       调度器（2h tick + 当日去重 + 本机限领 + 串行执行）
     src/accounts.js      账号新增 / 导入 / 续期的统一入口
     src/transfer.js      导入导出（10router 迁移格式互通）
