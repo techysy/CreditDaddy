@@ -10,7 +10,7 @@
     "dist": "electron-builder --win --x64"
   },
   "devDependencies": {
-    "electron": "^33.0.0",
+    "electron": "^37.2.0",
     "electron-builder": "^25.1.8"
   },
   "build": {
@@ -23,7 +23,9 @@
     "asar": false,
     "files": [
       "main.js",
+      "package.json",
       "icon.png",
+      "icon.ico",
       "app/**/*"
     ],
     "win": {
@@ -41,7 +43,7 @@
           ]
         }
       ],
-      "icon": "icon.png"
+      "icon": "icon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -52,5 +54,6 @@
     "portable": {
       "artifactName": "QoderDaddy-Portable-${version}.${ext}"
     }
-  }
+  },
+  "type": "commonjs"
 }
