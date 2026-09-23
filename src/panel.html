@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QoderDaddy · 账号管理</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: rgba(30, 34, 44, 0.72); --border: rgba(255,255,255,0.08);
+    --text: #e8eaf0; --dim: #9aa3b2; --accent: #6c8cff; --ok: #4ade80; --warn: #fbbf24; --err: #f87171;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: radial-gradient(1200px 800px at 20% 0%, #1a2033 0%, var(--bg) 55%);
+    color: var(--text); min-height: 100vh; padding: 24px;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  .logo { font-size: 28px; }
+  h1 { font-size: 20px; font-weight: 600; }
+  h1 small { color: var(--dim); font-weight: 400; margin-left: 8px; font-size: 13px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    padding: 18px; margin-bottom: 16px; backdrop-filter: blur(14px);
+  }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  input, select {
+    background: rgba(255,255,255,0.06); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 9px 12px; font-size: 14px; outline: none;
+  }
+  input:focus { border-color: var(--accent); }
+  #f-token { flex: 1; min-width: 260px; font-family: monospace; }
+  button {
+    background: var(--accent); color: #fff; border: 0; border-radius: 8px;
+    padding: 9px 16px; font-size: 14px; cursor: pointer; transition: opacity .15s;
+  }
+  button:hover { opacity: .85; }
+  button.ghost { background: rgba(255,255,255,0.08); }
+  button.danger { background: rgba(248,113,113,0.15); color: var(--err); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; color: var(--dim); font-weight: 500; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+  td { padding: 10px 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+  td.mono { font-family: ui-monospace, monospace; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 12px; }
+  .tag.cn { background: rgba(251,191,36,.15); color: var(--warn); }
+  .tag.intl { background: rgba(108,140,255,.15); color: var(--accent); }
+  .tag.pat { background: rgba(255,255,255,.08); color: var(--dim); margin-left: 6px; }
+  .badge-ok { color: var(--ok); } .badge-dim { color: var(--dim); }
+  .actions { display: flex; gap: 6px; }
+  .actions button { padding: 5px 10px; font-size: 12px; }
+  #toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: rgba(30,34,44,.95); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 18px; font-size: 14px; opacity: 0; transition: opacity .25s; pointer-events: none;
+    max-width: 80vw;
+  }
+  #toast.show { opacity: 1; }
+  .statusline { color: var(--dim); font-size: 13px; margin-top: 10px; }
+  .empty { color: var(--dim); text-align: center; padding: 24px 0; }
+  h2 { font-size: 15px; font-weight: 600; margin-bottom: 12px; }
+  .logs { font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.7; max-height: 220px; overflow-y: auto; }
+  .logs .info { color: var(--dim); } .logs .warn { color: var(--warn); }
+  .logs .error { color: var(--err); } .logs .debug { color: #566072; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="logo">🐻‍❄️</span>
+    <h1>QoderDaddy <small>Qoder 多账号管理 · 每日 Credits 自动签到</small></h1>
+  </header>
+
+  <div class="card">
+    <h2>添加账号</h2>
+    <div class="row">
+      <select id="f-provider">
+        <option value="qoder">Qoder 国际版</option>
+        <option value="qoder-cn">Qoder 国内版</option>
+      </select>
+      <input id="f-name" placeholder="备注名（可选）" style="width:200px">
+      <input id="f-token" placeholder="粘贴 token（jt-…）或 PAT（pt-…）">
+      <button id="btn-add">添加</button>
+    </div>
+    <div class="statusline">token 来源：Qoder 客户端本地配置或官方 Personal Access Token（pt- 开头自动兑换）。数据仅保存在本机 ~/.qoderdaddy，服务只监听 127.0.0.1。</div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between; margin-bottom:12px">
+      <h2 style="margin:0">账号列表</h2>
+      <div class="row">
+        <button class="ghost" id="btn-checkin">▶ 全部签到</button>
+        <button class="ghost" id="btn-export">导出</button>
+        <button class="ghost" id="btn-import">导入</button>
+      </div>
+    </div>
+    <div id="accounts"><div class="empty">加载中…</div></div>
+    <div class="statusline" id="statusline"></div>
+  </div>
+
+  <div class="card">
+    <h2>运行日志</h2>
+    <div class="logs" id="logs">（暂无）</div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+var cache = [];
+
+function esc(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function toast(msg, ok) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.borderColor = ok === false ? 'var(--err)' : 'var(--ok)';
+  t.classList.add('show');
+  clearTimeout(t._h);
+  t._h = setTimeout(function () { t.classList.remove('show'); }, 3200);
+}
+
+function getKey() {
+  try { return localStorage.getItem('qd_key') || ''; } catch (e) { return ''; }
+}
+
+function api(p, opts) {
+  opts = opts || {};
+  opts.headers = Object.assign({}, opts.headers, { 'x-qd-key': getKey() });
+  return fetch(p, opts).then(function (res) {
+    if (res.status === 401) {
+      try { localStorage.removeItem('qd_key'); } catch (e) {}
+    }
+    return res.json().catch(function () { return {}; }).then(function (data) {
+      if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+      return data;
+    });
+  });
+}
+
+function render(accounts) {
+  cache = accounts;
+  var box = document.getElementById('accounts');
+  if (!accounts.length) {
+    box.innerHTML = '<div class="empty">还没有账号 — 粘贴 token 添加第一个吧</div>';
+    return;
+  }
+  var html = '<table><tr><th>账号</th><th>类型</th><th>Token</th><th>上次签到</th><th></th></tr>';
+  for (var i = 0; i < accounts.length; i++) {
+    var a = accounts[i];
+    var cn = a.provider === 'qoder-cn';
+    html += '<tr>'
+      + '<td>' + esc(a.name || '(未命名)') + '</td>'
+      + '<td><span class="tag ' + (cn ? 'cn' : 'intl') + '">' + (cn ? '国内版' : '国际版') + '</span>'
+      + (a.isPat ? '<span class="tag pat">PAT</span>' : '') + '</td>'
+      + '<td class="mono">' + esc(a.tokenMasked) + '</td>'
+      + '<td>' + (a.lastCheckin
+          ? '<span class="badge-ok">' + esc(a.lastCheckin.slice(0, 16).replace('T', ' ')) + '</span>'
+          : '<span class="badge-dim">未签到</span>') + '</td>'
+      + '<td><div class="actions">'
+      + '<button class="ghost" data-act="checkin" data-id="' + esc(a.id) + '">签到</button>'
+      + '<button class="ghost" data-act="quota" data-id="' + esc(a.id) + '">配额</button>'
+      + '<button class="danger" data-act="del" data-id="' + esc(a.id) + '">删除</button>'
+      + '</div></td></tr>';
+  }
+  box.innerHTML = html + '</table>';
+
+  var btns = box.querySelectorAll('button[data-act]');
+  for (var k = 0; k < btns.length; k++) {
+    btns[k].addEventListener('click', function () {
+      var id = this.getAttribute('data-id');
+      var act = this.getAttribute('data-act');
+      var acc = null;
+      for (var j = 0; j < cache.length; j++) if (cache[j].id === id) acc = cache[j];
+      if (act === 'checkin') checkinOne(id);
+      else if (act === 'quota') showQuota(id);
+      else if (act === 'del') removeAccount(id, acc ? (acc.name || id) : id);
+    });
+  }
+}
+
+function loadAccounts() {
+  return api('/api/accounts').then(function (data) {
+    render(data.accounts || []);
+    document.getElementById('statusline').textContent = '数据目录：' + data.dataDir;
+  }).catch(function (e) { toast('加载失败：' + e.message, false); });
+}
+
+function addAccount() {
+  var body = {
+    provider: document.getElementById('f-provider').value,
+    name: document.getElementById('f-name').value.trim() || undefined,
+    token: document.getElementById('f-token').value.trim(),
+  };
+  if (!body.token) return toast('请粘贴 token', false);
+  api('/api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(function (data) {
+      toast('已添加：' + (data.account.name || data.account.id) + (data.account.verified ? '' : '（token 未能在线校验）'));
+      document.getElementById('f-name').value = '';
+      document.getElementById('f-token').value = '';
+      loadAccounts();
+    })
+    .catch(function (e) { toast(e.message, false); });
+}
+
+function removeAccount(id, name) {
+  if (!confirm('删除账号「' + name + '」？')) return;
+  api('/api/accounts/' + encodeURIComponent(id), { method: 'DELETE' })
+    .then(function () { toast('已删除'); loadAccounts(); })
+    .catch(function (e) { toast(e.message, false); });
+}
+
+function checkinOne(id) {
+  api('/api/accounts/' + encodeURIComponent(id) + '/checkin', { method: 'POST' })
+    .then(function (data) {
+      var r = (data.results || [])[0] || {};
+      var ok = r.status !== 'failed';
+      var msg = r.status === 'checked-in' ? ('签到成功 +' + r.claimedAmount + ' Credits')
+        : (r.message || r.error || r.status);
+      toast(msg, ok);
+      loadAccounts();
+    })
+    .catch(function (e) { toast(e.message, false); });
+}
+
+function checkinAll() {
+  api('/api/checkin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ skipIfCheckedToday: false }) })
+    .then(function (data) { toast(data.summary || '完成'); loadAccounts(); })
+    .catch(function (e) { toast(e.message, false); });
+}
+
+function showQuota(id) {
+  api('/api/accounts/' + encodeURIComponent(id) + '/quota')
+    .then(function (data) { toast('配额：' + JSON.stringify(data.quota).slice(0, 180)); })
+    .catch(function (e) { toast(e.message, false); });
+}
+
+function exportAccounts() {
+  api('/api/export', { method: 'POST' }).then(function (payload) {
+    var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'qoderdaddy-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+    a.click();
+    toast('已导出（含明文 token，注意保管）');
+  }).catch(function (e) { toast(e.message, false); });
+}
+
+function importAccounts() {
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.onchange = function () {
+    var file = input.files && input.files[0];
+    if (!file) return;
+    file.text().then(function (text) {
+      return api('/api/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: text });
+    }).then(function (r) {
+      toast('导入完成：新增 ' + r.added + '，跳过 ' + r.skipped);
+      loadAccounts();
+    }).catch(function (e) { toast(e.message, false); });
+  };
+  input.click();
+}
+
+function loadLogs() {
+  api('/api/logs').then(function (data) {
+    var el = document.getElementById('logs');
+    var logs = data.logs || [];
+    if (!logs.length) { el.textContent = '（暂无）'; return; }
+    var html = '';
+    for (var i = 0; i < logs.length; i++) {
+      var l = logs[i];
+      html += '<div class="' + esc(l.level) + '">[' + esc(l.at) + '] ' + esc(l.tag) + ' · ' + esc(l.msg) + '</div>';
+    }
+    el.innerHTML = html;
+  }).catch(function () {});
+}
+
+document.getElementById('btn-add').addEventListener('click', addAccount);
+document.getElementById('btn-checkin').addEventListener('click', checkinAll);
+document.getElementById('btn-export').addEventListener('click', exportAccounts);
+document.getElementById('btn-import').addEventListener('click', importAccounts);
+document.getElementById('f-token').addEventListener('keydown', function (e) { if (e.key === 'Enter') addAccount(); });
+
+(function boot() {
+  if (getKey()) { loadAccounts(); loadLogs(); setInterval(loadLogs, 10000); return; }
+  var k = prompt('请输入 QoderDaddy 访问密钥\n（NAS 上见 ' + (window.QD_DATA_HINT || 'panel_key 文件或安装完成提示') + '）', '') || '';
+  try { localStorage.setItem('qd_key', k); } catch (e) {}
+  loadAccounts().then(function () {
+    if (!getKey()) { alert('密钥无效，请刷新重试'); return; }
+    loadLogs(); setInterval(loadLogs, 10000);
+  });
+})();
+</script>
+</body>
+</html>

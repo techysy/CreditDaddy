@@ -1,0 +1,121 @@
+name: Build QoderDaddy fpk
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-fpk:
+    strategy:
+      matrix:
+        arch: [x86, arm]
+    runs-on: ${{ matrix.arch == 'arm' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run unit tests
+        run: node --test test/
+
+      - name: Stage server into fnos-packaging/app/server
+        run: |
+          set -euo pipefail
+          rm -rf fnos-packaging/app/server
+          mkdir -p fnos-packaging/app/server
+          # QoderDaddy 零依赖：源码即产物，整包拷入
+          cp -r bin src package.json README.md fnos-packaging/app/server/
+          find fnos-packaging/app/server -type d -name '.tmp-*' -exec rm -rf {} + 2>/dev/null || true
+          ls -la fnos-packaging/app/server/
+
+      - name: Download fnpack
+        env:
+          FNPACK_VERSION: "1.2.1"
+        run: |
+          if [ "${{ matrix.arch }}" = "arm" ]; then
+            FNPACK_BIN="fnpack-${FNPACK_VERSION}-linux-arm64"
+            FNPACK_SHA256="aad9e16b101267d30017f39ab969e3c085fbce209716f8bd3b1e167eaf15e0cf"
+          else
+            FNPACK_BIN="fnpack-${FNPACK_VERSION}-linux-amd64"
+            FNPACK_SHA256="72d2a4095da676b64510b023731a227b369d80f8079bc45ff8a2f802ec0480c1"
+          fi
+          curl -fsSL -o /usr/local/bin/fnpack "https://static2.fnnas.com/fnpack/${FNPACK_BIN}"
+          echo "${FNPACK_SHA256}  /usr/local/bin/fnpack" | sha256sum -c -
+          chmod +x /usr/local/bin/fnpack
+          fnpack --help | head -3
+
+      - name: Set manifest platform
+        run: |
+          cd fnos-packaging
+          if grep -qE '^platform[[:space:]]*=' manifest; then
+            sed -i "s/^platform[[:space:]]*=.*/platform               = ${{ matrix.arch }}/" manifest
+          else
+            echo "platform               = ${{ matrix.arch }}" >> manifest
+          fi
+          grep -E '^(platform|appname|version|service_port)[[:space:]]*=' manifest
+
+      - name: Remove symlinks
+        run: |
+          find fnos-packaging -type l -not -path '*/.git/*' -delete 2>/dev/null || true
+          echo "symlinks remaining: $(find fnos-packaging -type l -not -path '*/.git/*' | wc -l)"
+
+      - name: Build fpk
+        run: |
+          set -euo pipefail
+          cd fnos-packaging
+          rm -f qoderdaddy.fpk
+          fnpack build -d .
+          [ -f qoderdaddy.fpk ] || { echo "ERROR: fnpack build failed"; exit 1; }
+          VERSION="$(grep -E '^version[[:space:]]*=' manifest | head -1 | sed 's/.*=//;s/[[:space:]]//g')"
+          [ -n "$VERSION" ] || { echo "ERROR: could not extract version from manifest"; exit 1; }
+          mv qoderdaddy.fpk "qoderdaddy-${VERSION}-${{ matrix.arch }}.fpk"
+          ls -lh "qoderdaddy-${VERSION}-${{ matrix.arch }}.fpk"
+
+      - name: Upload fpk artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qoderdaddy-fpk-${{ matrix.arch }}-${{ github.sha }}
+          path: fnos-packaging/qoderdaddy-*.fpk
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    needs: build-fpk
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download all fpk artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: fpk-assets
+          pattern: qoderdaddy-fpk-*
+          merge-multiple: true
+
+      - name: Ensure release exists
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          gh release view "${{ github.ref_name }}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||             gh release create "${{ github.ref_name }}" --repo "$GITHUB_REPOSITORY"               --title "QoderDaddy ${{ github.ref_name }}"               --notes "QoderDaddy fpk release.
+
+      - name: Generate checksum
+        run: |
+          set -euo pipefail
+          ( cd fpk-assets && sha256sum qoderdaddy-*.fpk > SHA256SUMS-fpk.txt )
+          cat fpk-assets/SHA256SUMS-fpk.txt
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            fpk-assets/qoderdaddy-*.fpk
+            fpk-assets/SHA256SUMS-fpk.txt
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
