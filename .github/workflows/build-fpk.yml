@@ -21,10 +21,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Run unit tests
-        run: node --test test/
+        run: node --test "test/*.test.js"
 
       - name: Stage server into fnos-packaging/app/server
         run: |
