@@ -1,16 +1,16 @@
 {
-  "name": "qoderdaddy",
-  "version": "0.2.0",
-  "description": "QoderDaddy — Qoder 多账号本地管理与每日 Credits 自动签到助手（架构参考 WorkDaddy，签到能力源自 10router）",
+  "name": "creditdaddy",
+  "version": "0.3.0",
+  "description": "CreditDaddy — Qoder / WorkBuddy 多账号本地管理与每日积分自动签到助手",
   "type": "module",
   "bin": {
-    "qoderdaddy": "bin/qoderdaddy.js"
+    "creditdaddy": "bin/creditdaddy.js"
   },
   "engines": {
     "node": ">=18"
   },
   "scripts": {
-    "start": "node bin/qoderdaddy.js daemon",
+    "start": "node bin/creditdaddy.js daemon",
     "test": "node --test"
   },
   "license": "MIT"

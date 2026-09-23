@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-process.env.QODERDADDY_HOME = await fs.mkdtemp(path.join(os.tmpdir(), 'qoderdaddy-test-'));
+process.env.CREDITDADDY_HOME = await fs.mkdtemp(path.join(os.tmpdir(), 'creditdaddy-test-'));
 
 const { dayKey, msUntilNextTick } = await import('../src/checkin.js');
 const store = await import('../src/store.js');
@@ -61,7 +61,7 @@ test('PAT 识别', () => {
 test('明文导出不含 id，兼容新旧字段', () => {
   const a = store.normalizeAccountInput({ provider: 'qoder', token: 'jt-tok', uid: 'u-1', email: 'a@b.c' });
   const payload = JSON.parse(JSON.stringify(transfer.exportAccounts([a])));
-  assert.equal(payload.format, 'qoderdaddy-accounts');
+  assert.equal(payload.format, 'creditdaddy-accounts');
   assert.equal(payload.provider, 'qoder');
   assert.equal(payload.accounts[0].id, undefined);
   assert.equal(payload.accounts[0].token, 'jt-tok');
@@ -75,7 +75,7 @@ test('加密导出往返（10router-oauth-secure-v1）', () => {
   assert.equal(blob.format, '10router-oauth-secure-v1');
   assert.ok(!JSON.stringify(blob).includes('dt-secret'), '加密文件不应含明文 token');
   const parsed = transfer.parseImport(blob, { password: 'pass1234' });
-  assert.equal(parsed.source, 'qoderdaddy');
+  assert.equal(parsed.source, 'creditdaddy');
   assert.equal(parsed.accounts[0].token, 'dt-secret-token-xyz');
   assert.equal(parsed.accounts[0].refreshToken, 'rt');
   assert.throws(() => transfer.parseImport(blob, { password: 'nope' }), (e) => e.code === 'WRONG_PASSWORD');
@@ -168,4 +168,98 @@ test('extractTokens 提取并去重 dt-/pt- token', () => {
 test('APP_VERSION 与 package.json 一致', async () => {
   const pkg = JSON.parse(await fs.readFile(new URL('../package.json', import.meta.url), 'utf8'));
   assert.equal(APP_VERSION, pkg.version);
+});
+
+// ── WorkBuddy ──
+const wbClient = await import('../src/workbuddyClient.js');
+const wbLocal = await import('../src/workbuddyLocal.js');
+const { normalizeQoderQuota } = await import('../src/providers.js');
+
+const fakeJwt = (claims) => ['e30', Buffer.from(JSON.stringify(claims)).toString('base64url'), 'sig'].join('.');
+
+test('WorkBuddy token 按签发方识别国内版 / 国际版', () => {
+  const cn = wbClient.inspectToken(fakeJwt({ iss: 'https://www.codebuddy.cn/auth/realms/copilot', sub: 'u-cn', exp: 1790000000 }));
+  assert.equal(cn.provider, 'workbuddy');
+  assert.equal(cn.uid, 'u-cn');
+  assert.equal(cn.host, 'www.codebuddy.cn');
+  assert.equal(wbClient.inspectToken(fakeJwt({ iss: 'https://www.workbuddy.cn/auth/realms/copilot' })).provider, 'workbuddy');
+  assert.equal(wbClient.inspectToken(fakeJwt({ iss: 'https://www.codebuddy.ai/auth/realms/x' })).provider, 'workbuddy-intl');
+  assert.equal(wbClient.inspectToken('dt-not-a-jwt').provider, null);
+  assert.equal(wbClient.apiHost({ provider: 'workbuddy', token: fakeJwt({ iss: 'https://copilot.tencent.com/auth' }), meta: {} }), 'www.codebuddy.cn');
+});
+
+test('WorkBuddy 会话文件 → 账号记录（保留会话以便切换）', () => {
+  const token = fakeJwt({ iss: 'https://www.workbuddy.cn/auth/realms/copilot', sub: 'u-1', exp: 1790000000 });
+  const rec = wbLocal.sessionToAccount({
+    account: { uid: 'u-1', nickname: '小明', phoneNumber: '13800001234', enterpriseId: '' },
+    auth: { accessToken: token, refreshToken: 'r-1', expiresAt: 1790000000000, domain: 'www.workbuddy.cn', tokenType: 'Bearer' },
+    accounts: [{ uid: 'u-1' }],
+  }, 'test');
+  assert.equal(rec.provider, 'workbuddy');
+  assert.equal(rec.name, '小明');
+  assert.equal(rec.refreshToken, 'r-1');
+  assert.equal(rec.meta.domain, 'www.workbuddy.cn');
+  assert.equal(rec.meta.session.auth.accessToken, undefined, '会话副本里不重复存 token');
+  assert.equal(rec.meta.session.auth.tokenType, 'Bearer');
+  const pub = store.publicAccount(store.normalizeAccountInput(rec));
+  assert.equal(pub.product, 'workbuddy');
+  assert.equal(pub.phone, '138****1234');
+  assert.equal(pub.canSwitch, true);
+  assert.equal(JSON.stringify(pub).includes('r-1'), false, '脱敏视图不含 refreshToken');
+});
+
+test('Qoder 配额归一化为统一积分结构', () => {
+  const q = normalizeQoderQuota({
+    userQuota: { total: 0, used: 0, remaining: 0 },
+    addOnQuota: { total: 200, used: 100, remaining: 100 },
+    isQuotaExceeded: false, expiresAt: 253402214400000,
+  });
+  assert.deepEqual({ t: q.total, u: q.used, r: q.remaining, n: q.parts.length }, { t: 200, u: 100, r: 100, n: 1 });
+  assert.equal(q.parts[0].expiresAt, null, '“永不过期”哨兵值不当作到期时间');
+});
+
+test('导入：10router codebuddy-* 映射为 WorkBuddy，兼容更名前的 QoderDaddy 导出', () => {
+  const blob = transfer.sealTransfer({ provider: 'codebuddy-cn', accounts: [{ accessToken: 'eyJ.a.b', name: 'cb' }] }, 'pw-10r');
+  const r = transfer.parseImport(blob, { password: 'pw-10r' });
+  assert.equal(r.accounts[0].provider, 'workbuddy');
+  const legacy = transfer.parseImport({ format: 'qoderdaddy-accounts', accounts: [{ provider: 'qoder', token: 'dt-legacy' }] });
+  assert.equal(legacy.source, 'creditdaddy');
+  assert.equal(legacy.accounts[0].token, 'dt-legacy');
+  const legacySealed = transfer.sealTransfer({ format: 'qoderdaddy-accounts', accounts: [{ provider: 'qoder', token: 'dt-x' }] }, 'pw-old');
+  assert.equal(transfer.parseImport(legacySealed, { password: 'pw-old' }).source, 'creditdaddy');
+});
+
+test('切换 WorkBuddy 账号：写入当前会话并清除登出标记', async () => {
+  const fake = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-auth-'));
+  const saved = { LOCALAPPDATA: process.env.LOCALAPPDATA, XDG_DATA_HOME: process.env.XDG_DATA_HOME, HOME: process.env.HOME };
+  process.env.LOCALAPPDATA = fake;
+  process.env.XDG_DATA_HOME = fake;
+  try {
+    const dir = wbLocal.workbuddyAuthDir();
+    if (process.platform === 'darwin') return; // macOS 路径固定在 ~/Library，跳过
+    await fs.mkdir(dir, { recursive: true });
+    const tokA = fakeJwt({ iss: 'https://www.codebuddy.cn/auth/realms/copilot', sub: 'A', exp: 1890000000 });
+    const tokB = fakeJwt({ iss: 'https://www.codebuddy.cn/auth/realms/copilot', sub: 'B', exp: 1890000000 });
+    const cur = path.join(dir, 'workbuddy-desktop.info');
+    await fs.writeFile(cur, JSON.stringify({ account: { uid: 'A', nickname: 'A' }, auth: { accessToken: tokA, refreshToken: 'rA', domain: 'www.codebuddy.cn' }, accounts: [] }));
+    await fs.writeFile(path.join(dir, 'workbuddy-desktop.2026-08-01T00-00-00-000Z.1.x.info'),
+      JSON.stringify({ account: { uid: 'B', nickname: 'B' }, auth: { accessToken: tokB, refreshToken: 'rB', domain: 'www.codebuddy.cn' }, accounts: [] }));
+    const found = wbLocal.readWorkbuddySessions();
+    assert.deepEqual(found.accounts.map((a) => [a.uid, a.current]), [['A', true], ['B', false]]);
+    assert.equal(wbLocal.currentWorkbuddyUid(), 'A');
+
+    await fs.writeFile(cur + '.logged-out', 'x');
+    const target = store.normalizeAccountInput(found.accounts[1]);
+    const r = wbLocal.writeWorkbuddySession(target);
+    assert.equal(r.previousUid, 'A');
+    const written = JSON.parse(await fs.readFile(cur, 'utf8'));
+    assert.equal(written.account.uid, 'B');
+    assert.equal(written.auth.accessToken, tokB);
+    assert.equal(written.auth.refreshToken, 'rB');
+    await assert.rejects(fs.access(cur + '.logged-out'), '登出标记应被清除');
+    assert.equal(wbLocal.currentWorkbuddyUid(), 'B');
+  } finally {
+    Object.assign(process.env, saved);
+    for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k];
+  }
 });

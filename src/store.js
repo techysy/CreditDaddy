@@ -1,21 +1,40 @@
 /**
  * 本地账号存储 — 数据全部留在本机（参考 WorkDaddy 的数据边界原则）。
  *
- * 目录：$QODERDADDY_HOME（默认 ~/.qoderdaddy）
+ * 目录：$CREDITDADDY_HOME（兼容旧的 $QODERDADDY_HOME；默认 ~/.creditdaddy）
  *   accounts.json  账号列表（含 token，0600 权限）
  *   state.json     运行状态（签到完成日历等）
+ * 项目曾名 QoderDaddy：默认目录不存在而 ~/.qoderdaddy 存在时，首次访问自动复制过来（旧目录保留）。
  *
  * 写入采用 原子写（临时文件 + rename），避免进程中断损坏数据。
  */
 
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
-import { PROVIDERS } from './constants.js';
+import { PROVIDERS, productOf } from './constants.js';
+
+let migrated = false;
+
+/** 从旧版 ~/.qoderdaddy 复制数据到新目录（只在新目录尚不存在时执行一次） */
+function migrateLegacyDir(target) {
+  migrated = true;
+  const legacy = path.join(os.homedir(), '.qoderdaddy');
+  try {
+    if (fsSync.existsSync(target) || !fsSync.existsSync(legacy)) return;
+    fsSync.cpSync(legacy, target, { recursive: true, errorOnExist: false });
+    fsSync.writeFileSync(path.join(target, 'MIGRATED_FROM_QODERDADDY'), new Date().toISOString());
+  } catch {}
+}
 
 export function dataDir() {
-  return process.env.QODERDADDY_HOME || path.join(os.homedir(), '.qoderdaddy');
+  const explicit = process.env.CREDITDADDY_HOME || process.env.QODERDADDY_HOME;
+  if (explicit) return explicit;
+  const target = path.join(os.homedir(), '.creditdaddy');
+  if (!migrated) migrateLegacyDir(target);
+  return target;
 }
 
 const ACCOUNTS_FILE = () => path.join(dataDir(), 'accounts.json');
@@ -90,9 +109,9 @@ export function normalizeExpiry(v) {
 
 /**
  * 校验并构造账号记录（不含重复检查，由调用方负责）。
- * 可选元数据：uid / email / refreshToken / expiresAt / source
+ * 可选元数据：uid / email / refreshToken / expiresAt / source / meta（产品相关的非通用字段，如 WorkBuddy 会话信息）
  */
-export function normalizeAccountInput({ name, provider, token, uid, email, refreshToken, expiresAt, source }) {
+export function normalizeAccountInput({ name, provider, token, uid, email, refreshToken, expiresAt, source, meta }) {
   if (!PROVIDERS.includes(provider)) {
     throw new Error(`provider 必须是 ${PROVIDERS.join(' 或 ')}`);
   }
@@ -108,6 +127,7 @@ export function normalizeAccountInput({ name, provider, token, uid, email, refre
     refreshToken: optStr(refreshToken),
     expiresAt: normalizeExpiry(expiresAt),
     source: optStr(source) || 'manual',
+    meta: meta && typeof meta === 'object' && !Array.isArray(meta) ? meta : {},
     createdAt: new Date().toISOString(),
     lastCheckin: null,
     lastResult: null,
@@ -125,12 +145,16 @@ export function maskToken(token) {
   return `${token.slice(0, 6)}...${token.slice(-4)}`;
 }
 
+const maskPhone = (p) => (typeof p === 'string' && p.length >= 7 ? p.slice(0, 3) + '****' + p.slice(-4) : null);
+
 /** 对外输出的脱敏账号视图 */
 export function publicAccount(a) {
+  const meta = a.meta || {};
   return {
     id: a.id,
     name: a.name,
     provider: a.provider,
+    product: productOf(a.provider),
     tokenMasked: maskToken(a.token),
     isPat: typeof a.token === 'string' && a.token.startsWith('pt-'),
     uid: a.uid || null,
@@ -138,6 +162,9 @@ export function publicAccount(a) {
     expiresAt: a.expiresAt || null,
     hasRefreshToken: Boolean(a.refreshToken),
     source: a.source || 'manual',
+    phone: maskPhone(meta.phone),
+    domain: meta.domain || null,
+    canSwitch: Boolean(meta.session?.account),
     verified: a.verified ?? null,
     createdAt: a.createdAt,
     lastCheckin: a.lastCheckin,

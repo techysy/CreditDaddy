@@ -1,5 +1,5 @@
 /**
- * QoderDaddy 常量 — Qoder 官方 OpenAPI 端点。
+ * CreditDaddy 常量 — 支持的产品线与 Qoder 官方 OpenAPI 端点（WorkBuddy 端点见 workbuddyClient.js）。
  *
  * 端点与请求头结构来自社区逆向成果（10router 项目实测可用）：
  *   openapi.qoder.sh      国际版：活动/签到、userinfo、配额、PAT 兑换
@@ -27,8 +27,18 @@ export const QUOTA_USAGE_PATH = '/api/v2/quota/usage';
 // PAT (pt-...) → 短期 job token (jt-...) 兑换（普通 JSON POST，无需 COSY 签名）
 export const JOB_TOKEN_EXCHANGE_PATH = '/api/v1/jobToken/exchange';
 
-export const PROVIDERS = ['qoder', 'qoder-cn'];
-export const PROVIDER_LABEL = { qoder: 'Qoder 国际版', 'qoder-cn': 'Qoder 国内版' };
+// 账号的 provider = 产品 + 区域。新增产品时在此登记，并在 providers.js 挂上对应实现。
+export const PROVIDERS = ['qoder', 'qoder-cn', 'workbuddy', 'workbuddy-intl'];
+export const PROVIDER_LABEL = {
+  qoder: 'Qoder 国际版',
+  'qoder-cn': 'Qoder 国内版',
+  workbuddy: 'WorkBuddy 国内版',
+  'workbuddy-intl': 'WorkBuddy 国际版',
+};
+/** provider → 产品线（qoder / workbuddy） */
+export const productOf = (provider) => (String(provider).startsWith('workbuddy') ? 'workbuddy' : 'qoder');
+/** provider 是否国内版 */
+export const isCnProvider = (provider) => provider === 'qoder-cn' || provider === 'workbuddy';
 
 /** 签到请求头（源自 10router qoderCheckin.js，clientType=10 与官方客户端一致） */
 export function buildQoderHeaders(token) {

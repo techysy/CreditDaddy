@@ -1,5 +1,5 @@
 /**
- * QoderDaddy 守护进程 — 本地 HTTP API + Web 面板。
+ * CreditDaddy 守护进程 — 本地 HTTP API + Web 面板。
  *
  * 架构参考 WorkDaddy：
  *   - 默认只监听 127.0.0.1，数据不出本机
@@ -12,7 +12,8 @@
  *   PATCH  /api/accounts/:id           修改备注名 {name}
  *   DELETE /api/accounts/:id           删除账号
  *   POST   /api/accounts/:id/checkin   手动为单个账号签到
- *   GET    /api/accounts/:id/quota     查询配额
+ *   GET    /api/accounts/:id/quota     查询积分（统一结构）
+ *   POST   /api/accounts/:id/switch    切换 WorkBuddy 客户端当前登录账号
  *   POST   /api/checkin                全部签到 {provider?, skipIfCheckedToday?}
  *   POST   /api/auth/device/start      发起设备码登录 {provider}
  *   POST   /api/auth/device/poll       轮询设备码登录 {sessionId}
@@ -22,7 +23,7 @@
  *   GET    /api/logs                   最近日志
  *   GET    /api/status                 守护进程状态
  *   POST   /api/export                 导出账号 {password?, provider?}（有口令 → 10router 兼容加密文件）
- *   POST   /api/import                 导入账号 {data, password?}（QoderDaddy / 10router 导出文件）
+ *   POST   /api/import                 导入账号 {data, password?}（CreditDaddy / 10router 导出文件）
  *   GET    /                           Web 面板
  */
 
@@ -35,18 +36,19 @@ import { logger, getLogs } from './logger.js';
 import {
   loadAccounts, loadState, withAccounts, publicAccount, dataDir,
 } from './store.js';
-import { addAccount, importAccounts } from './accounts.js';
+import { addAccount, importAccounts, refreshContext } from './accounts.js';
+import { productImpl } from './providers.js';
+import { readWorkbuddySessions, writeWorkbuddySession, workbuddyAuthDir, currentWorkbuddyUid } from './workbuddyLocal.js';
 import { exportAccounts, parseImport, TransferError } from './transfer.js';
 import { runCheckinTick, getSchedulerInfo, dayKey } from './checkin.js';
 import { detectQoderApps, readQoderAppAccounts, riskIdentityAvailable } from './qoderApp.js';
-import { fetchQuotaUsage } from './qoderClient.js';
 import { startDeviceFlow, pollDeviceFlow } from './authDevice.js';
 import { detectInstalls, scanLocalTokens, putCandidate, takeCandidate } from './localDetect.js';
 import { PROVIDER_LABEL, APP_VERSION } from './constants.js';
 
-/** 可选访问密钥：设置 QODERDADDY_PASSWORD 后，所有 /api/* 需要 x-qd-key 头（或 ?key=）。
+/** 可选访问密钥：设置 CREDITDADDY_PASSWORD 后，所有 /api/* 需要 x-qd-key 头（或 ?key=）。
  *  fnOS/NAS 部署监听 0.0.0.0 时由 cmd/main 自动生成并注入。 */
-const PANEL_KEY = process.env.QODERDADDY_PASSWORD || '';
+const PANEL_KEY = process.env.CREDITDADDY_PASSWORD || process.env.QODERDADDY_PASSWORD || '';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PANEL_FILE = path.join(__dirname, 'panel.html');
@@ -186,20 +188,43 @@ async function handleApi(req, res, url) {
     return json(res, 200, { results, summary });
   }
 
-  // 配额查询
+  // 积分查询（统一结构：total / used / remaining / parts[]）
   const quotaMatch = p.match(/^\/api\/accounts\/([\w-]+)\/quota$/);
   if (quotaMatch && method === 'GET') {
     const accounts = await loadAccounts();
     const account = accounts.find((a) => a.id === quotaMatch[1]);
     if (!account) return json(res, 404, { error: '账号不存在' });
     try {
-      return json(res, 200, { quota: await fetchQuotaUsage(account) });
+      const ctx = refreshContext(account, (m) => logger.info('QUOTA', `${account.name || account.id}：${m}`));
+      return json(res, 200, { quota: await productImpl(account.provider).quota(account, ctx) });
     } catch (e) {
       return json(res, 502, { error: e.message });
     }
   }
 
-  // ── 设备码登录 ──
+  // 切换 WorkBuddy 客户端当前登录账号
+  const switchMatch = p.match(/^\/api\/accounts\/([\w-]+)\/switch$/);
+  if (switchMatch && method === 'POST') {
+    const accounts = await loadAccounts();
+    const target = accounts.find((a) => a.id === switchMatch[1]);
+    if (!target) return json(res, 404, { error: '账号不存在' });
+    if (!target.provider.startsWith('workbuddy')) return json(res, 400, { error: '只有 WorkBuddy 账号支持切换' });
+    // 先把客户端当前会话的最新 token 收回账号库，避免被覆盖后丢失
+    const cur = readWorkbuddySessions().accounts.find((a) => a.current);
+    if (cur && cur.uid !== target.uid) {
+      const { file: _f, fileTime: _t, current: _c, ...rec } = cur;
+      await addAccount(rec, { trusted: true }).catch((e) => logger.warn('DAEMON', '同步 WorkBuddy 当前会话失败：' + e.message));
+    }
+    try {
+      const r = writeWorkbuddySession(target);
+      logger.info('DAEMON', `WorkBuddy 已切换到 ${target.name || target.id}`);
+      return json(res, 200, { ok: true, file: r.file, previousUid: r.previousUid });
+    } catch (e) {
+      return json(res, 400, { error: e.message });
+    }
+  }
+
+  // ── 设备码登录（Qoder） ──
   if (p === '/api/auth/device/start' && method === 'POST') {
     const body = await readBody(req).catch(() => ({}));
     try {
@@ -215,46 +240,65 @@ async function handleApi(req, res, url) {
     } catch (e) { return json(res, 500, { error: e.message }); }
   }
 
-  // ── 本机检测 / token 扫描 ──
+  // ── 本机检测 / 凭据扫描 ──
   if (p === '/api/local/detect' && method === 'GET') {
-    return json(res, 200, { apps: detectQoderApps(), legacy: detectInstalls() });
+    return json(res, 200, { apps: detectQoderApps(), workbuddyDir: workbuddyAuthDir(), legacy: detectInstalls() });
   }
   if (p === '/api/local/scan' && method === 'POST') {
     const existing = await loadAccounts();
     const known = (provider, token, uid) => existing.some((a) => (!provider || a.provider === provider)
       && (a.token === token || (uid && a.uid === uid)));
-    // 1) 新版 Qoder 客户端：解密 auth.v1.dat（账号归属明确）
+    const candidates = [];
+    const errors = [];
+    const addRecord = (record, extra) => {
+      candidates.push({
+        id: putCandidate({ token: record.token, record }),
+        kind: 'app', provider: record.provider,
+        name: record.name, email: record.email, uid: record.uid, phone: record.meta?.phone ? record.meta.phone.slice(0, 3) + '****' + record.meta.phone.slice(-4) : null,
+        tokenMasked: record.token.slice(0, 5) + '...' + record.token.slice(-4),
+        expiresAt: record.expiresAt, hasRefreshToken: Boolean(record.refreshToken),
+        imported: known(record.provider, record.token, record.uid),
+        ...extra,
+      });
+    };
+    // 1) Qoder 客户端：解密 auth.v1.dat
     const app = await readQoderAppAccounts();
-    const candidates = app.accounts.map((c) => ({
-      id: putCandidate(c),
-      kind: 'app', provider: c.provider, source: c.source,
-      name: c.user.name, email: c.user.email, uid: c.user.id,
-      tokenMasked: c.token.slice(0, 5) + '...' + c.token.slice(-4),
-      expiresAt: c.expiresAt, hasRefreshToken: Boolean(c.refreshToken),
-      imported: known(c.provider, c.token, c.user.id),
-    }));
-    // 2) 旧版 VS Code 系 Qoder IDE / CLI：明文 token 扫描（归属需用户选择）
+    errors.push(...app.errors);
+    for (const c of app.accounts) {
+      addRecord({
+        provider: c.provider, token: c.token, name: c.user.name || c.user.email, uid: c.user.id, email: c.user.email,
+        refreshToken: c.refreshToken, expiresAt: c.expiresAt, source: 'local-app',
+      }, { source: c.source });
+    }
+    // 2) WorkBuddy 客户端：当前会话 + 历史会话
+    const wb = readWorkbuddySessions();
+    errors.push(...wb.errors);
+    for (const c of wb.accounts) {
+      const { file: _f, fileTime: _t, current, ...record } = c;
+      addRecord({ ...record, source: current ? 'workbuddy-current' : 'workbuddy-history' }, { source: c.source, current });
+    }
+    // 3) 旧版 VS Code 系 Qoder IDE / CLI：明文 token 扫描（归属需用户选择）
     const det = detectInstalls();
     const dirs = det.ideDataDirs.filter(d => d.exists).map(d => d.path);
     if (det.cliDir.exists) dirs.push(det.cliDir.path);
     const legacy = await scanLocalTokens(dirs);
     for (const c of legacy.candidates) {
-      candidates.push({ ...c, provider: null, source: '旧版 IDE / CLI 文件', imported: known(null, takeCandidate(c.id)?.token) });
+      candidates.push({ ...c, provider: null, source: '旧版 Qoder IDE / CLI 文件', imported: known(null, takeCandidate(c.id)?.token) });
     }
-    return json(res, 200, { candidates, errors: app.errors, scanned: legacy.scanned, scannedDirs: dirs });
+    return json(res, 200, { candidates, errors, scanned: legacy.scanned, scannedDirs: [...dirs, wb.dir] });
   }
   if (p === '/api/local/import' && method === 'POST') {
     const body = await readBody(req);
     const cand = takeCandidate(String(body?.candidateId || ''));
     if (!cand) return json(res, 404, { error: '候选不存在或已过期，请重新扫描' });
-    const provider = cand.provider || (body.provider === 'qoder-cn' ? 'qoder-cn' : 'qoder');
-    const { account, duplicate, updated } = await addAccount({
-      provider, token: cand.token,
-      name: body.name || cand.user?.name || cand.user?.email || null,
-      uid: cand.user?.id, email: cand.user?.email,
-      refreshToken: cand.refreshToken, expiresAt: cand.expiresAt,
-      source: cand.user ? 'local-app' : 'local-scan',
-    }, { trusted: Boolean(cand.user) });
+    const record = cand.record || {
+      provider: body.provider === 'qoder-cn' ? 'qoder-cn' : 'qoder',
+      token: cand.token, source: 'local-scan',
+    };
+    const { account, duplicate, updated } = await addAccount(
+      { ...record, name: body.name || record.name || null },
+      { trusted: Boolean(cand.record) },
+    );
     if (duplicate && !updated) return json(res, 409, { error: '该账号已存在，信息已是最新' });
     logger.info('DAEMON', (updated ? '已用本机凭据更新：' : '从本机导入账号：') + (account.name || account.id));
     return json(res, updated ? 200 : 201, { account: publicAccount(account), updated });
@@ -271,7 +315,7 @@ async function handleApi(req, res, url) {
     const state = await loadState();
     return json(res, 200, {
       ok: true,
-      app: 'QoderDaddy',
+      app: 'CreditDaddy',
       version: APP_VERSION,
       accountsCount: accounts.length,
       dataDir: dataDir(),
@@ -279,6 +323,7 @@ async function handleApi(req, res, url) {
       todayDone: state?.qoderDailyDone || {},
       scheduler: getSchedulerInfo(),
       riskIdentity: riskIdentityAvailable(),
+      workbuddyCurrentUid: currentWorkbuddyUid(),
       keyRequired: Boolean(PANEL_KEY),
     });
   }
@@ -335,7 +380,7 @@ export function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
       if (url.pathname === '/' || url.pathname === '/index.html') {
         if (!panelHtml) { try { panelHtml = await fs.readFile(PANEL_FILE, 'utf8'); } catch {} }
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        return res.end(panelHtml || '<h1>QoderDaddy</h1><p>panel.html 缺失</p>');
+        return res.end(panelHtml || '<h1>CreditDaddy</h1><p>panel.html 缺失</p>');
       }
       res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
       res.end('Not Found');
@@ -364,9 +409,9 @@ export function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
       const onListening = () => {
         server.off('error', onError);
         const bound = server.address().port;
-        logger.info('DAEMON', `QoderDaddy 守护进程已启动：http://${host}:${bound}`);
+        logger.info('DAEMON', `CreditDaddy 守护进程已启动：http://${host}:${bound}`);
         if ((host === '0.0.0.0' || host === '::') && !PANEL_KEY) {
-          logger.warn('DAEMON', '监听 0.0.0.0 且未设置 QODERDADDY_PASSWORD —— 局域网内任何人可访问账号 API，建议设置访问密钥');
+          logger.warn('DAEMON', '监听 0.0.0.0 且未设置 CREDITDADDY_PASSWORD —— 局域网内任何人可访问账号 API，建议设置访问密钥');
         }
         resolve({ server, port: bound });
       };

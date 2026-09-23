@@ -2,7 +2,7 @@
 # 卸载前置：停止服务
 set -uo pipefail
 
-APP_NAME="${TRIM_APPNAME:-qoderdaddy}"
+APP_NAME="${TRIM_APPNAME:-creditdaddy}"
 APP_DIR="${TRIM_APPDEST:-/var/apps/${APP_NAME}}"
 APP_VOL=""
 if [ -n "${TRIM_PKGVAR:-}" ]; then
@@ -21,9 +21,9 @@ else
         DATA_DIR="${APP_DIR}/var"
     fi
 fi
-if [ -f "${DATA_DIR}/qoderdaddy.pid" ]; then
-    kill "$(cat "${DATA_DIR}/qoderdaddy.pid")" 2>/dev/null || true
-    rm -f "${DATA_DIR}/qoderdaddy.pid"
+if [ -f "${DATA_DIR}/creditdaddy.pid" ]; then
+    kill "$(cat "${DATA_DIR}/creditdaddy.pid")" 2>/dev/null || true
+    rm -f "${DATA_DIR}/creditdaddy.pid"
 fi
-pkill -f "bin/qoderdaddy.js daemon" 2>/dev/null || true
+pkill -f "bin/creditdaddy.js daemon" 2>/dev/null || true
 exit 0

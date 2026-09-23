@@ -2,7 +2,7 @@
 # 升级后置：panel_key 保留不覆盖，重启由 fnOS 调 cmd/main restart
 set -uo pipefail
 
-APP_NAME="${TRIM_APPNAME:-qoderdaddy}"
+APP_NAME="${TRIM_APPNAME:-creditdaddy}"
 APP_DIR="${TRIM_APPDEST:-/var/apps/${APP_NAME}}"
 APP_VOL=""
 if [ -n "${TRIM_PKGVAR:-}" ]; then

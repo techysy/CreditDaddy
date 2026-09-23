@@ -1,10 +1,10 @@
 /**
- * QoderDaddy 桌面壳（Electron）：内置 daemon + 托盘常驻。
+ * CreditDaddy 桌面壳（Electron）：内置 daemon + 托盘常驻。
  *
  *   - 关闭窗口 = 隐藏到托盘，后台自动签到不中断；首次隐藏时弹出气泡提示托盘位置
  *   - 单击托盘图标打开面板；右键菜单：状态 / 打开面板 / 立即签到 / 开机自启 / 打开数据目录 / 退出
  *   - 开机自启以 --hidden 启动：只驻留托盘，不弹窗口
- *   - 打包后从 resources/qoderdaddy 加载服务端；开发时（electron desktop/）直接用仓库源码
+ *   - 打包后从 resources/creditdaddy 加载服务端；开发时（electron desktop/）直接用仓库源码
  */
 const { app, BrowserWindow, Tray, Menu, nativeImage, shell, Notification, dialog } = require('electron');
 const path = require('node:path');
@@ -22,11 +22,11 @@ let lastSummary = '';
 let daemonInfo = { version: app.getVersion(), dataDir: '' };
 
 const serverRoot = app.isPackaged
-  ? path.join(process.resourcesPath, 'qoderdaddy')
+  ? path.join(process.resourcesPath, 'creditdaddy')
   : path.join(__dirname, '..');
 
 // 开发模式使用独立的 userData，避免与已安装版本争抢单实例锁
-if (!app.isPackaged) app.setPath('userData', path.join(app.getPath('appData'), 'QoderDaddy-dev'));
+if (!app.isPackaged) app.setPath('userData', path.join(app.getPath('appData'), 'CreditDaddy-dev'));
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -36,7 +36,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 async function boot() {
-  app.setAppUserModelId('cn.techysy.qoderdaddy');
+  app.setAppUserModelId('cn.techysy.creditdaddy');
   Menu.setApplicationMenu(null);
   // 托盘最先创建：即使 daemon 启动失败也能从托盘退出
   createTray();
@@ -51,7 +51,7 @@ async function boot() {
     daemonInfo = { version: constants.APP_VERSION, dataDir: store.dataDir() };
     checkin.startScheduler();
   } catch (err) {
-    dialog.showErrorBox('QoderDaddy 启动失败', String((err && err.stack) || err));
+    dialog.showErrorBox('CreditDaddy 启动失败', String((err && err.stack) || err));
     quitting = true;
     app.quit();
     return;
@@ -74,7 +74,7 @@ function createWindow() {
     height: 820,
     minWidth: 760,
     minHeight: 560,
-    title: 'QoderDaddy',
+    title: 'CreditDaddy',
     icon: iconPath(),
     autoHideMenuBar: true,
     backgroundColor: '#f5f6f8',
@@ -88,7 +88,7 @@ function createWindow() {
     win.hide();
     if (!hideHintShown) {
       hideHintShown = true;
-      notify('QoderDaddy 仍在后台运行', '已最小化到系统托盘，自动签到不会中断。单击托盘图标可重新打开面板。');
+      notify('CreditDaddy 仍在后台运行', '已最小化到系统托盘，自动签到不会中断。单击托盘图标可重新打开面板。');
     }
   });
   win.on('closed', () => { win = null; });
@@ -110,7 +110,7 @@ function notify(title, body) {
 }
 
 async function checkinNow() {
-  tray.setToolTip('QoderDaddy - 正在签到…');
+  tray.setToolTip('CreditDaddy - 正在签到…');
   try {
     const res = await fetch('http://127.0.0.1:' + boundPort + '/api/checkin', {
       method: 'POST',
@@ -119,10 +119,10 @@ async function checkinNow() {
     });
     const data = await res.json();
     lastSummary = data.summary || '签到完成';
-    notify('QoderDaddy 签到完成', lastSummary);
+    notify('CreditDaddy 签到完成', lastSummary);
   } catch (e) {
     lastSummary = '签到失败：' + (e && e.message);
-    notify('QoderDaddy', lastSummary);
+    notify('CreditDaddy', lastSummary);
   }
   refreshTrayMenu();
   if (win && !win.isDestroyed()) win.webContents.reload();
@@ -149,9 +149,9 @@ function createTray() {
 
 function refreshTrayMenu() {
   if (!tray) return;
-  tray.setToolTip('QoderDaddy v' + daemonInfo.version + ' - 后台自动签到运行中' + (lastSummary ? '\n' + lastSummary : ''));
+  tray.setToolTip('CreditDaddy v' + daemonInfo.version + ' - 后台自动签到运行中' + (lastSummary ? '\n' + lastSummary : ''));
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'QoderDaddy v' + daemonInfo.version, enabled: false },
+    { label: 'CreditDaddy v' + daemonInfo.version, enabled: false },
     { label: '面板 127.0.0.1:' + boundPort, enabled: false },
     ...(lastSummary ? [{ label: lastSummary.slice(0, 60), enabled: false }] : []),
     { type: 'separator' },
@@ -161,7 +161,7 @@ function refreshTrayMenu() {
     { label: '开机自启（后台运行）', type: 'checkbox', checked: autoLaunchEnabled(), click: (item) => setAutoLaunch(item.checked) },
     { label: '打开数据目录', enabled: Boolean(daemonInfo.dataDir), click: () => shell.openPath(daemonInfo.dataDir) },
     { type: 'separator' },
-    { label: '退出 QoderDaddy', click: () => { quitting = true; app.quit(); } },
+    { label: '退出 CreditDaddy', click: () => { quitting = true; app.quit(); } },
   ]));
 }
 

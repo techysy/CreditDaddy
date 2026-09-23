@@ -116,7 +116,7 @@ export function machineHostname(raw = os.hostname()) {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-/** 机器 ID：优先复用客户端的 auth.machine-id，否则在 QoderDaddy 数据目录持久化一个 */
+/** 机器 ID：优先复用客户端的 auth.machine-id，否则在 CreditDaddy 数据目录持久化一个 */
 export function machineId(provider) {
   const v = VARIANTS.find((x) => x.provider === provider) || VARIANTS[0];
   for (const file of [path.join(userDataDir(v), 'auth.machine-id'), path.join(dataDir(), 'machine-id')]) {

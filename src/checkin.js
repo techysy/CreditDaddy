@@ -10,7 +10,8 @@
  */
 
 import { loadAccounts, loadState, saveState, withAccounts } from './store.js';
-import { checkinOne } from './qoderClient.js';
+import { productImpl } from './providers.js';
+import { refreshContext } from './accounts.js';
 import { logger } from './logger.js';
 
 const TICK_MS = 2 * 60 * 60 * 1000;        // 2 小时
@@ -91,7 +92,8 @@ async function runTickInner(opts) {
         continue;
       }
 
-      let outcome = await checkinOne(account);
+      const ctx = refreshContext(account, (m) => logger.info('CHECKIN', `${label}：${m}`));
+      let outcome = await productImpl(account.provider).checkin(account, ctx);
       if (account.provider === 'qoder' && outcome.risk) {
         if (outcome.status === 'checked-in') {
           deviceClaim = { day: today, accountId: account.id, name: label };
@@ -105,6 +107,7 @@ async function runTickInner(opts) {
         status: outcome.status,
         message: outcome.error || outcome.message || null,
         amount: outcome.claimedAmount || 0,
+        ...(outcome.streakDays !== undefined ? { streakDays: outcome.streakDays + (outcome.status === 'checked-in' ? 1 : 0) } : {}),
         at: new Date().toISOString(),
       };
 

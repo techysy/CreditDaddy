@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>QoderDaddy</title>
+<title>CreditDaddy</title>
 <style>
   :root {
     --bg: #f5f6f8; --surface: #ffffff; --surface-2: #fafafa; --tertiary: #f0f0f0; --hover: #f5f6f8; --active: #eef0f3;
@@ -83,6 +83,17 @@
   .badge { display: inline-flex; align-items: center; font-size: 10px; line-height: 1; padding: 3px 7px; border-radius: 999px; font-weight: 500; background: var(--tertiary); color: var(--text-2); white-space: nowrap; }
   .badge.intl { color: #3b82f6; background: rgba(59,130,246,.1); }
   .badge.cn { color: #d97706; background: rgba(245,158,11,.12); }
+  .badge.prod { font-weight: 600; }
+  .badge.prod.qoder { color: #6d28d9; background: rgba(124,58,237,.1); }
+  .badge.prod.workbuddy { color: #0f766e; background: rgba(20,184,166,.12); }
+  html[data-theme="dark"] .badge.prod.qoder { color: #b8a4ff; }
+  html[data-theme="dark"] .badge.prod.workbuddy { color: #5eead4; }
+  .pill.cur { background: rgba(20,184,166,.12); color: #0f766e; }
+  html[data-theme="dark"] .pill.cur { color: #5eead4; }
+  .seg-ctl { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--hover); }
+  .seg-ctl button { border: none; background: transparent; color: var(--text-2); font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 7px; cursor: pointer; }
+  .seg-ctl button.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  html[data-theme="dark"] .seg-ctl button.active { background: rgba(255,255,255,.1); }
   .pill { display: inline-flex; align-items: center; height: 22px; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; border: 1px solid transparent; }
   .pill.ok { background: var(--text); color: var(--surface); }
   html[data-theme="dark"] .pill.ok { background: rgba(255,255,255,.085); color: var(--text); border-color: rgba(255,255,255,.12); }
@@ -159,10 +170,10 @@
 <div class="wrap">
   <header class="head">
     <div class="brand">
-      <span class="logo">Q</span>
+      <span class="logo">C</span>
       <div>
-        <div class="title">QoderDaddy</div>
-        <div class="ver" id="ver">Qoder 多账号管理 · 每日 Credits 自动签到</div>
+        <div class="title">CreditDaddy</div>
+        <div class="ver" id="ver">Qoder / WorkBuddy 多账号管理 · 每日积分自动签到</div>
       </div>
     </div>
     <div class="head-right">
@@ -178,7 +189,11 @@
         <div class="divider"></div>
         <div class="stat"><span>今日已签</span><strong id="s-done">0</strong></div>
         <div class="divider"></div>
-        <div class="stat"><span>剩余 Credits</span><strong id="s-credits">-</strong></div>
+        <div class="stat"><span>剩余积分</span><strong id="s-credits">-</strong></div>
+        <div class="divider"></div>
+        <div class="seg-ctl" id="filter">
+          <button data-f="" class="active">全部</button><button data-f="qoder">Qoder</button><button data-f="workbuddy">WorkBuddy</button>
+        </div>
       </div>
       <div class="actions">
         <button class="btn primary" id="btn-checkin"></button>
@@ -206,12 +221,12 @@
     <div class="modal-title"><span>添加账号</span><button class="close" data-close>✕</button></div>
     <div class="tabs">
       <button class="tab active" data-tab="local">本机导入</button>
-      <button class="tab" data-tab="device">网络授权登录</button>
+      <button class="tab" data-tab="device">Qoder 网络授权</button>
       <button class="tab" data-tab="token">粘贴 Token</button>
     </div>
 
     <div class="pane active" data-pane="local">
-      <div class="hint">读取本机 Qoder 客户端当前登录的账号（本地解密，token 不出本机），并扫描旧版 IDE / CLI 文件。</div>
+      <div class="hint">读取本机 Qoder 客户端（本地解密）与 WorkBuddy 客户端（当前 + 历史会话）已登录的账号，token 不出本机；同时扫描旧版 Qoder IDE / CLI 文件。</div>
       <div class="row" style="margin-top:10px"><button class="btn primary" id="btn-scan">重新扫描</button><span class="hint" id="scan-status"></span></div>
       <div class="box" id="scan-result"><div class="hint">点击「重新扫描」</div></div>
     </div>
@@ -231,7 +246,7 @@
     <div class="pane" data-pane="token">
       <div class="field">
         <label>版本</label>
-        <select class="input" id="f-provider"><option value="qoder">Qoder 国际版</option><option value="qoder-cn">Qoder 国内版</option></select>
+        <select class="input" id="f-provider"><option value="qoder">Qoder 国际版</option><option value="qoder-cn">Qoder 国内版</option><option value="workbuddy">WorkBuddy 国内版</option><option value="workbuddy-intl">WorkBuddy 国际版</option></select>
       </div>
       <div class="field"><label>备注名（可选）</label><input class="input" id="f-name" placeholder="留空则自动读取昵称"></div>
       <div class="field"><label>Token</label><input class="input mono" id="f-token" placeholder="dt-… / jt-… 或 PAT（pt-…，自动兑换）"></div>
@@ -246,13 +261,13 @@
     <div class="modal-title"><span>导出账号</span><button class="close" data-close>✕</button></div>
     <div class="field">
       <label>范围</label>
-      <select class="input" id="ex-provider"><option value="">全部账号</option><option value="qoder">仅国际版</option><option value="qoder-cn">仅国内版</option></select>
+      <select class="input" id="ex-provider"><option value="">全部账号</option><option value="qoder">仅 Qoder 国际版</option><option value="qoder-cn">仅 Qoder 国内版</option><option value="workbuddy">仅 WorkBuddy 国内版</option><option value="workbuddy-intl">仅 WorkBuddy 国际版</option></select>
     </div>
     <div class="field">
       <label>加密口令（可选）</label>
       <input class="input" id="ex-password" type="password" placeholder="至少 4 位；留空则导出明文">
     </div>
-    <div class="hint">设置口令后文件采用 10router 迁移格式加密（scrypt + AES-256-GCM），可直接在 10router 的 Qoder 提供商页导入。10router 按提供商导入，建议分别导出国际版 / 国内版。</div>
+    <div class="hint">设置口令后文件采用 10router 迁移格式加密（scrypt + AES-256-GCM），可直接在 10router 对应提供商页导入（WorkBuddy 对应 10router 的 CodeBuddy）。10router 按提供商导入，建议按单个版本导出。</div>
     <div class="modal-actions"><button class="btn" data-close>取消</button><button class="btn primary" id="btn-do-export">导出</button></div>
   </div>
 </div>
@@ -284,11 +299,20 @@ const I = {
   download: svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>'),
   sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
   moon: svg('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),
+  swap: svg('<path d="M7 7h13l-4-4"/><path d="M17 17H4l4 4"/>'),
   credit: svg('<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>'),
 };
 
 const $ = (id) => document.getElementById(id);
-const state = { accounts: [], quotas: {}, status: null, busy: {} };
+const state = { accounts: [], quotas: {}, status: null, busy: {}, filter: '' };
+const PROV = {
+  qoder: { prod: 'qoder', prodLabel: 'Qoder', region: '国际版', cls: 'intl' },
+  'qoder-cn': { prod: 'qoder', prodLabel: 'Qoder', region: '国内版', cls: 'cn' },
+  workbuddy: { prod: 'workbuddy', prodLabel: 'WorkBuddy', region: '国内版', cls: 'cn' },
+  'workbuddy-intl': { prod: 'workbuddy', prodLabel: 'WorkBuddy', region: '国际版', cls: 'intl' },
+};
+const provOf = (p) => PROV[p] || { prod: 'qoder', prodLabel: p, region: '', cls: '' };
+const provBadges = (p) => { const v = provOf(p); return '<span class="badge prod ' + v.prod + '">' + esc(v.prodLabel) + '</span><span class="badge ' + v.cls + '">' + v.region + '</span>'; };
 
 function esc(s) {
   return String(s === null || s === undefined ? '' : s)
@@ -361,8 +385,9 @@ function statusOf(a) {
   const fresh = r && r.at && state.status && (Date.now() - new Date(r.at).getTime() < 26 * 3600e3);
   if (r && fresh && r.status === 'limited' && done) return { cls: 'limited', text: '本机已领', msg: r.message };
   if (done) {
-    const amt = r && r.status === 'checked-in' && fresh ? ' +' + fmtNum(r.amount) : '';
-    return { cls: 'ok', text: '今日已签' + amt, msg: r && r.message && !['checked-in', 'already'].includes(r.status) ? r.message : '' };
+    const amt = r && r.status === 'checked-in' && fresh && r.amount ? ' +' + fmtNum(r.amount) : '';
+    const streak = r && fresh && r.streakDays ? ' · 连签 ' + r.streakDays + ' 天' : '';
+    return { cls: 'ok', text: '今日已签' + amt + streak, msg: r && r.message && !['checked-in', 'already'].includes(r.status) ? r.message : '' };
   }
   if (r && fresh && r.status === 'failed') return { cls: 'fail', text: '签到失败', msg: r.message, err: true };
   if (r && fresh && r.status === 'no-activity') return { cls: 'pending', text: '待领取', msg: r.message };
@@ -380,55 +405,58 @@ function creditHtml(a) {
   const q = state.quotas[a.id];
   if (!q) return '<div class="credit-line"><span class="dim">读取积分中…</span></div><div class="bar"></div>';
   if (q.error) return '<div class="credit-line"><span class="dim" title="' + esc(q.error) + '">积分读取失败：' + esc(q.error.slice(0, 40)) + '</span></div><div class="bar"></div>';
-  const parts = [q.userQuota, q.addOnQuota, q.orgResourcePackage].filter((x) => x && x.total > 0);
-  const total = parts.reduce((s, x) => s + (x.total || 0), 0);
-  const remain = parts.reduce((s, x) => s + (x.remaining || 0), 0);
-  const used = parts.reduce((s, x) => s + (x.used || 0), 0);
+  const total = q.total || 0;
   let bar = '';
   if (total > 0) {
-    const names = ['套餐额度', '附加额度', '组织资源包'];
-    [q.userQuota, q.addOnQuota, q.orgResourcePackage].forEach((x, i) => {
-      if (x && x.remaining > 0) bar += '<span class="seg" style="flex:' + (x.remaining / total).toFixed(4) + ' 1 0;--a:' + (i === 0 ? 1 : .7) + '" title="' + names[i] + '：剩余 ' + fmtNum(x.remaining) + ' / ' + fmtNum(x.total) + '"></span>';
+    q.parts.filter((x) => x.remaining > 0).forEach((x, i) => {
+      bar += '<span class="seg" style="flex:' + (x.remaining / total).toFixed(4) + ' 1 0;--a:' + (x.recurring ? 1 : Math.max(.45, .85 - i * .05)) + '" title="'
+        + esc(x.name) + '：剩余 ' + fmtNum(x.remaining) + ' / ' + fmtNum(x.total) + (x.expiresAt ? (x.recurring ? '，' + fmtTime(x.expiresAt).slice(0, 10) + ' 重置' : '，' + fmtTime(x.expiresAt).slice(0, 10) + ' 到期') : '') + '"></span>';
     });
-    if (used > 0) bar += '<span class="seg used" style="flex:' + (used / total).toFixed(4) + ' 1 0" title="已使用 ' + fmtNum(used) + '"></span>';
+    if (q.used > 0) bar += '<span class="seg used" style="flex:' + (q.used / total).toFixed(4) + ' 1 0" title="已使用 ' + fmtNum(q.used) + '"></span>';
   }
+  const soon = q.parts.filter((x) => x.remaining > 0 && !x.recurring && x.expiresAt).sort((x, y) => x.expiresAt.localeCompare(y.expiresAt))[0];
   return '<div class="credit-line">'
-    + '<span class="credit"><span class="lbl">剩余</span>' + I.credit + '<b>' + fmtNum(remain) + '</b></span>'
-    + '<span class="credit dim">已用 ' + fmtNum(used) + ' / 共 ' + fmtNum(total) + (q.isQuotaExceeded ? ' · <span style="color:var(--err)">已超额</span>' : '') + '</span>'
+    + '<span class="credit"><span class="lbl">剩余</span>' + I.credit + '<b>' + fmtNum(q.remaining) + '</b></span>'
+    + '<span class="credit dim">' + (soon ? fmtNum(soon.remaining) + ' 于 ' + fmtTime(soon.expiresAt).slice(5, 10) + ' 到期 · ' : '') + '已用 ' + fmtNum(q.used) + ' / 共 ' + fmtNum(total) + (q.exceeded ? ' · <span style="color:var(--err)">已超额</span>' : '') + '</span>'
     + '</div><div class="bar">' + bar + '</div>';
 }
 
 function cardHtml(a) {
-  const cn = a.provider === 'qoder-cn';
   const st = statusOf(a);
   const ex = expiryCell(a);
-  const ident = a.email || (a.uid ? 'UID ' + a.uid.slice(0, 8) : a.tokenMasked);
+  const ident = a.email || a.phone || (a.uid ? 'UID ' + a.uid.slice(0, 8) : a.tokenMasked);
+  const isCurrent = a.product === 'workbuddy' && state.status && a.uid && state.status.workbuddyCurrentUid === a.uid;
   return '<div class="card" data-id="' + esc(a.id) + '">'
     + '<div class="row1"><div class="name-group">'
     + '<span class="name" data-act="rename" title="点击修改备注名">' + esc(a.name || '(未命名)') + '</span>'
-    + '<span class="badge ' + (cn ? 'cn' : 'intl') + '">' + (cn ? '国内版' : '国际版') + '</span>'
+    + provBadges(a.provider)
+    + (isCurrent ? '<span class="pill cur" title="WorkBuddy 客户端当前登录的账号">客户端当前</span>' : '')
     + (a.isPat ? '<span class="badge">PAT</span>' : '')
     + (a.verified === false ? '<span class="pill fail">token 无效</span>' : '')
     + '<span class="pill ' + st.cls + '" title="' + esc(a.lastResult ? fmtTime(a.lastResult.at) + ' ' + (a.lastResult.message || a.lastResult.status) : '') + '">' + esc(st.text) + '</span>'
     + '</div><div class="ops">'
     + '<button class="icon-btn' + (state.busy[a.id] ? ' busy' : '') + '" data-act="checkin" title="立即签到">' + (state.busy[a.id] ? I.refresh : I.play) + '</button>'
+    + (a.product === 'workbuddy' && a.canSwitch && !isCurrent && st.cls !== 'fail' ? '<button class="icon-btn" data-act="switch" title="切换 WorkBuddy 客户端到此账号">' + I.swap + '</button>' : '')
     + '<button class="icon-btn" data-act="quota" title="刷新积分">' + I.refresh + '</button>'
     + '<button class="icon-btn del" data-act="del" title="删除（点两次确认）">' + I.trash + '</button>'
     + '</div></div>'
     + '<div class="meta">'
-    + '<div class="mi"><span class="lbl">账号</span><span class="val" title="' + esc(a.email || a.uid || '') + '">' + esc(mask(ident)) + '</span></div>'
+    + '<div class="mi"><span class="lbl">账号</span><span class="val" title="' + esc(a.email || a.phone || a.uid || '') + '">' + esc(a.phone && !a.email ? ident : mask(ident)) + '</span></div>'
     + '<div class="mi right"><span class="lbl">有效期至</span><span class="val' + (ex.warn ? ' warn' : '') + '">' + esc(ex.label) + '</span></div>'
     + '</div>'
     + creditHtml(a)
-    + (st.msg ? '<div class="msg' + (st.err ? ' err' : '') + '" title="' + esc(st.msg) + '">' + esc(st.msg) + '</div>' : '')
+    + (st.msg && !(state.quotas[a.id] && state.quotas[a.id].error && state.quotas[a.id].error.includes(st.msg.slice(-24)))
+      ? '<div class="msg' + (st.err ? ' err' : '') + '" title="' + esc(st.msg) + '">' + esc(st.msg) + '</div>' : '')
     + '</div>';
 }
 
 function render() {
   const list = $('list');
-  const acc = state.accounts;
+  const acc = state.accounts.filter((a) => !state.filter || a.product === state.filter);
   if (!acc.length) {
-    list.innerHTML = '<div class="empty">还没有账号。<br>点「添加账号」，可一键读取本机 Qoder 客户端已登录的账号，或走网络授权登录。</div>';
+    list.innerHTML = state.accounts.length
+      ? '<div class="empty">该产品下还没有账号。</div>'
+      : '<div class="empty">还没有账号。<br>点「添加账号」，可一键读取本机 Qoder / WorkBuddy 客户端已登录的账号，或走 Qoder 网络授权登录。</div>';
   } else {
     list.innerHTML = acc.map(cardHtml).join('');
   }
@@ -441,7 +469,7 @@ function render() {
     const q = state.quotas[a.id];
     if (q && !q.error) {
       known++;
-      sum += [q.userQuota, q.addOnQuota, q.orgResourcePackage].reduce((s, x) => s + (x && x.remaining > 0 ? x.remaining : 0), 0);
+      sum += q.remaining || 0;
     }
   }
   $('s-credits').textContent = known ? fmtNum(sum) : '-';
@@ -451,7 +479,7 @@ function renderStatus() {
   const s = state.status;
   if (!s) return;
   $('ver').textContent = 'v' + s.version + ' · 数据目录 ' + s.dataDir;
-  document.title = 'QoderDaddy v' + s.version;
+  document.title = 'CreditDaddy v' + s.version;
   const sch = s.scheduler || {};
   $('sched').textContent = sch.ticking ? '正在签到…'
     : sch.nextTickAt ? '下次自动签到 ' + fmtTime(sch.nextTickAt).slice(11) : '';
@@ -460,7 +488,7 @@ function renderStatus() {
   const n = $('notice');
   if (hasIntl && !s.riskIdentity) {
     n.style.display = '';
-    n.textContent = '国际版签到需要本机安装 Qoder 客户端：Qoder 只向带设备风控身份（由客户端生成）的请求下发「每天领 100 Credits」。当前未检测到客户端，国际版账号将无法领取。';
+    n.textContent = 'Qoder 国际版签到需要本机安装 Qoder 客户端：Qoder 只向带设备风控身份（由客户端生成）的请求下发「每天领 100 Credits」。当前未检测到客户端，国际版账号将无法领取。';
   } else if (hasIntl) {
     n.style.display = '';
     n.textContent = '提示：Qoder 国际版每台设备每天只能有一个账号领取每日 100 Credits（服务端按设备限领），其余国际版账号会显示「本机已领」。';
@@ -534,6 +562,13 @@ async function onCardClick(e) {
   const act = btn.dataset.act;
   if (act === 'checkin') return checkinOne(id);
   if (act === 'quota') { loadQuotas([id]); return; }
+  if (act === 'switch') {
+    const a = state.accounts.find((x) => x.id === id);
+    if (!confirm('把 WorkBuddy 客户端切换到「' + (a && a.name || id) + '」？\n客户端会自动应用新会话；当前登录账号的最新 token 会先保存到 CreditDaddy。')) return;
+    try { await api('/api/accounts/' + encodeURIComponent(id) + '/switch', { method: 'POST' }); toast('WorkBuddy 已切换到 ' + (a && a.name || id)); await loadStatus(); await loadAccounts(); }
+    catch (err) { toast(err.message, false); }
+    return;
+  }
   if (act === 'rename') {
     const a = state.accounts.find((x) => x.id === id);
     const name = prompt('备注名', a && a.name || '');
@@ -579,11 +614,10 @@ async function localScan() {
     $('scan-status').textContent = '';
     let html = '';
     for (const c of r.candidates) {
-      const cn = c.provider === 'qoder-cn';
-      const title = c.kind === 'app' ? esc(c.name || c.email || '(未命名)') : '<span style="font-family:monospace">' + esc(c.tokenMasked) + '</span>';
-      const prov = c.provider ? '<span class="badge ' + (cn ? 'cn' : 'intl') + '">' + (cn ? '国内版' : '国际版') + '</span>' : '<span class="badge">' + esc(c.kind) + '</span>';
+      const title = c.kind === 'app' ? esc(c.name || c.email || c.phone || '(未命名)') : '<span style="font-family:monospace">' + esc(c.tokenMasked) + '</span>';
+      const prov = (c.provider ? provBadges(c.provider) : '<span class="badge">' + esc(c.kind) + '</span>') + (c.current ? '<span class="pill cur">当前登录</span>' : '');
       const sub = c.kind === 'app'
-        ? esc(c.source) + (c.email ? ' · ' + esc(mask(c.email)) : '') + (c.expiresAt ? ' · 有效期至 ' + esc(fmtTime(c.expiresAt)) : '')
+        ? esc(c.source) + (c.email ? ' · ' + esc(mask(c.email)) : c.phone ? ' · ' + esc(c.phone) : '') + (c.expiresAt ? ' · 有效期至 ' + esc(fmtTime(c.expiresAt)) : '')
         : esc(c.source) + ' · ' + esc(String(c.file || '').split(/[\\/]/).pop()) + '（' + c.hits + ' 处）';
       const btns = c.imported ? '<span class="pill ok">已导入</span>' + (c.provider ? '<button class="btn" data-cid="' + esc(c.id) + '" title="用本机凭据更新 token / 有效期 / 邮箱">同步信息</button>' : '')
         : c.provider ? '<button class="btn primary" data-cid="' + esc(c.id) + '">导入</button>'
@@ -592,7 +626,7 @@ async function localScan() {
     }
     for (const e of r.errors || []) html += '<div class="hint" style="color:var(--err)">读取失败：' + esc(e.file) + '：' + esc(e.error) + '</div>';
     if (!r.candidates.length) {
-      html += '<div class="hint">未发现已登录的 Qoder 账号。请先在 Qoder 客户端登录，或改用「网络授权登录」。<br>已检查：Qoder / Qoder CN 客户端数据目录'
+      html += '<div class="hint">未发现已登录的账号。请先在 Qoder / WorkBuddy 客户端登录，或改用「Qoder 网络授权」「粘贴 Token」。<br>已检查：Qoder / Qoder CN 客户端数据目录、WorkBuddy 凭据目录'
         + (r.scannedDirs && r.scannedDirs.length ? '、' + r.scannedDirs.map(esc).join('、') : '') + '</div>';
     }
     box.innerHTML = html;
@@ -677,7 +711,7 @@ async function doExport() {
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'qoderdaddy-' + ($('ex-provider').value || 'all') + '-' + new Date().toISOString().slice(0, 10) + (password ? '.secure' : '') + '.json';
+    a.download = 'creditdaddy-' + ($('ex-provider').value || 'all') + '-' + new Date().toISOString().slice(0, 10) + (password ? '.secure' : '') + '.json';
     a.click();
     URL.revokeObjectURL(a.href);
     $('ex-password').value = '';
@@ -696,7 +730,7 @@ $('file-input').addEventListener('change', async () => {
   try { data = JSON.parse(await f.text()); } catch (e) { return toast('文件不是合法 JSON', false); }
   pendingImport = data;
   if (data && data.format === '10router-oauth-secure-v1') {
-    $('pass-hint').textContent = '「' + f.name + '」已加密（QoderDaddy / 10router 迁移格式），请输入导出时设置的口令。';
+    $('pass-hint').textContent = '「' + f.name + '」已加密（CreditDaddy / 10router 迁移格式），请输入导出时设置的口令。';
     $('pass-input').value = '';
     openModal('m-pass');
     setTimeout(() => $('pass-input').focus(), 50);
@@ -708,7 +742,7 @@ async function submitImport(password) {
   try {
     const d = await api('/api/import', { json: { data: pendingImport, password } });
     closeModal('m-pass');
-    toast('导入完成（' + (d.source === '10router' ? '10router' : 'QoderDaddy') + '）：新增 ' + d.added + '，续期 ' + d.updated + '，跳过 ' + d.skipped);
+    toast('导入完成（' + (d.source === '10router' ? '10router' : 'CreditDaddy') + '）：新增 ' + d.added + '，续期 ' + d.updated + '，跳过 ' + d.skipped);
     pendingImport = null;
     await loadAccounts();
   } catch (e) {
@@ -735,6 +769,18 @@ $('dev-cancel').onclick = () => deviceStop('已取消');
 $('btn-add-token').onclick = addToken;
 $('f-token').addEventListener('keydown', (e) => { if (e.key === 'Enter') addToken(); });
 $('list').addEventListener('click', onCardClick);
+$('filter').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-f]');
+  if (!b) return;
+  state.filter = b.dataset.f;
+  document.querySelectorAll('#filter button').forEach((x) => x.classList.toggle('active', x === b));
+  render();
+});
+$('f-provider').addEventListener('change', () => {
+  $('f-token').placeholder = $('f-provider').value.startsWith('workbuddy')
+    ? 'WorkBuddy / CodeBuddy 登录 token（eyJ…，可在 CodeBuddyExtension 的 auth/*.info 中找到）'
+    : 'dt-… / jt-… 或 PAT（pt-…，自动兑换）';
+});
 $('btn-logs').onclick = () => {
   const c = $('log-card').classList.toggle('collapsed');
   $('btn-logs').textContent = c ? '展开' : '收起';
@@ -751,7 +797,7 @@ initTheme();
     setInterval(async () => { await loadStatus(); render(); }, 30000);
   }
   function askKey(first) {
-    const k = prompt((first ? '' : '密钥无效，请重新输入。\n') + '请输入 QoderDaddy 访问密钥\n（NAS 上见 panel_key 文件或安装完成提示）', '');
+    const k = prompt((first ? '' : '密钥无效，请重新输入。\n') + '请输入 CreditDaddy 访问密钥\n（NAS 上见 panel_key 文件或安装完成提示）', '');
     if (k === null) { toast('未输入访问密钥，刷新页面可重试', false); return; }
     try { localStorage.setItem('qd_key', k.trim()); } catch (e) {}
     probe(false);

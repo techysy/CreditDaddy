@@ -7,15 +7,9 @@
  */
 
 import { normalizeAccountInput, findDuplicate, loadAccounts, withAccounts } from './store.js';
-import { fetchUserinfo } from './qoderClient.js';
+import { productImpl, displayNameFrom } from './providers.js';
 
-/** 从 userinfo 响应中挑一个可读的显示名 */
-export function displayNameFrom(ui) {
-  const pick = [ui?.nickname, ui?.name, ui?.username, ui?.email]
-    .map((v) => (typeof v === 'string' ? v.trim() : ''))
-    .find(Boolean);
-  return pick || null;
-}
+export { displayNameFrom };
 
 /**
  * 用新记录刷新已存在账号（保留 id / 名字 / 签到记录）：
@@ -36,6 +30,12 @@ function refreshExisting(existing, incoming) {
   }
   if (!existing.uid) set('uid', incoming.uid);
   if (!existing.email) set('email', incoming.email);
+  // 产品元数据（如 WorkBuddy 会话 / 域名）以最新导入为准
+  const incomingMeta = incoming.meta && Object.keys(incoming.meta).length ? incoming.meta : null;
+  if (incomingMeta && JSON.stringify({ ...existing.meta, ...incomingMeta }) !== JSON.stringify(existing.meta || {})) {
+    existing.meta = { ...(existing.meta || {}), ...incomingMeta };
+    changed = true;
+  }
   if (changed) existing.updatedAt = new Date().toISOString();
   return changed;
 }
@@ -71,10 +71,10 @@ export async function addAccount(input, { verify = true, trusted = false } = {})
     account.verified = true;
   } else if (verify) {
     try {
-      const ui = await fetchUserinfo(account);
-      if (!account.name) account.name = displayNameFrom(ui);
-      if (!account.uid && typeof ui?.id === 'string') account.uid = ui.id;
-      if (!account.email && typeof ui?.email === 'string' && ui.email) account.email = ui.email;
+      const info = await productImpl(account.provider).verify(account);
+      if (!account.name && info.name) account.name = info.name;
+      if (!account.uid && info.uid) account.uid = info.uid;
+      if (!account.email && info.email) account.email = info.email;
       account.verified = true;
     } catch (e) {
       account.verified = false;
@@ -102,4 +102,38 @@ export function importAccounts(list) {
     }
     return { added, updated, skipped };
   });
+}
+
+/**
+ * token 刷新后的回写上下文（传给 productImpl(...).checkin / quota 的 ctx）：
+ * 新 token 立即写回账号库；若该账号正是 WorkBuddy 客户端当前登录的账号，同步写回客户端会话文件，
+ * 避免客户端手里被轮换掉的旧 refreshToken 失效导致掉线。
+ */
+export function refreshContext(account, log) {
+  return {
+    onRefresh: async (creds) => {
+      account.token = creds.token;
+      account.refreshToken = creds.refreshToken;
+      account.expiresAt = creds.expiresAt;
+      await withAccounts((accounts) => {
+        const cur = accounts.find((a) => a.id === account.id);
+        if (!cur) return;
+        cur.token = creds.token;
+        cur.refreshToken = creds.refreshToken;
+        cur.expiresAt = creds.expiresAt;
+        if (creds.refreshExpiresAt) cur.meta = { ...(cur.meta || {}), refreshExpiresAt: creds.refreshExpiresAt };
+        cur.updatedAt = new Date().toISOString();
+      });
+      log?.('token 已刷新');
+      if (account.provider.startsWith('workbuddy')) {
+        const { currentWorkbuddyUid, writeWorkbuddySession } = await import('./workbuddyLocal.js');
+        try {
+          if (account.uid && currentWorkbuddyUid() === account.uid) {
+            writeWorkbuddySession(account);
+            log?.('已同步新 token 到 WorkBuddy 客户端');
+          }
+        } catch (e) { log?.('同步到 WorkBuddy 客户端失败：' + e.message); }
+      }
+    },
+  };
 }

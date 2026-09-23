@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-APP_NAME="${TRIM_APPNAME:-qoderdaddy}"
+APP_NAME="${TRIM_APPNAME:-creditdaddy}"
 APP_DIR="${TRIM_APPDEST:-/var/apps/${APP_NAME}}"
 APP_VOL=""
 if [ -n "${TRIM_PKGVAR:-}" ]; then
@@ -45,12 +45,26 @@ fi
 
 PORT="${TRIM_SERVICE_PORT:-47860}"
 HOSTNAME="0.0.0.0"
-LOG="${DATA_DIR}/qoderdaddy.log"
-PID_FILE="${DATA_DIR}/qoderdaddy.pid"
+LOG="${DATA_DIR}/creditdaddy.log"
+PID_FILE="${DATA_DIR}/creditdaddy.pid"
 KEY_FILE="${DATA_DIR}/panel_key"
+
+migrate_legacy() {
+    # 项目曾名 QoderDaddy（appname=qoderdaddy）：首次启动时把旧应用的账号数据与面板密钥复制过来
+    [ -d "${DATA_DIR}/data" ] && return 0
+    LEGACY_DIR="$(dirname "${DATA_DIR}")/qoderdaddy"
+    [ "${LEGACY_DIR}" = "${DATA_DIR}" ] && return 0
+    if [ -d "${LEGACY_DIR}/data" ]; then
+        mkdir -p "${DATA_DIR}"
+        cp -a "${LEGACY_DIR}/data" "${DATA_DIR}/data" 2>/dev/null || true
+        [ -f "${LEGACY_DIR}/panel_key" ] && [ ! -f "${DATA_DIR}/panel_key" ] && cp -a "${LEGACY_DIR}/panel_key" "${DATA_DIR}/panel_key"
+        echo "migrated data from ${LEGACY_DIR}"
+    fi
+}
 
 start() {
     mkdir -p "${DATA_DIR}"
+    migrate_legacy
     if [ -f "${PID_FILE}" ] && kill -0 "$(cat "${PID_FILE}")" 2>/dev/null; then
         echo "already running (pid $(cat "${PID_FILE}"))"
         return 0
@@ -61,16 +75,16 @@ start() {
         printf '%s' "${PW}" > "${KEY_FILE}"
         chmod 600 "${KEY_FILE}"
         echo "======================================================================"
-        echo " QoderDaddy 面板访问密钥（仅显示这一次，另存于 ${KEY_FILE}）: ${PW}"
+        echo " CreditDaddy 面板访问密钥（仅显示这一次，另存于 ${KEY_FILE}）: ${PW}"
         echo "======================================================================"
         printf '%s generated panel_key\n' "$(date '+%F %T')" >> "${LOG}"
     fi
     PW="$(cat "${KEY_FILE}")"
     cd "${SRC_DIR}"
-    # QODERDADDY_HOME=数据目录；HOST/PORT/密钥 经环境变量注入 daemon
-    DATA_DIR="${DATA_DIR}" QODERDADDY_HOME="${DATA_DIR}/data" PORT="${PORT}" HOST="${HOSTNAME}" \
-        QODERDADDY_PASSWORD="${PW}" INSTALL_CHANNEL="fpk" \
-        nohup "${NODE_BIN}" bin/qoderdaddy.js daemon >> "${LOG}" 2>&1 &
+    # CREDITDADDY_HOME=数据目录；HOST/PORT/密钥 经环境变量注入 daemon
+    DATA_DIR="${DATA_DIR}" CREDITDADDY_HOME="${DATA_DIR}/data" PORT="${PORT}" HOST="${HOSTNAME}" \
+        CREDITDADDY_PASSWORD="${PW}" INSTALL_CHANNEL="fpk" \
+        nohup "${NODE_BIN}" bin/creditdaddy.js daemon >> "${LOG}" 2>&1 &
     echo $! > "${PID_FILE}"
     for i in $(seq 1 30); do
         if curl -sf -H "x-qd-key: ${PW}" "http://127.0.0.1:${PORT}/api/status" >/dev/null 2>&1; then
@@ -88,7 +102,7 @@ stop() {
         kill "$(cat "${PID_FILE}")" 2>/dev/null || true
         rm -f "${PID_FILE}"
     fi
-    pkill -f "${SRC_DIR}/bin/qoderdaddy.js" 2>/dev/null || true
+    pkill -f "${SRC_DIR}/bin/creditdaddy.js" 2>/dev/null || true
     echo "stopped"
 }
 

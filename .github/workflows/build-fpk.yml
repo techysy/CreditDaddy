@@ -1,4 +1,4 @@
-name: Build QoderDaddy fpk
+name: Build CreditDaddy fpk
 
 on:
   push:
@@ -31,7 +31,7 @@ jobs:
           set -euo pipefail
           rm -rf fnos-packaging/app/server
           mkdir -p fnos-packaging/app/server
-          # QoderDaddy 零依赖：源码即产物，整包拷入
+          # CreditDaddy 零依赖：源码即产物，整包拷入
           cp -r bin src package.json README.md fnos-packaging/app/server/
           find fnos-packaging/app/server -type d -name '.tmp-*' -exec rm -rf {} + 2>/dev/null || true
           ls -la fnos-packaging/app/server/
@@ -71,19 +71,19 @@ jobs:
         run: |
           set -euo pipefail
           cd fnos-packaging
-          rm -f qoderdaddy.fpk
+          rm -f creditdaddy.fpk
           fnpack build -d .
-          [ -f qoderdaddy.fpk ] || { echo "ERROR: fnpack build failed"; exit 1; }
+          [ -f creditdaddy.fpk ] || { echo "ERROR: fnpack build failed"; exit 1; }
           VERSION="$(grep -E '^version[[:space:]]*=' manifest | head -1 | sed 's/.*=//;s/[[:space:]]//g')"
           [ -n "$VERSION" ] || { echo "ERROR: could not extract version from manifest"; exit 1; }
-          mv qoderdaddy.fpk "qoderdaddy-${VERSION}-${{ matrix.arch }}.fpk"
-          ls -lh "qoderdaddy-${VERSION}-${{ matrix.arch }}.fpk"
+          mv creditdaddy.fpk "creditdaddy-${VERSION}-${{ matrix.arch }}.fpk"
+          ls -lh "creditdaddy-${VERSION}-${{ matrix.arch }}.fpk"
 
       - name: Upload fpk artifact
         uses: actions/upload-artifact@v4
         with:
-          name: qoderdaddy-fpk-${{ matrix.arch }}-${{ github.sha }}
-          path: fnos-packaging/qoderdaddy-*.fpk
+          name: creditdaddy-fpk-${{ matrix.arch }}-${{ github.sha }}
+          path: fnos-packaging/creditdaddy-*.fpk
           if-no-files-found: error
           retention-days: 14
 
@@ -96,7 +96,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: fpk-assets
-          pattern: qoderdaddy-fpk-*
+          pattern: creditdaddy-fpk-*
           merge-multiple: true
 
       - name: Ensure release exists
@@ -104,25 +104,25 @@ jobs:
         run: |
           gh release view "${{ github.ref_name }}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
             gh release create "${{ github.ref_name }}" --repo "$GITHUB_REPOSITORY" \
-              --title "QoderDaddy ${{ github.ref_name }}" \
-              --notes "QoderDaddy fpk release: multi-account manager + daily credit auto check-in"
+              --title "CreditDaddy ${{ github.ref_name }}" \
+              --notes "CreditDaddy fpk release: multi-account manager + daily credit auto check-in"
         env:
           GH_TOKEN: ${{ github.token }}
 
       - name: Generate checksum
         run: |
           set -euo pipefail
-          ( cd fpk-assets && sha256sum qoderdaddy-*.fpk > SHA256SUMS-fpk.txt )
+          ( cd fpk-assets && sha256sum creditdaddy-*.fpk > SHA256SUMS-fpk.txt )
           cat fpk-assets/SHA256SUMS-fpk.txt
 
       - name: Upload to Release
         run: |
           set -euo pipefail
           ls -lh fpk-assets/
-          N=$(ls fpk-assets/qoderdaddy-*.fpk fpk-assets/SHA256SUMS-fpk.txt 2>/dev/null | wc -l)
+          N=$(ls fpk-assets/creditdaddy-*.fpk fpk-assets/SHA256SUMS-fpk.txt 2>/dev/null | wc -l)
           [ "$N" -ge 3 ] || { echo "ERROR: expected >=3 files, found $N"; exit 1; }
           gh release upload "${{ github.ref_name }}" \
-            fpk-assets/qoderdaddy-*.fpk \
+            fpk-assets/creditdaddy-*.fpk \
             fpk-assets/SHA256SUMS-fpk.txt \
             --clobber --repo "$GITHUB_REPOSITORY"
         env:

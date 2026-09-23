@@ -2,10 +2,10 @@
     "data-share": {
         "shares": [
             {
-                "name": "qoderdaddy",
+                "name": "creditdaddy",
                 "permission": {
                     "rw": [
-                        "qoderdaddy"
+                        "creditdaddy"
                     ]
                 }
             }

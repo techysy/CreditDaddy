@@ -2,7 +2,7 @@
 # 安装后置：确保数据目录可写
 set -uo pipefail
 
-APP_NAME="${TRIM_APPNAME:-qoderdaddy}"
+APP_NAME="${TRIM_APPNAME:-creditdaddy}"
 APP_DIR="${TRIM_APPDEST:-/var/apps/${APP_NAME}}"
 APP_VOL=""
 if [ -n "${TRIM_PKGVAR:-}" ]; then

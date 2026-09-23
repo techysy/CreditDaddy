@@ -1,3 +1,3 @@
 #!/bin/bash
-# 卸载后置：数据目录 ~/.qoderdaddy 保留，卸载不删账号数据
+# 卸载后置：数据目录 ~/.creditdaddy 保留，卸载不删账号数据
 exit 0

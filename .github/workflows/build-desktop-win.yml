@@ -1,4 +1,4 @@
-name: Build QoderDaddy desktop (Windows)
+name: Build CreditDaddy desktop (Windows)
 
 on:
   workflow_dispatch:
@@ -46,8 +46,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-files
-          cp desktop/dist/QoderDaddy-Setup-*.exe release-files/
-          cp desktop/dist/QoderDaddy-Portable-*.exe release-files/
+          cp desktop/dist/CreditDaddy-Setup-*.exe release-files/
+          cp desktop/dist/CreditDaddy-Portable-*.exe release-files/
           ( cd release-files && sha256sum *.exe > SHA256SUMS-desktop.txt )
           cat release-files/SHA256SUMS-desktop.txt
 
@@ -57,8 +57,8 @@ jobs:
         run: |
           gh release view "${{ github.ref_name }}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
             gh release create "${{ github.ref_name }}" --repo "$GITHUB_REPOSITORY" \
-              --title "QoderDaddy ${{ github.ref_name }}" \
-              --notes "QoderDaddy release: Qoder 多账号管理与每日 Credits 自动签到."
+              --title "CreditDaddy ${{ github.ref_name }}" \
+              --notes "CreditDaddy release: Qoder / WorkBuddy 多账号管理与每日积分自动签到."
         env:
           GH_TOKEN: ${{ github.token }}
 
