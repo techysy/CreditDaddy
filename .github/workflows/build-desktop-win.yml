@@ -32,19 +32,21 @@ jobs:
         working-directory: desktop
 
       - name: Package Windows artifacts (unsigned)
-        run: npx electron-builder --win --x64 --publish never
+        run: |
+          npx electron-builder --win --x64 --publish never 2>&1 | tee build-log.txt
+          exit ${PIPESTATUS[0]}
         working-directory: desktop
+        shell: bash
         env:
-          DEBUG: electron-builder
           ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
           ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
 
-      - name: Upload builder debug log on failure
-        if: failure()
+      - name: Upload build log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: builder-debug-log
-          path: desktop/builder-debug.yml
+          name: build-log
+          path: desktop/build-log.txt
           if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v4
