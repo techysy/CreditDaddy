@@ -25,8 +25,7 @@
       "main.js",
       "package.json",
       "icon.png",
-      "icon.ico",
-      "app/**/*"
+      "icon.ico"
     ],
     "win": {
       "target": [
@@ -53,7 +52,13 @@
     },
     "portable": {
       "artifactName": "QoderDaddy-Portable-${version}.${ext}"
-    }
+    },
+    "extraResources": [
+      {
+        "from": "app",
+        "to": "qoderdaddy"
+      }
+    ]
   },
   "type": "commonjs"
 }

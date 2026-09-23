@@ -19,8 +19,8 @@ async function boot() {
   app.setAppUserModelId('cn.techysy.qoderdaddy');
   Menu.setApplicationMenu(null);
   try {
-    const daemon = await import('./app/daemon.js');
-    const checkin = await import('./app/checkin.js');
+    const daemon = await import(path.join(process.resourcesPath, 'qoderdaddy', 'src', 'daemon.js'));
+    const checkin = await import(path.join(process.resourcesPath, 'qoderdaddy', 'src', 'checkin.js'));
     const r = await daemon.startDaemon(PORT, '127.0.0.1');
     boundPort = r.port;
     checkin.startScheduler();
