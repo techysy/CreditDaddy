@@ -11,6 +11,7 @@
 
 import { loadAccounts, loadState, saveState, withAccounts } from './store.js';
 import { productImpl } from './providers.js';
+import { productOf } from './constants.js';
 import { refreshContext } from './accounts.js';
 import { logger } from './logger.js';
 
@@ -54,7 +55,7 @@ async function getDoneMap(state) {
 
 /**
  * 执行一轮签到。多次调用会排队串行执行，避免同一账号被并发领取、state.json 互相覆盖。
- * @param {{provider?: string, skipIfCheckedToday?: boolean, onlyAccountId?: string}} opts
+ * @param {{provider?: string, product?: string, skipIfCheckedToday?: boolean, onlyAccountId?: string}} opts
  */
 export function runCheckinTick(opts = {}) {
   const run = tickQueue.then(() => runTickNow(opts));
@@ -71,6 +72,7 @@ async function runTickInner(opts) {
   // 没有每日签到能力的产品（如 ZCode：积分靠需验证码的活动领取）不参与签到轮
   const accounts = (await loadAccounts()).filter(
     (a) => (!opts.provider || a.provider === opts.provider)
+        && (!opts.product || productOf(a.provider) === opts.product)
         && (!opts.onlyAccountId || a.id === opts.onlyAccountId)
         && typeof productImpl(a.provider)?.checkin === 'function'
   );

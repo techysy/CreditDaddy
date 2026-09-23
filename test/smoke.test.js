@@ -356,3 +356,18 @@ test('过期时间：数字字符串（秒 / 毫秒）也能解析', () => {
   assert.equal(store.normalizeExpiry('1790000000000'), new Date(1790000000000).toISOString());
   assert.equal(store.normalizeExpiry('garbage'), null);
 });
+
+test('导出范围：按 provider 或按产品整体筛选', () => {
+  const accs = [
+    { id: 'a', provider: 'qoder', token: 'dt-a' },
+    { id: 'b', provider: 'qoder-cn', token: 'dt-b' },
+    { id: 'c', provider: 'workbuddy', token: 'eyJc' },
+    { id: 'd', provider: 'workbuddy-intl', token: 'eyJd' },
+    { id: 'e', provider: 'zcode', token: 'z-e' },
+  ];
+  const ids = (o) => transfer.buildExportPayload(accs, o).accounts.map((x) => x.provider);
+  assert.deepEqual(ids({ product: 'workbuddy' }), ['workbuddy', 'workbuddy-intl']);
+  assert.deepEqual(ids({ product: 'qoder' }), ['qoder', 'qoder-cn']);
+  assert.deepEqual(ids({ provider: 'workbuddy-intl' }), ['workbuddy-intl']);
+  assert.equal(ids({}).length, 5);
+});

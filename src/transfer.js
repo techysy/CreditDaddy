@@ -13,7 +13,7 @@
  */
 
 import crypto from 'node:crypto';
-import { PROVIDERS } from './constants.js';
+import { PROVIDERS, productOf } from './constants.js';
 
 export const TRANSFER_FORMAT = '10router-oauth-secure-v1';
 export const EXPORT_FORMAT = 'creditdaddy-accounts';
@@ -69,8 +69,8 @@ export function openTransfer(blob, password) {
 }
 
 /** 构造导出载荷（10router 兼容字段 + CreditDaddy 旧字段） */
-export function buildExportPayload(accounts, { provider } = {}) {
-  const list = provider ? accounts.filter((a) => a.provider === provider) : accounts;
+export function buildExportPayload(accounts, { provider, product } = {}) {
+  const list = accounts.filter((a) => (!provider || a.provider === provider) && (!product || productOf(a.provider) === product));
   const providers = [...new Set(list.map((a) => a.provider))];
   return {
     format: EXPORT_FORMAT,
@@ -94,8 +94,8 @@ export function buildExportPayload(accounts, { provider } = {}) {
 }
 
 /** 导出：给口令则输出 10router 兼容的加密信封，否则输出明文载荷 */
-export function exportAccounts(accounts, { password, provider } = {}) {
-  const payload = buildExportPayload(accounts, { provider });
+export function exportAccounts(accounts, { password, provider, product } = {}) {
+  const payload = buildExportPayload(accounts, { provider, product });
   return password ? sealTransfer(payload, password) : payload;
 }
 

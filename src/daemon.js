@@ -45,7 +45,9 @@ import { runCheckinTick, getSchedulerInfo, dayKey } from './checkin.js';
 import { detectQoderApps, readQoderAppAccounts, riskIdentityAvailable } from './qoderApp.js';
 import { startDeviceFlow, pollDeviceFlow } from './authDevice.js';
 import { detectInstalls, scanLocalTokens, putCandidate, takeCandidate } from './localDetect.js';
-import { PROVIDER_LABEL, APP_VERSION } from './constants.js';
+import { PROVIDER_LABEL, APP_VERSION, PROVIDERS } from './constants.js';
+
+const PRODUCT_IDS = ['qoder', 'workbuddy', 'zcode'];
 
 /** 可选访问密钥：设置 CREDITDADDY_PASSWORD 后，所有 /api/* 需要 x-qd-key 头（或 ?key=）。
  *  fnOS/NAS 部署监听 0.0.0.0 时由 cmd/main 自动生成并注入。 */
@@ -184,6 +186,7 @@ async function handleApi(req, res, url) {
     const body = await readBody(req).catch(() => ({}));
     const { results, summary } = await runCheckinTick({
       provider: body?.provider || undefined,
+      product: body?.product || undefined,
       skipIfCheckedToday: body?.skipIfCheckedToday !== false,
     });
     return json(res, 200, { results, summary });
@@ -359,9 +362,10 @@ async function handleApi(req, res, url) {
   // 导出
   if (p === '/api/export' && method === 'POST') {
     const body = await readBody(req).catch(() => ({}));
-    const provider = ['qoder', 'qoder-cn'].includes(body?.provider) ? body.provider : undefined;
+    const provider = PROVIDERS.includes(body?.provider) ? body.provider : undefined;
+    const product = PRODUCT_IDS.includes(body?.product) ? body.product : undefined;
     try {
-      return json(res, 200, exportAccounts(await loadAccounts(), { password: body?.password || undefined, provider }));
+      return json(res, 200, exportAccounts(await loadAccounts(), { password: body?.password || undefined, provider, product }));
     } catch (e) {
       if (e instanceof TransferError) return json(res, 400, { error: e.message, code: e.code });
       throw e;

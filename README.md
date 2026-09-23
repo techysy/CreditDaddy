@@ -10,7 +10,7 @@
 
 ## 功能
 
-- **多产品多账号**：Qoder / WorkBuddy 账号统一管理，卡片式面板（参考 WorkDaddy），按产品筛选，显示签到状态、连签天数、剩余积分、积分包到期、token 有效期，支持亮色 / 暗色
+- **仪表盘 + 分产品标签页**：首页仪表盘汇总账号数、今日签到进度、剩余积分、下次自动签到，各产品概况、需要处理的账号（token 失效 / 即将过期、签到失败）与最近签到记录；Qoder / WorkBuddy / ZCode 各自一个标签页，卡片式账号列表（参考 WorkDaddy），可按国际 / 国内版筛选，显示签到状态、连签天数、剩余积分、积分包到期、token 有效期，支持亮色 / 暗色
 - **本机导入**：一键读取本机 Qoder / Qoder CN 客户端（本地解密 `auth.v1.dat`）与 WorkBuddy 客户端（当前 + 历史会话）已登录的账号，token 不出机器；同一用户 token 续期时自动更新
 - **WorkBuddy / ZCode 账号切换**：一键把客户端切换到选中的账号（WorkBuddy 自动应用；ZCode 需先退出客户端），切换前先保全当前登录，绝不丢号，每个账号独立设备指纹
 - **隐私（无痕）登录窗口**：桌面版内置一次性会话的登录窗口，网页授权不带出系统浏览器里已登录的账号、Cookie 也不落盘（Qoder 网络授权已接入）
@@ -104,16 +104,16 @@ Qoder 侧（国际版 openapi.qoder.sh，国内版 openapi.qoder.com.cn）：
     DELETE /api/accounts/:id            删除
     POST   /api/accounts/:id/checkin    单账号签到
     GET    /api/accounts/:id/quota      积分（统一结构 total / used / remaining / parts）
-    POST   /api/accounts/:id/switch     切换 WorkBuddy 客户端到此账号
-    POST   /api/checkin                 全部签到 {provider?, skipIfCheckedToday?}（默认跳过今日已签）
+    POST   /api/accounts/:id/switch     切换 WorkBuddy / ZCode 客户端到此账号
+    POST   /api/checkin                 全部签到 {provider?, product?, skipIfCheckedToday?}（默认跳过今日已签）
     POST   /api/auth/device/start       发起设备码授权 {provider}
     POST   /api/auth/device/poll        轮询授权结果 {sessionId}
     GET    /api/local/detect            检测本机 Qoder 客户端 / WorkBuddy 凭据目录 / 旧版 IDE / CLI
-    POST   /api/local/scan              读取本机已登录账号（Qoder + WorkBuddy）
+    POST   /api/local/scan              读取本机已登录账号（Qoder + WorkBuddy + ZCode）
     POST   /api/local/import            导入扫描候选 {candidateId, provider?}
     GET    /api/status                  状态（版本、调度器、风控身份是否可用）
     GET    /api/logs                    日志
-    POST   /api/export                  导出 {password?, provider?}
+    POST   /api/export                  导出 {password?, provider?, product?}
     POST   /api/import                  导入 {data, password?}
 
 设置环境变量 `CREDITDADDY_PASSWORD` 后，所有 /api/* 需要 `x-qd-key` 头（fnOS 部署自动启用）。

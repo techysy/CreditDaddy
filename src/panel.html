@@ -160,6 +160,52 @@
   .cand-name { font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .cand-sub { font-size: 11px; color: var(--text-3); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+  .notice.info { background: var(--tertiary); color: var(--text-2); }
+
+  /* 顶部标签页 */
+  .nav { display: flex; gap: 4px; padding: 4px; margin-bottom: 14px; background: var(--surface); border: 1px solid var(--border-subtle); border-radius: 12px; width: fit-content; max-width: 100%; overflow-x: auto; }
+  .nav button { display: inline-flex; align-items: center; gap: 6px; border: none; background: transparent; color: var(--text-2); font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 9px; cursor: pointer; white-space: nowrap; transition: background .15s, color .15s; }
+  .nav button:hover { color: var(--text); background: var(--hover); }
+  .nav button.active { background: var(--btn-bg); color: var(--btn-fg); }
+  .nav .cnt { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 999px; background: var(--tertiary); color: var(--text-3); font-variant-numeric: tabular-nums; }
+  .nav button.active .cnt { background: rgba(255,255,255,.18); color: inherit; }
+  html[data-theme="dark"] .nav button.active .cnt { background: rgba(0,0,0,.12); }
+  .view { display: none; } .view.active { display: block; }
+
+  /* 仪表盘 */
+  .dash-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .dash-title { font-size: 15px; font-weight: 700; }
+  .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 10px; }
+  .kpi { background: var(--surface); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 14px 16px; min-width: 0; }
+  .kpi-label { color: var(--text-3); font-size: 12px; font-weight: 500; }
+  .kpi-value { font-size: 26px; font-weight: 700; letter-spacing: -.5px; margin-top: 4px; font-variant-numeric: tabular-nums; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kpi-value small { font-size: 14px; color: var(--text-3); font-weight: 600; letter-spacing: 0; }
+  .kpi-sub { color: var(--text-3); font-size: 11px; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prods { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 10px; }
+  .prodcard { background: var(--surface); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 14px 16px; cursor: pointer; transition: border-color .15s, box-shadow .15s; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .prodcard:hover { border-color: var(--border-strong); box-shadow: 0 2px 10px rgba(0,0,0,.05); }
+  .prod-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .prod-name { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot.qoder { background: #7c3aed; } .dot.workbuddy { background: #14b8a6; } .dot.zcode { background: #2563eb; }
+  .prod-go { color: var(--text-3); font-size: 12px; white-space: nowrap; }
+  .prodcard:hover .prod-go { color: var(--text); }
+  .prod-rows { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px 12px; font-size: 12px; align-items: center; }
+  .prod-rows .val { text-align: right; }
+  .meter { height: 5px; background: color-mix(in srgb, var(--tertiary) 80%, transparent); border-radius: 3px; overflow: hidden; }
+  .meter span { display: block; height: 100%; background: rgb(var(--accent-rgb)); border-radius: 3px; }
+  .dash-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .dash-cols .pcard { margin-top: 0; min-width: 0; }
+  .item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 4px; margin: 0 -4px; border-bottom: 1px solid var(--border-subtle); font-size: 12px; cursor: pointer; border-radius: 6px; }
+  .item:hover { background: var(--hover); }
+  .item:last-child { border-bottom: none; }
+  .item-main { min-width: 0; display: flex; align-items: center; gap: 6px; }
+  .item-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
+  .item-side { display: flex; align-items: center; gap: 8px; flex-shrink: 0; min-width: 0; }
+  .item-time { color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .muted-empty { color: var(--text-3); font-size: 12px; padding: 16px 0 6px; text-align: center; }
+  @media (max-width: 900px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .prods, .dash-cols { grid-template-columns: 1fr; } }
+
   /* toast */
   #toast { position: fixed; bottom: 24px; left: 50%; transform: translate(-50%, 8px); z-index: 60; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 9px 14px; font-size: 12px; box-shadow: var(--toast-shadow); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; max-width: 80vw; }
   #toast.show { opacity: 1; transform: translate(-50%, 0); }
@@ -184,29 +230,60 @@
     </div>
   </header>
 
-  <div class="panel">
-    <div class="toolbar">
-      <div class="summary">
-        <div class="stat"><span>账号</span><strong id="s-count">0</strong></div>
-        <div class="divider"></div>
-        <div class="stat"><span>今日已签</span><strong id="s-done">0</strong></div>
-        <div class="divider"></div>
-        <div class="stat"><span>剩余积分</span><strong id="s-credits">-</strong></div>
-        <div class="divider"></div>
-        <div class="seg-ctl" id="filter">
-          <button data-f="" class="active">全部</button><button data-f="qoder">Qoder</button><button data-f="workbuddy">WorkBuddy</button><button data-f="zcode">ZCode</button>
-        </div>
-      </div>
+  <nav class="nav" id="nav">
+    <button data-view="dash" class="active">仪表盘</button>
+    <button data-view="qoder">Qoder<span class="cnt" id="cnt-qoder">0</span></button>
+    <button data-view="workbuddy">WorkBuddy<span class="cnt" id="cnt-workbuddy">0</span></button>
+    <button data-view="zcode">ZCode<span class="cnt" id="cnt-zcode">0</span></button>
+  </nav>
+
+  <!-- 仪表盘 -->
+  <section class="view active" id="view-dash">
+    <div class="dash-head">
+      <div class="dash-title">总览</div>
       <div class="actions">
-        <button class="btn primary" id="btn-checkin"></button>
-        <button class="btn" id="btn-add"></button>
-        <button class="btn" id="btn-import"></button>
-        <button class="btn" id="btn-export"></button>
+        <button class="btn primary" id="btn-checkin-all"></button>
+        <button class="btn" id="btn-add-dash"></button>
+        <button class="btn" id="btn-import-dash"></button>
+        <button class="btn" id="btn-export-dash"></button>
       </div>
     </div>
-    <div class="notice" id="notice" style="display:none"></div>
-    <div class="list" id="list"><div class="empty">加载中…</div></div>
-  </div>
+    <div class="kpis" id="kpis"></div>
+    <div class="prods" id="prods"></div>
+    <div class="dash-cols">
+      <section class="pcard"><div class="pcard-title"><span>需要处理</span><span class="hint" id="att-count"></span></div><div id="attention"></div></section>
+      <section class="pcard"><div class="pcard-title"><span>最近签到</span><span class="hint" id="last-tick"></span></div><div id="recent"></div></section>
+    </div>
+  </section>
+
+  <!-- 产品页（Qoder / WorkBuddy / ZCode 共用） -->
+  <section class="view" id="view-prod">
+    <div class="panel">
+      <div class="toolbar">
+        <div class="summary">
+          <div class="stat"><span>账号</span><strong id="s-count">0</strong></div>
+          <div class="divider"></div>
+          <div id="s-done-wrap" style="display:contents">
+            <div class="stat"><span>今日已签</span><strong id="s-done">0</strong></div>
+            <div class="divider"></div>
+          </div>
+          <div class="stat"><span id="s-credits-label">剩余积分</span><strong id="s-credits">-</strong></div>
+          <div class="divider" id="region-div"></div>
+          <div class="seg-ctl" id="region">
+            <button data-r="" class="active">全部</button><button data-r="intl">国际版</button><button data-r="cn">国内版</button>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn primary" id="btn-checkin"></button>
+          <button class="btn" id="btn-add"></button>
+          <button class="btn" id="btn-import"></button>
+          <button class="btn" id="btn-export"></button>
+        </div>
+      </div>
+      <div class="notice" id="notice" style="display:none"></div>
+      <div class="list" id="list"><div class="empty">加载中…</div></div>
+    </div>
+  </section>
 
   <section class="pcard collapsed" id="log-card">
     <div class="pcard-title">
@@ -228,7 +305,7 @@
     </div>
 
     <div class="pane active" data-pane="local">
-      <div class="hint">读取本机 Qoder 客户端（本地解密）、WorkBuddy 客户端（当前 + 历史会话）、ZCode 客户端（本地解密）已登录的账号，token 不出本机；同时扫描旧版 Qoder IDE / CLI 文件。</div>
+      <div class="hint" id="local-hint"></div>
       <div class="row" style="margin-top:10px"><button class="btn primary" id="btn-scan">重新扫描</button><span class="hint" id="scan-status"></span></div>
       <div class="box" id="scan-result"><div class="hint">点击「重新扫描」</div></div>
     </div>
@@ -263,7 +340,7 @@
     <div class="modal-title"><span>导出账号</span><button class="close" data-close>✕</button></div>
     <div class="field">
       <label>范围</label>
-      <select class="input" id="ex-provider"><option value="">全部账号</option><option value="qoder">仅 Qoder 国际版</option><option value="qoder-cn">仅 Qoder 国内版</option><option value="workbuddy">仅 WorkBuddy 国内版</option><option value="workbuddy-intl">仅 WorkBuddy 国际版</option></select>
+      <select class="input" id="ex-provider"><option value="">全部账号</option><option value="p:qoder">Qoder（全部）</option><option value="qoder">仅 Qoder 国际版</option><option value="qoder-cn">仅 Qoder 国内版</option><option value="p:workbuddy">WorkBuddy（全部）</option><option value="workbuddy">仅 WorkBuddy 国内版</option><option value="workbuddy-intl">仅 WorkBuddy 国际版</option><option value="zcode">ZCode</option></select>
     </div>
     <div class="field">
       <label>加密口令（可选）</label>
@@ -306,7 +383,14 @@ const I = {
 };
 
 const $ = (id) => document.getElementById(id);
-const state = { accounts: [], quotas: {}, status: null, busy: {}, filter: '' };
+const state = { accounts: [], quotas: {}, status: null, busy: {}, view: 'dash', region: '', addProduct: '' };
+const VIEWS = ['dash', 'qoder', 'workbuddy', 'zcode'];
+const PRODUCTS = [
+  { id: 'qoder', label: 'Qoder' },
+  { id: 'workbuddy', label: 'WorkBuddy' },
+  { id: 'zcode', label: 'ZCode' },
+];
+const prodLabel = (id) => (PRODUCTS.find((x) => x.id === id) || { label: id }).label;
 const PROV = {
   qoder: { prod: 'qoder', prodLabel: 'Qoder', region: '国际版', cls: 'intl' },
   'qoder-cn': { prod: 'qoder', prodLabel: 'Qoder', region: '国内版', cls: 'cn' },
@@ -318,7 +402,7 @@ const PROV = {
 const CHECKIN_PRODUCTS = new Set(['qoder', 'workbuddy']);
 const CLIENT_LABEL = { workbuddy: 'WorkBuddy', zcode: 'ZCode' };
 const provOf = (p) => PROV[p] || { prod: 'qoder', prodLabel: p, region: '', cls: '' };
-const provBadges = (p) => { const v = provOf(p); return '<span class="badge prod ' + v.prod + '">' + esc(v.prodLabel) + '</span>' + (v.region ? '<span class="badge ' + v.cls + '">' + v.region + '</span>' : ''); };
+const provBadges = (p, regionOnly) => { const v = provOf(p); return (regionOnly ? '' : '<span class="badge prod ' + v.prod + '">' + esc(v.prodLabel) + '</span>') + (v.region ? '<span class="badge ' + v.cls + '">' + v.region + '</span>' : ''); };
 
 function esc(s) {
   return String(s === null || s === undefined ? '' : s)
@@ -448,7 +532,7 @@ function cardHtml(a) {
   return '<div class="card" data-id="' + esc(a.id) + '">'
     + '<div class="row1"><div class="name-group">'
     + '<span class="name" data-act="rename" title="点击修改备注名">' + esc(a.name || '(未命名)') + '</span>'
-    + provBadges(a.provider)
+    + provBadges(a.provider, true)
     + (isCurrent ? '<span class="pill cur" title="' + esc(CLIENT_LABEL[a.product] || '') + ' 客户端当前登录的账号">客户端当前</span>' : '')
     + (a.isPat ? '<span class="badge">PAT</span>' : '')
     + (a.verified === false ? '<span class="pill fail">token 无效</span>' : '')
@@ -469,30 +553,141 @@ function cardHtml(a) {
     + '</div>';
 }
 
-function render() {
-  const list = $('list');
-  const acc = state.accounts.filter((a) => !state.filter || a.product === state.filter);
-  if (!acc.length) {
-    list.innerHTML = state.accounts.length
-      ? '<div class="empty">该产品下还没有账号。</div>'
-      : '<div class="empty">还没有账号。<br>点「添加账号」，可一键读取本机 Qoder / WorkBuddy 客户端已登录的账号，或走 Qoder 网络授权登录。</div>';
-  } else {
-    list.innerHTML = acc.map(cardHtml).join('');
-  }
-  const today = state.status && state.status.today;
-  const signable = acc.filter((a) => CHECKIN_PRODUCTS.has(a.product));
-  const done = signable.filter((a) => state.status && state.status.todayDone && state.status.todayDone[a.id] === today).length;
-  $('s-count').textContent = acc.length;
-  $('s-done').textContent = done + ' / ' + signable.length;
-  let sum = 0, known = 0;
-  for (const a of acc) {
+const isDone = (a) => Boolean(state.status && state.status.todayDone && state.status.todayDone[a.id] === state.status.today);
+const ofProduct = (prod) => state.accounts.filter((a) => a.product === prod);
+const currentUidOf = (prod) => state.status && (prod === 'workbuddy' ? state.status.workbuddyCurrentUid : prod === 'zcode' ? state.status.zcodeCurrentUid : null);
+// 积分合计：只统计「积分」口径（ZCode 是 token 额度，单位不同，不相加）
+function creditSum(list) {
+  let sum = 0, known = 0, loading = 0;
+  for (const a of list) {
     const q = state.quotas[a.id];
-    if (q && !q.error) {
-      known++;
-      if (!q.unit) sum += q.remaining || 0;
-    }
+    if (!q) { loading++; continue; }
+    if (q.error) continue;
+    known++;
+    if (!q.unit) sum += q.remaining || 0;
   }
-  $('s-credits').textContent = known ? fmtNum(sum) : '-';
+  return { sum, known, loading };
+}
+
+function render() {
+  for (const p of PRODUCTS) $('cnt-' + p.id).textContent = ofProduct(p.id).length;
+  if (state.view === 'dash') renderDash(); else renderProd();
+}
+
+const EMPTY_TIP = {
+  qoder: '还没有 Qoder 账号。<br>点「添加账号」可一键读取本机 Qoder / Qoder CN 客户端已登录的账号，或走 Qoder 网络授权登录。',
+  workbuddy: '还没有 WorkBuddy 账号。<br>点「添加账号」可读取本机 WorkBuddy 客户端（当前 + 历史会话），或粘贴登录 token。',
+  zcode: '还没有 ZCode 账号。<br>先在 ZCode 客户端登录，再点「添加账号」读取本机凭据；登录另一个账号后再导入一次即可多账号切换。',
+};
+
+function renderProd() {
+  const prod = state.view;
+  const all = ofProduct(prod);
+  const acc = all.filter((a) => !state.region || provOf(a.provider).cls === state.region);
+  const list = $('list');
+  if (!acc.length) list.innerHTML = '<div class="empty">' + (all.length ? '该地区下没有账号。' : EMPTY_TIP[prod]) + '</div>';
+  else list.innerHTML = acc.map(cardHtml).join('');
+  const canCheckin = CHECKIN_PRODUCTS.has(prod);
+  $('s-count').textContent = acc.length;
+  $('s-done-wrap').style.display = canCheckin ? 'contents' : 'none';
+  $('s-done').textContent = acc.filter(isDone).length + ' / ' + acc.length;
+  const c = creditSum(acc);
+  $('s-credits-label').textContent = prod === 'zcode' ? '有套餐' : '剩余积分';
+  $('s-credits').textContent = prod === 'zcode'
+    ? acc.filter((a) => { const q = state.quotas[a.id]; return q && !q.error && !q.empty; }).length + ' / ' + acc.length
+    : c.known ? fmtNum(c.sum) : '-';
+  const hasRegions = prod !== 'zcode';
+  $('region').style.display = hasRegions ? '' : 'none';
+  $('region-div').style.display = hasRegions ? '' : 'none';
+  document.querySelectorAll('#region button').forEach((x) => x.classList.toggle('active', x.dataset.r === state.region));
+  $('btn-checkin').style.display = canCheckin ? '' : 'none';
+  if (!$('btn-checkin').disabled) $('btn-checkin').innerHTML = I.play + '签到全部 ' + prodLabel(prod);
+}
+
+function kpi(label, value, sub) {
+  return '<div class="kpi"><div class="kpi-label">' + label + '</div><div class="kpi-value">' + value + '</div><div class="kpi-sub" title="' + esc(sub.replace(/<[^>]+>/g, '')) + '">' + sub + '</div></div>';
+}
+const meter = (done, total) => '<div class="meter"><span style="width:' + (total ? Math.round(done / total * 100) : 0) + '%"></span></div>';
+
+function renderDash() {
+  const s = state.status || {};
+  const sch = s.scheduler || {};
+  const signable = state.accounts.filter((a) => CHECKIN_PRODUCTS.has(a.product));
+  const done = signable.filter(isDone).length;
+  const failed = signable.filter((a) => statusOf(a).cls === 'fail').length;
+  const credit = creditSum(state.accounts.filter((a) => a.product !== 'zcode'));
+  const byProd = PRODUCTS.map((p) => p.label + ' ' + ofProduct(p.id).length).join(' · ');
+  const creditByProd = ['qoder', 'workbuddy'].map((id) => { const c = creditSum(ofProduct(id)); return prodLabel(id) + ' ' + (c.known ? fmtNum(c.sum) : '-'); }).join(' · ');
+  $('kpis').innerHTML =
+    kpi('账号', state.accounts.length, byProd)
+    + kpi('今日已签', done + ' <small>/ ' + signable.length + '</small>',
+      !signable.length ? '暂无可签到的账号' : done === signable.length ? '今天全部签完' : '待签 ' + (signable.length - done) + (failed ? ' · 失败 ' + failed : ''))
+    + kpi('剩余积分', credit.known ? fmtNum(credit.sum) : '-', credit.loading ? '读取中（' + credit.loading + ' 个账号）…' : creditByProd)
+    + kpi('下次自动签到', sch.ticking ? '签到中…' : sch.nextTickAt ? fmtTime(sch.nextTickAt).slice(11) : '-',
+      sch.lastTick ? '上一轮 ' + fmtTime(sch.lastTick.at).slice(5) + ' · ' + esc(sch.lastTick.summary || '') : '每 ~2 小时一轮');
+
+  $('prods').innerHTML = PRODUCTS.map((p) => {
+    const list = ofProduct(p.id);
+    let rows = '';
+    if (!list.length) {
+      rows = '<span class="lbl">账号</span><span class="val dim">还没有，点击进入添加</span>';
+    } else if (CHECKIN_PRODUCTS.has(p.id)) {
+      const d = list.filter(isDone).length;
+      const c = creditSum(list);
+      rows = '<span class="lbl">今日签到</span><span class="val">' + d + ' / ' + list.length + '</span>'
+        + '<span style="grid-column:1 / -1">' + meter(d, list.length) + '</span>'
+        + '<span class="lbl">剩余积分</span><span class="val">' + (c.known ? fmtNum(c.sum) : '-') + '</span>';
+    } else {
+      const planned = list.filter((a) => { const q = state.quotas[a.id]; return q && !q.error && !q.empty; }).length;
+      rows = '<span class="lbl">每日签到</span><span class="val dim">无（活动领取需验证码）</span>'
+        + '<span class="lbl">有效套餐</span><span class="val">' + planned + ' / ' + list.length + '</span>';
+    }
+    if (p.id === 'qoder' && list.some((a) => a.provider === 'qoder')) {
+      rows += '<span class="lbl">国际版风控身份</span><span class="val' + (s.riskIdentity ? '' : ' warn') + '">' + (s.riskIdentity ? '已就绪' : '未检测到客户端') + '</span>';
+    }
+    if (CLIENT_LABEL[p.id]) {
+      const uid = currentUidOf(p.id);
+      const cur = uid && list.find((a) => a.uid === uid);
+      rows += '<span class="lbl">客户端当前</span><span class="val">' + (cur ? esc(cur.name || cur.email || cur.uid) : uid ? '未导入的账号' : '—') + '</span>';
+    }
+    return '<div class="prodcard" data-view="' + p.id + '"><div class="prod-head"><span class="prod-name"><span class="dot ' + p.id + '"></span>' + p.label
+      + '<span class="badge">' + list.length + ' 个账号</span></span><span class="prod-go">查看 →</span></div><div class="prod-rows">' + rows + '</div></div>';
+  }).join('');
+
+  // 需要处理：token 失效 / 即将过期、签到失败、国际版缺风控身份
+  const att = [];
+  if (!s.riskIdentity && state.accounts.some((a) => a.provider === 'qoder')) {
+    att.push({ view: 'qoder', name: 'Qoder 国际版', badges: '', pill: 'limited', text: '未检测到 Qoder 客户端，国际版无法领取' });
+  }
+  for (const a of state.accounts) {
+    const ex = expiryCell(a);
+    const st = statusOf(a);
+    const base = { view: a.product, name: a.name || a.email || a.id, badges: provBadges(a.provider) };
+    if (a.verified === false) att.push(Object.assign({ pill: 'fail', text: 'token 无效' }, base));
+    else if (ex.label === '已过期') att.push(Object.assign({ pill: 'fail', text: 'token 已过期' }, base));
+    else if (ex.warn) att.push(Object.assign({ pill: 'limited', text: ex.label.slice(5, 10) + ' 过期' }, base));
+    if (st.cls === 'fail') att.push(Object.assign({ pill: 'fail', text: '签到失败', title: st.msg }, base));
+  }
+  $('att-count').textContent = att.length ? att.length + ' 项' : '';
+  $('attention').innerHTML = att.length
+    ? att.slice(0, 8).map((x) => '<div class="item" data-view="' + x.view + '" title="' + esc(x.title || '') + '"><span class="item-main"><span class="item-name">' + esc(x.name) + '</span>' + x.badges + '</span>'
+      + '<span class="item-side"><span class="pill ' + x.pill + '">' + esc(x.text) + '</span></span></div>').join('')
+      + (att.length > 8 ? '<div class="muted-empty">还有 ' + (att.length - 8) + ' 项</div>' : '')
+    : '<div class="muted-empty">' + (state.accounts.length ? '✓ 一切正常' : '还没有账号') + '</div>';
+
+  // 最近签到结果
+  const RES = { 'checked-in': ['ok', '领取成功'], already: ['ok', '已领过'], limited: ['limited', '本机已领'], 'no-activity': ['pending', '无可领活动'], failed: ['fail', '失败'] };
+  const recent = state.accounts.filter((a) => a.lastResult && a.lastResult.at).sort((x, y) => String(y.lastResult.at).localeCompare(String(x.lastResult.at))).slice(0, 8);
+  $('last-tick').textContent = sch.lastTick ? '上一轮 ' + fmtTime(sch.lastTick.at).slice(5) : '';
+  $('recent').innerHTML = recent.length
+    ? recent.map((a) => {
+      const r = a.lastResult;
+      const [cls, txt] = RES[r.status] || ['pending', r.status];
+      const label = r.status === 'checked-in' && r.amount ? txt + ' +' + fmtNum(r.amount) : txt;
+      return '<div class="item" data-view="' + a.product + '" title="' + esc(r.message || '') + '"><span class="item-main"><span class="item-name">' + esc(a.name || a.email || a.id) + '</span>' + provBadges(a.provider) + '</span>'
+        + '<span class="item-side"><span class="pill ' + cls + '">' + esc(label) + '</span><span class="item-time">' + fmtTime(r.at).slice(5) + '</span></span></div>';
+    }).join('')
+    : '<div class="muted-empty">还没有签到记录</div>';
 }
 
 function renderStatus() {
@@ -504,10 +699,14 @@ function renderStatus() {
   $('sched').textContent = sch.ticking ? '正在签到…'
     : sch.nextTickAt ? '下次自动签到 ' + fmtTime(sch.nextTickAt).slice(11) : '';
   $('sched').title = sch.lastTick ? '上一轮 ' + fmtTime(sch.lastTick.at) + '：' + sch.lastTick.summary : '';
-  // Qoder 国际版提示只在「全部」或「Qoder」筛选下出现
-  const hasIntl = (!state.filter || state.filter === 'qoder') && state.accounts.some((a) => a.provider === 'qoder');
+  // 产品相关提示只在对应标签页出现
+  const hasIntl = state.view === 'qoder' && state.region !== 'cn' && state.accounts.some((a) => a.provider === 'qoder');
   const n = $('notice');
-  if (hasIntl && !s.riskIdentity) {
+  n.classList.toggle('info', state.view === 'zcode' || (hasIntl && Boolean(s.riskIdentity)));
+  if (state.view === 'zcode') {
+    n.style.display = '';
+    n.textContent = 'ZCode 没有每日签到：积分靠「活动领取」，领取需要阿里云验证码，无法后台自动完成。这里用于多账号管理、额度查看与一键切换（切换前需先退出 ZCode）。';
+  } else if (hasIntl && !s.riskIdentity) {
     n.style.display = '';
     n.textContent = 'Qoder 国际版签到需要本机安装 Qoder 客户端：Qoder 只向带设备风控身份（由客户端生成）的请求下发「每天领 100 Credits」。当前未检测到客户端，国际版账号将无法领取。';
   } else if (hasIntl) {
@@ -565,17 +764,16 @@ async function checkinOne(id) {
   delete state.busy[id];
   await loadStatus(); await loadAccounts(); loadLogs();
 }
-async function checkinAll() {
-  const b = $('btn-checkin');
-  b.disabled = true; b.innerHTML = I.refresh + '签到中…';
+async function checkinAll(btn, product) {
+  const label = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = I.refresh + '签到中…';
   try {
-    const d = await api('/api/checkin', { json: { skipIfCheckedToday: false } });
+    const d = await api('/api/checkin', { json: { skipIfCheckedToday: false, product } });
     toast(d.summary);
   } catch (e) { toast(e.message, false); }
-  b.disabled = false; b.innerHTML = I.play + '全部签到';
+  btn.disabled = false; btn.innerHTML = label;
   await loadStatus(); await loadAccounts(); loadLogs();
 }
-const armed = {};
 async function onCardClick(e) {
   const btn = e.target.closest('[data-act]');
   if (!btn) return;
@@ -639,6 +837,30 @@ function switchTab(name) {
   document.querySelectorAll('#m-add .pane').forEach((p) => p.classList.toggle('active', p.dataset.pane === name));
 }
 
+// 添加账号：在产品页打开时只显示该产品可用的方式
+const LOCAL_HINT = {
+  '': '读取本机 Qoder 客户端（本地解密）、WorkBuddy 客户端（当前 + 历史会话）、ZCode 客户端（本地解密）已登录的账号，token 不出本机；同时扫描旧版 Qoder IDE / CLI 文件。',
+  qoder: '读取本机 Qoder / Qoder CN 客户端已登录的账号（本地解密 auth.v1.dat），token 不出本机；同时扫描旧版 Qoder IDE / CLI 文件。',
+  workbuddy: '读取本机 WorkBuddy 客户端的当前会话与历史会话（CodeBuddyExtension 凭据目录），token 不出本机。',
+  zcode: '读取本机 ZCode 客户端当前登录的账号（本地解密 ~/.zcode/v2/credentials.json），token 不出本机。',
+};
+function openAdd(product) {
+  state.addProduct = product || '';
+  const tabShown = { local: true, device: !product || product === 'qoder', token: product !== 'zcode' };
+  document.querySelectorAll('#m-add .tab').forEach((t) => { t.style.display = tabShown[t.dataset.tab] ? '' : 'none'; });
+  $('local-hint').textContent = LOCAL_HINT[state.addProduct];
+  let first = null;
+  for (const o of $('f-provider').options) {
+    const ok = !product || provOf(o.value).prod === product;
+    o.hidden = !ok;
+    if (ok && !first) first = o.value;
+  }
+  if (first) { $('f-provider').value = first; $('f-provider').dispatchEvent(new Event('change')); }
+  openModal('m-add');
+  switchTab('local');
+  localScan();
+}
+
 // 本机导入
 async function localScan() {
   const box = $('scan-result');
@@ -648,7 +870,8 @@ async function localScan() {
     const r = await api('/api/local/scan', { method: 'POST' });
     $('scan-status').textContent = '';
     let html = '';
-    for (const c of r.candidates) {
+    const cands = r.candidates.filter((c) => !state.addProduct || (c.provider ? provOf(c.provider).prod : 'qoder') === state.addProduct);
+    for (const c of cands) {
       const title = c.kind === 'app' ? esc(c.name || c.email || c.phone || '(未命名)') : '<span style="font-family:monospace">' + esc(c.tokenMasked) + '</span>';
       const prov = (c.provider ? provBadges(c.provider) : '<span class="badge">' + esc(c.kind) + '</span>') + (c.current ? '<span class="pill cur">当前登录</span>' : '');
       const sub = c.kind === 'app'
@@ -660,8 +883,10 @@ async function localScan() {
       html += '<div class="cand"><div class="cand-main"><div class="cand-name">' + title + prov + '</div><div class="cand-sub">' + sub + '</div></div><div class="row">' + btns + '</div></div>';
     }
     for (const e of r.errors || []) html += '<div class="hint" style="color:var(--err)">读取失败：' + esc(e.file) + '：' + esc(e.error) + '</div>';
-    if (!r.candidates.length) {
-      html += '<div class="hint">未发现已登录的账号。请先在 Qoder / WorkBuddy 客户端登录，或改用「Qoder 网络授权」「粘贴 Token」。<br>已检查：Qoder / Qoder CN 客户端数据目录、WorkBuddy 凭据目录'
+    if (!cands.length) {
+      const where = state.addProduct ? prodLabel(state.addProduct) : 'Qoder / WorkBuddy / ZCode';
+      const alt = state.addProduct === 'zcode' ? '' : state.addProduct === 'workbuddy' ? '，或改用「粘贴 Token」' : '，或改用「Qoder 网络授权」「粘贴 Token」';
+      html += '<div class="hint">未发现已登录的 ' + where + ' 账号。请先在客户端登录' + alt + '。<br>已检查：Qoder / Qoder CN 客户端数据目录、WorkBuddy 凭据目录、ZCode 数据目录'
         + (r.scannedDirs && r.scannedDirs.length ? '、' + r.scannedDirs.map(esc).join('、') : '') + '</div>';
     }
     box.innerHTML = html;
@@ -754,11 +979,13 @@ async function doExport() {
   const password = $('ex-password').value;
   if (password && password.length < 4) return toast('口令至少 4 位', false);
   try {
-    const payload = await api('/api/export', { json: { password: password || undefined, provider: $('ex-provider').value || undefined } });
+    const sel = $('ex-provider').value;
+    const scope = sel.startsWith('p:') ? { product: sel.slice(2) } : { provider: sel || undefined };
+    const payload = await api('/api/export', { json: Object.assign({ password: password || undefined }, scope) });
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'creditdaddy-' + ($('ex-provider').value || 'all') + '-' + new Date().toISOString().slice(0, 10) + (password ? '.secure' : '') + '.json';
+    a.download = 'creditdaddy-' + (sel.replace('p:', '') || 'all') + '-' + new Date().toISOString().slice(0, 10) + (password ? '.secure' : '') + '.json';
     a.click();
     URL.revokeObjectURL(a.href);
     $('ex-password').value = '';
@@ -799,14 +1026,16 @@ async function submitImport(password) {
 }
 
 // ── 绑定 ──
-$('btn-checkin').innerHTML = I.play + '全部签到';
-$('btn-add').innerHTML = I.plus + '添加账号';
-$('btn-import').innerHTML = I.upload + '导入';
-$('btn-export').innerHTML = I.download + '导出';
-$('btn-checkin').onclick = checkinAll;
-$('btn-add').onclick = () => { openModal('m-add'); switchTab('local'); localScan(); };
-$('btn-import').onclick = pickImport;
-$('btn-export').onclick = () => openModal('m-export');
+$('btn-checkin-all').innerHTML = I.play + '全部签到';
+for (const id of ['btn-add', 'btn-add-dash']) $(id).innerHTML = I.plus + '添加账号';
+for (const id of ['btn-import', 'btn-import-dash']) { $(id).innerHTML = I.upload + '导入'; $(id).onclick = pickImport; }
+for (const id of ['btn-export', 'btn-export-dash']) $(id).innerHTML = I.download + '导出';
+$('btn-checkin-all').onclick = () => checkinAll($('btn-checkin-all'));
+$('btn-checkin').onclick = () => checkinAll($('btn-checkin'), state.view);
+$('btn-add-dash').onclick = () => openAdd('');
+$('btn-add').onclick = () => openAdd(state.view);
+$('btn-export-dash').onclick = () => { $('ex-provider').value = ''; openModal('m-export'); };
+$('btn-export').onclick = () => { $('ex-provider').value = state.view === 'zcode' ? 'zcode' : 'p:' + state.view; openModal('m-export'); };
 $('btn-do-export').onclick = doExport;
 $('btn-pass-ok').onclick = () => submitImport($('pass-input').value);
 $('pass-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') submitImport($('pass-input').value); });
@@ -817,15 +1046,36 @@ $('dev-link').addEventListener('click', (e) => { e.preventDefault(); openAuth($(
 $('btn-add-token').onclick = addToken;
 $('f-token').addEventListener('keydown', (e) => { if (e.key === 'Enter') addToken(); });
 $('list').addEventListener('click', onCardClick);
-$('filter').addEventListener('click', (e) => {
-  const b = e.target.closest('button[data-f]');
-  if (!b) return;
-  state.filter = b.dataset.f;
-  document.querySelectorAll('#filter button').forEach((x) => x.classList.toggle('active', x === b));
+// 标签页：用 URL hash 记住（刷新 / 前进后退保持）
+function applyView() {
+  const v = location.hash.slice(1);
+  state.view = VIEWS.includes(v) ? v : 'dash';
+  state.region = '';
+  document.querySelectorAll('#nav button').forEach((x) => x.classList.toggle('active', x.dataset.view === state.view));
+  $('view-dash').classList.toggle('active', state.view === 'dash');
+  $('view-prod').classList.toggle('active', state.view !== 'dash');
   render();
   renderStatus();
+}
+function goView(v) {
+  if (v === state.view) return;
+  if (v === 'dash') history.pushState(null, '', location.pathname + location.search);
+  else history.pushState(null, '', '#' + v);
+  applyView();
+}
+window.addEventListener('popstate', applyView);
+$('nav').addEventListener('click', (e) => { const b = e.target.closest('button[data-view]'); if (b) goView(b.dataset.view); });
+$('view-dash').addEventListener('click', (e) => {
+  const t = e.target.closest('[data-view]');
+  if (t) { goView(t.dataset.view); window.scrollTo(0, 0); }
 });
-$('f-provider').addEventListener('change', () => {
+$('region').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-r]');
+  if (!b) return;
+  state.region = b.dataset.r;
+  render();
+  renderStatus();
+});('change', () => {
   $('f-token').placeholder = $('f-provider').value.startsWith('workbuddy')
     ? 'WorkBuddy / CodeBuddy 登录 token（eyJ…，可在 CodeBuddyExtension 的 auth/*.info 中找到）'
     : 'dt-… / jt-… 或 PAT（pt-…，自动兑换）';
@@ -838,6 +1088,7 @@ $('btn-logs').onclick = () => {
 
 // ── 启动：先直接请求（本机模式无需密钥）；只有服务端返回 401 时才询问密钥 ──
 initTheme();
+applyView();
 (function boot() {
   function start() {
     loadStatus().then(loadAccounts).catch((e) => toast(e.message, false));
