@@ -137,5 +137,7 @@ export async function scanLocalTokens(dirs) {
 /** 按 candidateId 取回完整 token（导入用） */
 export function takeCandidate(id) {
   const c = candidates.get(id);
-  return c ? c.token : null;
+  if (!c) return null;
+  if (c.at < Date.now() - CAND_TTL_MS) { candidates.delete(id); return null; }
+  return c.token;
 }

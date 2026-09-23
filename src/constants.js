@@ -8,6 +8,8 @@
  * ⚠️ 非官方接口，Qoder 调整服务端时可能失效。
  */
 
+import { readFileSync } from 'node:fs';
+
 export const OPENAPI_BASE = 'https://openapi.qoder.sh';
 export const CN_OPENAPI_BASE = 'https://openapi.qoder.com.cn';
 
@@ -55,4 +57,7 @@ export function buildExchangeHeaders() {
 
 export const FETCH_TIMEOUT_MS = 15000;
 
-export const APP_VERSION = '0.1.4';
+// 版本号以 package.json 为唯一来源（桌面版 / fpk 打包时都会一并拷入 package.json）
+export const APP_VERSION = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8')
+).version;

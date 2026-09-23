@@ -11,7 +11,7 @@
   },
   "scripts": {
     "start": "node bin/qoderdaddy.js daemon",
-    "test": "node --test test/"
+    "test": "node --test"
   },
   "license": "MIT"
 }

@@ -18,7 +18,8 @@ import {
   USERINFO_PATH,
   buildQoderHeaders,
 } from './constants.js';
-import { normalizeAccountInput, findDuplicate, loadAccounts, saveAccounts, publicAccount } from './store.js';
+import { publicAccount } from './store.js';
+import { addAccount } from './accounts.js';
 import { logger } from './logger.js';
 
 const FETCH_TIMEOUT_MS = 15000;
@@ -156,30 +157,21 @@ export async function pollDeviceFlow(sessionId) {
 
   // 拿到 token → 拉资料 → 入库
   const profile = await fetchProfile(session.provider, result.token);
-  let account;
+  let added;
   try {
-    account = normalizeAccountInput({
+    added = await addAccount({
       provider: session.provider,
       token: result.token,
       name: profile.name || profile.email || null,
-    });
+    }, { trusted: true });
   } catch (e) {
     return { status: 'failed', error: e.message };
   }
 
-  const accounts = await loadAccounts();
-  const dup = findDuplicate(accounts, account.provider, account.token);
-  if (dup) {
-    session.done = true;
-    logger.info('DEVICE', '授权成功：账号已存在（' + (dup.name || dup.id) + '）');
-    return { status: 'ok', account: publicAccount(dup), already: true };
-  }
-
-  account.verified = true;
-  if (!account.name && profile.email) account.name = profile.email;
-  accounts.push(account);
-  await saveAccounts(accounts);
   session.done = true;
-  logger.info('DEVICE', '授权登录成功：' + (account.name || account.id));
-  return { status: 'ok', account: publicAccount(account), already: false };
+  const { account, duplicate } = added;
+  logger.info('DEVICE', duplicate
+    ? '授权成功：账号已存在（' + (account.name || account.id) + '）'
+    : '授权登录成功：' + (account.name || account.id));
+  return { status: 'ok', account: publicAccount(account), already: duplicate };
 }

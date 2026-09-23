@@ -302,6 +302,7 @@ function loadLogs() {
 
 // ── 设备码授权登录 ──
 var devTimer = null;
+var devGen = 0;   // 每次发起/取消授权递增，丢弃过期会话的在途轮询结果
 function deviceLogin() {
   var provider = document.getElementById('f-provider').value;
   api('/api/auth/device/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: provider }) })
@@ -314,17 +315,19 @@ function deviceLogin() {
       link.href = flow.url;
       link.textContent = flow.url;
       document.getElementById('dev-open').onclick = function () { window.open(flow.url, '_blank'); };
-      pollDevice(flow.sessionId, 0);
+      pollDevice(flow.sessionId, 0, ++devGen);
     })
     .catch(function (e) { toast('发起授权失败：' + e.message, false); });
 }
-function pollDevice(sessionId, n) {
+function pollDevice(sessionId, n, gen) {
+  if (gen !== devGen) return;
   api('/api/auth/device/poll', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: sessionId }) })
     .then(function (r) {
+      if (gen !== devGen) return;
       if (r.status === 'pending') {
         if (n > 150) { deviceStop('授权超时，请重试'); return; }
         document.getElementById('dev-status').textContent = '等待浏览器授权中…（' + n + '）';
-        devTimer = setTimeout(function () { pollDevice(sessionId, n + 1); }, 2000);
+        devTimer = setTimeout(function () { pollDevice(sessionId, n + 1, gen); }, 2000);
       } else if (r.status === 'ok') {
         deviceStop('✓ 授权成功：' + (r.account.name || r.account.id) + (r.already ? '（已存在）' : ''));
         loadAccounts();
@@ -334,9 +337,10 @@ function pollDevice(sessionId, n) {
         deviceStop('授权失败：' + (r.error || r.status));
       }
     })
-    .catch(function (e) { deviceStop('轮询异常：' + e.message); });
+    .catch(function (e) { if (gen === devGen) deviceStop('轮询异常：' + e.message); });
 }
 function deviceStop(msg) {
+  devGen++;
   if (devTimer) { clearTimeout(devTimer); devTimer = null; }
   document.getElementById('dev-status').textContent = msg;
   setTimeout(function () { document.getElementById('device-box').style.display = 'none'; }, 4000);
@@ -397,14 +401,23 @@ document.getElementById('btn-export').addEventListener('click', exportAccounts);
 document.getElementById('btn-import').addEventListener('click', importAccounts);
 document.getElementById('f-token').addEventListener('keydown', function (e) { if (e.key === 'Enter') addAccount(); });
 
+// 启动：先直接请求（本机模式无需密钥）；只有服务端返回 401 时才询问密钥
 (function boot() {
-  if (getKey()) { loadAccounts(); loadLogs(); setInterval(loadLogs, 10000); return; }
-  var k = prompt('请输入 QoderDaddy 访问密钥\n（NAS 上见 ' + (window.QD_DATA_HINT || 'panel_key 文件或安装完成提示') + '）', '') || '';
-  try { localStorage.setItem('qd_key', k); } catch (e) {}
-  loadAccounts().then(function () {
-    if (!getKey()) { alert('密钥无效，请刷新重试'); return; }
-    loadLogs(); setInterval(loadLogs, 10000);
-  });
+  function start() { loadAccounts(); loadLogs(); setInterval(loadLogs, 10000); }
+  function askKey(first) {
+    var k = prompt((first ? '' : '密钥无效，请重新输入。\n') + '请输入 QoderDaddy 访问密钥\n（NAS 上见 '
+      + (window.QD_DATA_HINT || 'panel_key 文件或安装完成提示') + '）', '');
+    if (k === null) { toast('未输入访问密钥，刷新页面可重试', false); return; }
+    try { localStorage.setItem('qd_key', k.trim()); } catch (e) {}
+    probe(false);
+  }
+  function probe(first) {
+    fetch('/api/status', { headers: { 'x-qd-key': getKey() } }).then(function (res) {
+      if (res.status === 401) { askKey(first); return; }
+      start();
+    }).catch(function (e) { toast('无法连接守护进程：' + e.message, false); });
+  }
+  probe(true);
 })();
 </script>
 </body>

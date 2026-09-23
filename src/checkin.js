@@ -3,23 +3,29 @@
  *   - 一次 tick 扫描全部账号
  *   - 已确认完成今日签到的账号当天跳过（state.json 记忆）
  *   - "无可领活动" 不记忆（每日 10:00 (UTC+8) 刷新积分，之后还会出现可领活动）
- *   - 定时器每 ~2h + 抖动执行一次
+ *   - "签到日" 以积分刷新时刻 10:00 (UTC+8) 为界，与本机时区无关
+ *   - 定时器每 ~2h + 抖动执行一次；多轮签到（定时 / 手动）串行执行
  */
 
-import { loadAccounts, loadState, saveState } from './store.js';
+import { loadAccounts, loadState, saveState, withAccounts } from './store.js';
 import { checkinOne } from './qoderClient.js';
 import { logger } from './logger.js';
 
 const TICK_MS = 2 * 60 * 60 * 1000;        // 2 小时
 const TICK_JITTER_MS = 10 * 60 * 1000;     // ±10 分钟抖动，避免整点请求特征
 
-let timerHandle = null;
-let running = false;
+// 每日积分刷新：10:00 (UTC+8) = 02:00 UTC。签到日 = (now - 2h) 的 UTC 日期
+const REFRESH_UTC_OFFSET_MS = 2 * 60 * 60 * 1000;
 
+let timerHandle = null;
+let tickQueue = Promise.resolve();
+
+/**
+ * 当前所属的"签到日"（YYYY-MM-DD）。以 10:00 (UTC+8) 为日界：
+ * 刷新前领过的记录不会让刷新后的新一轮被跳过；也不受 NAS / 海外机器时区影响。
+ */
 export function dayKey(nowMs = Date.now()) {
-  const d = new Date(nowMs);
-  const p = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return new Date(nowMs - REFRESH_UTC_OFFSET_MS).toISOString().slice(0, 10);
 }
 
 export function msUntilNextTick(nowMs = Date.now(), rand = Math.random) {
@@ -36,10 +42,16 @@ async function getDoneMap(state) {
 }
 
 /**
- * 执行一轮签到。
+ * 执行一轮签到。多次调用会排队串行执行，避免同一账号被并发领取、state.json 互相覆盖。
  * @param {{provider?: string, skipIfCheckedToday?: boolean, onlyAccountId?: string}} opts
  */
-export async function runCheckinTick(opts = {}) {
+export function runCheckinTick(opts = {}) {
+  const run = tickQueue.then(() => runTickNow(opts));
+  tickQueue = run.catch(() => {});
+  return run;
+}
+
+async function runTickNow(opts) {
   const accounts = (await loadAccounts()).filter(
     (a) => (!opts.provider || a.provider === opts.provider)
         && (!opts.onlyAccountId || a.id === opts.onlyAccountId)
@@ -85,14 +97,13 @@ export async function runCheckinTick(opts = {}) {
     }
   }
 
-  // 保存签到日历与账号 lastCheckin
-  const { saveAccounts } = await import('./store.js');
-  const all = await loadAccounts();
-  for (const updated of accounts) {
-    const i = all.findIndex((a) => a.id === updated.id);
-    if (i >= 0) all[i].lastCheckin = updated.lastCheckin;
-  }
-  await saveAccounts(all);
+  // 保存签到日历与账号 lastCheckin（在账号锁内重新读取，不覆盖期间的增删）
+  await withAccounts((all) => {
+    for (const updated of accounts) {
+      const cur = all.find((a) => a.id === updated.id);
+      if (cur) cur.lastCheckin = updated.lastCheckin;
+    }
+  });
   await saveState({ ...state, qoderDailyDone: memo });
 
   const claimed = results.filter((r) => r.status === 'checked-in');

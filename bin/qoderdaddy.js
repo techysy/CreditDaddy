@@ -7,7 +7,8 @@
  *   qoderdaddy checkin         立即签到全部账号
  *   qoderdaddy remove <id>     删除账号
  *   qoderdaddy export/import   导出/导入账号
- *   qoderdaddy logs            查看日志
+ *   qoderdaddy logs            查看签到状态（state.json）
+ *   qoderdaddy help            显示帮助
  */
 
 import { startDaemon } from '../src/daemon.js';
@@ -15,6 +16,19 @@ import { logger } from '../src/logger.js';
 
 const args = process.argv.slice(2);
 const cmd = args[0] || 'daemon';
+
+const HELP = `QoderDaddy — Qoder 多账号管理 + 每日 Credits 自动签到
+
+用法:
+  qoderdaddy daemon [--port 47860] [--host 127.0.0.1]   启动守护进程 + Web 面板
+  qoderdaddy add <token> [--cn] [--name 名字]           添加账号（--cn 为国内版）
+  qoderdaddy list                                       查看账号
+  qoderdaddy checkin [--cn | --intl]                    立即签到
+  qoderdaddy remove <id前缀>                             删除账号
+  qoderdaddy export [file.json]                         导出账号（含明文 token）
+  qoderdaddy import <file.json>                         导入账号
+  qoderdaddy logs                                       查看签到状态
+  qoderdaddy help                                       显示本帮助`;
 
 function flag(name) {
   const i = args.indexOf(name);
@@ -35,26 +49,15 @@ async function main() {
     case 'add': {
       const token = args[1];
       if (!token) { console.error('用法: qoderdaddy add <token> [--cn] [--name 名字]'); process.exit(1); }
-      const { loadAccounts, saveAccounts, normalizeAccountInput, findDuplicate, publicAccount } = await import('../src/store.js');
-      const account = normalizeAccountInput({
+      const { publicAccount } = await import('../src/store.js');
+      const { addAccount } = await import('../src/accounts.js');
+      const { account, duplicate } = await addAccount({
         token,
         provider: args.includes('--cn') ? 'qoder-cn' : 'qoder',
         name: flag('--name'),
       });
-      const accounts = await loadAccounts();
-      if (findDuplicate(accounts, account.provider, account.token)) {
-        console.error('该账号已存在'); process.exit(1);
-      }
-      const { fetchUserinfo } = await import('../src/qoderClient.js');
-      try {
-        const ui = await fetchUserinfo(account);
-        if (!account.name) account.name = ui?.nickname || ui?.name || ui?.username || ui?.email || null;
-        console.log('✓ token 校验通过');
-      } catch (e) {
-        console.log('⚠ token 校验失败（仍会保存）：' + e.message);
-      }
-      accounts.push(account);
-      await saveAccounts(accounts);
+      if (duplicate) { console.error('该账号已存在'); process.exit(1); }
+      console.log(account.verified ? '✓ token 校验通过' : '⚠ token 校验失败（仍会保存）：' + account.verifyError);
       console.log('✓ 已添加：', JSON.stringify(publicAccount(account), null, 2));
       break;
     }
@@ -80,13 +83,17 @@ async function main() {
     }
     case 'remove': {
       const id = args[1];
-      const { loadAccounts, saveAccounts } = await import('../src/store.js');
-      const accounts = await loadAccounts();
-      const i = accounts.findIndex((a) => a.id.startsWith(id));
-      if (i < 0) { console.error('账号不存在'); process.exit(1); }
-      const [removed] = accounts.splice(i, 1);
-      await saveAccounts(accounts);
-      console.log('✓ 已删除', removed.name || removed.id);
+      if (!id) { console.error('用法: qoderdaddy remove <id前缀>（id 见 qoderdaddy list）'); process.exit(1); }
+      const { withAccounts } = await import('../src/store.js');
+      const outcome = await withAccounts((accounts) => {
+        const matches = accounts.filter((a) => a.id.startsWith(id));
+        if (matches.length !== 1) return { count: matches.length };
+        accounts.splice(accounts.indexOf(matches[0]), 1);
+        return { count: 1, removed: matches[0] };
+      });
+      if (outcome.count === 0) { console.error('账号不存在'); process.exit(1); }
+      if (outcome.count > 1) { console.error(`id 前缀 "${id}" 匹配到 ${outcome.count} 个账号，请输入更长的前缀`); process.exit(1); }
+      console.log('✓ 已删除', outcome.removed.name || outcome.removed.id);
       break;
     }
     case 'export': {
@@ -101,19 +108,11 @@ async function main() {
       const file = args[1];
       if (!file) { console.error('用法: qoderdaddy import <file.json>'); process.exit(1); }
       const { readFileSync } = await import('node:fs');
-      const { loadAccounts, saveAccounts, normalizeAccountInput, findDuplicate } = await import('../src/store.js');
+      const { importAccounts } = await import('../src/accounts.js');
       const data = JSON.parse(readFileSync(file, 'utf8'));
-      const list = Array.isArray(data) ? data : data.accounts;
-      const accounts = await loadAccounts();
-      let added = 0, skipped = 0;
-      for (const item of list || []) {
-        try {
-          const a = normalizeAccountInput(item);
-          if (findDuplicate(accounts, a.provider, a.token)) { skipped++; continue; }
-          accounts.push(a); added++;
-        } catch { skipped++; }
-      }
-      await saveAccounts(accounts);
+      const list = Array.isArray(data) ? data : data?.accounts;
+      if (!Array.isArray(list)) { console.error('文件格式不对：应为 qoderdaddy export 导出的 JSON'); process.exit(1); }
+      const { added, skipped } = await importAccounts(list);
       console.log(`✓ 导入完成：新增 ${added}，跳过 ${skipped}`);
       break;
     }
@@ -122,8 +121,13 @@ async function main() {
       console.log('数据目录状态:', JSON.stringify(await loadState(), null, 2));
       break;
     }
+    case 'help':
+    case '--help':
+    case '-h':
+      console.log(HELP);
+      break;
     default:
-      console.log('未知命令: ' + cmd);
+      console.error(`未知命令: ${cmd}\n\n${HELP}`);
       process.exit(1);
   }
 }

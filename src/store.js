@@ -56,6 +56,24 @@ export async function saveAccounts(accounts) {
   await atomicWrite(ACCOUNTS_FILE(), JSON.stringify(accounts, null, 2));
 }
 
+// 进程内串行队列：所有「读-改-写」都经由 withAccounts，避免并发请求互相覆盖
+let accountsQueue = Promise.resolve();
+
+/**
+ * 串行地读取 → 修改 → 保存账号列表。fn 可直接修改传入的数组（或返回新数组），
+ * 返回 fn 的结果。fn 内不要做网络请求，以免长时间占住队列。
+ */
+export function withAccounts(fn) {
+  const run = accountsQueue.then(async () => {
+    const accounts = await loadAccounts();
+    const result = await fn(accounts);
+    await saveAccounts(accounts);
+    return result;
+  });
+  accountsQueue = run.catch(() => {});
+  return run;
+}
+
 export function newId() {
   return crypto.randomUUID();
 }

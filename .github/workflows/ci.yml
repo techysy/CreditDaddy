@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ["20", "24"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Syntax check
+        shell: bash
+        run: for f in bin/*.js src/*.js desktop/main.js; do node --check "$f"; done
+
+      - name: Test
+        run: npm test
+
+      - name: Versions in sync
+        shell: bash
+        run: |
+          v=$(node -p "require('./package.json').version")
+          d=$(node -p "require('./desktop/package.json').version")
+          m=$(grep -E '^version[[:space:]]*=' fnos-packaging/manifest | sed -E 's/.*=[[:space:]]*//' | tr -d '\r')
+          echo "package.json=$v desktop=$d manifest=$m"
+          [ "$v" = "$d" ] && [ "$v" = "$m" ]
