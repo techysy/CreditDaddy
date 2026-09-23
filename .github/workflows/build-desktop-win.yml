@@ -34,6 +34,18 @@ jobs:
       - name: Package Windows artifacts (unsigned)
         run: npx electron-builder --win --x64 --publish never
         working-directory: desktop
+        env:
+          DEBUG: electron-builder
+          ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+          ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
+
+      - name: Upload builder debug log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: builder-debug-log
+          path: desktop/builder-debug.yml
+          if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v4
         with:
