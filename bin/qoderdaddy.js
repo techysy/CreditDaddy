@@ -25,8 +25,10 @@ const HELP = `QoderDaddy — Qoder 多账号管理 + 每日 Credits 自动签到
   qoderdaddy list                                       查看账号
   qoderdaddy checkin [--cn | --intl]                    立即签到
   qoderdaddy remove <id前缀>                             删除账号
-  qoderdaddy export [file.json]                         导出账号（含明文 token）
-  qoderdaddy import <file.json>                         导入账号
+  qoderdaddy export [file.json] [--password 口令] [--cn|--intl]
+                                                        导出账号；带口令则加密（与 10router 迁移文件互通）
+  qoderdaddy import <file.json> [--password 口令]        导入 QoderDaddy / 10router 导出文件
+  qoderdaddy scan                                       读取本机 Qoder 客户端已登录账号并导入
   qoderdaddy logs                                       查看签到状态
   qoderdaddy help                                       显示本帮助`;
 
@@ -97,11 +99,14 @@ async function main() {
       break;
     }
     case 'export': {
-      const { loadAccounts, exportPayload } = await import('../src/store.js');
-      const out = args[1] || 'qoderdaddy-backup.json';
+      const { loadAccounts } = await import('../src/store.js');
+      const { exportAccounts } = await import('../src/transfer.js');
+      const out = args[1] && !args[1].startsWith('--') ? args[1] : 'qoderdaddy-backup.json';
+      const password = flag('--password');
+      const provider = args.includes('--cn') ? 'qoder-cn' : args.includes('--intl') ? 'qoder' : undefined;
       const { writeFileSync } = await import('node:fs');
-      writeFileSync(out, JSON.stringify(exportPayload(await loadAccounts()), null, 2));
-      console.log('✓ 已导出到', out, '（含明文 token，注意保管）');
+      writeFileSync(out, JSON.stringify(exportAccounts(await loadAccounts(), { password, provider }), null, 2), { mode: 0o600 });
+      console.log('✓ 已导出到', out, password ? '（已加密，10router 可直接导入）' : '（含明文 token，注意保管；加 --password 可加密）');
       break;
     }
     case 'import': {
@@ -109,11 +114,25 @@ async function main() {
       if (!file) { console.error('用法: qoderdaddy import <file.json>'); process.exit(1); }
       const { readFileSync } = await import('node:fs');
       const { importAccounts } = await import('../src/accounts.js');
-      const data = JSON.parse(readFileSync(file, 'utf8'));
-      const list = Array.isArray(data) ? data : data?.accounts;
-      if (!Array.isArray(list)) { console.error('文件格式不对：应为 qoderdaddy export 导出的 JSON'); process.exit(1); }
-      const { added, skipped } = await importAccounts(list);
-      console.log(`✓ 导入完成：新增 ${added}，跳过 ${skipped}`);
+      const { parseImport } = await import('../src/transfer.js');
+      const parsed = parseImport(JSON.parse(readFileSync(file, 'utf8')), { password: flag('--password') });
+      const r = await importAccounts(parsed.accounts);
+      console.log(`✓ 导入完成（来源 ${parsed.source}）：新增 ${r.added}，续期 ${r.updated}，跳过 ${r.skipped + parsed.skipped}`);
+      break;
+    }
+    case 'scan': {
+      const { readQoderAppAccounts } = await import('../src/qoderApp.js');
+      const { addAccount } = await import('../src/accounts.js');
+      const { accounts, errors } = await readQoderAppAccounts();
+      for (const e of errors) console.log('⚠', e.file, e.error);
+      if (!accounts.length) { console.log('（本机 Qoder 客户端未登录或未安装）'); break; }
+      for (const c of accounts) {
+        const r = await addAccount({
+          provider: c.provider, token: c.token, name: c.user.name || c.user.email,
+          uid: c.user.id, email: c.user.email, refreshToken: c.refreshToken, expiresAt: c.expiresAt, source: 'local-app',
+        }, { trusted: true });
+        console.log(r.duplicate ? (r.updated ? '↻ 已更新' : '· 已存在') : '✓ 已导入', r.account.name || r.account.id, `（${c.source}）`);
+      }
       break;
     }
     case 'logs': {

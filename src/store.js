@@ -78,8 +78,21 @@ export function newId() {
   return crypto.randomUUID();
 }
 
-/** 校验并构造账号记录（不含重复检查，由调用方负责） */
-export function normalizeAccountInput({ name, provider, token }) {
+const optStr = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+
+/** 过期时间统一成 ISO 字符串（接受 ISO / 秒 / 毫秒） */
+export function normalizeExpiry(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = typeof v === 'number' ? v : /^d+$/.test(String(v)) ? Number(v) : NaN;
+  const d = Number.isFinite(n) ? new Date(n < 1e12 ? n * 1000 : n) : new Date(String(v));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+/**
+ * 校验并构造账号记录（不含重复检查，由调用方负责）。
+ * 可选元数据：uid / email / refreshToken / expiresAt / source
+ */
+export function normalizeAccountInput({ name, provider, token, uid, email, refreshToken, expiresAt, source }) {
   if (!PROVIDERS.includes(provider)) {
     throw new Error(`provider 必须是 ${PROVIDERS.join(' 或 ')}`);
   }
@@ -90,14 +103,21 @@ export function normalizeAccountInput({ name, provider, token }) {
     name: String(name || '').trim() || null,
     provider,
     token: trimmed,
+    uid: optStr(uid),
+    email: optStr(email),
+    refreshToken: optStr(refreshToken),
+    expiresAt: normalizeExpiry(expiresAt),
+    source: optStr(source) || 'manual',
     createdAt: new Date().toISOString(),
     lastCheckin: null,
+    lastResult: null,
   };
 }
 
-/** 相同 provider + token 视为同一账号 */
-export function findDuplicate(accounts, provider, token) {
-  return accounts.find((a) => a.provider === provider && a.token === token.trim());
+/** 相同 provider 下 token 相同、或 uid 相同（同一用户换了新 token）视为同一账号 */
+export function findDuplicate(accounts, provider, token, uid = null) {
+  const t = String(token || '').trim();
+  return accounts.find((a) => a.provider === provider && (a.token === t || (uid && a.uid && a.uid === uid)));
 }
 
 export function maskToken(token) {
@@ -113,8 +133,15 @@ export function publicAccount(a) {
     provider: a.provider,
     tokenMasked: maskToken(a.token),
     isPat: typeof a.token === 'string' && a.token.startsWith('pt-'),
+    uid: a.uid || null,
+    email: a.email || null,
+    expiresAt: a.expiresAt || null,
+    hasRefreshToken: Boolean(a.refreshToken),
+    source: a.source || 'manual',
+    verified: a.verified ?? null,
     createdAt: a.createdAt,
     lastCheckin: a.lastCheckin,
+    lastResult: a.lastResult || null,
   };
 }
 
@@ -130,15 +157,4 @@ export async function saveState(state) {
   await atomicWrite(STATE_FILE(), JSON.stringify(state, null, 2));
 }
 
-// ─── 导入 / 导出（跨机器迁移账号，参考 WorkDaddy 的备份导出能力） ───
-
-export function exportPayload(accounts) {
-  return {
-    format: 'qoderdaddy-accounts',
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    accounts: accounts.map(({ name, provider, token, createdAt }) => ({
-      name, provider, token, createdAt,
-    })),
-  };
-}
+// 导入 / 导出（含 10router 互通）见 transfer.js

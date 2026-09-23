@@ -114,7 +114,11 @@ async function pollUpstream(session) {
   try { body = JSON.parse(text); } catch (e) { throw new Error('轮询返回非 JSON：' + e.message); }
   if (!body.token) throw new Error('轮询返回 200 但没有 token（上游结构可能变化）');
 
-  return { status: 'ok', token: body.token, userId: body.user_id || '' };
+  const expiresAt = body.expires_at || (body.expires_in ? Date.now() + Number(body.expires_in) * 1000 : null);
+  return {
+    status: 'ok', token: body.token, userId: body.user_id || '',
+    refreshToken: body.refresh_token || body.refreshToken || null, expiresAt,
+  };
 }
 
 /** 用户资料（best-effort，失败不阻断登录） */
@@ -163,6 +167,9 @@ export async function pollDeviceFlow(sessionId) {
       provider: session.provider,
       token: result.token,
       name: profile.name || profile.email || null,
+      email: profile.email, uid: result.userId || null,
+      refreshToken: result.refreshToken, expiresAt: result.expiresAt,
+      source: 'device',
     }, { trusted: true });
   } catch (e) {
     return { status: 'failed', error: e.message };

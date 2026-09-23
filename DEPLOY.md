@@ -27,6 +27,11 @@ fnOS 应用中心 → 手动安装 → 选择 fpk。会自动安装依赖应用 
 3. 数据目录：@appdata/qoderdaddy（账号 token 均只存本机）
 4. 服务监听 0.0.0.0:47860，所有 /api/* 需要 x-qd-key 头（或 ?key=）
 
+## 功能限制
+
+Qoder 国际版的每日 Credits 只下发给携带设备风控身份的请求，风控身份由 Qoder 客户端（Windows / macOS）自带的
+runtime-info 生成。NAS 上没有 Qoder 客户端，因此 **fpk 版只能签到国内版账号**；国际版账号请用 Windows 桌面版。
+
 ## 手动运维
 
 fnOS 应用详情页可启停；命令行：

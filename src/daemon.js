@@ -9,19 +9,20 @@
  * API:
  *   GET    /api/accounts               账号列表（脱敏）
  *   POST   /api/accounts               添加账号 {name, provider, token}
+ *   PATCH  /api/accounts/:id           修改备注名 {name}
  *   DELETE /api/accounts/:id           删除账号
  *   POST   /api/accounts/:id/checkin   手动为单个账号签到
  *   GET    /api/accounts/:id/quota     查询配额
  *   POST   /api/checkin                全部签到 {provider?, skipIfCheckedToday?}
  *   POST   /api/auth/device/start      发起设备码登录 {provider}
  *   POST   /api/auth/device/poll       轮询设备码登录 {sessionId}
- *   GET    /api/local/detect           检测本机 Qoder 安装
- *   POST   /api/local/scan             扫描本机 token 候选
- *   POST   /api/local/import           导入扫描候选 {candidateId, provider, name?}
+ *   GET    /api/local/detect           检测本机 Qoder 客户端 / IDE / CLI
+ *   POST   /api/local/scan             读取本机已登录账号（解密客户端凭据 + 扫描旧版 IDE）
+ *   POST   /api/local/import           导入扫描候选 {candidateId, provider?, name?}
  *   GET    /api/logs                   最近日志
  *   GET    /api/status                 守护进程状态
- *   POST   /api/export                 导出账号（明文 JSON，注意保管）
- *   POST   /api/import                 导入账号 {accounts:[{name,provider,token}]}
+ *   POST   /api/export                 导出账号 {password?, provider?}（有口令 → 10router 兼容加密文件）
+ *   POST   /api/import                 导入账号 {data, password?}（QoderDaddy / 10router 导出文件）
  *   GET    /                           Web 面板
  */
 
@@ -32,14 +33,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logger, getLogs } from './logger.js';
 import {
-  loadAccounts, loadState, withAccounts, publicAccount,
-  exportPayload, dataDir,
+  loadAccounts, loadState, withAccounts, publicAccount, dataDir,
 } from './store.js';
 import { addAccount, importAccounts } from './accounts.js';
-import { runCheckinTick } from './checkin.js';
+import { exportAccounts, parseImport, TransferError } from './transfer.js';
+import { runCheckinTick, getSchedulerInfo, dayKey } from './checkin.js';
+import { detectQoderApps, readQoderAppAccounts, riskIdentityAvailable } from './qoderApp.js';
 import { fetchQuotaUsage } from './qoderClient.js';
 import { startDeviceFlow, pollDeviceFlow } from './authDevice.js';
-import { detectInstalls, scanLocalTokens, takeCandidate } from './localDetect.js';
+import { detectInstalls, scanLocalTokens, putCandidate, takeCandidate } from './localDetect.js';
 import { PROVIDER_LABEL, APP_VERSION } from './constants.js';
 
 /** 可选访问密钥：设置 QODERDADDY_PASSWORD 后，所有 /api/* 需要 x-qd-key 头（或 ?key=）。
@@ -141,8 +143,22 @@ async function handleApi(req, res, url) {
     return json(res, 201, { account: publicAccount(account) });
   }
 
+  // 修改备注名
+  const idMatch = p.match(/^\/api\/accounts\/([\w-]+)$/);
+  if (idMatch && method === 'PATCH') {
+    const body = await readBody(req);
+    const name = String(body?.name || '').trim().slice(0, 64) || null;
+    const found = await withAccounts((accounts) => {
+      const a = accounts.find((x) => x.id === idMatch[1]);
+      if (a) a.name = name;
+      return a || null;
+    });
+    if (!found) return json(res, 404, { error: '账号不存在' });
+    return json(res, 200, { account: publicAccount(found) });
+  }
+
   // 删除账号
-  const delMatch = p.match(/^\/api\/accounts\/([\w-]+)$/);
+  const delMatch = idMatch;
   if (delMatch && method === 'DELETE') {
     const removed = await withAccounts((accounts) => {
       const i = accounts.findIndex((a) => a.id === delMatch[1]);
@@ -201,26 +217,47 @@ async function handleApi(req, res, url) {
 
   // ── 本机检测 / token 扫描 ──
   if (p === '/api/local/detect' && method === 'GET') {
-    return json(res, 200, detectInstalls());
+    return json(res, 200, { apps: detectQoderApps(), legacy: detectInstalls() });
   }
   if (p === '/api/local/scan' && method === 'POST') {
+    const existing = await loadAccounts();
+    const known = (provider, token, uid) => existing.some((a) => (!provider || a.provider === provider)
+      && (a.token === token || (uid && a.uid === uid)));
+    // 1) 新版 Qoder 客户端：解密 auth.v1.dat（账号归属明确）
+    const app = await readQoderAppAccounts();
+    const candidates = app.accounts.map((c) => ({
+      id: putCandidate(c),
+      kind: 'app', provider: c.provider, source: c.source,
+      name: c.user.name, email: c.user.email, uid: c.user.id,
+      tokenMasked: c.token.slice(0, 5) + '...' + c.token.slice(-4),
+      expiresAt: c.expiresAt, hasRefreshToken: Boolean(c.refreshToken),
+      imported: known(c.provider, c.token, c.user.id),
+    }));
+    // 2) 旧版 VS Code 系 Qoder IDE / CLI：明文 token 扫描（归属需用户选择）
     const det = detectInstalls();
     const dirs = det.ideDataDirs.filter(d => d.exists).map(d => d.path);
     if (det.cliDir.exists) dirs.push(det.cliDir.path);
-    const result = await scanLocalTokens(dirs);
-    return json(res, 200, { ...result, scannedDirs: dirs });
+    const legacy = await scanLocalTokens(dirs);
+    for (const c of legacy.candidates) {
+      candidates.push({ ...c, provider: null, source: '旧版 IDE / CLI 文件', imported: known(null, takeCandidate(c.id)?.token) });
+    }
+    return json(res, 200, { candidates, errors: app.errors, scanned: legacy.scanned, scannedDirs: dirs });
   }
   if (p === '/api/local/import' && method === 'POST') {
     const body = await readBody(req);
-    const id = String(body?.candidateId || '');
-    const token = takeCandidate(id);
-    if (!token) return json(res, 404, { error: '候选不存在或已过期，请重新扫描' });
-    const provider = body.provider === 'qoder-cn' ? 'qoder-cn' : 'qoder';
-    // best-effort 校验 + 拉昵称
-    const { account, duplicate } = await addAccount({ provider, token, name: body.name || null });
-    if (duplicate) return json(res, 409, { error: '该账号已存在' });
-    logger.info('DAEMON', '从本机扫描导入账号：' + (account.name || account.id));
-    return json(res, 201, { account: publicAccount(account) });
+    const cand = takeCandidate(String(body?.candidateId || ''));
+    if (!cand) return json(res, 404, { error: '候选不存在或已过期，请重新扫描' });
+    const provider = cand.provider || (body.provider === 'qoder-cn' ? 'qoder-cn' : 'qoder');
+    const { account, duplicate, updated } = await addAccount({
+      provider, token: cand.token,
+      name: body.name || cand.user?.name || cand.user?.email || null,
+      uid: cand.user?.id, email: cand.user?.email,
+      refreshToken: cand.refreshToken, expiresAt: cand.expiresAt,
+      source: cand.user ? 'local-app' : 'local-scan',
+    }, { trusted: Boolean(cand.user) });
+    if (duplicate && !updated) return json(res, 409, { error: '该账号已存在，信息已是最新' });
+    logger.info('DAEMON', (updated ? '已用本机凭据更新：' : '从本机导入账号：') + (account.name || account.id));
+    return json(res, updated ? 200 : 201, { account: publicAccount(account), updated });
   }
 
   // 日志
@@ -238,24 +275,42 @@ async function handleApi(req, res, url) {
       version: APP_VERSION,
       accountsCount: accounts.length,
       dataDir: dataDir(),
+      today: dayKey(),
       todayDone: state?.qoderDailyDone || {},
+      scheduler: getSchedulerInfo(),
+      riskIdentity: riskIdentityAvailable(),
+      keyRequired: Boolean(PANEL_KEY),
     });
   }
 
   // 导出
   if (p === '/api/export' && method === 'POST') {
-    const accounts = await loadAccounts();
-    return json(res, 200, exportPayload(accounts));
+    const body = await readBody(req).catch(() => ({}));
+    const provider = ['qoder', 'qoder-cn'].includes(body?.provider) ? body.provider : undefined;
+    try {
+      return json(res, 200, exportAccounts(await loadAccounts(), { password: body?.password || undefined, provider }));
+    } catch (e) {
+      if (e instanceof TransferError) return json(res, 400, { error: e.message, code: e.code });
+      throw e;
+    }
   }
 
   // 导入
   if (p === '/api/import' && method === 'POST') {
     const body = await readBody(req);
-    const list = Array.isArray(body) ? body : body?.accounts;
-    if (!Array.isArray(list)) return json(res, 400, { error: '导入格式：{accounts:[{name,provider,token}]}' });
-    const { added, skipped } = await importAccounts(list);
-    logger.info('DAEMON', `导入完成：新增 ${added}，跳过 ${skipped}`);
-    return json(res, 200, { added, skipped });
+    // 新格式 {data, password}；兼容直接 POST 文件内容
+    const data = body && typeof body === 'object' && !Array.isArray(body) && 'data' in body ? body.data : body;
+    let parsed;
+    try {
+      parsed = parseImport(data, { password: body?.password });
+    } catch (e) {
+      if (e instanceof TransferError) return json(res, 400, { error: e.message, code: e.code });
+      throw e;
+    }
+    const r = await importAccounts(parsed.accounts);
+    const skipped = r.skipped + parsed.skipped;
+    logger.info('DAEMON', `导入完成（${parsed.source}）：新增 ${r.added}，续期 ${r.updated}，跳过 ${skipped}`);
+    return json(res, 200, { added: r.added, updated: r.updated, skipped, source: parsed.source });
   }
 
   return json(res, 404, { error: '未知接口' });
@@ -294,7 +349,9 @@ export function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
   return new Promise((resolve) => {
     let attempts = 0;
     const bind = (p) => {
-      server.once('error', (err) => {
+      // 失败重试时必须摘掉上一次的 listening 监听，否则成功后会重复触发
+      const onError = (err) => {
+        server.off('listening', onListening);
         if (err && err.code === 'EADDRINUSE' && attempts < 10) {
           attempts += 1;
           logger.warn('DAEMON', `端口 ${p} 被占用，改试 ${p + 1}`);
@@ -303,15 +360,19 @@ export function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
         } else {
           logger.error('DAEMON', `监听失败：${err?.message || err}`);
         }
-      });
-      server.listen(p, host, () => {
+      };
+      const onListening = () => {
+        server.off('error', onError);
         const bound = server.address().port;
         logger.info('DAEMON', `QoderDaddy 守护进程已启动：http://${host}:${bound}`);
         if ((host === '0.0.0.0' || host === '::') && !PANEL_KEY) {
           logger.warn('DAEMON', '监听 0.0.0.0 且未设置 QODERDADDY_PASSWORD —— 局域网内任何人可访问账号 API，建议设置访问密钥');
         }
         resolve({ server, port: bound });
-      });
+      };
+      server.once('error', onError);
+      server.once('listening', onListening);
+      server.listen(p, host);
     };
     bind(Number(port) || DEFAULT_PORT);
   });

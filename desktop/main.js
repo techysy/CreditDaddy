@@ -1,61 +1,97 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, shell } = require('electron');
+/**
+ * QoderDaddy 桌面壳（Electron）：内置 daemon + 托盘常驻。
+ *
+ *   - 关闭窗口 = 隐藏到托盘，后台自动签到不中断；首次隐藏时弹出气泡提示托盘位置
+ *   - 单击托盘图标打开面板；右键菜单：状态 / 打开面板 / 立即签到 / 开机自启 / 打开数据目录 / 退出
+ *   - 开机自启以 --hidden 启动：只驻留托盘，不弹窗口
+ *   - 打包后从 resources/qoderdaddy 加载服务端；开发时（electron desktop/）直接用仓库源码
+ */
+const { app, BrowserWindow, Tray, Menu, nativeImage, shell, Notification, dialog } = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
 const PORT = 47860;
+const START_HIDDEN = process.argv.includes('--hidden');
+
 let win = null;
 let tray = null;
 let quitting = false;
 let boundPort = PORT;
+let hideHintShown = false;
+let lastSummary = '';
+let daemonInfo = { version: app.getVersion(), dataDir: '' };
 
-const gotLock = app.requestSingleInstanceLock();
-if (!gotLock) {
+const serverRoot = app.isPackaged
+  ? path.join(process.resourcesPath, 'qoderdaddy')
+  : path.join(__dirname, '..');
+
+// 开发模式使用独立的 userData，避免与已安装版本争抢单实例锁
+if (!app.isPackaged) app.setPath('userData', path.join(app.getPath('appData'), 'QoderDaddy-dev'));
+
+if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => showWin());
-  boot();
+  app.whenReady().then(boot);
 }
 
 async function boot() {
   app.setAppUserModelId('cn.techysy.qoderdaddy');
   Menu.setApplicationMenu(null);
+  // 托盘最先创建：即使 daemon 启动失败也能从托盘退出
+  createTray();
   try {
-    const daemon = await import(pathToFileURL(path.join(process.resourcesPath, 'qoderdaddy', 'src', 'daemon.js')).href);
-    const checkin = await import(pathToFileURL(path.join(process.resourcesPath, 'qoderdaddy', 'src', 'checkin.js')).href);
+    const load = (rel) => import(pathToFileURL(path.join(serverRoot, rel)).href);
+    const daemon = await load('src/daemon.js');
+    const checkin = await load('src/checkin.js');
+    const store = await load('src/store.js');
+    const constants = await load('src/constants.js');
     const r = await daemon.startDaemon(PORT, '127.0.0.1');
     boundPort = r.port;
+    daemonInfo = { version: constants.APP_VERSION, dataDir: store.dataDir() };
     checkin.startScheduler();
   } catch (err) {
-    const { dialog } = require('electron');
     dialog.showErrorBox('QoderDaddy 启动失败', String((err && err.stack) || err));
+    quitting = true;
     app.quit();
     return;
   }
-  createWindow();
-  createTray();
+  refreshTrayMenu();
+  if (!START_HIDDEN) createWindow();
 }
 
 function panelUrl() {
   return 'http://127.0.0.1:' + boundPort + '/';
 }
 
+function iconPath() {
+  return path.join(__dirname, process.platform === 'win32' ? 'icon.ico' : 'icon.png');
+}
+
 function createWindow() {
   win = new BrowserWindow({
-    width: 1120,
-    height: 800,
+    width: 1180,
+    height: 820,
+    minWidth: 760,
+    minHeight: 560,
     title: 'QoderDaddy',
-    icon: path.join(__dirname, 'icon.png'),
+    icon: iconPath(),
     autoHideMenuBar: true,
+    backgroundColor: '#f5f6f8',
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   win.loadURL(panelUrl());
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
   win.on('close', (e) => {
-    if (!quitting) {
-      e.preventDefault();
-      win.hide();
+    if (quitting) return;
+    e.preventDefault();
+    win.hide();
+    if (!hideHintShown) {
+      hideHintShown = true;
+      notify('QoderDaddy 仍在后台运行', '已最小化到系统托盘，自动签到不会中断。单击托盘图标可重新打开面板。');
     }
   });
+  win.on('closed', () => { win = null; });
 }
 
 function showWin() {
@@ -65,23 +101,71 @@ function showWin() {
   win.focus();
 }
 
-function createTray() {
-  const icon = nativeImage.createFromPath(path.join(__dirname, 'icon.png'));
-  tray = new Tray(icon);
-  tray.setToolTip('QoderDaddy - 后台自动签到运行中');
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: '打开面板', click: () => showWin() },
-    { label: '立即签到全部账号', click: async () => {
-      try { await fetch('http://127.0.0.1:' + boundPort + '/api/checkin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"skipIfCheckedToday":false}' }); } catch (e) {}
-      showWin();
-    } },
-    { type: 'separator' },
-    { label: '退出', click: () => { quitting = true; app.quit(); } },
-  ]));
-  tray.on('double-click', () => showWin());
+function notify(title, body) {
+  if (process.platform === 'win32' && tray && typeof tray.displayBalloon === 'function') {
+    tray.displayBalloon({ title, content: body, iconType: 'info' });
+  } else if (Notification.isSupported()) {
+    new Notification({ title, body }).show();
+  }
 }
 
-app.on('window-all-closed', (e) => {
+async function checkinNow() {
+  tray.setToolTip('QoderDaddy - 正在签到…');
+  try {
+    const res = await fetch('http://127.0.0.1:' + boundPort + '/api/checkin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{"skipIfCheckedToday":false}',
+    });
+    const data = await res.json();
+    lastSummary = data.summary || '签到完成';
+    notify('QoderDaddy 签到完成', lastSummary);
+  } catch (e) {
+    lastSummary = '签到失败：' + (e && e.message);
+    notify('QoderDaddy', lastSummary);
+  }
+  refreshTrayMenu();
+  if (win && !win.isDestroyed()) win.webContents.reload();
+}
+
+function autoLaunchEnabled() {
+  try { return app.getLoginItemSettings({ args: ['--hidden'] }).openAtLogin; } catch { return false; }
+}
+
+function setAutoLaunch(enabled) {
+  app.setLoginItemSettings({ openAtLogin: enabled, args: ['--hidden'] });
+  refreshTrayMenu();
+}
+
+function createTray() {
+  let icon = nativeImage.createFromPath(iconPath());
+  if (process.platform !== 'win32') icon = icon.resize({ width: 18, height: 18 });
+  tray = new Tray(icon);
+  tray.on('click', () => showWin());
+  tray.on('double-click', () => showWin());
+  refreshTrayMenu();
+  if (process.env.QD_DEBUG_TRAY) setTimeout(() => console.log('TRAY_BOUNDS', JSON.stringify(tray.getBounds())), 1000);
+}
+
+function refreshTrayMenu() {
+  if (!tray) return;
+  tray.setToolTip('QoderDaddy v' + daemonInfo.version + ' - 后台自动签到运行中' + (lastSummary ? '\n' + lastSummary : ''));
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'QoderDaddy v' + daemonInfo.version, enabled: false },
+    { label: '面板 127.0.0.1:' + boundPort, enabled: false },
+    ...(lastSummary ? [{ label: lastSummary.slice(0, 60), enabled: false }] : []),
+    { type: 'separator' },
+    { label: '打开面板', click: () => showWin() },
+    { label: '立即签到全部账号', click: () => { checkinNow(); } },
+    { type: 'separator' },
+    { label: '开机自启（后台运行）', type: 'checkbox', checked: autoLaunchEnabled(), click: (item) => setAutoLaunch(item.checked) },
+    { label: '打开数据目录', enabled: Boolean(daemonInfo.dataDir), click: () => shell.openPath(daemonInfo.dataDir) },
+    { type: 'separator' },
+    { label: '退出 QoderDaddy', click: () => { quitting = true; app.quit(); } },
+  ]));
+}
+
+app.on('window-all-closed', () => {
   // 保持在托盘运行，自动签到不中断
 });
 app.on('before-quit', () => { quitting = true; });

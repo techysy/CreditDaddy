@@ -12,7 +12,7 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 
-// 候选内存表：candidateId → { token, providerGuess, file, at }（10 分钟过期）
+// 候选内存表：candidateId → { token, file?, provider?, user?, refreshToken?, expiresAt?, at }（10 分钟过期）
 const candidates = new Map();
 const CAND_TTL_MS = 10 * 60 * 1000;
 
@@ -114,14 +114,9 @@ export async function scanLocalTokens(dirs) {
     try { if (fs.existsSync(d) && fs.statSync(d).isDirectory()) await walk(d, 0); } catch {}
   }
 
-  // 入库候选表（带 TTL）
-  const now = Date.now();
-  for (const [k, v] of candidates) if (v.at < now - CAND_TTL_MS) candidates.delete(k);
-
   const list = [];
   for (const [token, meta] of found) {
-    const id = crypto.createHash('sha256').update(token).digest('hex').slice(0, 16);
-    candidates.set(id, { token, file: meta.file, at: now });
+    const id = putCandidate({ token, file: meta.file });
     list.push({
       id,
       tokenMasked: mask(token),
@@ -134,10 +129,19 @@ export async function scanLocalTokens(dirs) {
   return { scanned, candidates: list.slice(0, 50) };
 }
 
-/** 按 candidateId 取回完整 token（导入用） */
+/** 放入候选表（带 TTL），返回 candidateId。c 至少含 token，可带 provider / user / refreshToken / expiresAt */
+export function putCandidate(c) {
+  const now = Date.now();
+  for (const [k, v] of candidates) if (v.at < now - CAND_TTL_MS) candidates.delete(k);
+  const id = crypto.createHash('sha256').update(c.token).digest('hex').slice(0, 16);
+  candidates.set(id, { ...c, at: now });
+  return id;
+}
+
+/** 按 candidateId 取回完整候选（导入用），过期返回 null */
 export function takeCandidate(id) {
   const c = candidates.get(id);
   if (!c) return null;
   if (c.at < Date.now() - CAND_TTL_MS) { candidates.delete(id); return null; }
-  return c.token;
+  return c;
 }

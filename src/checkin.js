@@ -4,6 +4,8 @@
  *   - 已确认完成今日签到的账号当天跳过（state.json 记忆）
  *   - "无可领活动" 不记忆（每日 10:00 (UTC+8) 刷新积分，之后还会出现可领活动）
  *   - "签到日" 以积分刷新时刻 10:00 (UTC+8) 为界，与本机时区无关
+ *   - 国际版每台设备每天只能领一次（服务端按设备风控身份限领）：本机已有账号领取后，
+ *     其余国际版账号标记为 limited 并当日记忆，不再反复请求
  *   - 定时器每 ~2h + 抖动执行一次；多轮签到（定时 / 手动）串行执行
  */
 
@@ -19,6 +21,14 @@ const REFRESH_UTC_OFFSET_MS = 2 * 60 * 60 * 1000;
 
 let timerHandle = null;
 let tickQueue = Promise.resolve();
+let nextTickAt = null;
+let lastTick = null;   // { at, summary }
+let ticking = false;
+
+/** 调度器状态（面板展示用） */
+export function getSchedulerInfo() {
+  return { running: Boolean(timerHandle), nextTickAt, lastTick, ticking };
+}
 
 /**
  * 当前所属的"签到日"（YYYY-MM-DD）。以 10:00 (UTC+8) 为日界：
@@ -52,6 +62,11 @@ export function runCheckinTick(opts = {}) {
 }
 
 async function runTickNow(opts) {
+  ticking = true;
+  try { return await runTickInner(opts); } finally { ticking = false; }
+}
+
+async function runTickInner(opts) {
   const accounts = (await loadAccounts()).filter(
     (a) => (!opts.provider || a.provider === opts.provider)
         && (!opts.onlyAccountId || a.id === opts.onlyAccountId)
@@ -65,6 +80,8 @@ async function runTickNow(opts) {
   const memo = await getDoneMap(state);
   const today = dayKey();
   const results = [];
+  // 本设备今日领取国际版每日积分的账号 { day, accountId, name }
+  let deviceClaim = state?.deviceClaim?.day === today ? state.deviceClaim : null;
 
   for (const account of accounts) {
     const label = account.name || account.id;
@@ -74,8 +91,22 @@ async function runTickNow(opts) {
         continue;
       }
 
-      const outcome = await checkinOne(account);
+      let outcome = await checkinOne(account);
+      if (account.provider === 'qoder' && outcome.risk) {
+        if (outcome.status === 'checked-in') {
+          deviceClaim = { day: today, accountId: account.id, name: label };
+        } else if (outcome.status === 'no-activity' && deviceClaim && deviceClaim.accountId !== account.id) {
+          outcome = { ...outcome, status: 'limited', message: `本机今日国际版额度已由「${deviceClaim.name}」领取（Qoder 每台设备每天限领一次）` };
+        }
+      }
       results.push(outcome);
+      if (outcome.uid && !account.uid) account.uid = outcome.uid;
+      account.lastResult = {
+        status: outcome.status,
+        message: outcome.error || outcome.message || null,
+        amount: outcome.claimedAmount || 0,
+        at: new Date().toISOString(),
+      };
 
       if (outcome.status === 'checked-in') {
         memo[account.id] = today;
@@ -85,6 +116,9 @@ async function runTickNow(opts) {
         memo[account.id] = today;
         account.lastCheckin = account.lastCheckin || new Date().toISOString();
         logger.info('CHECKIN', `${label}：${outcome.message || '今日已领'}`);
+      } else if (outcome.status === 'limited') {
+        memo[account.id] = today;
+        logger.info('CHECKIN', `${label}：${outcome.message}`);
       } else if (outcome.status === 'no-activity') {
         // 不记忆——积分窗口（10:00 UTC+8）打开后还会出现可领活动
         logger.debug('CHECKIN', `${label}：${outcome.message || '当前无可领取的活动'}`);
@@ -93,26 +127,34 @@ async function runTickNow(opts) {
       }
     } catch (err) {
       results.push({ accountId: account.id, account: label, provider: account.provider, status: 'failed', error: err?.message || String(err) });
+      account.lastResult = { status: 'failed', message: err?.message || String(err), amount: 0, at: new Date().toISOString() };
       logger.error('CHECKIN', `${label} 异常：${err?.message || err}`);
     }
   }
 
-  // 保存签到日历与账号 lastCheckin（在账号锁内重新读取，不覆盖期间的增删）
+  // 保存签到日历与账号 lastCheckin / lastResult / uid（在账号锁内重新读取，不覆盖期间的增删）
   await withAccounts((all) => {
     for (const updated of accounts) {
       const cur = all.find((a) => a.id === updated.id);
-      if (cur) cur.lastCheckin = updated.lastCheckin;
+      if (!cur) continue;
+      cur.lastCheckin = updated.lastCheckin;
+      if (updated.lastResult) cur.lastResult = updated.lastResult;
+      if (updated.uid && !cur.uid) cur.uid = updated.uid;
     }
   });
-  await saveState({ ...state, qoderDailyDone: memo });
+  await saveState({ ...state, qoderDailyDone: memo, deviceClaim });
 
   const claimed = results.filter((r) => r.status === 'checked-in');
   const failed = results.filter((r) => r.status === 'failed');
   const none = results.filter((r) => r.status === 'no-activity');
-  const already = results.length - claimed.length - failed.length - none.length;
+  const limited = results.filter((r) => r.status === 'limited');
+  const already = results.length - claimed.length - failed.length - none.length - limited.length;
   const totalCredits = claimed.reduce((s, r) => s + (r.claimedAmount || 0), 0);
-  const summary = `签到汇总：成功 ${claimed.length}（+${totalCredits} Credits）、已领 ${already}、无活动 ${none.length}、失败 ${failed.length}`;
+  const summary = `签到汇总：成功 ${claimed.length}（+${totalCredits} Credits）、已领 ${already}`
+    + (limited.length ? `、本机限领 ${limited.length}` : '')
+    + `、无活动 ${none.length}、失败 ${failed.length}`;
   logger.info('CHECKIN', summary);
+  lastTick = { at: new Date().toISOString(), summary };
 
   return { results, summary };
 }
@@ -122,6 +164,7 @@ export function startScheduler() {
   if (timerHandle) return;
   const scheduleNext = () => {
     const delay = msUntilNextTick();
+    nextTickAt = new Date(Date.now() + delay).toISOString();
     timerHandle = setTimeout(async () => {
       try {
         await runCheckinTick({ skipIfCheckedToday: true });
@@ -144,4 +187,5 @@ export function startScheduler() {
 
 export function stopScheduler() {
   if (timerHandle) { clearTimeout(timerHandle); timerHandle = null; }
+  nextTickAt = null;
 }

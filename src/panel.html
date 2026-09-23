@@ -3,419 +3,764 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>QoderDaddy · 账号管理</title>
+<title>QoderDaddy</title>
 <style>
   :root {
-    --bg: #0f1115; --panel: rgba(30, 34, 44, 0.72); --border: rgba(255,255,255,0.08);
-    --text: #e8eaf0; --dim: #9aa3b2; --accent: #6c8cff; --ok: #4ade80; --warn: #fbbf24; --err: #f87171;
+    --bg: #f5f6f8; --surface: #ffffff; --surface-2: #fafafa; --tertiary: #f0f0f0; --hover: #f5f6f8; --active: #eef0f3;
+    --border-subtle: #eeeeee; --border: #e5e5e5; --border-strong: #cccccc;
+    --text: #1f1f1f; --text-2: #5f6368; --text-3: #999999;
+    --btn-bg: #1f1f1f; --btn-fg: #ffffff;
+    --accent-rgb: 34, 197, 94; --accent: #22c55e;
+    --ok: #16a34a; --warn: #d97706; --err: #dc2626; --err-soft: rgba(239, 68, 68, .1); --warn-soft: rgba(245, 158, 11, .12);
+    --shadow: 0 10px 40px rgba(0, 0, 0, .12); --toast-shadow: 0 6px 24px rgb(0 0 0 / 14%);
+    --mask: rgba(0, 0, 0, .4);
+  }
+  html[data-theme="dark"] {
+    --bg: #0a0a0c; --surface: #131316; --surface-2: #17171b; --tertiary: #1b1b20; --hover: rgba(255,255,255,.06); --active: rgba(255,255,255,.1);
+    --border-subtle: #202025; --border: rgba(255,255,255,.13); --border-strong: #3a3a42;
+    --text: #e6e6e9; --text-2: rgba(230,230,233,.72); --text-3: rgba(230,230,233,.5);
+    --btn-bg: rgba(255,255,255,.92); --btn-fg: #0a0a0c;
+    --accent-rgb: 127, 119, 221; --accent: #7f77dd;
+    --ok: #2ee59d; --warn: #ffb03a; --err: #ff6b6b; --err-soft: rgba(255,107,107,.12); --warn-soft: rgba(255,176,58,.12);
+    --shadow: 0 10px 40px rgba(0,0,0,.5); --toast-shadow: 0 6px 24px rgb(0 0 0 / 45%);
+    --mask: rgba(0, 0, 0, .55);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-    background: radial-gradient(1200px 800px at 20% 0%, #1a2033 0%, var(--bg) 55%);
-    color: var(--text); min-height: 100vh; padding: 24px;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 13px; color: var(--text); background: var(--bg); min-height: 100vh;
+    -webkit-font-smoothing: antialiased; transition: background .2s;
   }
-  .wrap { max-width: 960px; margin: 0 auto; }
-  header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
-  .logo { font-size: 28px; }
-  h1 { font-size: 20px; font-weight: 600; }
-  h1 small { color: var(--dim); font-weight: 400; margin-left: 8px; font-size: 13px; }
-  .card {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
-    padding: 18px; margin-bottom: 16px; backdrop-filter: blur(14px);
-  }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-  input, select {
-    background: rgba(255,255,255,0.06); border: 1px solid var(--border); color: var(--text);
-    border-radius: 8px; padding: 9px 12px; font-size: 14px; outline: none;
-  }
-  input:focus { border-color: var(--accent); }
-  #f-token { flex: 1; min-width: 260px; font-family: monospace; }
-  button {
-    background: var(--accent); color: #fff; border: 0; border-radius: 8px;
-    padding: 9px 16px; font-size: 14px; cursor: pointer; transition: opacity .15s;
-  }
-  button:hover { opacity: .85; }
-  button.ghost { background: rgba(255,255,255,0.08); }
-  button.danger { background: rgba(248,113,113,0.15); color: var(--err); }
-  table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  th { text-align: left; color: var(--dim); font-weight: 500; padding: 8px 6px; border-bottom: 1px solid var(--border); }
-  td { padding: 10px 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
-  td.mono { font-family: ui-monospace, monospace; }
-  .tag { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 12px; }
-  .tag.cn { background: rgba(251,191,36,.15); color: var(--warn); }
-  .tag.intl { background: rgba(108,140,255,.15); color: var(--accent); }
-  .tag.pat { background: rgba(255,255,255,.08); color: var(--dim); margin-left: 6px; }
-  .badge-ok { color: var(--ok); } .badge-dim { color: var(--dim); }
-  .actions { display: flex; gap: 6px; }
-  .actions button { padding: 5px 10px; font-size: 12px; }
-  #toast {
-    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-    background: rgba(30,34,44,.95); border: 1px solid var(--border); border-radius: 10px;
-    padding: 10px 18px; font-size: 14px; opacity: 0; transition: opacity .25s; pointer-events: none;
-    max-width: 80vw;
-  }
-  #toast.show { opacity: 1; }
-  .statusline { color: var(--dim); font-size: 13px; margin-top: 10px; }
-  .empty { color: var(--dim); text-align: center; padding: 24px 0; }
-  h2 { font-size: 15px; font-weight: 600; margin-bottom: 12px; }
-  .logs { font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.7; max-height: 220px; overflow-y: auto; }
-  .logs .info { color: var(--dim); } .logs .warn { color: var(--warn); }
-  .logs .error { color: var(--err); } .logs .debug { color: #566072; }
+  button, input, select { font-family: inherit; font-size: inherit; color: inherit; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 18px 22px 40px; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* header */
+  .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 2px 16px; }
+  .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .logo { width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0; display: grid; place-items: center; background: linear-gradient(135deg, #1f1f1f, #3b3b44); color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.18); }
+  html[data-theme="dark"] .logo { background: linear-gradient(135deg, #7f77dd, #4f46b8); }
+  .logo { font-family: "Avenir Next", "Segoe UI", sans-serif; font-size: 19px; font-weight: 800; letter-spacing: -1px; }
+  .title { font-family: "Avenir Next", Avenir, "Segoe UI Variable Display", "Segoe UI", sans-serif; font-size: 17px; font-weight: 750; letter-spacing: -.5px; line-height: 1.15; }
+  .ver { color: var(--text-3); font-size: 11px; line-height: 1.3; font-variant-numeric: tabular-nums; }
+  .head-right { display: flex; align-items: center; gap: 10px; color: var(--text-3); font-size: 12px; }
+
+  /* shell panel */
+  .panel { background: var(--surface); border: 1px solid var(--border-subtle); border-radius: 18px; box-shadow: 0 1px 2px rgba(0,0,0,.03); overflow: hidden; }
+  .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-subtle); flex-wrap: wrap; }
+  .summary { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .stat { display: flex; align-items: baseline; gap: 5px; white-space: nowrap; }
+  .stat span { color: var(--text-3); font-weight: 500; }
+  .stat strong { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .divider { width: 1px; height: 16px; background: var(--border-subtle); }
+  .actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 6px 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text-2); font-size: 12px; font-weight: 600; cursor: pointer; transition: all .15s; line-height: 1.2; white-space: nowrap; }
+  .btn:hover { background: var(--hover); border-color: var(--border-strong); color: var(--text); }
+  .btn.primary { background: var(--btn-bg); color: var(--btn-fg); border-color: var(--btn-bg); }
+  .btn.primary:hover { opacity: .88; }
+  .btn.danger { background: #c62828; border-color: #c62828; color: #fff; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn svg, .icon-btn svg { width: 15px; height: 15px; flex-shrink: 0; }
+  .icon-btn { width: 28px; height: 28px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; background: var(--hover); color: var(--text-2); cursor: pointer; transition: all .15s; padding: 0; }
+  .icon-btn:hover { background: var(--active); color: var(--text); }
+  .icon-btn.del:hover { background: #ffecec; color: #f53f3f; }
+  html[data-theme="dark"] .icon-btn.del:hover { background: rgba(245,63,63,.15); }
+  .icon-btn.del.armed { background: #f53f3f; color: #fff; }
+  .icon-btn.busy svg { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .notice { margin: 12px 16px 0; padding: 9px 12px; border-radius: 10px; background: var(--warn-soft); color: var(--warn); font-size: 12px; line-height: 1.6; }
+
+  /* cards */
+  .list { display: grid; grid-template-columns: repeat(auto-fill, minmax(440px, 1fr)); gap: 4px 10px; padding: 10px; }
+  .card { position: relative; padding: 11px 12px 12px; border-radius: 12px; transition: background .12s; min-width: 0; }
+  .card:hover { background: var(--hover); }
+  .row1 { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 28px; margin-bottom: 7px; }
+  .name-group { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+  .name { font-size: 14px; font-weight: 600; cursor: text; border-radius: 5px; padding: 0 2px; margin: 0 -2px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .name:hover { background: var(--active); }
+  .badge { display: inline-flex; align-items: center; font-size: 10px; line-height: 1; padding: 3px 7px; border-radius: 999px; font-weight: 500; background: var(--tertiary); color: var(--text-2); white-space: nowrap; }
+  .badge.intl { color: #3b82f6; background: rgba(59,130,246,.1); }
+  .badge.cn { color: #d97706; background: rgba(245,158,11,.12); }
+  .pill { display: inline-flex; align-items: center; height: 22px; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; border: 1px solid transparent; }
+  .pill.ok { background: var(--text); color: var(--surface); }
+  html[data-theme="dark"] .pill.ok { background: rgba(255,255,255,.085); color: var(--text); border-color: rgba(255,255,255,.12); }
+  .pill.pending { background: var(--tertiary); color: var(--text-3); }
+  .pill.limited { background: var(--warn-soft); color: var(--warn); }
+  .pill.fail { background: var(--err-soft); color: var(--err); }
+  .ops { display: flex; gap: 6px; flex-shrink: 0; }
+
+  .meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; font-size: 12px; }
+  .mi { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .mi.right { justify-content: flex-end; flex-shrink: 0; }
+  .lbl { color: var(--text-3); flex-shrink: 0; white-space: nowrap; }
+  .val { color: var(--text); font-variant-numeric: tabular-nums; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .val.warn { color: #f53f3f; font-weight: 600; }
+
+  .credit-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; font-size: 12px; }
+  .credit { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
+  .credit b { font-weight: 700; }
+  .credit svg { width: 13px; height: 13px; color: rgb(var(--accent-rgb)); }
+  .dim { color: var(--text-3); }
+  .bar { display: flex; gap: 2px; width: 100%; height: 5px; background: color-mix(in srgb, var(--tertiary) 80%, transparent); border-radius: 3px; overflow: hidden; }
+  .seg { display: block; height: 5px; min-width: 3px; background: rgba(var(--accent-rgb), var(--a, 1)); transition: filter .15s; }
+  .seg.used { background: color-mix(in srgb, var(--text-3) 35%, transparent); }
+  .seg:hover { filter: brightness(1.12); }
+  .msg { margin-top: 7px; font-size: 11px; color: var(--text-3); line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .msg.err { color: var(--err); }
+  .empty { grid-column: 1 / -1; text-align: center; color: var(--text-3); padding: 42px 12px; font-size: 13px; line-height: 1.9; }
+
+  /* section card */
+  .pcard { margin-top: 14px; background: var(--surface); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 12px 14px; }
+  .pcard-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 700; }
+  .logs { margin-top: 8px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; line-height: 1.65; max-height: 240px; overflow-y: auto; background: var(--tertiary); border-radius: 9px; padding: 8px 10px; }
+  .logs .info { color: var(--text-2); } .logs .warn { color: var(--warn); } .logs .error { color: var(--err); } .logs .debug { color: var(--text-3); }
+  .collapsed .logs { display: none; }
+
+  /* modal */
+  .mask { position: fixed; inset: 0; z-index: 50; background: var(--mask); display: none; align-items: center; justify-content: center; padding: 16px; }
+  .mask.show { display: flex; }
+  .modal { width: 560px; max-width: 100%; max-height: 90vh; overflow-y: auto; background: var(--surface); border-radius: 14px; padding: 16px 18px; box-shadow: var(--shadow); }
+  .modal.sm { width: 360px; }
+  .modal-title { display: flex; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 700; margin-bottom: 12px; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+  .close { border: none; background: none; color: var(--text-3); font-size: 16px; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+  .close:hover { background: var(--hover); color: var(--text); }
+  .tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .tab { flex: 1; padding: 7px 4px; border: none; border-radius: 10px; background: var(--hover); color: var(--text-2); font-size: 12px; font-weight: 600; cursor: pointer; transition: all .18s; }
+  .tab:hover { color: var(--text); }
+  .tab.active { background: var(--btn-bg); color: var(--btn-fg); }
+  .pane { display: none; } .pane.active { display: block; }
+  .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+  .field label { font-size: 12px; color: var(--text-2); font-weight: 600; }
+  .input { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-2); outline: none; transition: border-color .15s; }
+  .input:focus { border-color: #4f86ff; }
+  .input.mono { font-family: ui-monospace, Consolas, monospace; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .hint { font-size: 12px; color: var(--text-3); line-height: 1.7; }
+  .hint a { color: #4f86ff; word-break: break-all; }
+  .box { border: 1px solid var(--border-subtle); border-radius: 10px; padding: 10px 12px; margin-top: 10px; background: var(--surface-2); }
+  .cand { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border-subtle); }
+  .cand:last-child { border-bottom: none; }
+  .cand-main { min-width: 0; }
+  .cand-name { font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .cand-sub { font-size: 11px; color: var(--text-3); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* toast */
+  #toast { position: fixed; bottom: 24px; left: 50%; transform: translate(-50%, 8px); z-index: 60; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 9px 14px; font-size: 12px; box-shadow: var(--toast-shadow); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; max-width: 80vw; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  #toast.err { border-color: var(--err); color: var(--err); }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+  @media (max-width: 560px) { .list { grid-template-columns: 1fr; } .wrap { padding: 12px; } }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <span class="logo">🐻‍❄️</span>
-    <h1>QoderDaddy <small>Qoder 多账号管理 · 每日 Credits 自动签到</small></h1>
-  </header>
-
-  <div class="card">
-    <h2>添加账号</h2>
-    <div class="row">
-      <select id="f-provider">
-        <option value="qoder">Qoder 国际版</option>
-        <option value="qoder-cn">Qoder 国内版</option>
-      </select>
-      <input id="f-name" placeholder="备注名（可选）" style="width:200px">
-      <input id="f-token" placeholder="粘贴 token（jt-…）或 PAT（pt-…）">
-      <button id="btn-add">添加</button>
-      <button class="ghost" id="btn-device">🌐 网络授权登录</button>
-      <button class="ghost" id="btn-local">🔍 检测本机 Qoder</button>
-    </div>
-    <div class="statusline">token 来源：Qoder 客户端本地配置或官方 Personal Access Token（pt- 开头自动兑换）。数据仅保存在本机 ~/.qoderdaddy，服务只监听 127.0.0.1。</div>
-  </div>
-
-  <div class="card">
-    <div class="row" style="justify-content:space-between; margin-bottom:12px">
-      <h2 style="margin:0">账号列表</h2>
-      <div class="row">
-        <button class="ghost" id="btn-checkin">▶ 全部签到</button>
-        <button class="ghost" id="btn-export">导出</button>
-        <button class="ghost" id="btn-import">导入</button>
+  <header class="head">
+    <div class="brand">
+      <span class="logo">Q</span>
+      <div>
+        <div class="title">QoderDaddy</div>
+        <div class="ver" id="ver">Qoder 多账号管理 · 每日 Credits 自动签到</div>
       </div>
     </div>
-    <div id="accounts"><div class="empty">加载中…</div></div>
-    <div class="statusline" id="statusline"></div>
+    <div class="head-right">
+      <span id="sched" class="num"></span>
+      <button class="icon-btn" id="btn-theme" title="切换亮色 / 暗色"></button>
+    </div>
+  </header>
+
+  <div class="panel">
+    <div class="toolbar">
+      <div class="summary">
+        <div class="stat"><span>账号</span><strong id="s-count">0</strong></div>
+        <div class="divider"></div>
+        <div class="stat"><span>今日已签</span><strong id="s-done">0</strong></div>
+        <div class="divider"></div>
+        <div class="stat"><span>剩余 Credits</span><strong id="s-credits">-</strong></div>
+      </div>
+      <div class="actions">
+        <button class="btn primary" id="btn-checkin"></button>
+        <button class="btn" id="btn-add"></button>
+        <button class="btn" id="btn-import"></button>
+        <button class="btn" id="btn-export"></button>
+      </div>
+    </div>
+    <div class="notice" id="notice" style="display:none"></div>
+    <div class="list" id="list"><div class="empty">加载中…</div></div>
   </div>
 
-  <div class="card">
-    <h2>运行日志</h2>
+  <section class="pcard collapsed" id="log-card">
+    <div class="pcard-title">
+      <span>运行日志</span>
+      <button class="btn" id="btn-logs">展开</button>
+    </div>
     <div class="logs" id="logs">（暂无）</div>
-  </div>
+  </section>
 </div>
-<div id="device-box" class="card" style="display:none">
-  <h2>网络授权登录 <span id="dev-provider" class="badge-dim"></span></h2>
-  <div class="statusline" id="dev-status">正在生成授权链接…</div>
-  <div class="row" style="margin-top:10px">
-    <a id="dev-link" href="#" target="_blank" rel="noopener" style="color:var(--accent);word-break:break-all"></a>
-  </div>
-  <div class="row" style="margin-top:10px">
-    <button id="dev-open">打开授权页</button>
-    <button class="ghost" id="dev-cancel">取消</button>
+
+<!-- 添加账号 -->
+<div class="mask" id="m-add">
+  <div class="modal">
+    <div class="modal-title"><span>添加账号</span><button class="close" data-close>✕</button></div>
+    <div class="tabs">
+      <button class="tab active" data-tab="local">本机导入</button>
+      <button class="tab" data-tab="device">网络授权登录</button>
+      <button class="tab" data-tab="token">粘贴 Token</button>
+    </div>
+
+    <div class="pane active" data-pane="local">
+      <div class="hint">读取本机 Qoder 客户端当前登录的账号（本地解密，token 不出本机），并扫描旧版 IDE / CLI 文件。</div>
+      <div class="row" style="margin-top:10px"><button class="btn primary" id="btn-scan">重新扫描</button><span class="hint" id="scan-status"></span></div>
+      <div class="box" id="scan-result"><div class="hint">点击「重新扫描」</div></div>
+    </div>
+
+    <div class="pane" data-pane="device">
+      <div class="field">
+        <label>版本</label>
+        <select class="input" id="dev-provider"><option value="qoder">Qoder 国际版</option><option value="qoder-cn">Qoder 国内版</option></select>
+      </div>
+      <div class="row"><button class="btn primary" id="btn-device">生成授权链接</button><button class="btn" id="dev-cancel" style="display:none">取消</button></div>
+      <div class="box" id="device-box" style="display:none">
+        <div class="hint" id="dev-status"></div>
+        <div class="hint" style="margin-top:6px"><a id="dev-link" href="#" target="_blank" rel="noopener"></a></div>
+      </div>
+    </div>
+
+    <div class="pane" data-pane="token">
+      <div class="field">
+        <label>版本</label>
+        <select class="input" id="f-provider"><option value="qoder">Qoder 国际版</option><option value="qoder-cn">Qoder 国内版</option></select>
+      </div>
+      <div class="field"><label>备注名（可选）</label><input class="input" id="f-name" placeholder="留空则自动读取昵称"></div>
+      <div class="field"><label>Token</label><input class="input mono" id="f-token" placeholder="dt-… / jt-… 或 PAT（pt-…，自动兑换）"></div>
+      <div class="modal-actions"><button class="btn primary" id="btn-add-token">添加</button></div>
+    </div>
   </div>
 </div>
 
-<div id="scan-box" class="card" style="display:none">
-  <h2>本机 Qoder 检测</h2>
-  <div class="statusline" id="scan-status"></div>
-  <div id="scan-result"></div>
+<!-- 导出 -->
+<div class="mask" id="m-export">
+  <div class="modal sm">
+    <div class="modal-title"><span>导出账号</span><button class="close" data-close>✕</button></div>
+    <div class="field">
+      <label>范围</label>
+      <select class="input" id="ex-provider"><option value="">全部账号</option><option value="qoder">仅国际版</option><option value="qoder-cn">仅国内版</option></select>
+    </div>
+    <div class="field">
+      <label>加密口令（可选）</label>
+      <input class="input" id="ex-password" type="password" placeholder="至少 4 位；留空则导出明文">
+    </div>
+    <div class="hint">设置口令后文件采用 10router 迁移格式加密（scrypt + AES-256-GCM），可直接在 10router 的 Qoder 提供商页导入。10router 按提供商导入，建议分别导出国际版 / 国内版。</div>
+    <div class="modal-actions"><button class="btn" data-close>取消</button><button class="btn primary" id="btn-do-export">导出</button></div>
+  </div>
 </div>
 
+<!-- 口令输入 -->
+<div class="mask" id="m-pass">
+  <div class="modal sm">
+    <div class="modal-title"><span>输入口令</span><button class="close" data-close>✕</button></div>
+    <div class="hint" id="pass-hint">该文件已加密，请输入导出时设置的口令。</div>
+    <div class="field" style="margin-top:10px"><input class="input" id="pass-input" type="password"></div>
+    <div class="modal-actions"><button class="btn" data-close>取消</button><button class="btn primary" id="btn-pass-ok">导入</button></div>
+  </div>
+</div>
+
+<input type="file" id="file-input" accept=".json,application/json" style="display:none">
 <div id="toast"></div>
 
 <script>
 'use strict';
-var cache = [];
+
+// ── 图标（Lucide 风格，currentColor） ──
+const svg = (d) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
+const I = {
+  play: svg('<polygon points="6 4 20 12 6 20 6 4"/>'),
+  refresh: svg('<path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/>'),
+  trash: svg('<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>'),
+  plus: svg('<path d="M12 5v14M5 12h14"/>'),
+  upload: svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/>'),
+  download: svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>'),
+  sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
+  moon: svg('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),
+  credit: svg('<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>'),
+};
+
+const $ = (id) => document.getElementById(id);
+const state = { accounts: [], quotas: {}, status: null, busy: {} };
 
 function esc(s) {
   return String(s === null || s === undefined ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+function fmtNum(n) {
+  if (n === null || n === undefined || Number.isNaN(n)) return '-';
+  return Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
+function fmtTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso); if (Number.isNaN(d.getTime())) return '';
+  const p = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+function mask(s) {
+  if (!s) return '';
+  if (s.includes('@')) { const [u, d] = s.split('@'); return (u.length > 2 ? u.slice(0, 2) + '***' : u + '*') + '@' + d; }
+  return s.length > 10 ? s.slice(0, 6) + '…' + s.slice(-4) : s;
+}
 
+let toastTimer = null;
 function toast(msg, ok) {
-  var t = document.getElementById('toast');
+  const t = $('toast');
   t.textContent = msg;
-  t.style.borderColor = ok === false ? 'var(--err)' : 'var(--ok)';
+  t.classList.toggle('err', ok === false);
   t.classList.add('show');
-  clearTimeout(t._h);
-  t._h = setTimeout(function () { t.classList.remove('show'); }, 3200);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 4200);
 }
 
-function getKey() {
-  try { return localStorage.getItem('qd_key') || ''; } catch (e) { return ''; }
-}
-
-function api(p, opts) {
-  opts = opts || {};
+// ── API ──
+function getKey() { try { return localStorage.getItem('qd_key') || ''; } catch (e) { return ''; } }
+async function api(p, opts = {}) {
   opts.headers = Object.assign({}, opts.headers, { 'x-qd-key': getKey() });
-  return fetch(p, opts).then(function (res) {
-    if (res.status === 401) {
-      try { localStorage.removeItem('qd_key'); } catch (e) {}
-    }
-    return res.json().catch(function () { return {}; }).then(function (data) {
-      if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
-      return data;
-    });
-  });
+  if (opts.json !== undefined) {
+    opts.method = opts.method || 'POST';
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(opts.json);
+  }
+  const res = await fetch(p, opts);
+  if (res.status === 401) { try { localStorage.removeItem('qd_key'); } catch (e) {} }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error(data.error || ('HTTP ' + res.status)); e.code = data.code; e.status = res.status; throw e; }
+  return data;
 }
 
-function render(accounts) {
-  cache = accounts;
-  var box = document.getElementById('accounts');
-  if (!accounts.length) {
-    box.innerHTML = '<div class="empty">还没有账号 — 粘贴 token 添加第一个吧</div>';
+// ── 主题 ──
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  $('btn-theme').innerHTML = t === 'dark' ? I.sun : I.moon;
+}
+function initTheme() {
+  let t = null;
+  try { t = localStorage.getItem('qd_theme'); } catch (e) {}
+  if (!t) t = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  applyTheme(t);
+  $('btn-theme').onclick = () => {
+    const n = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    applyTheme(n);
+    try { localStorage.setItem('qd_theme', n); } catch (e) {}
+  };
+}
+
+// ── 状态 / 渲染 ──
+function statusOf(a) {
+  const today = state.status && state.status.today;
+  const done = state.status && state.status.todayDone && state.status.todayDone[a.id] === today;
+  const r = a.lastResult;
+  const fresh = r && r.at && state.status && (Date.now() - new Date(r.at).getTime() < 26 * 3600e3);
+  if (r && fresh && r.status === 'limited' && done) return { cls: 'limited', text: '本机已领', msg: r.message };
+  if (done) {
+    const amt = r && r.status === 'checked-in' && fresh ? ' +' + fmtNum(r.amount) : '';
+    return { cls: 'ok', text: '今日已签' + amt, msg: r && r.message && !['checked-in', 'already'].includes(r.status) ? r.message : '' };
+  }
+  if (r && fresh && r.status === 'failed') return { cls: 'fail', text: '签到失败', msg: r.message, err: true };
+  if (r && fresh && r.status === 'no-activity') return { cls: 'pending', text: '待领取', msg: r.message };
+  return { cls: 'pending', text: '未签到', msg: '' };
+}
+
+function expiryCell(a) {
+  if (!a.expiresAt) return { label: a.isPat ? 'PAT 长期有效' : '—', warn: false };
+  const ms = new Date(a.expiresAt).getTime() - Date.now();
+  if (ms <= 0) return { label: '已过期', warn: true };
+  return { label: fmtTime(a.expiresAt), warn: ms < 7 * 86400e3 };
+}
+
+function creditHtml(a) {
+  const q = state.quotas[a.id];
+  if (!q) return '<div class="credit-line"><span class="dim">读取积分中…</span></div><div class="bar"></div>';
+  if (q.error) return '<div class="credit-line"><span class="dim" title="' + esc(q.error) + '">积分读取失败：' + esc(q.error.slice(0, 40)) + '</span></div><div class="bar"></div>';
+  const parts = [q.userQuota, q.addOnQuota, q.orgResourcePackage].filter((x) => x && x.total > 0);
+  const total = parts.reduce((s, x) => s + (x.total || 0), 0);
+  const remain = parts.reduce((s, x) => s + (x.remaining || 0), 0);
+  const used = parts.reduce((s, x) => s + (x.used || 0), 0);
+  let bar = '';
+  if (total > 0) {
+    const names = ['套餐额度', '附加额度', '组织资源包'];
+    [q.userQuota, q.addOnQuota, q.orgResourcePackage].forEach((x, i) => {
+      if (x && x.remaining > 0) bar += '<span class="seg" style="flex:' + (x.remaining / total).toFixed(4) + ' 1 0;--a:' + (i === 0 ? 1 : .7) + '" title="' + names[i] + '：剩余 ' + fmtNum(x.remaining) + ' / ' + fmtNum(x.total) + '"></span>';
+    });
+    if (used > 0) bar += '<span class="seg used" style="flex:' + (used / total).toFixed(4) + ' 1 0" title="已使用 ' + fmtNum(used) + '"></span>';
+  }
+  return '<div class="credit-line">'
+    + '<span class="credit"><span class="lbl">剩余</span>' + I.credit + '<b>' + fmtNum(remain) + '</b></span>'
+    + '<span class="credit dim">已用 ' + fmtNum(used) + ' / 共 ' + fmtNum(total) + (q.isQuotaExceeded ? ' · <span style="color:var(--err)">已超额</span>' : '') + '</span>'
+    + '</div><div class="bar">' + bar + '</div>';
+}
+
+function cardHtml(a) {
+  const cn = a.provider === 'qoder-cn';
+  const st = statusOf(a);
+  const ex = expiryCell(a);
+  const ident = a.email || (a.uid ? 'UID ' + a.uid.slice(0, 8) : a.tokenMasked);
+  return '<div class="card" data-id="' + esc(a.id) + '">'
+    + '<div class="row1"><div class="name-group">'
+    + '<span class="name" data-act="rename" title="点击修改备注名">' + esc(a.name || '(未命名)') + '</span>'
+    + '<span class="badge ' + (cn ? 'cn' : 'intl') + '">' + (cn ? '国内版' : '国际版') + '</span>'
+    + (a.isPat ? '<span class="badge">PAT</span>' : '')
+    + (a.verified === false ? '<span class="pill fail">token 无效</span>' : '')
+    + '<span class="pill ' + st.cls + '" title="' + esc(a.lastResult ? fmtTime(a.lastResult.at) + ' ' + (a.lastResult.message || a.lastResult.status) : '') + '">' + esc(st.text) + '</span>'
+    + '</div><div class="ops">'
+    + '<button class="icon-btn' + (state.busy[a.id] ? ' busy' : '') + '" data-act="checkin" title="立即签到">' + (state.busy[a.id] ? I.refresh : I.play) + '</button>'
+    + '<button class="icon-btn" data-act="quota" title="刷新积分">' + I.refresh + '</button>'
+    + '<button class="icon-btn del" data-act="del" title="删除（点两次确认）">' + I.trash + '</button>'
+    + '</div></div>'
+    + '<div class="meta">'
+    + '<div class="mi"><span class="lbl">账号</span><span class="val" title="' + esc(a.email || a.uid || '') + '">' + esc(mask(ident)) + '</span></div>'
+    + '<div class="mi right"><span class="lbl">有效期至</span><span class="val' + (ex.warn ? ' warn' : '') + '">' + esc(ex.label) + '</span></div>'
+    + '</div>'
+    + creditHtml(a)
+    + (st.msg ? '<div class="msg' + (st.err ? ' err' : '') + '" title="' + esc(st.msg) + '">' + esc(st.msg) + '</div>' : '')
+    + '</div>';
+}
+
+function render() {
+  const list = $('list');
+  const acc = state.accounts;
+  if (!acc.length) {
+    list.innerHTML = '<div class="empty">还没有账号。<br>点「添加账号」，可一键读取本机 Qoder 客户端已登录的账号，或走网络授权登录。</div>';
+  } else {
+    list.innerHTML = acc.map(cardHtml).join('');
+  }
+  const today = state.status && state.status.today;
+  const done = acc.filter((a) => state.status && state.status.todayDone && state.status.todayDone[a.id] === today).length;
+  $('s-count').textContent = acc.length;
+  $('s-done').textContent = done + ' / ' + acc.length;
+  let sum = 0, known = 0;
+  for (const a of acc) {
+    const q = state.quotas[a.id];
+    if (q && !q.error) {
+      known++;
+      sum += [q.userQuota, q.addOnQuota, q.orgResourcePackage].reduce((s, x) => s + (x && x.remaining > 0 ? x.remaining : 0), 0);
+    }
+  }
+  $('s-credits').textContent = known ? fmtNum(sum) : '-';
+}
+
+function renderStatus() {
+  const s = state.status;
+  if (!s) return;
+  $('ver').textContent = 'v' + s.version + ' · 数据目录 ' + s.dataDir;
+  document.title = 'QoderDaddy v' + s.version;
+  const sch = s.scheduler || {};
+  $('sched').textContent = sch.ticking ? '正在签到…'
+    : sch.nextTickAt ? '下次自动签到 ' + fmtTime(sch.nextTickAt).slice(11) : '';
+  $('sched').title = sch.lastTick ? '上一轮 ' + fmtTime(sch.lastTick.at) + '：' + sch.lastTick.summary : '';
+  const hasIntl = state.accounts.some((a) => a.provider === 'qoder');
+  const n = $('notice');
+  if (hasIntl && !s.riskIdentity) {
+    n.style.display = '';
+    n.textContent = '国际版签到需要本机安装 Qoder 客户端：Qoder 只向带设备风控身份（由客户端生成）的请求下发「每天领 100 Credits」。当前未检测到客户端，国际版账号将无法领取。';
+  } else if (hasIntl) {
+    n.style.display = '';
+    n.textContent = '提示：Qoder 国际版每台设备每天只能有一个账号领取每日 100 Credits（服务端按设备限领），其余国际版账号会显示「本机已领」。';
+  } else {
+    n.style.display = 'none';
+  }
+}
+
+// ── 数据加载 ──
+async function loadStatus() {
+  try { state.status = await api('/api/status'); renderStatus(); } catch (e) {}
+}
+async function loadAccounts() {
+  const data = await api('/api/accounts');
+  state.accounts = data.accounts;
+  render();
+  renderStatus();
+  loadQuotas();
+}
+let quotaRun = 0;
+async function loadQuotas(ids) {
+  const run = ++quotaRun;
+  const queue = (ids || state.accounts.map((a) => a.id)).slice();
+  if (ids) for (const id of ids) delete state.quotas[id];
+  const worker = async () => {
+    while (queue.length && run === quotaRun) {
+      const id = queue.shift();
+      try { state.quotas[id] = (await api('/api/accounts/' + encodeURIComponent(id) + '/quota')).quota; }
+      catch (e) { state.quotas[id] = { error: e.message }; }
+      render();
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+}
+async function loadLogs() {
+  try {
+    const data = await api('/api/logs');
+    const el = $('logs');
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
+    el.innerHTML = data.logs.length ? data.logs.map((l) => '<div class="' + esc(l.level) + '">[' + esc(l.at) + '] ' + esc(l.tag) + ' · ' + esc(l.msg) + '</div>').join('') : '（暂无）';
+    if (atBottom) el.scrollTop = el.scrollHeight;
+  } catch (e) {}
+}
+
+// ── 账号操作 ──
+async function checkinOne(id) {
+  state.busy[id] = true; render();
+  try {
+    const d = await api('/api/accounts/' + encodeURIComponent(id) + '/checkin', { method: 'POST' });
+    const r = d.results && d.results[0];
+    toast(r ? (r.account + '：' + (r.status === 'checked-in' ? '领取成功 +' + r.claimedAmount + ' Credits' : (r.error || r.message || r.status))) : d.summary, !(r && r.status === 'failed'));
+  } catch (e) { toast(e.message, false); }
+  delete state.busy[id];
+  await loadStatus(); await loadAccounts(); loadLogs();
+}
+async function checkinAll() {
+  const b = $('btn-checkin');
+  b.disabled = true; b.innerHTML = I.refresh + '签到中…';
+  try {
+    const d = await api('/api/checkin', { json: { skipIfCheckedToday: false } });
+    toast(d.summary);
+  } catch (e) { toast(e.message, false); }
+  b.disabled = false; b.innerHTML = I.play + '全部签到';
+  await loadStatus(); await loadAccounts(); loadLogs();
+}
+const armed = {};
+async function onCardClick(e) {
+  const btn = e.target.closest('[data-act]');
+  if (!btn) return;
+  const id = btn.closest('.card').dataset.id;
+  const act = btn.dataset.act;
+  if (act === 'checkin') return checkinOne(id);
+  if (act === 'quota') { loadQuotas([id]); return; }
+  if (act === 'rename') {
+    const a = state.accounts.find((x) => x.id === id);
+    const name = prompt('备注名', a && a.name || '');
+    if (name === null) return;
+    try { await api('/api/accounts/' + encodeURIComponent(id), { method: 'PATCH', json: { name } }); await loadAccounts(); }
+    catch (err) { toast(err.message, false); }
     return;
   }
-  var html = '<table><tr><th>账号</th><th>类型</th><th>Token</th><th>上次签到</th><th></th></tr>';
-  for (var i = 0; i < accounts.length; i++) {
-    var a = accounts[i];
-    var cn = a.provider === 'qoder-cn';
-    html += '<tr>'
-      + '<td>' + esc(a.name || '(未命名)') + '</td>'
-      + '<td><span class="tag ' + (cn ? 'cn' : 'intl') + '">' + (cn ? '国内版' : '国际版') + '</span>'
-      + (a.isPat ? '<span class="tag pat">PAT</span>' : '') + '</td>'
-      + '<td class="mono">' + esc(a.tokenMasked) + '</td>'
-      + '<td>' + (a.lastCheckin
-          ? '<span class="badge-ok">' + esc(a.lastCheckin.slice(0, 16).replace('T', ' ')) + '</span>'
-          : '<span class="badge-dim">未签到</span>') + '</td>'
-      + '<td><div class="actions">'
-      + '<button class="ghost" data-act="checkin" data-id="' + esc(a.id) + '">签到</button>'
-      + '<button class="ghost" data-act="quota" data-id="' + esc(a.id) + '">配额</button>'
-      + '<button class="danger" data-act="del" data-id="' + esc(a.id) + '">删除</button>'
-      + '</div></td></tr>';
-  }
-  box.innerHTML = html + '</table>';
-
-  var btns = box.querySelectorAll('button[data-act]');
-  for (var k = 0; k < btns.length; k++) {
-    btns[k].addEventListener('click', function () {
-      var id = this.getAttribute('data-id');
-      var act = this.getAttribute('data-act');
-      var acc = null;
-      for (var j = 0; j < cache.length; j++) if (cache[j].id === id) acc = cache[j];
-      if (act === 'checkin') checkinOne(id);
-      else if (act === 'quota') showQuota(id);
-      else if (act === 'del') removeAccount(id, acc ? (acc.name || id) : id);
-    });
-  }
-}
-
-function loadAccounts() {
-  return api('/api/accounts').then(function (data) {
-    render(data.accounts || []);
-    document.getElementById('statusline').textContent = '数据目录：' + data.dataDir;
-  }).catch(function (e) { toast('加载失败：' + e.message, false); });
-}
-
-function addAccount() {
-  var body = {
-    provider: document.getElementById('f-provider').value,
-    name: document.getElementById('f-name').value.trim() || undefined,
-    token: document.getElementById('f-token').value.trim(),
-  };
-  if (!body.token) return toast('请粘贴 token', false);
-  api('/api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-    .then(function (data) {
-      toast('已添加：' + (data.account.name || data.account.id) + (data.account.verified ? '' : '（token 未能在线校验）'));
-      document.getElementById('f-name').value = '';
-      document.getElementById('f-token').value = '';
-      loadAccounts();
-    })
-    .catch(function (e) { toast(e.message, false); });
-}
-
-function removeAccount(id, name) {
-  if (!confirm('删除账号「' + name + '」？')) return;
-  api('/api/accounts/' + encodeURIComponent(id), { method: 'DELETE' })
-    .then(function () { toast('已删除'); loadAccounts(); })
-    .catch(function (e) { toast(e.message, false); });
-}
-
-function checkinOne(id) {
-  api('/api/accounts/' + encodeURIComponent(id) + '/checkin', { method: 'POST' })
-    .then(function (data) {
-      var r = (data.results || [])[0] || {};
-      var ok = r.status !== 'failed';
-      var msg = r.status === 'checked-in' ? ('签到成功 +' + r.claimedAmount + ' Credits')
-        : (r.message || r.error || r.status);
-      toast(msg, ok);
-      loadAccounts();
-    })
-    .catch(function (e) { toast(e.message, false); });
-}
-
-function checkinAll() {
-  api('/api/checkin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ skipIfCheckedToday: false }) })
-    .then(function (data) { toast(data.summary || '完成'); loadAccounts(); })
-    .catch(function (e) { toast(e.message, false); });
-}
-
-function showQuota(id) {
-  api('/api/accounts/' + encodeURIComponent(id) + '/quota')
-    .then(function (data) { toast('配额：' + JSON.stringify(data.quota).slice(0, 180)); })
-    .catch(function (e) { toast(e.message, false); });
-}
-
-function exportAccounts() {
-  api('/api/export', { method: 'POST' }).then(function (payload) {
-    var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'qoderdaddy-backup-' + new Date().toISOString().slice(0, 10) + '.json';
-    a.click();
-    toast('已导出（含明文 token，注意保管）');
-  }).catch(function (e) { toast(e.message, false); });
-}
-
-function importAccounts() {
-  var input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.json,application/json';
-  input.onchange = function () {
-    var file = input.files && input.files[0];
-    if (!file) return;
-    file.text().then(function (text) {
-      return api('/api/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: text });
-    }).then(function (r) {
-      toast('导入完成：新增 ' + r.added + '，跳过 ' + r.skipped);
-      loadAccounts();
-    }).catch(function (e) { toast(e.message, false); });
-  };
-  input.click();
-}
-
-function loadLogs() {
-  api('/api/logs').then(function (data) {
-    var el = document.getElementById('logs');
-    var logs = data.logs || [];
-    if (!logs.length) { el.textContent = '（暂无）'; return; }
-    var html = '';
-    for (var i = 0; i < logs.length; i++) {
-      var l = logs[i];
-      html += '<div class="' + esc(l.level) + '">[' + esc(l.at) + '] ' + esc(l.tag) + ' · ' + esc(l.msg) + '</div>';
+  if (act === 'del') {
+    if (!armed[id]) {
+      armed[id] = setTimeout(() => { delete armed[id]; btn.classList.remove('armed'); }, 3000);
+      btn.classList.add('armed');
+      toast('再点一次确认删除');
+      return;
     }
-    el.innerHTML = html;
-  }).catch(function () {});
+    clearTimeout(armed[id]); delete armed[id];
+    try { await api('/api/accounts/' + encodeURIComponent(id), { method: 'DELETE' }); toast('已删除'); delete state.quotas[id]; await loadAccounts(); }
+    catch (err) { toast(err.message, false); }
+  }
 }
 
-// ── 设备码授权登录 ──
-var devTimer = null;
-var devGen = 0;   // 每次发起/取消授权递增，丢弃过期会话的在途轮询结果
-function deviceLogin() {
-  var provider = document.getElementById('f-provider').value;
-  api('/api/auth/device/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: provider }) })
-    .then(function (flow) {
-      var box = document.getElementById('device-box');
-      box.style.display = '';
-      document.getElementById('dev-provider').textContent = provider === 'qoder-cn' ? '国内版' : '国际版';
-      document.getElementById('dev-status').textContent = '请在浏览器打开授权页并选择账号授权（' + Math.floor(flow.expiresIn / 60) + ' 分钟内有效）';
-      var link = document.getElementById('dev-link');
-      link.href = flow.url;
-      link.textContent = flow.url;
-      document.getElementById('dev-open').onclick = function () { window.open(flow.url, '_blank'); };
-      pollDevice(flow.sessionId, 0, ++devGen);
-    })
-    .catch(function (e) { toast('发起授权失败：' + e.message, false); });
+// ── 弹窗 ──
+function openModal(id) { $(id).classList.add('show'); }
+function closeModal(id) { $(id).classList.remove('show'); if (id === 'm-add') deviceStop(); }
+document.querySelectorAll('.mask').forEach((m) => {
+  m.addEventListener('mousedown', (e) => { if (e.target === m) closeModal(m.id); });
+  m.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => closeModal(m.id)));
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.querySelectorAll('.mask.show').forEach((m) => closeModal(m.id)); });
+document.querySelectorAll('#m-add .tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+function switchTab(name) {
+  document.querySelectorAll('#m-add .tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('#m-add .pane').forEach((p) => p.classList.toggle('active', p.dataset.pane === name));
 }
-function pollDevice(sessionId, n, gen) {
+
+// 本机导入
+async function localScan() {
+  const box = $('scan-result');
+  $('scan-status').textContent = '扫描中（最多约 10 秒）…';
+  box.innerHTML = '<div class="hint">正在读取本机 Qoder 客户端凭据…</div>';
+  try {
+    const r = await api('/api/local/scan', { method: 'POST' });
+    $('scan-status').textContent = '';
+    let html = '';
+    for (const c of r.candidates) {
+      const cn = c.provider === 'qoder-cn';
+      const title = c.kind === 'app' ? esc(c.name || c.email || '(未命名)') : '<span style="font-family:monospace">' + esc(c.tokenMasked) + '</span>';
+      const prov = c.provider ? '<span class="badge ' + (cn ? 'cn' : 'intl') + '">' + (cn ? '国内版' : '国际版') + '</span>' : '<span class="badge">' + esc(c.kind) + '</span>';
+      const sub = c.kind === 'app'
+        ? esc(c.source) + (c.email ? ' · ' + esc(mask(c.email)) : '') + (c.expiresAt ? ' · 有效期至 ' + esc(fmtTime(c.expiresAt)) : '')
+        : esc(c.source) + ' · ' + esc(String(c.file || '').split(/[\\/]/).pop()) + '（' + c.hits + ' 处）';
+      const btns = c.imported ? '<span class="pill ok">已导入</span>' + (c.provider ? '<button class="btn" data-cid="' + esc(c.id) + '" title="用本机凭据更新 token / 有效期 / 邮箱">同步信息</button>' : '')
+        : c.provider ? '<button class="btn primary" data-cid="' + esc(c.id) + '">导入</button>'
+        : '<button class="btn" data-cid="' + esc(c.id) + '" data-prov="qoder">导入·国际</button><button class="btn" data-cid="' + esc(c.id) + '" data-prov="qoder-cn">导入·国内</button>';
+      html += '<div class="cand"><div class="cand-main"><div class="cand-name">' + title + prov + '</div><div class="cand-sub">' + sub + '</div></div><div class="row">' + btns + '</div></div>';
+    }
+    for (const e of r.errors || []) html += '<div class="hint" style="color:var(--err)">读取失败：' + esc(e.file) + '：' + esc(e.error) + '</div>';
+    if (!r.candidates.length) {
+      html += '<div class="hint">未发现已登录的 Qoder 账号。请先在 Qoder 客户端登录，或改用「网络授权登录」。<br>已检查：Qoder / Qoder CN 客户端数据目录'
+        + (r.scannedDirs && r.scannedDirs.length ? '、' + r.scannedDirs.map(esc).join('、') : '') + '</div>';
+    }
+    box.innerHTML = html;
+    box.querySelectorAll('button[data-cid]').forEach((b) => b.addEventListener('click', async () => {
+      b.disabled = true;
+      try {
+        const d = await api('/api/local/import', { json: { candidateId: b.dataset.cid, provider: b.dataset.prov } });
+        toast((d.updated ? '已更新：' : '已导入：') + (d.account.name || d.account.id));
+        await loadAccounts();
+        localScan();
+      } catch (e) { toast(e.message, false); b.disabled = false; }
+    }));
+  } catch (e) {
+    $('scan-status').textContent = '';
+    box.innerHTML = '<div class="hint" style="color:var(--err)">扫描失败：' + esc(e.message) + '</div>';
+  }
+}
+
+// 网络授权登录
+let devTimer = null;
+let devGen = 0;   // 每次发起/取消授权递增，丢弃过期会话的在途轮询结果
+async function deviceLogin() {
+  const provider = $('dev-provider').value;
+  try {
+    const flow = await api('/api/auth/device/start', { json: { provider } });
+    $('device-box').style.display = '';
+    $('dev-cancel').style.display = '';
+    $('dev-status').textContent = '请在浏览器打开下方链接并选择账号授权（' + Math.floor(flow.expiresIn / 60) + ' 分钟内有效）';
+    $('dev-link').href = flow.url;
+    $('dev-link').textContent = flow.url;
+    window.open(flow.url, '_blank');
+    pollDevice(flow.sessionId, 0, ++devGen);
+  } catch (e) { toast('发起授权失败：' + e.message, false); }
+}
+async function pollDevice(sessionId, n, gen) {
   if (gen !== devGen) return;
-  api('/api/auth/device/poll', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: sessionId }) })
-    .then(function (r) {
-      if (gen !== devGen) return;
-      if (r.status === 'pending') {
-        if (n > 150) { deviceStop('授权超时，请重试'); return; }
-        document.getElementById('dev-status').textContent = '等待浏览器授权中…（' + n + '）';
-        devTimer = setTimeout(function () { pollDevice(sessionId, n + 1, gen); }, 2000);
-      } else if (r.status === 'ok') {
-        deviceStop('✓ 授权成功：' + (r.account.name || r.account.id) + (r.already ? '（已存在）' : ''));
-        loadAccounts();
-      } else if (r.status === 'expired') {
-        deviceStop('会话已过期，请重新发起');
-      } else {
-        deviceStop('授权失败：' + (r.error || r.status));
-      }
-    })
-    .catch(function (e) { if (gen === devGen) deviceStop('轮询异常：' + e.message); });
+  try {
+    const r = await api('/api/auth/device/poll', { json: { sessionId } });
+    if (gen !== devGen) return;
+    if (r.status === 'pending') {
+      if (n > 150) return deviceStop('授权超时，请重试');
+      $('dev-status').textContent = '等待浏览器授权中…（' + n + '）';
+      devTimer = setTimeout(() => pollDevice(sessionId, n + 1, gen), 2000);
+    } else if (r.status === 'ok') {
+      deviceStop('✓ 授权成功：' + (r.account.name || r.account.id) + (r.already ? '（已存在）' : ''));
+      loadAccounts();
+    } else if (r.status === 'expired') {
+      deviceStop('会话已过期，请重新发起');
+    } else {
+      deviceStop('授权失败：' + (r.error || r.status));
+    }
+  } catch (e) { if (gen === devGen) deviceStop('轮询异常：' + e.message); }
 }
 function deviceStop(msg) {
   devGen++;
   if (devTimer) { clearTimeout(devTimer); devTimer = null; }
-  document.getElementById('dev-status').textContent = msg;
-  setTimeout(function () { document.getElementById('device-box').style.display = 'none'; }, 4000);
+  $('dev-cancel').style.display = 'none';
+  if (msg) $('dev-status').textContent = msg;
 }
 
-// ── 本机检测 / token 扫描 ──
-function localDetect() {
-  var box = document.getElementById('scan-box');
-  box.style.display = '';
-  document.getElementById('scan-status').textContent = '检测本机安装…';
-  api('/api/local/detect').then(function (det) {
-    var lines = [];
-    lines.push('平台：' + det.platform + ' | IDE 安装：' + (det.installed ? '✓ 是' : '✗ 未检测到'));
-    for (var i = 0; i < det.ide.length; i++) lines.push('· ' + det.ide[i].path + (det.ide[i].exists ? ' ✓' : ''));
-    lines.push('· 数据目录：' + det.ideDataDirs.map(function (d) { return d.path + (d.exists ? ' ✓' : ''); }).join(' , '));
-    lines.push('· CLI 目录 ~/.qoder：' + (det.cliDir.exists ? '✓ 存在' : '不存在'));
-    document.getElementById('scan-status').textContent = lines.join('\n');
-    document.getElementById('scan-result').innerHTML = '<div class="empty">正在扫描本机 token（最多 6 秒）…</div>';
-    return api('/api/local/scan', { method: 'POST' });
-  }).then(function (r) {
-    var box = document.getElementById('scan-result');
-    if (!r.candidates.length) {
-      box.innerHTML = '<div class="empty">未在本机发现 Qoder token（扫描 ' + r.scanned + ' 个文件）。<br>可先用上方「网络授权登录」添加账号。</div>';
-      return;
-    }
-    var html = '<table><tr><th>类型</th><th>Token</th><th>来源</th><th></th></tr>';
-    for (var i = 0; i < r.candidates.length; i++) {
-      var c = r.candidates[i];
-      html += '<tr><td><span class="tag ' + (c.kind === 'PAT' ? 'cn' : 'intl') + '">' + c.kind + '</span></td>'
-        + '<td class="mono">' + esc(c.tokenMasked) + '</td>'
-        + '<td style="font-size:12px;color:var(--dim)">' + esc(c.file.split(/[\\/]/).pop()) + '（' + c.hits + ' 处）</td>'
-        + '<td><div class="actions">'
-        + '<button class="ghost" data-cid="' + esc(c.id) + '" data-sel="intl">导入·国际</button>'
-        + '<button class="ghost" data-cid="' + esc(c.id) + '" data-sel="cn">导入·国内</button>'
-        + '</div></td></tr>';
-    }
-    box.innerHTML = html + '</table>';
-    var btns = box.querySelectorAll('button[data-cid]');
-    for (var k = 0; k < btns.length; k++) {
-      btns[k].addEventListener('click', function () {
-        var cid = this.getAttribute('data-cid');
-        var provider = this.getAttribute('data-sel') === 'cn' ? 'qoder-cn' : 'qoder';
-        api('/api/local/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidateId: cid, provider: provider }) })
-          .then(function (d) { toast('已导入：' + (d.account.name || d.account.id)); loadAccounts(); })
-          .catch(function (e) { toast(e.message, false); });
-      });
-    }
-  }).catch(function (e) { toast('检测失败：' + e.message, false); });
+// 粘贴 token
+async function addToken() {
+  const token = $('f-token').value.trim();
+  if (!token) return toast('请粘贴 token', false);
+  const b = $('btn-add-token'); b.disabled = true;
+  try {
+    const d = await api('/api/accounts', { json: { provider: $('f-provider').value, name: $('f-name').value.trim(), token } });
+    toast('已添加：' + (d.account.name || d.account.id) + (d.account.verified === false ? '（token 校验失败，请检查）' : ''), d.account.verified !== false);
+    $('f-token').value = ''; $('f-name').value = '';
+    closeModal('m-add');
+    await loadAccounts();
+  } catch (e) { toast(e.message, false); }
+  b.disabled = false;
 }
 
-document.getElementById('btn-device').addEventListener('click', deviceLogin);
-document.getElementById('btn-local').addEventListener('click', localDetect);
-document.getElementById('dev-cancel').addEventListener('click', function () { deviceStop('已取消'); });
+// 导出
+async function doExport() {
+  const password = $('ex-password').value;
+  if (password && password.length < 4) return toast('口令至少 4 位', false);
+  try {
+    const payload = await api('/api/export', { json: { password: password || undefined, provider: $('ex-provider').value || undefined } });
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'qoderdaddy-' + ($('ex-provider').value || 'all') + '-' + new Date().toISOString().slice(0, 10) + (password ? '.secure' : '') + '.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    $('ex-password').value = '';
+    closeModal('m-export');
+    toast(password ? '已导出加密文件（可导入 10router）' : '已导出明文文件，内含 token，请妥善保管');
+  } catch (e) { toast(e.message, false); }
+}
 
-document.getElementById('btn-add').addEventListener('click', addAccount);
-document.getElementById('btn-checkin').addEventListener('click', checkinAll);
-document.getElementById('btn-export').addEventListener('click', exportAccounts);
-document.getElementById('btn-import').addEventListener('click', importAccounts);
-document.getElementById('f-token').addEventListener('keydown', function (e) { if (e.key === 'Enter') addAccount(); });
+// 导入
+let pendingImport = null;
+function pickImport() { $('file-input').value = ''; $('file-input').click(); }
+$('file-input').addEventListener('change', async () => {
+  const f = $('file-input').files[0];
+  if (!f) return;
+  let data;
+  try { data = JSON.parse(await f.text()); } catch (e) { return toast('文件不是合法 JSON', false); }
+  pendingImport = data;
+  if (data && data.format === '10router-oauth-secure-v1') {
+    $('pass-hint').textContent = '「' + f.name + '」已加密（QoderDaddy / 10router 迁移格式），请输入导出时设置的口令。';
+    $('pass-input').value = '';
+    openModal('m-pass');
+    setTimeout(() => $('pass-input').focus(), 50);
+  } else {
+    submitImport();
+  }
+});
+async function submitImport(password) {
+  try {
+    const d = await api('/api/import', { json: { data: pendingImport, password } });
+    closeModal('m-pass');
+    toast('导入完成（' + (d.source === '10router' ? '10router' : 'QoderDaddy') + '）：新增 ' + d.added + '，续期 ' + d.updated + '，跳过 ' + d.skipped);
+    pendingImport = null;
+    await loadAccounts();
+  } catch (e) {
+    if (e.code === 'WRONG_PASSWORD' || e.code === 'NEED_PASSWORD') { $('pass-hint').textContent = e.message; $('pass-input').select(); openModal('m-pass'); }
+    else toast(e.message, false);
+  }
+}
 
-// 启动：先直接请求（本机模式无需密钥）；只有服务端返回 401 时才询问密钥
+// ── 绑定 ──
+$('btn-checkin').innerHTML = I.play + '全部签到';
+$('btn-add').innerHTML = I.plus + '添加账号';
+$('btn-import').innerHTML = I.upload + '导入';
+$('btn-export').innerHTML = I.download + '导出';
+$('btn-checkin').onclick = checkinAll;
+$('btn-add').onclick = () => { openModal('m-add'); switchTab('local'); localScan(); };
+$('btn-import').onclick = pickImport;
+$('btn-export').onclick = () => openModal('m-export');
+$('btn-do-export').onclick = doExport;
+$('btn-pass-ok').onclick = () => submitImport($('pass-input').value);
+$('pass-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') submitImport($('pass-input').value); });
+$('btn-scan').onclick = localScan;
+$('btn-device').onclick = deviceLogin;
+$('dev-cancel').onclick = () => deviceStop('已取消');
+$('btn-add-token').onclick = addToken;
+$('f-token').addEventListener('keydown', (e) => { if (e.key === 'Enter') addToken(); });
+$('list').addEventListener('click', onCardClick);
+$('btn-logs').onclick = () => {
+  const c = $('log-card').classList.toggle('collapsed');
+  $('btn-logs').textContent = c ? '展开' : '收起';
+  if (!c) { loadLogs(); $('logs').scrollTop = $('logs').scrollHeight; }
+};
+
+// ── 启动：先直接请求（本机模式无需密钥）；只有服务端返回 401 时才询问密钥 ──
+initTheme();
 (function boot() {
-  function start() { loadAccounts(); loadLogs(); setInterval(loadLogs, 10000); }
+  function start() {
+    loadStatus().then(loadAccounts).catch((e) => toast(e.message, false));
+    loadLogs();
+    setInterval(loadLogs, 10000);
+    setInterval(async () => { await loadStatus(); render(); }, 30000);
+  }
   function askKey(first) {
-    var k = prompt((first ? '' : '密钥无效，请重新输入。\n') + '请输入 QoderDaddy 访问密钥\n（NAS 上见 '
-      + (window.QD_DATA_HINT || 'panel_key 文件或安装完成提示') + '）', '');
+    const k = prompt((first ? '' : '密钥无效，请重新输入。\n') + '请输入 QoderDaddy 访问密钥\n（NAS 上见 panel_key 文件或安装完成提示）', '');
     if (k === null) { toast('未输入访问密钥，刷新页面可重试', false); return; }
     try { localStorage.setItem('qd_key', k.trim()); } catch (e) {}
     probe(false);
   }
   function probe(first) {
-    fetch('/api/status', { headers: { 'x-qd-key': getKey() } }).then(function (res) {
+    fetch('/api/status', { headers: { 'x-qd-key': getKey() } }).then((res) => {
       if (res.status === 401) { askKey(first); return; }
       start();
-    }).catch(function (e) { toast('无法连接守护进程：' + e.message, false); });
+    }).catch((e) => toast('无法连接守护进程：' + e.message, false));
   }
   probe(true);
 })();
