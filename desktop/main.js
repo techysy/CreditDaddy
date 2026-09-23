@@ -1,5 +1,6 @@
 const { app, BrowserWindow, Tray, Menu, nativeImage, shell } = require('electron');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 
 const PORT = 47860;
 let win = null;
@@ -19,8 +20,8 @@ async function boot() {
   app.setAppUserModelId('cn.techysy.qoderdaddy');
   Menu.setApplicationMenu(null);
   try {
-    const daemon = await import(path.join(process.resourcesPath, 'qoderdaddy', 'src', 'daemon.js'));
-    const checkin = await import(path.join(process.resourcesPath, 'qoderdaddy', 'src', 'checkin.js'));
+    const daemon = await import(pathToFileURL(path.join(process.resourcesPath, 'qoderdaddy', 'src', 'daemon.js')).href);
+    const checkin = await import(pathToFileURL(path.join(process.resourcesPath, 'qoderdaddy', 'src', 'checkin.js')).href);
     const r = await daemon.startDaemon(PORT, '127.0.0.1');
     boundPort = r.port;
     checkin.startScheduler();
