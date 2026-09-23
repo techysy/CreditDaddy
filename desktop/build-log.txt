@@ -1,0 +1,20 @@
+  • electron-builder  version=25.1.8 os=10.0.26100
+  • loaded configuration  file=package.json ("build" field)
+  • author is missed in the package.json  appPackageFile=D:\a\QoderDaddy\QoderDaddy\desktop\app\package.json
+  • installing production dependencies  platform=win32 arch=x64 appDir=D:\a\QoderDaddy\QoderDaddy\desktop\app
+  • executing @electron/rebuild  electronVersion=37.10.3 arch=x64 buildFromSource=false appDir=app
+  • installing native dependencies  arch=x64
+  • completed installing native dependencies
+  • packaging       platform=win32 arch=x64 electron=37.10.3 appOutDir=dist\win-unpacked
+  • downloading     url=https://npmmirror.com/mirrors/electron/v37.10.3/electron-v37.10.3-win32-x64.zip size=134 MB parts=8
+  • downloaded      url=https://npmmirror.com/mirrors/electron/v37.10.3/electron-v37.10.3-win32-x64.zip duration=5.755s
+  • asar usage is disabled — this is strongly not recommended  solution=enable asar and use asarUnpack to unpack files that must be externally available
+  ⨯ Application entry file "D:\a\QoderDaddy\QoderDaddy\desktop\dist\win-unpacked\resources\app\index.js" does not exist. Seems like a wrong configuration.  failedTask=build stackTrace=Error: Application entry file "D:\a\QoderDaddy\QoderDaddy\desktop\dist\win-unpacked\resources\app\index.js" does not exist. Seems like a wrong configuration.
+    at WinPackager.checkFileInPackage (D:\a\QoderDaddy\QoderDaddy\desktop\node_modules\app-builder-lib\src\platformPackager.ts:552:15)
+    at WinPackager.sanityCheckPackage (D:\a\QoderDaddy\QoderDaddy\desktop\node_modules\app-builder-lib\src\platformPackager.ts:575:5)
+    at WinPackager.doPack (D:\a\QoderDaddy\QoderDaddy\desktop\node_modules\app-builder-lib\src\platformPackager.ts:329:5)
+    at WinPackager.pack (D:\a\QoderDaddy\QoderDaddy\desktop\node_modules\app-builder-lib\src\platformPackager.ts:138:5)
+    at Packager.doBuild (D:\a\QoderDaddy\QoderDaddy\desktop\node_modules\app-builder-lib\src\packager.ts:459:9)
+    at executeFinally (D:\a\QoderDaddy\QoderDaddy\desktop\node_modules\builder-util\src\promise.ts:12:14)
+    at Packager.build (D:\a\QoderDaddy\QoderDaddy\desktop\node_modules\app-builder-lib\src\packager.ts:393:31)
+    at executeFinally (D:\a\QoderDaddy\QoderDaddy\desktop\node_modules\builder-util\src\promise.ts:12:14)

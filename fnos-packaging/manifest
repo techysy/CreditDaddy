@@ -1,0 +1,15 @@
+appname               = qoderdaddy
+version               = 0.1.1
+display_name          = QoderDaddy
+desc                  = Qoder 多账号本地管理 + 每日 Credits 自动签到（面板端口 47860）
+platform              = x86
+source                = thirdparty
+maintainer            = qoderdaddy
+maintainer_url        = https://github.com/qoderdaddy/QoderDaddy
+distributor           = qoderdaddy
+distributor_url       = https://github.com/qoderdaddy/QoderDaddy
+desktop_uidir         = ui
+desktop_applaunchname = qoderdaddy.Application
+service_port          = 47860
+ctl_stop              = true
+install_dep_apps      = nodejs_v24

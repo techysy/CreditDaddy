@@ -1,0 +1,27 @@
+#!/bin/bash
+# 升级后置：panel_key 保留不覆盖，重启由 fnOS 调 cmd/main restart
+set -uo pipefail
+
+APP_NAME="${TRIM_APPNAME:-qoderdaddy}"
+APP_DIR="${TRIM_APPDEST:-/var/apps/${APP_NAME}}"
+APP_VOL=""
+if [ -n "${TRIM_PKGVAR:-}" ]; then
+    DATA_DIR="${TRIM_PKGVAR}"
+else
+    if [ -L "${APP_DIR}/home" ]; then
+        APP_HOME="$(readlink -f "${APP_DIR}/home")"
+        APP_VOL="$(printf '%s' "${APP_HOME}" | awk -F/ 'NF>2 && $2 ~ /^vol/ {print "/"$2; exit}')"
+    fi
+    if [ -z "${APP_VOL}" ]; then
+        APP_VOL="$(printf '%s' "${APP_DIR}" | awk -F/ 'NF>2 && $2 ~ /^vol/ {print "/"$2; exit}')"
+    fi
+    if [ -n "${APP_VOL}" ]; then
+        DATA_DIR="${APP_VOL}/@appdata/${APP_NAME}"
+    else
+        DATA_DIR="${APP_DIR}/var"
+    fi
+fi
+LOG="${DATA_DIR}/install.log"
+mkdir -p "${DATA_DIR}"
+echo "[$(date '+%F %T')] upgrade_callback: ok" >> "${LOG}"
+exit 0

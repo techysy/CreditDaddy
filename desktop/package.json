@@ -1,0 +1,59 @@
+{
+  "name": "qoderdaddy-desktop",
+  "productName": "QoderDaddy",
+  "version": "0.1.1",
+  "description": "QoderDaddy desktop shell - Qoder 多账号管理与每日 Credits 自动签到",
+  "main": "main.js",
+  "author": "techysy",
+  "license": "MIT",
+  "scripts": {
+    "dist": "electron-builder --win --x64"
+  },
+  "devDependencies": {
+    "electron": "^37.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "cn.techysy.qoderdaddy",
+    "productName": "QoderDaddy",
+    "directories": {
+      "output": "dist",
+      "buildResources": "."
+    },
+    "asar": false,
+    "files": [
+      "main.js",
+      "package.json",
+      "icon.png",
+      "icon.ico",
+      "app/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "QoderDaddy-Setup-${version}.${ext}",
+      "shortcutName": "QoderDaddy"
+    },
+    "portable": {
+      "artifactName": "QoderDaddy-Portable-${version}.${ext}"
+    }
+  },
+  "type": "commonjs"
+}
