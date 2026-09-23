@@ -79,6 +79,16 @@ CLI 用法：
     src/logger.js        环形缓冲日志
     test/                冒烟测试
 
+## Windows 桌面版（Electron 壳）
+
+Releases 下载 **QoderDaddy-Setup-x.y.z.exe**（安装版）或 **QoderDaddy-Portable-x.y.z.exe**（免安装）：
+
+- 打开即用：内置 Node daemon，无需单独安装 Node.js
+- 关闭窗口 = 最小化到托盘，**后台自动签到不中断**；托盘菜单可"打开面板 / 立即签到 / 退出"
+- 数据仍存 `%USERPROFILE%\.qoderdaddy`（便携版与安装版通用同一数据目录）
+
+fnOS / NAS 用户请用 **fpk** 包（见 DEPLOY.md）；两者功能一致，面板都在 `127.0.0.1:47860`。
+
 ## License
 
 MIT

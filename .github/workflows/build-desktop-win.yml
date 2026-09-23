@@ -1,0 +1,80 @@
+name: Build QoderDaddy desktop (Windows)
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Stage app bundle into desktop/app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p desktop/app
+          cp -r bin src package.json README.md desktop/app/
+          ls desktop/app/
+
+      - name: Install desktop dependencies
+        run: npm install --no-audit --no-fund
+        working-directory: desktop
+
+      - name: Package Windows artifacts (unsigned)
+        run: npx electron-builder --win --x64
+        working-directory: desktop
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-win-unsigned
+          path: |
+            desktop/dist/QoderDaddy-Setup-*.exe
+            desktop/dist/QoderDaddy-Portable-*.exe
+          if-no-files-found: error
+
+      - name: Assemble release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-files
+          cp desktop/dist/QoderDaddy-Setup-*.exe release-files/
+          cp desktop/dist/QoderDaddy-Portable-*.exe release-files/
+          ( cd release-files && sha256sum *.exe > SHA256SUMS-desktop.txt )
+          cat release-files/SHA256SUMS-desktop.txt
+
+      - name: Ensure release exists with title
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          gh release view "${{ github.ref_name }}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "${{ github.ref_name }}" --repo "$GITHUB_REPOSITORY" \
+              --title "QoderDaddy ${{ github.ref_name }}" \
+              --notes "QoderDaddy release: Qoder 多账号管理与每日 Credits 自动签到."
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Upload desktop artifacts to Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -lh release-files/
+          N=$(ls release-files/*.exe release-files/SHA256SUMS-desktop.txt 2>/dev/null | wc -l)
+          [ "$N" -ge 3 ] || { echo "ERROR: expected >=3 files, found $N"; exit 1; }
+          gh release upload "${{ github.ref_name }}" \
+            release-files/*.exe \
+            release-files/SHA256SUMS-desktop.txt \
+            --clobber --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}

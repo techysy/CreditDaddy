@@ -3,3 +3,6 @@ node_modules/
 .DS_Store
 fnos-packaging/*.fpk
 fnos-packaging/.tmp-*/
+desktop/node_modules/
+desktop/dist/
+desktop/app/

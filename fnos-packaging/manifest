@@ -1,5 +1,5 @@
 appname               = qoderdaddy
-version               = 0.1.0
+version               = 0.1.1
 display_name          = QoderDaddy
 desc                  = Qoder 多账号本地管理 + 每日 Credits 自动签到（面板端口 47860）
 platform              = x86

@@ -31,7 +31,7 @@ import {
 } from './store.js';
 import { runCheckinTick } from './checkin.js';
 import { fetchUserinfo, fetchQuotaUsage } from './qoderClient.js';
-import { PROVIDER_LABEL } from './constants.js';
+import { PROVIDER_LABEL, APP_VERSION } from './constants.js';
 
 /** 可选访问密钥：设置 QODERDADDY_PASSWORD 后，所有 /api/* 需要 x-qd-key 头（或 ?key=）。
  *  fnOS/NAS 部署监听 0.0.0.0 时由 cmd/main 自动生成并注入。 */
@@ -154,7 +154,7 @@ async function handleApi(req, res, url) {
     return json(res, 200, {
       ok: true,
       app: 'QoderDaddy',
-      version: '0.1.0',
+      version: APP_VERSION,
       accountsCount: accounts.length,
       dataDir: dataDir(),
       todayDone: state?.qoderDailyDone || {},
@@ -214,12 +214,27 @@ export function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
   });
 
   return new Promise((resolve) => {
-    server.listen(port, host, () => {
-      logger.info('DAEMON', `QoderDaddy 守护进程已启动：http://${host}:${port}`);
-      if ((host === '0.0.0.0' || host === '::') && !PANEL_KEY) {
-        logger.warn('DAEMON', '监听 0.0.0.0 且未设置 QODERDADDY_PASSWORD —— 局域网内任何人可访问账号 API，建议设置访问密钥');
-      }
-      resolve(server);
-    });
+    let attempts = 0;
+    const bind = (p) => {
+      server.once('error', (err) => {
+        if (err && err.code === 'EADDRINUSE' && attempts < 10) {
+          attempts += 1;
+          logger.warn('DAEMON', `端口 ${p} 被占用，改试 ${p + 1}`);
+          server.close();
+          setTimeout(() => bind(p + 1), 300);
+        } else {
+          logger.error('DAEMON', `监听失败：${err?.message || err}`);
+        }
+      });
+      server.listen(p, host, () => {
+        const bound = server.address().port;
+        logger.info('DAEMON', `QoderDaddy 守护进程已启动：http://${host}:${bound}`);
+        if ((host === '0.0.0.0' || host === '::') && !PANEL_KEY) {
+          logger.warn('DAEMON', '监听 0.0.0.0 且未设置 QODERDADDY_PASSWORD —— 局域网内任何人可访问账号 API，建议设置访问密钥');
+        }
+        resolve({ server, port: bound });
+      });
+    };
+    bind(Number(port) || DEFAULT_PORT);
   });
 }
