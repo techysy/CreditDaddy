@@ -81,6 +81,8 @@
       <input id="f-name" placeholder="备注名（可选）" style="width:200px">
       <input id="f-token" placeholder="粘贴 token（jt-…）或 PAT（pt-…）">
       <button id="btn-add">添加</button>
+      <button class="ghost" id="btn-device">🌐 网络授权登录</button>
+      <button class="ghost" id="btn-local">🔍 检测本机 Qoder</button>
     </div>
     <div class="statusline">token 来源：Qoder 客户端本地配置或官方 Personal Access Token（pt- 开头自动兑换）。数据仅保存在本机 ~/.qoderdaddy，服务只监听 127.0.0.1。</div>
   </div>
@@ -103,6 +105,24 @@
     <div class="logs" id="logs">（暂无）</div>
   </div>
 </div>
+<div id="device-box" class="card" style="display:none">
+  <h2>网络授权登录 <span id="dev-provider" class="badge-dim"></span></h2>
+  <div class="statusline" id="dev-status">正在生成授权链接…</div>
+  <div class="row" style="margin-top:10px">
+    <a id="dev-link" href="#" target="_blank" rel="noopener" style="color:var(--accent);word-break:break-all"></a>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <button id="dev-open">打开授权页</button>
+    <button class="ghost" id="dev-cancel">取消</button>
+  </div>
+</div>
+
+<div id="scan-box" class="card" style="display:none">
+  <h2>本机 Qoder 检测</h2>
+  <div class="statusline" id="scan-status"></div>
+  <div id="scan-result"></div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -279,6 +299,97 @@ function loadLogs() {
     el.innerHTML = html;
   }).catch(function () {});
 }
+
+// ── 设备码授权登录 ──
+var devTimer = null;
+function deviceLogin() {
+  var provider = document.getElementById('f-provider').value;
+  api('/api/auth/device/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: provider }) })
+    .then(function (flow) {
+      var box = document.getElementById('device-box');
+      box.style.display = '';
+      document.getElementById('dev-provider').textContent = provider === 'qoder-cn' ? '国内版' : '国际版';
+      document.getElementById('dev-status').textContent = '请在浏览器打开授权页并选择账号授权（' + Math.floor(flow.expiresIn / 60) + ' 分钟内有效）';
+      var link = document.getElementById('dev-link');
+      link.href = flow.url;
+      link.textContent = flow.url;
+      document.getElementById('dev-open').onclick = function () { window.open(flow.url, '_blank'); };
+      pollDevice(flow.sessionId, 0);
+    })
+    .catch(function (e) { toast('发起授权失败：' + e.message, false); });
+}
+function pollDevice(sessionId, n) {
+  api('/api/auth/device/poll', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: sessionId }) })
+    .then(function (r) {
+      if (r.status === 'pending') {
+        if (n > 150) { deviceStop('授权超时，请重试'); return; }
+        document.getElementById('dev-status').textContent = '等待浏览器授权中…（' + n + '）';
+        devTimer = setTimeout(function () { pollDevice(sessionId, n + 1); }, 2000);
+      } else if (r.status === 'ok') {
+        deviceStop('✓ 授权成功：' + (r.account.name || r.account.id) + (r.already ? '（已存在）' : ''));
+        loadAccounts();
+      } else if (r.status === 'expired') {
+        deviceStop('会话已过期，请重新发起');
+      } else {
+        deviceStop('授权失败：' + (r.error || r.status));
+      }
+    })
+    .catch(function (e) { deviceStop('轮询异常：' + e.message); });
+}
+function deviceStop(msg) {
+  if (devTimer) { clearTimeout(devTimer); devTimer = null; }
+  document.getElementById('dev-status').textContent = msg;
+  setTimeout(function () { document.getElementById('device-box').style.display = 'none'; }, 4000);
+}
+
+// ── 本机检测 / token 扫描 ──
+function localDetect() {
+  var box = document.getElementById('scan-box');
+  box.style.display = '';
+  document.getElementById('scan-status').textContent = '检测本机安装…';
+  api('/api/local/detect').then(function (det) {
+    var lines = [];
+    lines.push('平台：' + det.platform + ' | IDE 安装：' + (det.installed ? '✓ 是' : '✗ 未检测到'));
+    for (var i = 0; i < det.ide.length; i++) lines.push('· ' + det.ide[i].path + (det.ide[i].exists ? ' ✓' : ''));
+    lines.push('· 数据目录：' + det.ideDataDirs.map(function (d) { return d.path + (d.exists ? ' ✓' : ''); }).join(' , '));
+    lines.push('· CLI 目录 ~/.qoder：' + (det.cliDir.exists ? '✓ 存在' : '不存在'));
+    document.getElementById('scan-status').textContent = lines.join('\n');
+    document.getElementById('scan-result').innerHTML = '<div class="empty">正在扫描本机 token（最多 6 秒）…</div>';
+    return api('/api/local/scan', { method: 'POST' });
+  }).then(function (r) {
+    var box = document.getElementById('scan-result');
+    if (!r.candidates.length) {
+      box.innerHTML = '<div class="empty">未在本机发现 Qoder token（扫描 ' + r.scanned + ' 个文件）。<br>可先用上方「网络授权登录」添加账号。</div>';
+      return;
+    }
+    var html = '<table><tr><th>类型</th><th>Token</th><th>来源</th><th></th></tr>';
+    for (var i = 0; i < r.candidates.length; i++) {
+      var c = r.candidates[i];
+      html += '<tr><td><span class="tag ' + (c.kind === 'PAT' ? 'cn' : 'intl') + '">' + c.kind + '</span></td>'
+        + '<td class="mono">' + esc(c.tokenMasked) + '</td>'
+        + '<td style="font-size:12px;color:var(--dim)">' + esc(c.file.split(/[\\/]/).pop()) + '（' + c.hits + ' 处）</td>'
+        + '<td><div class="actions">'
+        + '<button class="ghost" data-cid="' + esc(c.id) + '" data-sel="intl">导入·国际</button>'
+        + '<button class="ghost" data-cid="' + esc(c.id) + '" data-sel="cn">导入·国内</button>'
+        + '</div></td></tr>';
+    }
+    box.innerHTML = html + '</table>';
+    var btns = box.querySelectorAll('button[data-cid]');
+    for (var k = 0; k < btns.length; k++) {
+      btns[k].addEventListener('click', function () {
+        var cid = this.getAttribute('data-cid');
+        var provider = this.getAttribute('data-sel') === 'cn' ? 'qoder-cn' : 'qoder';
+        api('/api/local/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidateId: cid, provider: provider }) })
+          .then(function (d) { toast('已导入：' + (d.account.name || d.account.id)); loadAccounts(); })
+          .catch(function (e) { toast(e.message, false); });
+      });
+    }
+  }).catch(function (e) { toast('检测失败：' + e.message, false); });
+}
+
+document.getElementById('btn-device').addEventListener('click', deviceLogin);
+document.getElementById('btn-local').addEventListener('click', localDetect);
+document.getElementById('dev-cancel').addEventListener('click', function () { deviceStop('已取消'); });
 
 document.getElementById('btn-add').addEventListener('click', addAccount);
 document.getElementById('btn-checkin').addEventListener('click', checkinAll);

@@ -31,6 +31,8 @@ import {
 } from './store.js';
 import { runCheckinTick } from './checkin.js';
 import { fetchUserinfo, fetchQuotaUsage } from './qoderClient.js';
+import { startDeviceFlow, pollDeviceFlow } from './authDevice.js';
+import { detectInstalls, scanLocalTokens, takeCandidate } from './localDetect.js';
 import { PROVIDER_LABEL, APP_VERSION } from './constants.js';
 
 /** 可选访问密钥：设置 QODERDADDY_PASSWORD 后，所有 /api/* 需要 x-qd-key 头（或 ?key=）。
@@ -140,6 +142,54 @@ async function handleApi(req, res, url) {
     } catch (e) {
       return json(res, 502, { error: e.message });
     }
+  }
+
+  // ── 设备码登录 ──
+  if (p === '/api/auth/device/start' && method === 'POST') {
+    const body = await readBody(req).catch(() => ({}));
+    try {
+      const flow = startDeviceFlow(body.provider === 'qoder-cn' ? 'qoder-cn' : 'qoder');
+      return json(res, 200, flow);
+    } catch (e) { return json(res, 500, { error: e.message }); }
+  }
+  if (p === '/api/auth/device/poll' && method === 'POST') {
+    const body = await readBody(req).catch(() => ({}));
+    if (!body?.sessionId) return json(res, 400, { error: '缺少 sessionId' });
+    try {
+      return json(res, 200, await pollDeviceFlow(body.sessionId));
+    } catch (e) { return json(res, 500, { error: e.message }); }
+  }
+
+  // ── 本机检测 / token 扫描 ──
+  if (p === '/api/local/detect' && method === 'GET') {
+    return json(res, 200, detectInstalls());
+  }
+  if (p === '/api/local/scan' && method === 'POST') {
+    const det = detectInstalls();
+    const dirs = det.ideDataDirs.filter(d => d.exists).map(d => d.path);
+    if (det.cliDir.exists) dirs.push(det.cliDir.path);
+    const result = await scanLocalTokens(dirs);
+    return json(res, 200, { ...result, scannedDirs: dirs });
+  }
+  if (p === '/api/local/import' && method === 'POST') {
+    const body = await readBody(req);
+    const id = String(body?.candidateId || '');
+    const token = takeCandidate(id);
+    if (!token) return json(res, 404, { error: '候选不存在或已过期，请重新扫描' });
+    const provider = body.provider === 'qoder-cn' ? 'qoder-cn' : 'qoder';
+    const account = normalizeAccountInput({ provider, token, name: body.name || null });
+    const accounts = await loadAccounts();
+    if (findDuplicate(accounts, provider, token)) return json(res, 409, { error: '该账号已存在' });
+    // best-effort 校验 + 拉昵称
+    try {
+      const ui = await fetchUserinfo(account);
+      if (!account.name) account.name = ui?.nickname || ui?.name || ui?.username || ui?.email || null;
+      account.verified = true;
+    } catch (e) { account.verified = false; }
+    accounts.push(account);
+    await saveAccounts(accounts);
+    logger.info('DAEMON', '从本机扫描导入账号：' + (account.name || account.id));
+    return json(res, 201, { account: publicAccount(account) });
   }
 
   // 日志
