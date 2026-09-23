@@ -116,11 +116,14 @@ jobs:
           cat fpk-assets/SHA256SUMS-fpk.txt
 
       - name: Upload to Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            fpk-assets/qoderdaddy-*.fpk
-            fpk-assets/SHA256SUMS-fpk.txt
-          fail_on_unmatched_files: false
+        run: |
+          set -euo pipefail
+          ls -lh fpk-assets/
+          N=$(ls fpk-assets/qoderdaddy-*.fpk fpk-assets/SHA256SUMS-fpk.txt 2>/dev/null | wc -l)
+          [ "$N" -ge 3 ] || { echo "ERROR: expected >=3 files, found $N"; exit 1; }
+          gh release upload "${{ github.ref_name }}" \
+            fpk-assets/qoderdaddy-*.fpk \
+            fpk-assets/SHA256SUMS-fpk.txt \
+            --clobber --repo "$GITHUB_REPOSITORY"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
