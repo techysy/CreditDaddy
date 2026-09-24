@@ -219,6 +219,7 @@
   .tr-vrow { }
   .tr-vhead { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; }
   .tr-vhead .dim { font-size: 12px; }
+  .tr-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 2px 12px 4px; }
   .tr-vcards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: stretch; }
   @media (max-width: 1180px) { .tr-vcards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   @media (max-width: 820px) { .tr-vcards { grid-template-columns: 1fr; } }
@@ -1135,6 +1136,102 @@ const TR_REGION = {
   'glm-cn': ['国内版', 'cn'],
 };
 
+// 「全部」视图：一个供应商一张汇总卡。同名额度跨连接求和；百分比窗口（如限时窗口）取平均。
+// 命名含 Cycle/Capacity 的包本身是「全包汇总」，连接级聚合时跳过以避免重复计数（Total Points 这类）。
+const isAggregatePack = (name) => /cycle|capacity/i.test(String(name || ''));
+function trVendorCardHtml(g) {
+  const items = g.items;
+  const prov = items[0].provider;
+  const lows = items.filter((x) => x.isActive && !x.error && quotaLow(x)).length;
+  const errs = items.filter((x) => x.error).length;
+
+  const splitOf = items.map((x) => ({ x, s: splitQuotas(x) }));
+  // Total Points / 含 Cycle|Capacity 的包是全包汇总：连接级聚合跳过它们，避免与子包重复计数
+  const isAgg = (q) => isAggregatePack(q && q.name);
+  const primaries = splitOf.filter(({ s }) => s.primary && !isAgg(s.primary)).map(({ s }) => s.primary);
+  let primary = null;
+  if (primaries.length) {
+    const name = primaries[0].name;
+    const same = primaries.filter((p) => p.name === name);
+    const total = same.reduce((n, p) => n + (p.total > 0 ? p.total : 0), 0);
+    const isPct = !(total > 0);
+    if (isPct) {
+      // 限时百分比窗口（如 Claude 5h）：跨连接取平均百分比，而不是加总
+      const pcts = same.map((p) => quotaPct(p)).filter((x) => x !== null);
+      primary = {
+        name,
+        total: 0,
+        remaining: 0,
+        used: 0,
+        unit: '',
+        percentScale: true,
+        remainingPercentage: pcts.length ? pcts.reduce((a, b) => a + b, 0) / pcts.length : null,
+        recurring: same[0].recurring,
+        resetAt: same.map((p) => p.resetAt).filter(Boolean).sort()[0] || null,
+      };
+    } else {
+      primary = {
+        name,
+        total,
+        remaining: same.reduce((n, p) => n + quotaRemaining(p), 0),
+        used: same.reduce((n, p) => n + (p.used || 0), 0),
+        unit: same[0].unit || '',
+        percentScale: false,
+        recurring: same[0].recurring,
+        resetAt: same.map((p) => p.resetAt).filter(Boolean).sort()[0] || null,
+      };
+    }
+  }
+
+  // 周期窗口：同名求和；无固定总额的按百分比平均
+  const winMap = new Map();
+  const packs = [];
+  for (const { s } of splitOf) {
+    for (const q of s.windows.filter((x) => !isAgg(x))) {
+      if (!winMap.has(q.name)) winMap.set(q.name, { name: q.name, total: 0, rem: 0, anyTotal: false, resetAt: null, pcts: [] });
+      const w = winMap.get(q.name);
+      if (q.total > 0) { w.anyTotal = true; w.total += q.total; w.rem += quotaRemaining(q); }
+      else { const pct = quotaPct(q); if (pct !== null) w.pcts.push(pct); }
+      if (q.resetAt && (!w.resetAt || String(q.resetAt) < String(w.resetAt))) w.resetAt = q.resetAt;
+    }
+    packs.push(...s.packs.filter((x) => !isAgg(x)));
+  }
+  const wins = [...winMap.values()];
+  const alivePacks = packs.filter((q) => quotaRemaining(q) > 0);
+  const packRem = alivePacks.reduce((n, q) => n + quotaRemaining(q), 0);
+
+  const briefs = wins.map((w) => esc(w.name) + ' ' + esc(w.anyTotal
+    ? fmtNum(w.rem) + '/' + fmtNum(w.total)
+    : (w.pcts.length ? fmtNum(w.pcts.reduce((a, b) => a + b, 0) / w.pcts.length) + '%' : '—')));
+  if (alivePacks.length) briefs.push('积分包×' + alivePacks.length + ' 剩 ' + fmtNum(packRem));
+  else if (packs.length) briefs.push('积分包已用完');
+  const resets = [primary, ...wins, ...packs].filter(Boolean).map((q) => q.resetAt).filter(Boolean).sort();
+  const nearest = resets[0] || null;
+
+  const hasQuotas = Boolean(primary || wins.length || packs.length);
+  let quotaHtml;
+  if (errs === items.length) {
+    quotaHtml = '<div class="msg err">全部连接查询失败</div>';
+  } else if (!hasQuotas) {
+    quotaHtml = '<div class="msg">该供应商没有可汇总的额度</div>';
+  } else {
+    quotaHtml = (primary ? trPrimaryHtml(primary) : '')
+      + (briefs.length
+        ? '<div class="tr-summary dim"><span class="tr-sum-txt" title="' + esc(briefs.join(' · ') + (nearest ? '，最早 ' + fmtTime(nearest).slice(5, 10) : '')) + '">'
+          + briefs.join(' · ')
+          + (nearest ? ' <span class="' + (new Date(nearest) - Date.now() < 7 * 86400e3 ? 'low-text' : '') + '">· 最早 ' + esc(fmtTime(nearest).slice(5, 10)) + '</span>' : '')
+          + '</span></div>'
+        : '');
+  }
+  return '<div class="tr-card"><div class="row1"><div class="name-group">'
+    + '<span class="badge prod tenrouter">' + esc(g.name) + '</span>'
+    + (TR_REGION[prov] ? '<span class="badge ' + TR_REGION[prov][1] + '">' + TR_REGION[prov][0] + '</span>' : '')
+    + '<span class="badge">' + items.length + ' 个账号</span>'
+    + (lows ? '<span class="pill limited">告急 ×' + lows + '</span>' : '')
+    + (errs ? '<span class="pill fail" title="部分连接查询失败">失败 ×' + errs + '</span>' : '')
+    + '</div></div>' + quotaHtml + '</div>';
+}
+
 function trSetupHtml() {
   return '<div class="setup"><h3>接入 10Router</h3>'
     + '<div class="hint">填 10Router 的地址和一个<b>虚拟 key</b>（10Router 仪表盘 → API Keys 创建的 sk-…），就能在这里：</div>'
@@ -1157,10 +1254,24 @@ function renderTenrouter() {
     return '<span class="chip' + (on ? ' on' : '') + '" title="' + (x.found ? (x.supported ? '已检测到' : '需要 Node 22.5+') : '本机未检测到') + '">' + esc(x.label) + (x.found ? '' : ' ·无') + '</span>';
   }).join('');
   let grid;
+  let tabStrip = '';
+  const groups = list.length ? trGroups(list) : [];
+  const vendor = state.trVendor || '';
+  if (groups.length) {
+    tabStrip = '<div class="tr-tabs">'
+      + '<button class="btn' + (!vendor ? ' primary' : '') + '" data-tr="vendor" data-v="">全部</button>'
+      + groups.map((g) => '<button class="btn' + (vendor === g.name ? ' primary' : '') + '" data-tr="vendor" data-v="' + esc(g.name) + '">' + esc(g.name) + ' ' + g.items.length + '</button>').join('')
+      + '</div>';
+  }
   if (tr.error) grid = '<div class="empty">' + esc(tr.error) + '</div>';
   else if (!tr.quotas) grid = '<div class="empty">正在读取 10Router 供应商额度…</div>';
   else if (!list.length) grid = '<div class="empty">10Router 里还没有可查额度的供应商连接（OAuth 或支持额度查询的 API Key）。</div>';
-  else grid = trGroups(list).map((g) => '<div class="tr-vrow"><div class="tr-vhead"><span class="badge prod tenrouter">' + esc(g.name) + '</span><span class="dim">' + g.items.length + ' 个账号</span></div><div class="tr-vcards">' + g.items.map(trCardHtml).join('') + '</div></div>').join('');
+  else if (vendor) {
+    const g = groups.find((x) => x.name === vendor) || { items: [] };
+    grid = '<div class="tr-vcards">' + g.items.map(trCardHtml).join('') + '</div>';
+  } else {
+    grid = '<div class="tr-vcards">' + groups.map(trVendorCardHtml).join('') + '</div>';
+  }
   const h = tr.health;
   const healthStrong = !h ? '…' : h.ok ? '正常' : '异常';
   const healthDetail = !h ? '' : h.ok
@@ -1181,6 +1292,7 @@ function renderTenrouter() {
     + '<span style="margin-left:auto" title="' + esc(ls ? ls.summary : '') + '">' + (ls ? '上次同步 ' + esc(fmtTime(ls.at).slice(5)) + ' · ' + esc(ls.summary.slice(0, 40)) : '还没有同步过') + '</span>'
     + (tr.quotas ? '<span>额度更新于 ' + esc(fmtTime(tr.quotas.generatedAt).slice(11)) + '</span>' : '')
     + '</div>'
+    + tabStrip
     + '<div class="tr-grid">' + grid + '</div>';
 }
 
@@ -1279,6 +1391,12 @@ $('tr-panel').addEventListener('click', (e) => {
   if (b.dataset.tr === 'settings') openTrSettings();
   else if (b.dataset.tr === 'refresh') loadTrQuotas(true);
   else if (b.dataset.tr === 'sync') trSync();
+  else if (b.dataset.tr === 'vendor') {
+    const v = b.dataset.v || '';
+    state.trVendor = v;
+    history.replaceState(null, '', v ? '#tenrouter/' + encodeURIComponent(v) : '#tenrouter');
+    render();
+  }
 });
 $('tr-test').onclick = trTest;
 $('tr-save').onclick = trSave;
@@ -1798,9 +1916,12 @@ $('f-token').addEventListener('keydown', (e) => { if (e.key === 'Enter') addToke
 $('list').addEventListener('click', onCardClick);
 // 标签页：用 URL hash 记住（刷新 / 前进后退保持）
 function applyView() {
-  const v = location.hash.slice(1);
+  const raw = location.hash.slice(1);
+  const [v, sub] = raw.split('/');
   state.view = VIEWS.includes(v) ? v : 'dash';
   state.region = '';
+  // 10Router 供应商标签可用 hash 直达：#tenrouter/<供应商名>
+  state.trVendor = state.view === 'tenrouter' && sub ? decodeURIComponent(sub) : '';
   document.querySelectorAll('#nav button').forEach((x) => x.classList.toggle('active', x.dataset.view === state.view));
   $('view-dash').classList.toggle('active', state.view === 'dash');
   $('view-prod').classList.toggle('active', state.view !== 'dash' && state.view !== 'tenrouter');
