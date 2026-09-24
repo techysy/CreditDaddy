@@ -13,6 +13,7 @@ const transfer = await import('../src/transfer.js');
 const qoderApp = await import('../src/qoderApp.js');
 const { rejectForeignRequest } = await import('../src/daemon.js');
 const { extractTokens } = await import('../src/localDetect.js');
+const { checkinWorkbuddyIntl } = await import('../src/workbuddyClient.js');
 const { APP_VERSION } = await import('../src/constants.js');
 
 test('dayKey 以 10:00 (UTC+8) 为签到日界，与本机时区无关', () => {
@@ -541,4 +542,27 @@ test('账号续期：换上新 token 时清掉旧 token 留下的失败结果与
   assert.equal(a.lastResult, null);
   assert.equal(a.verifyError, undefined);
   assert.equal(list.find((x) => x.id === 'renew-2').lastResult.status, 'checked-in');   // 成功结果保留
+});
+
+test('WorkBuddy 国际版活跃领取：2xx → checked-in；429 → no-activity；5xx → failed', async () => {
+  const realFetch = globalThis.fetch;
+  const mk = (status, body = '') => {
+    globalThis.fetch = async () => new Response(body, { status });
+  };
+  const account = { id: 'wbi-1', provider: 'workbuddy-intl', name: '国际版A', token: 'tok', uid: 'u1' };
+  try {
+    mk(200, 'data: {"id":"x","choices":[{"delta":{"content":"hi"}}]}\n\n');
+    const ok = await checkinWorkbuddyIntl(account, {});
+    assert.equal(ok.status, 'checked-in');
+    assert.equal(ok.claimedAmount, 0);
+
+    mk(429, '{"error":{"data":{"code":14018,"msg":"Credits exhausted"}}}');
+    const exhausted = await checkinWorkbuddyIntl(account, {});
+    assert.equal(exhausted.status, 'no-activity');
+    assert.match(exhausted.message, /额度已耗尽/);
+
+    mk(500, 'oops');
+    const bad = await checkinWorkbuddyIntl(account, {});
+    assert.equal(bad.status, 'failed');
+  } finally { globalThis.fetch = realFetch; }
 });

@@ -215,9 +215,14 @@
   .badge.prod.tenrouter { color: #b45309; background: rgba(245,158,11,.14); }
   html[data-theme="dark"] .badge.prod.tenrouter { color: #fcd34d; }
   /* 瀑布流：卡片高低差异大（积分包多的卡很长），按列填充避免大片空白 */
-  .tr-grid { columns: 3 320px; column-gap: 10px; padding: 12px; }
-  .tr-grid > .empty { column-span: all; }
-  .tr-card { border: 1px solid var(--border-subtle); border-radius: 12px; padding: 11px 12px 12px; background: var(--surface); min-width: 0; break-inside: avoid; margin-bottom: 10px; display: inline-block; width: 100%; }
+  .tr-grid { padding: 12px; display: flex; flex-direction: column; gap: 14px; }
+  .tr-vrow { }
+  .tr-vhead { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; }
+  .tr-vhead .dim { font-size: 12px; }
+  .tr-vcards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: stretch; }
+  @media (max-width: 1180px) { .tr-vcards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 820px) { .tr-vcards { grid-template-columns: 1fr; } }
+  .tr-card { border: 1px solid var(--border-subtle); border-radius: 12px; padding: 11px 12px 12px; background: var(--surface); min-width: 0; }
   .tr-card.off { opacity: .6; }
   .tr-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
   .tr-title { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
@@ -1099,6 +1104,7 @@ function trCardHtml(c) {
   }
   return '<div class="tr-card' + (c.isActive ? '' : ' off') + '"><div class="row1"><div class="name-group">'
     + '<span class="badge prod tenrouter">' + esc(c.providerName) + '</span>'
+    + (TR_REGION[c.provider] ? '<span class="badge ' + TR_REGION[c.provider][1] + '">' + TR_REGION[c.provider][0] + '</span>' : '')
     + '<span class="tr-name" title="' + esc([c.name, c.email].filter(Boolean).join(' · ')) + '">' + esc(who) + '</span>'
     + (showPlan ? '<span class="badge">' + esc(c.plan) + '</span>' : '')
     + (c.isActive ? '' : '<span class="pill pending">已停用</span>')
@@ -1110,6 +1116,24 @@ function trCardHtml(c) {
 // 启用的在前，再按供应商、账号名排序
 const trSorted = (list) => list.slice().sort((a, b) => (b.isActive - a.isActive)
   || String(a.providerName).localeCompare(String(b.providerName)) || String(a.name || a.email || '').localeCompare(String(b.name || b.email || '')));
+
+// 按供应商聚类：同一供应商的账号排在一行网格里，组内保持 trSorted 顺序
+function trGroups(list) {
+  const map = new Map();
+  for (const c of trSorted(list)) {
+    const k = c.providerName || c.provider || '其他';
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(c);
+  }
+  return [...map.entries()].map(([name, items]) => ({ name, items }));
+}
+
+// 10Router 连接的国内 / 国际版标签（沿用账号卡的徽标语义）
+const TR_REGION = {
+  qoder: ['国际版', 'intl'], 'qoder-cn': ['国内版', 'cn'],
+  'codebuddy-intl': ['国际版', 'intl'], 'codebuddy-cn': ['国内版', 'cn'],
+  'glm-cn': ['国内版', 'cn'],
+};
 
 function trSetupHtml() {
   return '<div class="setup"><h3>接入 10Router</h3>'
@@ -1136,7 +1160,7 @@ function renderTenrouter() {
   if (tr.error) grid = '<div class="empty">' + esc(tr.error) + '</div>';
   else if (!tr.quotas) grid = '<div class="empty">正在读取 10Router 供应商额度…</div>';
   else if (!list.length) grid = '<div class="empty">10Router 里还没有可查额度的供应商连接（OAuth 或支持额度查询的 API Key）。</div>';
-  else grid = trSorted(list).map(trCardHtml).join('');
+  else grid = trGroups(list).map((g) => '<div class="tr-vrow"><div class="tr-vhead"><span class="badge prod tenrouter">' + esc(g.name) + '</span><span class="dim">' + g.items.length + ' 个账号</span></div><div class="tr-vcards">' + g.items.map(trCardHtml).join('') + '</div></div>').join('');
   const h = tr.health;
   const healthStrong = !h ? '…' : h.ok ? '正常' : '异常';
   const healthDetail = !h ? '' : h.ok

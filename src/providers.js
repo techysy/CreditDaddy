@@ -10,7 +10,7 @@
 
 import { productOf } from './constants.js';
 import { checkinOne as checkinQoder, fetchQuotaUsage, fetchUserinfo } from './qoderClient.js';
-import { checkinWorkbuddy, fetchWorkbuddyQuota, inspectToken } from './workbuddyClient.js';
+import { checkinWorkbuddy, checkinWorkbuddyIntl, fetchWorkbuddyQuota, inspectToken } from './workbuddyClient.js';
 import { fetchZcodeQuota } from './zcodeClient.js';
 
 /** 从 userinfo 响应中挑一个可读的显示名 */
@@ -51,7 +51,8 @@ const PRODUCTS = {
   },
   workbuddy: {
     label: 'WorkBuddy',
-    checkin: (account, ctx) => checkinWorkbuddy(account, ctx),
+    // 国内版走 billing daily-checkin 签到；国际版没有签到接口，走「活跃领取」（免费档对话探测）
+    checkin: (account, ctx) => (account.provider === 'workbuddy-intl' ? checkinWorkbuddyIntl(account, ctx) : checkinWorkbuddy(account, ctx)),
     quota: (account, ctx) => fetchWorkbuddyQuota(account, ctx),
     verify: async (account) => {
       const info = inspectToken(account.token);

@@ -91,6 +91,51 @@ async function post(account, path, token) {
   return { status: res.status, body, text };
 }
 
+// 国际版「活跃领取」探测：官方规则为「当天有 ≥1 次有效对话请求即视为活跃用户，发放每日赠送积分」。
+// 没有签到接口，所以每天发一条免费档模型（rateMultiplier 0，~0 消耗）的极短流式请求。
+// 对齐 10router src/sse/services/codebuddyCheckin.js 的 intl 探测（stream 网关的系统提示与 typed blocks 是必需的，否则 11101）。
+const INTL_PROBE_MODEL = 'hy4-preview';
+async function postIntlProbe(account, token) {
+  const res = await fetch(`https://${apiHost(account)}/v2/chat/completions`, {
+    method: 'POST',
+    headers: { ...headersFor(account, token), 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    body: JSON.stringify({
+      model: INTL_PROBE_MODEL,
+      stream: true,
+      max_tokens: 16,
+      messages: [
+        { role: 'system', content: 'You are CodeBuddy Code.' },
+        { role: 'user', content: [{ type: 'text', text: 'hi' }] },
+      ],
+    }),
+    signal: AbortSignal.timeout(Math.max(FETCH_TIMEOUT_MS, 25_000)),
+  });
+  // 2xx = 会话建立成功，把 SSE 流排干（最多几个 token）
+  const text = await res.text().catch(() => '');
+  return { status: res.status, text };
+}
+
+/**
+ * 国际版「活跃领取」：一次免费档对话请求使账号成为当日活跃用户。
+ * 返回与每日签到一致的结果对象（session-ok → checked-in，claimedAmount 0 表示额度随官方结算发放）。
+ */
+export async function checkinWorkbuddyIntl(account, { onRefresh } = {}) {
+  const label = account.name || account.id;
+  const base = { accountId: account.id, account: label, provider: account.provider };
+  try {
+    const r = await withToken(account, (t) => postIntlProbe(account, t), onRefresh);
+    if (r.status === 401) return { ...base, status: 'failed', error: '鉴权失败（401），token 已失效，请在客户端重新登录后重新导入' };
+    if (r.status === 429) return { ...base, status: 'no-activity', message: '今日额度已耗尽，活跃请求暂不可达（等官方发放后再试）', claimedAmount: 0 };
+    if (r.status >= 200 && r.status < 300) {
+      return { ...base, uid: account.uid, status: 'checked-in', claimedAmount: 0, message: '活跃请求成功（当日赠送额度随官方结算发放）' };
+    }
+    const m = (() => { try { return JSON.parse(r.text)?.error?.data?.msg || ''; } catch { return ''; } })();
+    return { ...base, status: 'failed', error: `活跃请求失败：HTTP ${r.status} ${m || r.text.slice(0, 120)}`.trim() };
+  } catch (e) {
+    return { ...base, status: 'failed', error: e?.message || '网络错误' };
+  }
+}
+
 export function isExpired(account, now = Date.now()) {
   const exp = account.expiresAt || inspectToken(account.token).expiresAt;
   return Boolean(exp) && new Date(exp).getTime() - EXPIRY_SKEW_MS <= now;

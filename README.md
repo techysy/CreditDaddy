@@ -11,7 +11,7 @@
 ## 功能
 
 - **仪表盘 + 分产品标签页**：首页仪表盘汇总账号数、今日签到进度、剩余积分、下次自动签到，各产品概况、需要处理的账号（token 失效 / 即将过期、签到失败）与最近签到记录；Qoder / WorkBuddy / ZCode 各自一个标签页，卡片式账号列表（参考 WorkDaddy），可按国际 / 国内版筛选，显示签到状态、连签天数、剩余积分、积分包到期、token 有效期，支持亮色 / 暗色
-- **10Router 集成**：配置 10Router 地址 + 虚拟 key（sk-…）后，「10Router」标签页渲染 10Router 里其他供应商（Claude / Codex / Kiro / GLM …）的额度卡片，额度告急 / 查询失败会进仪表盘「需要处理」；并内置 10router-sync 插件的用量同步能力，每小时把本机 ZCode / OpenCode / mirasim / 小米 MiMo 的用量导入 10Router 的用量统计
+- **10Router 集成**：配置 10Router 地址 + 虚拟 key（sk-…）后，「10Router」标签页**按供应商聚类**渲染 10Router 里其他供应商（CodeBuddy / Qoder / Claude / GLM …）的额度卡片（CodeBuddy / Qoder / GLM 系连接带**国内版 / 国际版**徽标，与账号卡同一语义），默认只显示主额度，其余收进一行摘要（明细可展开）；额度告急 / 查询失败会进仪表盘「需要处理」，工具栏显示 10Router 健康（存储驱动降级有提示）；并内置 10router-sync 插件的用量同步能力，每小时把本机 ZCode / OpenCode / mirasim / 小米 MiMo 的用量导入 10Router 的用量统计
 - **本机导入**：一键读取本机 Qoder / Qoder CN 客户端（本地解密 `auth.v1.dat`）与 WorkBuddy 客户端（当前 + 历史会话）已登录的账号，token 不出机器；同一用户 token 续期时自动更新
 - **WorkBuddy / ZCode 账号切换**：一键把客户端切换到选中的账号（WorkBuddy 自动应用；ZCode 需先退出客户端），切换前先保全当前登录，绝不丢号，每个账号独立设备指纹
 - **隐私（无痕）登录窗口**：桌面版内置一次性会话的登录窗口，网页授权不带出系统浏览器里已登录的账号、Cookie 也不落盘，适合同一产品登录多个账号
@@ -33,7 +33,7 @@
 - **浏览器登录**：`POST {域名}/v2/plugin/auth/state?platform=WorkBuddy` 取授权地址，用户登录后轮询 `/v2/plugin/auth/token?state=`（11217 = 等待）拿 token，再轮询 `/v2/plugin/login/account?state=`（12151 = 等待）与 `/v2/plugin/accounts` 补齐账号信息，组装成与 `workbuddy-desktop.info` 同结构的会话；国内版走 www.codebuddy.cn，国际版走 www.codebuddy.ai
 - **token 刷新**：只在 token 过期或接口返回 401 时用 refreshToken 刷新（`/v2/plugin/auth/token/refresh`）；若该账号正是 WorkBuddy 客户端当前登录的账号，会把新 token 同步写回客户端，避免客户端掉线。refreshToken 也失效时（如在别处登出），需要在 WorkBuddy 重新登录后再「本机导入」同步
 - **切换账号**：写入 `workbuddy-desktop.info` 并清除登出标记，WorkBuddy 监听该文件并自动应用；切换前会先把客户端当前会话的最新 token 保存到 CreditDaddy
-- 国际版（workbuddy.ai / codebuddy.ai）的签到接口沿用同一路径，尚未经真实账号验证
+- **国际版「活跃领取」**：国际版没有签到接口，官方规则为「当天有 ≥1 次有效对话请求即视为活跃用户，发放每日赠送积分」。调度器每天为每个国际版账号发一条免费档模型（rateMultiplier 0，~0 消耗）的极短流式请求（`POST {域名}/v2/chat/completions`，system 提示 + typed blocks 是网关必需格式），2xx 即当日活跃达成；额度耗尽时会得到「等官方发放后再试」的明确提示
 
 ## ZCode 说明
 
