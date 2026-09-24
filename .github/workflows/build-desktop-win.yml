@@ -58,7 +58,7 @@ jobs:
           gh release view "${{ github.ref_name }}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
             gh release create "${{ github.ref_name }}" --repo "$GITHUB_REPOSITORY" \
               --title "CreditDaddy ${{ github.ref_name }}" \
-              --notes "CreditDaddy release: Qoder / WorkBuddy 多账号管理与每日积分自动签到."
+              --notes "CreditDaddy release: Qoder / WorkBuddy / ZCode 多账号管理与每日积分自动签到."
         env:
           GH_TOKEN: ${{ github.token }}
 
