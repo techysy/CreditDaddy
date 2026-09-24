@@ -89,18 +89,18 @@
   html[data-theme="dark"] .badge.prod.workbuddy { color: #5eead4; }
   .badge.prod.zcode { color: #1d4ed8; background: rgba(37,99,235,.1); }
   html[data-theme="dark"] .badge.prod.zcode { color: #93c5fd; }
-  .pill.cur { background: rgba(20,184,166,.12); color: #0f766e; }
-  html[data-theme="dark"] .pill.cur { color: #5eead4; }
   .seg-ctl { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--hover); }
   .seg-ctl button { border: none; background: transparent; color: var(--text-2); font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 7px; cursor: pointer; }
   .seg-ctl button.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
   html[data-theme="dark"] .seg-ctl button.active { background: rgba(255,255,255,.1); }
-  .pill { display: inline-flex; align-items: center; height: 22px; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; border: 1px solid transparent; }
-  .pill.ok { background: var(--text); color: var(--surface); }
-  html[data-theme="dark"] .pill.ok { background: rgba(255,255,255,.085); color: var(--text); border-color: rgba(255,255,255,.12); }
-  .pill.pending { background: var(--tertiary); color: var(--text-3); }
-  .pill.limited { background: var(--warn-soft); color: var(--warn); }
-  .pill.fail { background: var(--err-soft); color: var(--err); }
+  /* 胶囊徽章：不要类型背景色，细边框 + 彩色文字即可 */
+  .pill { display: inline-flex; align-items: center; height: 22px; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; border: 1px solid var(--border); background: transparent; color: var(--text-2); }
+  .pill.ok { color: var(--text); border-color: var(--text); }
+  .pill.pending { color: var(--text-3); }
+  .pill.limited { color: var(--warn); border-color: var(--warn-soft); }
+  .pill.fail { color: var(--err); border-color: var(--err-soft); }
+  .pill.cur { color: #0f766e; border-color: rgba(20,184,166,.5); }
+  html[data-theme="dark"] .pill.cur { color: #5eead4; }
   .ops { display: flex; gap: 6px; flex-shrink: 0; }
 
   .meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; font-size: 12px; }
@@ -445,6 +445,9 @@
       <div id="tr-sources" style="margin-top:6px"></div>
       <div class="hint" style="margin-top:4px">ZCode 只同步官方渠道；经 10Router 中转的 mirasim 调用会跳过，避免重复计数。10Router 按行签名去重，重复同步不会产生重复数据。</div>
     </div>
+    <div class="field"><label>显示</label>
+      <div><label class="check"><input type="checkbox" id="tr-hide-empty"> 「全部」视图隐藏没有额度 / 余额为 0 的供应商汇总卡</label></div>
+    </div>
     <div class="hint" id="tr-test-msg"></div>
     <div class="modal-actions">
       <button class="btn" id="tr-disconnect" style="margin-right:auto">断开</button>
@@ -593,6 +596,9 @@ async function api(p, opts = {}, attempt = 0) {
   if (!res.ok) { const e = new Error(data.error || ('HTTP ' + res.status)); e.code = data.code; e.status = res.status; e.nextAt = data.nextAt; throw e; }
   return data;
 }
+
+// 10Router 汇总卡「隐藏无额度」偏好（面板本地）
+try { state.trHideEmpty = localStorage.getItem('qd_tr_hideempty') === '1'; } catch (e) {}
 
 // ── 主题 ──
 function applyTheme(t) {
@@ -1226,9 +1232,12 @@ function trVendorCardHtml(g) {
   const alivePacks = packs.filter((q) => quotaRemaining(q) > 0);
   const packRem = alivePacks.reduce((n, q) => n + quotaRemaining(q), 0);
 
-  const briefs = wins.map((w) => esc(w.name) + ' ' + esc(w.anyTotal
-    ? fmtNum(w.rem) + '/' + fmtNum(w.total)
-    : (w.pcts.length ? fmtNum(w.pcts.reduce((a, b) => a + b, 0) / w.pcts.length) + '%' : '—')));
+  // 周 / 月度等窗口额度也给进度条（同名跨连接已聚合好）：有固定总额的加总，百分比窗口取平均
+  const winRows = wins.map((w) => trRow(w.anyTotal
+    ? { name: w.name, total: w.total, remaining: w.rem, used: w.total - w.rem, unit: '', percentScale: false, resetAt: w.resetAt, recurring: true }
+    : { name: w.name, total: 0, remainingPercentage: w.pcts.length ? w.pcts.reduce((a, b) => a + b, 0) / w.pcts.length : null, percentScale: true, resetAt: w.resetAt, recurring: true })).join('');
+
+  const briefs = [];
   if (alivePacks.length) briefs.push('积分包×' + alivePacks.length + ' 剩 ' + fmtNum(packRem));
   else if (packs.length) briefs.push('积分包已用完');
   const resets = [primary, ...wins, ...packs].filter(Boolean).map((q) => q.resetAt).filter(Boolean).sort();
@@ -1242,7 +1251,8 @@ function trVendorCardHtml(g) {
     quotaHtml = '<div class="msg">该供应商没有可汇总的额度</div>';
   } else {
     quotaHtml = (primary ? trPrimaryHtml(primary) : '')
-      + (briefs.length
+      + winRows
+      + (briefs.length || nearest
         ? '<div class="tr-summary dim"><span class="tr-sum-txt" title="' + esc(briefs.join(' · ') + (nearest ? '，最早 ' + fmtTime(nearest).slice(5, 10) : '')) + '">'
           + briefs.join(' · ')
           + (nearest ? ' <span class="' + (new Date(nearest) - Date.now() < 7 * 86400e3 ? 'low-text' : '') + '">· 最早 ' + esc(fmtTime(nearest).slice(5, 10)) + '</span>' : '')
@@ -1296,7 +1306,23 @@ function renderTenrouter() {
     const g = groups.find((x) => x.name === vendor) || { items: [] };
     grid = '<div class="tr-vcards">' + g.items.map(trCardHtml).join('') + '</div>';
   } else {
-    grid = '<div class="tr-vcards">' + groups.map(trVendorCardHtml).join('') + '</div>';
+    // 设置里可隐藏「0 / 无额度」的汇总卡（全部连接查询失败的保留，那是需要处理的状态）
+    const shown = state.trHideEmpty
+      ? groups.filter((g) => {
+          if (g.items.every((x) => x.error)) return true;
+          for (const x of g.items) {
+            if (x.error) continue;
+            const s = splitQuotas(x);
+            if (s.primary && quotaRemaining(s.primary) > 0) return true;
+            if (s.windows.some((q) => quotaRemaining(q) > 0 || (quotaPct(q) || 0) > 0)) return true;
+            if (s.packs.some((q) => quotaRemaining(q) > 0)) return true;
+          }
+          return false;
+        })
+      : groups;
+    grid = shown.length
+      ? '<div class="tr-vcards">' + shown.map(trVendorCardHtml).join('') + '</div>'
+      : '<div class="empty">没有可显示的供应商（可在「设置」里关掉隐藏）</div>';
   }
   const h = tr.health;
   const healthStrong = !h ? '…' : h.ok ? '正常' : '异常';
@@ -1366,6 +1392,7 @@ function openTrSettings() {
   $('tr-key').value = '';
   $('tr-key').placeholder = c.keyMasked ? '已保存 ' + c.keyMasked + '（留空保持不变）' : 'sk-…';
   $('tr-auto').checked = c.configured ? c.sync.enabled : true;
+  $('tr-hide-empty').checked = state.trHideEmpty === true;
   $('tr-sources').innerHTML = (c.sources || []).map((x) => '<label class="check"><input type="checkbox" data-src="' + x.id + '"'
     + ((c.configured ? c.sync.sources.includes(x.id) : true) ? ' checked' : '') + (x.supported ? '' : ' disabled') + '> ' + esc(x.label)
     + '<span class="dim">' + (x.found ? '' : '（本机未检测到）') + (x.supported ? '' : '（需要 Node 22.5+）') + '</span></label>').join('');
@@ -1397,6 +1424,9 @@ async function trSave() {
   const f = trForm();
   if (!f.endpoint) return toast('请填写 10Router 地址', false);
   if (!f.key && !(tr.config && tr.config.keyMasked)) return toast('请填写虚拟 key', false);
+  // 显示偏好只存在面板本地（localStorage），不上服务端
+  state.trHideEmpty = $('tr-hide-empty').checked;
+  try { localStorage.setItem('qd_tr_hideempty', state.trHideEmpty ? '1' : '0'); } catch (e) {}
   try {
     tr.config = await api('/api/tenrouter', { method: 'PUT', json: f });
     closeModal('m-10r');
