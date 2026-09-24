@@ -366,6 +366,16 @@
   </div>
 </div>
 
+<!-- 通用对话框 -->
+<div class="mask" id="m-dialog">
+  <div class="modal sm">
+    <div class="modal-title"><span id="dlg-title"></span><button class="close" data-close>✕</button></div>
+    <div class="hint" id="dlg-msg" style="white-space:pre-wrap"></div>
+    <div class="field" id="dlg-field" style="margin-top:10px"><input class="input" id="dlg-input"></div>
+    <div class="modal-actions"><button class="btn" data-close>取消</button><button class="btn primary" id="dlg-ok">确定</button></div>
+  </div>
+</div>
+
 <input type="file" id="file-input" accept=".json,application/json" style="display:none">
 <div id="toast"></div>
 
@@ -813,14 +823,14 @@ async function onCardClick(e) {
     const tip = a && a.product === 'zcode'
       ? '\n需先退出 ZCode；切换后重新打开 ZCode 即为新账号。当前登录会先保存到 CreditDaddy，不会丢号。'
       : '\n客户端会自动应用新会话；当前登录账号的最新 token 会先保存到 CreditDaddy。';
-    if (!confirm('把 ' + client + ' 切换到「' + (a && a.name || id) + '」？' + tip)) return;
+    if (!(await uiConfirm('把 ' + client + ' 切换到「' + (a && a.name || id) + '」？' + tip, '切换账号', '切换'))) return;
     const doSwitch = (force) => api('/api/accounts/' + encodeURIComponent(id) + '/switch', { json: { force } });
     try {
       let r;
       try { r = await doSwitch(false); }
       catch (err) {
         if (err.code !== 'ZCODE_RUNNING') throw err;
-        if (!confirm(err.message + '\n\n仍要强制切换吗？（建议先退出 ZCode）')) return;
+        if (!(await uiConfirm(err.message + '\n\n仍要强制切换吗？（建议先退出 ZCode）', 'ZCode 正在运行', '强制切换'))) return;
         r = await doSwitch(true);
       }
       toast(r && r.alreadyActive ? client + ' 当前已是该账号' : client + ' 已切换到 ' + (a && a.name || id));
@@ -830,7 +840,7 @@ async function onCardClick(e) {
   }
   if (act === 'rename') {
     const a = state.accounts.find((x) => x.id === id);
-    const name = prompt('备注名', a && a.name || '');
+    const name = await uiPrompt('修改备注名', a && a.name || '', { okText: '保存' });
     if (name === null) return;
     try { await api('/api/accounts/' + encodeURIComponent(id), { method: 'PATCH', json: { name } }); await loadAccounts(); }
     catch (err) { toast(err.message, false); }
@@ -851,7 +861,29 @@ async function onCardClick(e) {
 
 // ── 弹窗 ──
 function openModal(id) { $(id).classList.add('show'); }
-function closeModal(id) { $(id).classList.remove('show'); if (id === 'm-add') deviceStop(); }
+function closeModal(id) { $(id).classList.remove('show'); if (id === 'm-add') deviceStop(); if (id === 'm-dialog') settleDialog(null); }
+
+// 页面内对话框（替代原生 confirm / prompt：面板嵌在飞牛桌面窗口里是跨域 iframe，原生弹框可能被浏览器拦截）
+// 返回 Promise：确认 → true / 输入的文本；取消 → false / null
+let dialogResolve = null;
+function settleDialog(v) { const r = dialogResolve; dialogResolve = null; if (r) r(v); }
+function uiDialog({ title, message, input, okText }) {
+  settleDialog(null);
+  $('dlg-title').textContent = title || '';
+  $('dlg-msg').textContent = message || '';
+  $('dlg-msg').style.display = message ? '' : 'none';
+  $('dlg-field').style.display = input ? '' : 'none';
+  if (input) { $('dlg-input').type = input.type || 'text'; $('dlg-input').value = input.value || ''; $('dlg-input').placeholder = input.placeholder || ''; }
+  $('dlg-ok').textContent = okText || '确定';
+  openModal('m-dialog');
+  setTimeout(() => (input ? $('dlg-input') : $('dlg-ok')).focus(), 30);
+  return new Promise((resolve) => { dialogResolve = (v) => resolve(input ? v : v !== null); });
+}
+const uiConfirm = (message, title, okText) => uiDialog({ title: title || '请确认', message, okText });
+const uiPrompt = (title, value, opts = {}) => uiDialog({ title, message: opts.message, input: { value, type: opts.type, placeholder: opts.placeholder }, okText: opts.okText });
+function okDialog() { const v = $('dlg-field').style.display === 'none' ? true : $('dlg-input').value; $('m-dialog').classList.remove('show'); settleDialog(v); }
+$('dlg-ok').addEventListener('click', okDialog);
+$('dlg-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') okDialog(); });
 document.querySelectorAll('.mask').forEach((m) => {
   m.addEventListener('mousedown', (e) => { if (e.target === m) closeModal(m.id); });
   m.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => closeModal(m.id)));
@@ -1132,8 +1164,11 @@ applyView();
     setInterval(loadLogs, 10000);
     setInterval(async () => { await loadStatus(); render(); }, 30000);
   }
-  function askKey(first) {
-    const k = prompt((first ? '' : '密钥无效，请重新输入。\n') + '请输入 CreditDaddy 访问密钥\n（NAS 上见 panel_key 文件或安装完成提示）', '');
+  async function askKey(first) {
+    const k = await uiPrompt('输入访问密钥', '', {
+      type: 'password', okText: '进入',
+      message: (first ? '' : '密钥无效，请重新输入。\n') + 'NAS 上的访问密钥见数据目录里的 panel_key 文件，或安装完成时的提示。',
+    });
     if (k === null) { toast('未输入访问密钥，刷新页面可重试', false); return; }
     try { localStorage.setItem('qd_key', k.trim()); } catch (e) {}
     probe(false);
