@@ -1,4 +1,4 @@
-name: Build CreditDaddy desktop (Windows)
+name: Build CreditDaddy desktop (Windows / macOS)
 
 on:
   workflow_dispatch:
@@ -10,6 +10,65 @@ permissions:
   contents: write
 
 jobs:
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Stage app bundle into desktop/server
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p desktop/server
+          cp -r bin src package.json README.md desktop/server/
+
+      - name: Install desktop dependencies
+        run: npm install --no-audit --no-fund
+        working-directory: desktop
+
+      - name: Package macOS artifacts (unsigned)
+        run: npx electron-builder --mac --publish never
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Assemble release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-files-mac
+          cp desktop/dist/*.dmg desktop/dist/*.zip release-files-mac/
+          ( cd release-files-mac && for f in *; do mv "$f" "mac-$f"; done )
+          ( cd release-files-mac && shasum -a 256 * > SHA256SUMS-mac.txt )
+          cat release-files-mac/SHA256SUMS-mac.txt
+
+      - name: Ensure release exists with title
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          gh release view "${{ github.ref_name }}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "${{ github.ref_name }}" --repo "$GITHUB_REPOSITORY" \
+              --title "CreditDaddy ${{ github.ref_name }}" \
+              --notes "CreditDaddy release: Qoder / WorkBuddy / ZCode 多账号管理与每日积分自动签到."
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Upload macOS artifacts to Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -lh release-files-mac/
+          gh release upload "${{ github.ref_name }}" \
+            release-files-mac/* \
+            --clobber --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   build-windows:
     runs-on: windows-latest
     steps:

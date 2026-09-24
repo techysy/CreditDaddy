@@ -197,6 +197,19 @@ Releases 下载 **CreditDaddy-Setup-x.y.z.exe**（安装版）或 **CreditDaddy-
 
 fnOS / NAS 用户请用 **fpk** 包（见 DEPLOY.md，分**标签页版** `creditdaddy-*.fpk` 与**窗口版** `creditdaddy-window-*.fpk`）；功能与桌面版一致，面板端口都是 47860。
 
+## macOS 桌面版
+
+Releases 下载 **mac-CreditDaddy-x.y.z-arm64.dmg**（Apple Silicon）或 **mac-CreditDaddy-x.y.z-x64.dmg**（Intel），另有同名 zip。拖入「应用程序」即可，功能与 Windows 桌面版一致（托盘常驻、内置 daemon、数据存 `~/.creditdaddy`）。未签名：首次打开在「系统设置 → 隐私与安全性」里放行。⚠️ macOS 版由 CI 构建，未在真机验证，问题请提 Issue。
+
+## npm 包（Node ≥ 20）
+
+```bash
+npm install -g creditdaddy   # 全局安装
+creditdaddy daemon           # 启动守护进程 + 面板（127.0.0.1:47860）
+```
+
+适合 fnOS / Linux / macOS 上只想跑 daemon + 面板的场景（fpk 之外的另一条路）。核心零依赖，bin/src 原样打包。
+
 ## 开发
 
     npm test                                  # 运行测试（node --test，零依赖）
