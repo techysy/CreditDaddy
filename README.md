@@ -1,6 +1,14 @@
 # CreditDaddy
 
-**AI 编程工具多账号本地管理 + 每日积分自动签到助手** —— 目前支持 **Qoder**（国际版 / 国内版）、**WorkBuddy**（腾讯 CodeBuddy 系，国内版 / 国际版）、**ZCode**（智谱 GLM / Z.ai），并可接入 **[10Router](https://github.com/techysy/10router)** 查看其他供应商的额度、同步本机用量。
+[![GitHub release](https://img.shields.io/github/v/release/techysy/CreditDaddy)](https://github.com/techysy/CreditDaddy/releases)
+[![CI](https://github.com/techysy/CreditDaddy/actions/workflows/ci.yml/badge.svg)](https://github.com/techysy/CreditDaddy/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20fnOS-lightgrey)](https://github.com/techysy/CreditDaddy/releases)
+[![npm](https://img.shields.io/npm/v/creditdaddy)](https://www.npmjs.com/package/creditdaddy)
+
+**AI 编程工具多账号本地管理 + 每日积分自动领取（领鸡蛋）助手** —— 目前支持 **Qoder**（国际版 / 国内版）、**WorkBuddy**（腾讯 CodeBuddy 系，国内版 / 国际版）、**ZCode**（智谱 GLM / Z.ai），并可接入 **[10Router](https://github.com/techysy/10router)** 查看其他供应商的额度、同步本机用量。
+
+![CreditDaddy 仪表盘](docs/screenshot-dashboard.png)
 
 > 项目原名 **QoderDaddy**，v0.3.0 起更名为 CreditDaddy：数据目录自动从 `~/.qoderdaddy` 迁移到 `~/.creditdaddy`（旧目录保留），
 > 旧的 `QODERDADDY_HOME` / `QODERDADDY_PASSWORD` 环境变量与 QoderDaddy 导出文件仍可使用。
@@ -10,17 +18,17 @@
 
 ## 功能
 
-- **仪表盘 + 分产品标签页**：首页仪表盘汇总账号数、今日签到进度、剩余积分、下次自动签到，各产品概况、需要处理的账号（token 失效 / 即将过期、签到失败）与最近签到记录；Qoder / WorkBuddy / ZCode 各自一个标签页，卡片式账号列表（参考 WorkDaddy），可按国际 / 国内版筛选，显示签到状态、连签天数、剩余积分、积分包到期、token 有效期，支持亮色 / 暗色
+- **仪表盘 + 分产品标签页**：首页仪表盘汇总账号数、今日领取进度、剩余积分、下次自动领取，各产品概况、需要处理的账号（token 失效 / 即将过期、领取失败）与最近领取记录；Qoder / WorkBuddy / ZCode 各自一个标签页，卡片式账号列表（参考 WorkDaddy），可按国际 / 国内版筛选，显示领取状态、连续天数、剩余积分、积分包到期、token 有效期，支持亮色 / 暗色
 - **10Router 集成**：配置 10Router 地址 + 虚拟 key（sk-…）后，「10Router」标签页**按供应商聚类**渲染 10Router 里其他供应商（CodeBuddy / Qoder / Claude / GLM …）的额度卡片（CodeBuddy / Qoder / GLM 系连接带**国内版 / 国际版**徽标，与账号卡同一语义），默认只显示主额度，其余收进一行摘要（明细可展开）；额度告急 / 查询失败会进仪表盘「需要处理」，工具栏显示 10Router 健康（存储驱动降级有提示）；并内置 10router-sync 插件的用量同步能力，每小时把本机 ZCode / OpenCode / mirasim / 小米 MiMo 的用量导入 10Router 的用量统计
 - **本机导入**：一键读取本机 Qoder / Qoder CN 客户端（本地解密 `auth.v1.dat`）与 WorkBuddy 客户端（当前 + 历史会话）已登录的账号，token 不出机器；同一用户 token 续期时自动更新
 - **WorkBuddy / ZCode 账号切换**：一键把客户端切换到选中的账号（WorkBuddy 自动应用；ZCode 需先退出客户端），切换前先保全当前登录，绝不丢号，每个账号独立设备指纹
 - **隐私（无痕）登录窗口**：桌面版内置一次性会话的登录窗口，网页授权不带出系统浏览器里已登录的账号、Cookie 也不落盘，适合同一产品登录多个账号
 - **浏览器登录**：三条产品线都能在面板里直接登录新账号，授权后 token 自动入库 —— Qoder 设备码授权（PKCE + nonce，与官方 qodercli 同流程）、WorkBuddy / CodeBuddy（与 WorkBuddy 桌面端同一 state 轮询流程）、ZCode（客户端的 CLI 轮询流程，支持 BigModel 智谱 / Z.ai）；WorkBuddy / ZCode 浏览器登录的账号同样可以一键切换客户端
-- **每日自动签到**：守护进程每 ~2 小时扫描一轮；当天已领的账号记忆跳过；"无可领活动"不记忆，每日积分刷新（10:00 UTC+8）后自动重试。"签到日"以 10:00 (UTC+8) 为界，与本机时区无关
-- **国际版签到**：携带 Qoder 客户端生成的设备风控身份（见下文），与客户端内「每天领 100 Credits」一致
+- **每日自动领取**：守护进程每 ~2 小时扫描一轮；当天已领的账号记忆跳过；"无可领活动"不记忆，每日积分刷新（10:00 UTC+8）后自动重试。"领取日"以 10:00 (UTC+8) 为界，与本机时区无关
+- **国际版领取**：携带 Qoder 客户端生成的设备风控身份（见下文），与客户端内「每天领 100 Credits」一致
 - **导入导出**：可设口令加密，格式与 10router 的 OAuth 迁移文件（`10router-oauth-secure-v1`）互通 —— 10router 导出的 Qoder / CodeBuddy 授权可直接导入（CodeBuddy 对应 WorkBuddy），CreditDaddy 的加密导出也能导入 10router
 - **PAT 支持**：pt- 开头的 Personal Access Token 自动兑换短期 job token
-- **Windows 桌面版**：托盘常驻、关窗不退出、开机自启（后台运行）、托盘一键签到并弹出结果
+- **Windows 桌面版**：托盘常驻、关窗不退出、开机自启（后台运行）、托盘一键领取并弹出结果
 - **数据边界**：全部数据存 ~/.creditdaddy（0600 权限 + 原子写 + 进程内串行写入），无任何遥测、无第三方依赖
 - **本机防护**：只监听 127.0.0.1，并校验 Host 头（防 DNS 重绑定）、拒绝跨站 Origin（防 CSRF），网页无法偷读或篡改本机账号
 
@@ -33,7 +41,7 @@
 - **浏览器登录**：`POST {域名}/v2/plugin/auth/state?platform=WorkBuddy` 取授权地址，用户登录后轮询 `/v2/plugin/auth/token?state=`（11217 = 等待）拿 token，再轮询 `/v2/plugin/login/account?state=`（12151 = 等待）与 `/v2/plugin/accounts` 补齐账号信息，组装成与 `workbuddy-desktop.info` 同结构的会话；国内版走 www.codebuddy.cn，国际版走 www.codebuddy.ai
 - **token 刷新**：只在 token 过期或接口返回 401 时用 refreshToken 刷新（`/v2/plugin/auth/token/refresh`）；若该账号正是 WorkBuddy 客户端当前登录的账号，会把新 token 同步写回客户端，避免客户端掉线。refreshToken 也失效时（如在别处登出），需要在 WorkBuddy 重新登录后再「本机导入」同步
 - **切换账号**：写入 `workbuddy-desktop.info` 并清除登出标记，WorkBuddy 监听该文件并自动应用；切换前会先把客户端当前会话的最新 token 保存到 CreditDaddy
-- **国际版「活跃领取」**：国际版没有签到接口，官方规则为「当天有 ≥1 次有效对话请求即视为活跃用户，发放每日赠送积分」。调度器每天为每个国际版账号发一条免费档模型（rateMultiplier 0，~0 消耗）的极短流式请求（`POST {域名}/v2/chat/completions`，system 提示 + typed blocks 是网关必需格式），2xx 即当日活跃达成；额度耗尽时会得到「等官方发放后再试」的明确提示
+- **国际版「保持活跃」**：国际版没有签到接口，官方规则为「当天有 ≥1 次有效对话请求即视为活跃用户，发放每日赠送积分」。调度器每天为每个国际版账号发一条免费档模型（rateMultiplier 0，~0 消耗）的极短流式请求（`POST {域名}/v2/chat/completions`，system 提示 + typed blocks 是网关必需格式），2xx 即当日活跃达成；额度耗尽时会得到「等官方发放后再试」的明确提示
 
 ## ZCode 说明
 
@@ -54,14 +62,14 @@
 - **用量同步**（同 10router-sync 插件 `export-usage.mjs`，行结构逐行一致）：ZCode `~/.zcode/cli/db/db.sqlite`（只导出官方 `builtin:` / `account:` 渠道）、OpenCode `~/.local/share/opencode/opencode.db`、mirasim `~/.mirasim/insights/usage-*.ndjson`（跳过经 10Router 中转的调用）、小米 MiMo `mimocode.db`，POST 到 10Router 的 `/api/settings/database/import-usage`（10Router 1.0.7+，服务端按行签名去重）。每个来源记住已同步到的时间，之后只发新行（回退 2 天重叠兜底）；可开启每小时自动同步，也可手动「同步用量」
 - 读取 SQLite 需要 Node 22.5+ 内置的 `node:sqlite`（桌面版自带；fnOS 依赖 nodejs_v24）；数据库先复制到临时目录再读，不碰客户端正在写的文件
 
-## Qoder 国际版签到说明（重要）
+## Qoder 国际版领取说明（重要）
 
 实测 Qoder 国际版服务端只向**携带设备风控身份**（`Cosy-MachineToken / Cosy-MachineCode / Cosy-MachineType`）的请求下发「每天领 100 Credits」活动；不带时只返回推广活动，这也是旧版本（以及 10router）国际版一直"无可领活动"的原因。
 
-- 风控身份由 **本机 Qoder 客户端自带的 `resources/umid/runtime-info`** 生成，CreditDaddy 直接调用它（每 50 分钟刷新），因此**国际版签到需要本机安装 Qoder 客户端**（无需保持登录、无需打开）
+- 风控身份由 **本机 Qoder 客户端自带的 `resources/umid/runtime-info`** 生成，CreditDaddy 直接调用它（每 50 分钟刷新），因此**国际版领取需要本机安装 Qoder 客户端**（无需保持登录、无需打开）
 - **每台设备每天只能有一个国际版账号领取**（服务端按设备限领）。本机已有账号领取后，其余国际版账号显示「本机已领」并当日不再请求；账号列表中靠前的账号优先领取
 - 国内版不需要风控身份，所有账号都能领取
-- **fnOS / NAS（Linux，无 Qoder 客户端）**：在面板 Qoder 页一键安装「设备身份组件」（或 `creditdaddy umid install`）—— 从 npm 官方包 `@qoder-ai/qodercli` 下载（校验 npm 完整性），取出其内置的 Linux x64 / arm64 UMID 程序，参数与 qodercli 一致（国际版 env=4），之后 NAS 也能签到国际版；NAS 是独立设备，同样每天限领一个国际版账号。CreditDaddy 不分发该二进制
+- **fnOS / NAS（Linux，无 Qoder 客户端）**：在面板 Qoder 页一键安装「设备身份组件」（或 `creditdaddy umid install`）—— 从 npm 官方包 `@qoder-ai/qodercli` 下载（校验 npm 完整性），取出其内置的 Linux x64 / arm64 UMID 程序，参数与 qodercli 一致（国际版 env=4），之后 NAS 也能领取国际版；NAS 是独立设备，同样每天限领一个国际版账号。CreditDaddy 不分发该二进制
 
 ## 快速开始
 
@@ -77,14 +85,14 @@ CLI 用法：
     node bin/creditdaddy.js add <token> --workbuddy # 添加 WorkBuddy 国内版账号（--intl 为国际版）
     node bin/creditdaddy.js add <token> --name 工作号
     node bin/creditdaddy.js list                    # 查看账号
-    node bin/creditdaddy.js checkin                 # 立即签到全部
+    node bin/creditdaddy.js checkin                 # 立即领取全部
     node bin/creditdaddy.js checkin --cn            # 只签 Qoder 国内版（--intl 只签国际版）
     node bin/creditdaddy.js checkin --workbuddy     # 只签 WorkBuddy
     node bin/creditdaddy.js remove <id前缀>          # 删除账号
     node bin/creditdaddy.js export backup.json --password 口令   # 加密导出（10router 可导入）
     node bin/creditdaddy.js export backup.json      # 明文导出（含明文 token）
     node bin/creditdaddy.js import backup.json [--password 口令] # 导入 CreditDaddy / 10router 导出文件
-    node bin/creditdaddy.js umid install            # Linux / fnOS：安装 Qoder 设备身份组件（国际版签到用）
+    node bin/creditdaddy.js umid install            # Linux / fnOS：安装 Qoder 设备身份组件（国际版领取用）
     node bin/creditdaddy.js help                    # 帮助
 
 ## 导入导出格式
@@ -101,13 +109,13 @@ CLI 用法：
 
 Qoder 侧（国际版 openapi.qoder.sh，国内版 openapi.qoder.com.cn）：
 
-    GET  /sash/api/v1/me/campaigns                      活动（签到）列表，返回 uid / campaigns
+    GET  /sash/api/v1/me/campaigns                      活动（活动）列表，返回 uid / campaigns
     POST /sash/api/v1/me/campaigns/{id}/claim           领取
     GET  /api/v1/userinfo                               账号信息
     GET  /api/v2/quota/usage                            配额
     POST /api/v1/jobToken/exchange                      PAT → job token
 
-签到请求头与 Qoder App 客户端一致：`Authorization`、`Cosy-ClientType: 10`、`Cosy-Version`（客户端版本）、
+领取请求头与 Qoder App 客户端一致：`Authorization`、`Cosy-ClientType: 10`、`Cosy-Version`（客户端版本）、
 `Cosy-MachineOS`（如 `x86_64_win32`）、`Cosy-MachineHostname`、`Cosy-MachineId`，以及上述风控三件套。
 
 ### 本地 HTTP API
@@ -116,13 +124,13 @@ Qoder 侧（国际版 openapi.qoder.sh，国内版 openapi.qoder.com.cn）：
     POST   /api/accounts                添加 {name, provider, token}
     PATCH  /api/accounts/:id            修改备注名 {name}
     DELETE /api/accounts/:id            删除
-    POST   /api/accounts/:id/checkin    单账号签到
+    POST   /api/accounts/:id/checkin    单账号领取
     GET    /api/accounts/:id/quota      积分（统一结构 total / used / remaining / parts）
     POST   /api/accounts/:id/switch     切换 WorkBuddy / ZCode 客户端到此账号
     GET    /api/accounts/:id/zcode/plans   ZCode 可领取活动列表
     POST   /api/accounts/:id/zcode/claim   ZCode 领取活动 {planId, captchaParam?, region?}
     GET    /api/zcode/captcha-config       ZCode 领取验证码配置
-    POST   /api/checkin                 全部签到 {provider?, product?, skipIfCheckedToday?}（默认跳过今日已签）
+    POST   /api/checkin                 全部领取 {provider?, product?, skipIfCheckedToday?}（默认跳过今日已签）
     POST   /api/auth/device/start       发起浏览器登录 {provider: qoder / qoder-cn / workbuddy / workbuddy-intl / zcode-bigmodel / zcode-zai}
     POST   /api/auth/device/poll        轮询登录结果 {sessionId}
     GET    /api/local/detect            检测本机 Qoder 客户端 / WorkBuddy 凭据目录 / 旧版 IDE / CLI
@@ -142,7 +150,7 @@ Qoder 侧（国际版 openapi.qoder.sh，国内版 openapi.qoder.com.cn）：
 
 设置环境变量 `CREDITDADDY_PASSWORD` 后，所有 /api/* 需要 `x-qd-key` 头（fnOS 部署自动启用，密码在安装向导里设置、「应用设置」里可改）。面板遇到密码缺失或错误会弹框要密码并自动重试该请求。
 
-## 签到状态说明
+## 领取状态说明
 
 | status | 含义 | 当日记忆 |
 |---|---|---|
@@ -158,13 +166,13 @@ Qoder 侧（国际版 openapi.qoder.sh，国内版 openapi.qoder.com.cn）：
 
     bin/creditdaddy.js    CLI 入口
     src/constants.js     端点与请求头常量（版本号取自 package.json）
-    src/qoderClient.js   Qoder OpenAPI 客户端（签到核心）
+    src/qoderClient.js   Qoder OpenAPI 客户端（领取核心）
     src/qoderApp.js      本机 Qoder 客户端集成：安装探测、设备风控身份、safeStorage 解密
     src/qoderUmid.js     Qoder 设备身份组件（Linux / fnOS：从官方 qodercli 提取 UMID）
     src/tenrouter.js     10Router 集成：配置、额度总览、用量同步调度
     src/usageSync.js     本机 ZCode / OpenCode / mirasim / MiMo 用量读取（同 10router-sync 插件口径）
-    src/providers.js     产品线注册表：按 provider 分发签到 / 积分 / 校验
-    src/workbuddyClient.js  WorkBuddy API：签到、积分、token 刷新
+    src/providers.js     产品线注册表：按 provider 分发领取 / 积分 / 校验
+    src/workbuddyClient.js  WorkBuddy API：领取、积分、token 刷新
     src/workbuddyLocal.js   本机 WorkBuddy 会话读取与账号切换
     src/zcrypto.js          ZCode 本机凭据加解密（enc:v1: AES-256-GCM）
     src/zcodeClient.js      ZCode 额度查询 + 活动领取（billing preview/claim、验证码配置、出口切换）
@@ -191,10 +199,10 @@ Qoder 侧（国际版 openapi.qoder.sh，国内版 openapi.qoder.com.cn）：
 Releases 下载 **CreditDaddy-Setup-x.y.z.exe**（安装版）或 **CreditDaddy-Portable-x.y.z.exe**（免安装）：
 
 - 打开即用：内置 Node daemon，无需单独安装 Node.js
-- 关闭窗口 = 隐藏到托盘，**后台自动签到不中断**；单击托盘图标打开面板，右键菜单可「立即签到 / 开机自启 / 打开数据目录 / 项目主页 / 退出」
+- 关闭窗口 = 隐藏到托盘，**后台自动领取不中断**；单击托盘图标打开面板，右键菜单可「立即领取 / 开机自启 / 打开数据目录 / 项目主页 / 退出」
 - Windows 10 可能把新图标收在任务栏右下角的 `^` 折叠区，可拖到任务栏常驻
 - 数据存 `%USERPROFILE%\.creditdaddy`（便携版与安装版通用同一数据目录）
-- 从 QoderDaddy 升级：CreditDaddy 是新的应用 ID，会与旧版并存安装；首次启动自动迁移数据，确认无误后请在「应用和功能」卸载 QoderDaddy，避免两个程序同时签到
+- 从 QoderDaddy 升级：CreditDaddy 是新的应用 ID，会与旧版并存安装；首次启动自动迁移数据，确认无误后请在「应用和功能」卸载 QoderDaddy，避免两个程序同时领取
 
 fnOS / NAS 用户请用 **fpk** 包（见 DEPLOY.md，分**标签页版** `creditdaddy-*.fpk` 与**窗口版** `creditdaddy-window-*.fpk`）；功能与桌面版一致，面板端口都是 47860。
 
