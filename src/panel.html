@@ -241,6 +241,8 @@
   .tr-p-val.low b { color: var(--err); }
   .tr-meter.big { height: 7px; }
   .tr-line { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 12px; margin-top: 6px; }
+  .tr-summary { display: flex; align-items: baseline; gap: 6px; font-size: 12px; margin-top: 6px; }
+  .tr-sum-txt { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .low-text { color: var(--err); font-weight: 600; }
   .tr-q-when { color: var(--text-3); font-weight: 400; }
   .tr-q.spent .tr-q-name, .tr-q.spent .tr-q-val { color: var(--text-3); }
@@ -1066,15 +1068,33 @@ function trCardHtml(c) {
     if (!(primary || windows.length || packs.length)) {
       body = '<div class="msg">' + esc(/no separate quota|billed at standard/i.test(c.message || '') ? '按量计费，无额度可显示' : (c.message || '该供应商未返回额度数据')) + '</div>';
     } else {
+      // 摘要行：其余额度全部收成一行 dim 文本；点「明细」展开逐行
+      const briefs = [];
+      for (const q of windows) {
+        const pct = quotaPct(q);
+        briefs.push(esc(q.name) + ' ' + esc(q.percentScale || !(q.total > 0)
+          ? (pct !== null ? fmtNum(pct) + '%' : fmtNum(quotaRemaining(q)))
+          : fmtNum(quotaRemaining(q)) + '/' + fmtNum(q.total || 0)));
+      }
+      const alivePacks = packs.filter((q) => quotaRemaining(q) > 0);
+      if (alivePacks.length) {
+        const rem = alivePacks.reduce((n, q) => n + quotaRemaining(q), 0);
+        briefs.push('积分包×' + alivePacks.length + ' 剩 ' + fmtNum(rem));
+      } else if (packs.length) {
+        briefs.push('积分包已用完');
+      }
       const resets = [primary, ...windows, ...packs].filter(Boolean).map((q) => q.resetAt).filter(Boolean).sort();
-      const quotaCount = (primary ? 1 : 0) + windows.length + packs.length;
-      body = '<div class="meta">'
-        + '<div class="mi"><span class="lbl">额度</span><span class="val">' + quotaCount + ' 项</span></div>'
-        + '<div class="mi right"><span class="lbl">最早到期</span><span class="val' + (resets[0] && new Date(resets[0]) - Date.now() < 7 * 86400e3 ? ' warn' : '') + '">' + (resets[0] ? fmtTime(resets[0]).slice(5, 10) : '—') + '</span></div>'
-        + '</div>'
-        + (primary ? trPrimaryHtml(primary) : '')
-        + windows.map((q) => trLine(q.name, lineVal(q))).join('')
-        + trPacksHtml(c, packs);
+      const nearest = resets[0] || null;
+      const open = Boolean(state.trOpen && state.trOpen[c.id]);
+      const hasDetail = windows.length > 0 || packs.length > 0;
+      body = (primary ? trPrimaryHtml(primary) : '')
+        + (hasDetail
+          ? '<div class="tr-summary dim"><span class="tr-sum-txt" title="' + esc(briefs.join(' · ') + (nearest ? '，最早 ' + fmtTime(nearest).slice(5, 10) : '')) + '">'
+            + briefs.join(' · ')
+            + (nearest ? ' <span class="' + (new Date(nearest) - Date.now() < 7 * 86400e3 ? 'low-text' : '') + '">· 最早 ' + esc(fmtTime(nearest).slice(5, 10)) + '</span>' : '')
+            + '</span><button class="tr-more" data-tr="toggle" data-id="' + esc(c.id) + '">' + (open ? '收起' : '明细') + '</button></div>'
+          : '')
+        + (open ? windows.map((q) => trLine(q.name, lineVal(q))).join('') + trPacksHtml(c, packs) : '');
     }
   }
   return '<div class="tr-card' + (c.isActive ? '' : ' off') + '"><div class="row1"><div class="name-group">'
