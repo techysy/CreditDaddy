@@ -1,5 +1,7 @@
 # CreditDaddy
 
+![CreditDaddy 仪表盘](docs/screenshot-dashboard.png)
+
 [![GitHub release](https://img.shields.io/github/v/release/techysy/CreditDaddy)](https://github.com/techysy/CreditDaddy/releases)
 [![CI](https://github.com/techysy/CreditDaddy/actions/workflows/ci.yml/badge.svg)](https://github.com/techysy/CreditDaddy/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -8,7 +10,6 @@
 
 **AI 编程工具多账号本地管理 + 每日积分自动领取（领鸡蛋）助手** —— 目前支持 **Qoder**（国际版 / 国内版）、**WorkBuddy**（腾讯 CodeBuddy 系，国内版 / 国际版）、**ZCode**（智谱 GLM / Z.ai），并可接入 **[10Router](https://github.com/techysy/10router)** 查看其他供应商的额度、同步本机用量。
 
-![CreditDaddy 仪表盘](docs/screenshot-dashboard.png)
 
 > 项目原名 **QoderDaddy**，v0.3.0 起更名为 CreditDaddy：数据目录自动从 `~/.qoderdaddy` 迁移到 `~/.creditdaddy`（旧目录保留），
 > 旧的 `QODERDADDY_HOME` / `QODERDADDY_PASSWORD` 环境变量与 QoderDaddy 导出文件仍可使用。
