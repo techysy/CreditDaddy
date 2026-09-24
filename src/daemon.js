@@ -53,7 +53,7 @@ import { umidInfo, installUmid } from './qoderUmid.js';
 import * as tenrouter from './tenrouter.js';
 import { startDeviceFlow, pollDeviceFlow, LOGIN_KINDS } from './authDevice.js';
 import { detectInstalls, scanLocalTokens, putCandidate, takeCandidate } from './localDetect.js';
-import { PROVIDER_LABEL, APP_VERSION, PROVIDERS } from './constants.js';
+import { PROVIDER_LABEL, APP_VERSION, PROVIDERS, PROJECT_URL } from './constants.js';
 
 const PRODUCT_IDS = ['qoder', 'workbuddy', 'zcode'];
 
@@ -404,6 +404,7 @@ async function handleApi(req, res, url) {
       ok: true,
       app: 'CreditDaddy',
       version: APP_VERSION,
+      homepage: PROJECT_URL,
       accountsCount: accounts.length,
       dataDir: dataDir(),
       today: dayKey(),

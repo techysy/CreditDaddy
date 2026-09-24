@@ -24,6 +24,10 @@ function refreshExisting(existing, incoming) {
     set('refreshToken', incoming.refreshToken);
     set('expiresAt', incoming.expiresAt);
     if (incoming.verified !== undefined) existing.verified = incoming.verified;
+    // 换上了新凭据：旧 token 留下的失败结果（如「登录已失效，请重新登录」）不再成立，
+    // 否则卡片会一直显示旧错误，直到下一次签到才被覆盖
+    if (existing.lastResult?.status === 'failed') { existing.lastResult = null; changed = true; }
+    if (existing.verifyError) { delete existing.verifyError; changed = true; }
   } else {
     if (!existing.refreshToken) set('refreshToken', incoming.refreshToken);
     if (!existing.expiresAt) set('expiresAt', incoming.expiresAt);

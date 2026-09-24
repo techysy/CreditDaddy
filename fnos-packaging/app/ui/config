@@ -8,15 +8,6 @@
       "port": "47860",
       "url": "/",
       "allUsers": true
-    },
-    "creditdaddy.Window": {
-      "title": "CreditDaddy（窗口）",
-      "icon": "images/icon_{0}.png",
-      "type": "iframe",
-      "protocol": "http",
-      "port": "47860",
-      "url": "/",
-      "allUsers": true
     }
   }
 }

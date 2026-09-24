@@ -184,12 +184,12 @@ Qoder 侧（国际版 openapi.qoder.sh，国内版 openapi.qoder.com.cn）：
 Releases 下载 **CreditDaddy-Setup-x.y.z.exe**（安装版）或 **CreditDaddy-Portable-x.y.z.exe**（免安装）：
 
 - 打开即用：内置 Node daemon，无需单独安装 Node.js
-- 关闭窗口 = 隐藏到托盘，**后台自动签到不中断**；单击托盘图标打开面板，右键菜单可「立即签到 / 开机自启 / 打开数据目录 / 退出」
+- 关闭窗口 = 隐藏到托盘，**后台自动签到不中断**；单击托盘图标打开面板，右键菜单可「立即签到 / 开机自启 / 打开数据目录 / 项目主页 / 退出」
 - Windows 10 可能把新图标收在任务栏右下角的 `^` 折叠区，可拖到任务栏常驻
 - 数据存 `%USERPROFILE%\.creditdaddy`（便携版与安装版通用同一数据目录）
 - 从 QoderDaddy 升级：CreditDaddy 是新的应用 ID，会与旧版并存安装；首次启动自动迁移数据，确认无误后请在「应用和功能」卸载 QoderDaddy，避免两个程序同时签到
 
-fnOS / NAS 用户请用 **fpk** 包（见 DEPLOY.md）；两者功能一致，面板都在 `127.0.0.1:47860`。
+fnOS / NAS 用户请用 **fpk** 包（见 DEPLOY.md，分**标签页版** `creditdaddy-*.fpk` 与**窗口版** `creditdaddy-window-*.fpk`）；功能与桌面版一致，面板端口都是 47860。
 
 ## 开发
 

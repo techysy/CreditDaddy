@@ -14,6 +14,9 @@ jobs:
     strategy:
       matrix:
         arch: [x86, arm]
+        # tab = 桌面图标在浏览器新标签页打开；window = 在飞牛桌面窗口（iframe）里打开。
+        # 两者 appname 相同、共用数据目录，覆盖安装即可互相切换
+        variant: [tab, window]
     runs-on: ${{ matrix.arch == 'arm' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 60
     steps:
@@ -62,6 +65,21 @@ jobs:
           fi
           grep -E '^(platform|appname|version|service_port)[[:space:]]*=' manifest
 
+      - name: Select desktop entry (tab / window)
+        if: matrix.variant == 'window'
+        working-directory: fnos-packaging
+        run: |
+          node -e '
+            const fs = require("fs");
+            const c = JSON.parse(fs.readFileSync("app/ui/config", "utf8"));
+            for (const e of Object.values(c[".url"])) e.type = "iframe";
+            fs.writeFileSync("app/ui/config", JSON.stringify(c, null, 2) + "\n");
+            const m = fs.readFileSync("manifest", "utf8").replace(/^(desc\s*=\s*)(.*)$/m, "$1$2 · 窗口版（在飞牛桌面窗口里打开）");
+            fs.writeFileSync("manifest", m);
+          '
+          cat app/ui/config
+          grep -E '^desc' manifest
+
       - name: Remove symlinks
         run: |
           find fnos-packaging -type l -not -path '*/.git/*' -delete 2>/dev/null || true
@@ -76,13 +94,16 @@ jobs:
           [ -f creditdaddy.fpk ] || { echo "ERROR: fnpack build failed"; exit 1; }
           VERSION="$(grep -E '^version[[:space:]]*=' manifest | head -1 | sed 's/.*=//;s/[[:space:]]//g')"
           [ -n "$VERSION" ] || { echo "ERROR: could not extract version from manifest"; exit 1; }
-          mv creditdaddy.fpk "creditdaddy-${VERSION}-${{ matrix.arch }}.fpk"
-          ls -lh "creditdaddy-${VERSION}-${{ matrix.arch }}.fpk"
+          SUFFIX=""
+          if [ "${{ matrix.variant }}" = "window" ]; then SUFFIX="-window"; fi
+          OUT="creditdaddy${SUFFIX}-${VERSION}-${{ matrix.arch }}.fpk"
+          mv creditdaddy.fpk "${OUT}"
+          ls -lh "${OUT}"
 
       - name: Upload fpk artifact
         uses: actions/upload-artifact@v4
         with:
-          name: creditdaddy-fpk-${{ matrix.arch }}-${{ github.sha }}
+          name: creditdaddy-fpk-${{ matrix.variant }}-${{ matrix.arch }}-${{ github.sha }}
           path: fnos-packaging/creditdaddy-*.fpk
           if-no-files-found: error
           retention-days: 14
@@ -120,7 +141,7 @@ jobs:
           set -euo pipefail
           ls -lh fpk-assets/
           N=$(ls fpk-assets/creditdaddy-*.fpk fpk-assets/SHA256SUMS-fpk.txt 2>/dev/null | wc -l)
-          [ "$N" -ge 3 ] || { echo "ERROR: expected >=3 files, found $N"; exit 1; }
+          [ "$N" -ge 5 ] || { echo "ERROR: expected >=5 files (4 fpk + checksum), found $N"; exit 1; }
           gh release upload "${{ github.ref_name }}" \
             fpk-assets/creditdaddy-*.fpk \
             fpk-assets/SHA256SUMS-fpk.txt \

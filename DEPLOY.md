@@ -9,26 +9,32 @@
 Actions 会在 ubuntu-24.04 / ubuntu-24.04-arm 两个 runner 上分别用官方 fnpack 1.2.1 打包，
 产物：
 
-    creditdaddy-<version>-x86.fpk
+    creditdaddy-<version>-x86.fpk           标签页版
     creditdaddy-<version>-arm.fpk
+    creditdaddy-window-<version>-x86.fpk    窗口版
+    creditdaddy-window-<version>-arm.fpk
     SHA256SUMS-fpk.txt
 
 打 tag 时自动建 Release 并附上产物；手动触发则去 Actions 页面下载 artifact。
 
 ## 安装
 
-fnOS 应用中心 → 手动安装 → 选择 fpk。会自动安装依赖应用 nodejs_v24。
+fnOS 应用中心 → 手动安装 → 选择 fpk。会自动安装依赖应用 nodejs_v24。Release 里每个架构（x86 / arm）有两种包，按习惯选一个：
+
+| 包 | 点桌面图标后 |
+|---|---|
+| `creditdaddy-<版本>-<架构>.fpk` | 在浏览器**新标签页**打开面板 |
+| `creditdaddy-window-<版本>-<架构>.fpk` | 在飞牛桌面的**窗口**里打开面板 |
+
+两种包是同一个应用（appname 都是 creditdaddy、共用数据目录），想换的话直接覆盖安装另一种即可，账号与密码都保留。
+窗口版注意：用 HTTPS 或远程域名访问飞牛时，浏览器会把 http 的窗口当作「混合内容」拦截，这种访问方式请用标签页版。
 
 ## 安装后
 
 1. **面板访问密码**：安装向导里设置（至少 6 位、不含空格），存于 <数据目录>/panel_key（0600，不写日志）。
    打开面板时输入它；忘了可以在 fnOS「应用设置」里重设（保存后服务自动重启）。
    从 0.6.0 及更早版本升级的用户：旧版的密码是随机生成的，升级向导里可以直接设置一个新密码（留空则保留原密码）
-2. 桌面出现两个图标，按习惯选一个（端口都是 47860）：
-   - **CreditDaddy**：在浏览器新标签页打开（应用中心卡片默认也打开这个）
-   - **CreditDaddy（窗口）**：在飞牛桌面的窗口里打开。用 HTTPS 或远程域名访问飞牛时，浏览器会把 http 窗口当作「混合内容」拦截，
-     这时请用新标签页那个图标
-   - 用不到的图标可以在飞牛桌面上隐藏
+2. 桌面出现 CreditDaddy 图标（面板端口 47860）：标签页版在新标签页打开，窗口版在飞牛桌面窗口里打开
 3. 数据目录：@appdata/creditdaddy（账号 token 均只存本机）
 4. 服务监听 0.0.0.0:47860，所有 /api/* 需要 x-qd-key 头（或 ?key=）
 

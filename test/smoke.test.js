@@ -517,3 +517,28 @@ test('设备身份组件：tar 取文件 / 按架构挑 ELF / npm integrity 校�
   assert.ok(um.umidSupported('linux', 'x64') && um.umidSupported('linux', 'arm64'));
   assert.ok(!um.umidSupported('win32', 'x64') && !um.umidSupported('linux', 'ia32'));
 });
+
+test('账号续期：换上新 token 时清掉旧 token 留下的失败结果与校验错误', async () => {
+  await store.withAccounts((list) => {
+    list.push({
+      id: 'renew-1', provider: 'workbuddy', name: '续期测试', token: 'old-token', uid: 'renew-uid', createdAt: new Date().toISOString(),
+      verified: false, verifyError: 'HTTP 401',
+      lastResult: { at: new Date().toISOString(), status: 'failed', message: '登录已失效，请在 WorkBuddy 客户端重新登录该账号后，到「添加账号 → 本机导入」同步' },
+    });
+    list.push({
+      id: 'renew-2', provider: 'workbuddy', name: '已签到', token: 'tok-2', uid: 'renew-uid-2', createdAt: new Date().toISOString(),
+      lastResult: { at: new Date().toISOString(), status: 'checked-in', amount: 5 },
+    });
+  });
+  const r = await importAccounts([
+    { provider: 'workbuddy', token: 'new-token', uid: 'renew-uid' },
+    { provider: 'workbuddy', token: 'tok-2b', uid: 'renew-uid-2' },
+  ]);
+  assert.equal(r.updated, 2);
+  const list = await store.loadAccounts();
+  const a = list.find((x) => x.id === 'renew-1');
+  assert.equal(a.token, 'new-token');
+  assert.equal(a.lastResult, null);
+  assert.equal(a.verifyError, undefined);
+  assert.equal(list.find((x) => x.id === 'renew-2').lastResult.status, 'checked-in');   // 成功结果保留
+});

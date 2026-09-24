@@ -1,13 +1,13 @@
 appname               = creditdaddy
-version               = 0.6.1
+version               = 0.6.2
 display_name          = CreditDaddy
 desc                  = Qoder / WorkBuddy / ZCode 多账号本地管理 + 每日积分自动签到 + 10Router 额度总览（面板端口 47860）
 platform              = x86
 source                = thirdparty
 maintainer            = techysy
-maintainer_url        = https://github.com/techysy/CreditDaddy
+maintainer_url        = https://github.com/techysy/QoderDaddy
 distributor           = techysy
-distributor_url       = https://github.com/techysy/CreditDaddy
+distributor_url       = https://github.com/techysy/QoderDaddy
 desktop_uidir         = ui
 desktop_applaunchname = creditdaddy.Application
 service_port          = 47860

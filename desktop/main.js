@@ -2,7 +2,7 @@
  * CreditDaddy 桌面壳（Electron）：内置 daemon + 托盘常驻。
  *
  *   - 关闭窗口 = 隐藏到托盘，后台自动签到不中断；首次隐藏时弹出气泡提示托盘位置
- *   - 单击托盘图标打开面板；右键菜单：状态 / 打开面板 / 立即签到 / 开机自启 / 打开数据目录 / 退出
+ *   - 单击托盘图标打开面板；右键菜单：状态 / 打开面板 / 立即签到 / 开机自启 / 打开数据目录 / 项目主页 / 退出
  *   - 开机自启以 --hidden 启动：只驻留托盘，不弹窗口
  *   - 打包后从 resources/creditdaddy 加载服务端；开发时（electron desktop/）直接用仓库源码
  */
@@ -20,7 +20,8 @@ let quitting = false;
 let boundPort = PORT;
 let hideHintShown = false;
 let lastSummary = '';
-let daemonInfo = { version: app.getVersion(), dataDir: '' };
+const DEFAULT_HOMEPAGE = 'https://github.com/techysy/QoderDaddy';
+let daemonInfo = { version: app.getVersion(), dataDir: '', homepage: DEFAULT_HOMEPAGE };
 
 const serverRoot = app.isPackaged
   ? path.join(process.resourcesPath, 'creditdaddy')
@@ -50,7 +51,7 @@ async function boot() {
     const constants = await load('src/constants.js');
     const r = await daemon.startDaemon(PORT, '127.0.0.1');
     boundPort = r.port;
-    daemonInfo = { version: constants.APP_VERSION, dataDir: store.dataDir() };
+    daemonInfo = { version: constants.APP_VERSION, dataDir: store.dataDir(), homepage: constants.PROJECT_URL || DEFAULT_HOMEPAGE };
     checkin.startScheduler();
   } catch (err) {
     dialog.showErrorBox('CreditDaddy 启动失败', String((err && err.stack) || err));
@@ -206,6 +207,7 @@ function refreshTrayMenu() {
     { type: 'separator' },
     { label: '开机自启（后台运行）', type: 'checkbox', checked: autoLaunchEnabled(), click: (item) => setAutoLaunch(item.checked) },
     { label: '打开数据目录', enabled: Boolean(daemonInfo.dataDir), click: () => shell.openPath(daemonInfo.dataDir) },
+    { label: '项目主页（GitHub）', click: () => shell.openExternal(daemonInfo.homepage) },
     { type: 'separator' },
     { label: '退出 CreditDaddy', click: () => { quitting = true; app.quit(); } },
   ]));
