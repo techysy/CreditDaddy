@@ -44,14 +44,39 @@ async function ensureDir() {
   await fs.mkdir(dataDir(), { recursive: true, mode: 0o700 });
 }
 
-/** 原子写：临时文件 + rename，失败不留半截文件 */
-export async function atomicWrite(file, content) {
+// Windows 上 rename 覆盖已有文件时，外部程序（杀软扫描、同步盘、另一守护进程）瞬时占用
+// 会直接抛 EPERM/EBUSY/EACCES：先按递增间隔重试，仍失败则兜底直写目标（牺牲原子性换可用性）。
+const RENAME_TRANSIENT = new Set(['EPERM', 'EBUSY', 'EACCES']);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+let renameImpl = null;
+export function _setRenameForTests(fn) { renameImpl = fn || null; }
+
+/** 原子写：临时文件 + rename（带故障重试与直写兜底） */
+export async function atomicWrite(file, content, { retries = 6 } = {}) {
   const tmp = path.join(
     path.dirname(file),
     `.tmp-${path.basename(file)}-${crypto.randomBytes(4).toString('hex')}`
   );
   await fs.writeFile(tmp, content, { mode: 0o600 });
-  await fs.rename(tmp, file);
+  const doRename = renameImpl || ((a, b) => fs.rename(a, b));
+  let transientRetries = 0;
+  try {
+    for (let i = 0; i <= retries; i++) {
+      try { await doRename(tmp, file); return; } catch (e) {
+        if (!RENAME_TRANSIENT.has(e?.code)) throw e;   // 非占用类错误立即走兜底（如 EXDEV）
+        transientRetries++;
+        if (i < retries) await sleep(120 * (i + 1));
+      }
+    }
+  } catch { /* 落入兜底 */ }
+  // 兜底：读回临时文件直接覆盖写目标，并清理临时文件（避免 .tmp-* 残留）
+  try {
+    const data = await fs.readFile(tmp, 'utf8');
+    await fs.writeFile(file, data, { mode: 0o600 });
+  } finally {
+    await fs.unlink(tmp).catch(() => {});
+  }
 }
 
 async function readJson(file, fallback) {

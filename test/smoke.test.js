@@ -566,3 +566,31 @@ test('WorkBuddy 国际版活跃领取：2xx → checked-in；429 → no-activity
     assert.equal(bad.status, 'failed');
   } finally { globalThis.fetch = realFetch; }
 });
+
+test('atomicWrite：rename 被瞬时占用时重试，仍失败则兜底直写且不留临时文件', async () => {
+  const dir = process.env.CREDITDADDY_HOME;
+  const f = path.join(dir, 'atomic-test.json');
+
+  // 前两次 EPERM，第三次成功 → 走 rename 路径（mock 成功时委托真实 rename）
+  let calls = 0;
+  store._setRenameForTests(async (a, b) => {
+    calls++;
+    if (calls < 3) { const e = new Error('operation not permitted'); e.code = 'EPERM'; throw e; }
+    return fs.rename(a, b);
+  });
+  await store.atomicWrite(f, '{"a":1}');
+  assert.equal(calls, 3);
+  assert.equal(JSON.parse(await fs.readFile(f, 'utf8')).a, 1);
+
+  // 一直 EBUSY → 兜底直写成功，临时文件清理干净
+  calls = 0;
+  store._setRenameForTests(async () => { calls++; const e = new Error('busy'); e.code = 'EBUSY'; throw e; });
+  await store.atomicWrite(f, '{"b":2}');
+  assert.ok(calls >= 2, '应发生重试');
+  assert.equal(JSON.parse(await fs.readFile(f, 'utf8')).b, 2);
+  const leftovers = (await fs.readdir(dir)).filter((x) => x.startsWith('.tmp-atomic-test'));
+  assert.deepEqual(leftovers, [], '不应留下临时文件残留');
+
+  store._setRenameForTests(null);
+  await fs.unlink(f).catch(() => {});
+});
