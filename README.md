@@ -1,6 +1,6 @@
 # CreditDaddy
 
-**AI 编程工具多账号本地管理 + 每日积分自动签到助手** —— 目前支持 **Qoder**（国际版 / 国内版）、**WorkBuddy**（腾讯 CodeBuddy 系，国内版 / 国际版）、**ZCode**（智谱 GLM / Z.ai）。
+**AI 编程工具多账号本地管理 + 每日积分自动签到助手** —— 目前支持 **Qoder**（国际版 / 国内版）、**WorkBuddy**（腾讯 CodeBuddy 系，国内版 / 国际版）、**ZCode**（智谱 GLM / Z.ai），并可接入 **[10Router](https://github.com/techysy/10router)** 查看其他供应商的额度、同步本机用量。
 
 > 项目原名 **QoderDaddy**，v0.3.0 起更名为 CreditDaddy：数据目录自动从 `~/.qoderdaddy` 迁移到 `~/.creditdaddy`（旧目录保留），
 > 旧的 `QODERDADDY_HOME` / `QODERDADDY_PASSWORD` 环境变量与 QoderDaddy 导出文件仍可使用。
@@ -11,6 +11,7 @@
 ## 功能
 
 - **仪表盘 + 分产品标签页**：首页仪表盘汇总账号数、今日签到进度、剩余积分、下次自动签到，各产品概况、需要处理的账号（token 失效 / 即将过期、签到失败）与最近签到记录；Qoder / WorkBuddy / ZCode 各自一个标签页，卡片式账号列表（参考 WorkDaddy），可按国际 / 国内版筛选，显示签到状态、连签天数、剩余积分、积分包到期、token 有效期，支持亮色 / 暗色
+- **10Router 集成**：配置 10Router 地址 + 虚拟 key（sk-…）后，「10Router」标签页渲染 10Router 里其他供应商（Claude / Codex / Kiro / GLM …）的额度卡片，额度告急 / 查询失败会进仪表盘「需要处理」；并内置 10router-sync 插件的用量同步能力，每小时把本机 ZCode / OpenCode / mirasim / 小米 MiMo 的用量导入 10Router 的用量统计
 - **本机导入**：一键读取本机 Qoder / Qoder CN 客户端（本地解密 `auth.v1.dat`）与 WorkBuddy 客户端（当前 + 历史会话）已登录的账号，token 不出机器；同一用户 token 续期时自动更新
 - **WorkBuddy / ZCode 账号切换**：一键把客户端切换到选中的账号（WorkBuddy 自动应用；ZCode 需先退出客户端），切换前先保全当前登录，绝不丢号，每个账号独立设备指纹
 - **隐私（无痕）登录窗口**：桌面版内置一次性会话的登录窗口，网页授权不带出系统浏览器里已登录的账号、Cookie 也不落盘，适合同一产品登录多个账号
@@ -42,6 +43,14 @@
 - **额度展示**：查询 BigModel Coding Plan（quota/limit + subscription/list）与 Z.ai / Start Plan（billing/balance）；无有效套餐时显示「仅免费额度」。⚠️ 额度解析按 zcode-switch 字段映射实现，开发账号无有效套餐，未经真实数据验证
 - **账号切换**：写回 `credentials.json` / `config.json`，并为每个账号写入独立的设备 ID（`telemetry-state.json` 的 deviceMid），避免账号间被风控关联；需先退出 ZCode 客户端（运行中会覆盖回内存里的旧登录）。切换前当前登录会先保存进 CreditDaddy，不会丢号
 - 协议移植自 [zcode-switch](https://github.com/pjpv/zcode-switch)（MIT）
+
+## 10Router 集成
+
+在面板「10Router」标签页填 10Router 的访问地址和仪表盘里创建的 **虚拟 key**（sk-…），key 只保存在守护进程数据目录的 `tenrouter.json`（0600，不随账号导出），面板只显示脱敏值。
+
+- **供应商额度卡片**：读取 10Router 的 `GET /api/usage/quotas`（**10Router 1.2.1+**），一次拿到全部可查额度的供应商连接，口径与 10Router 仪表盘的 Provider Limits 一致；剩余不足 10% 标红并进入仪表盘「需要处理」。10Router 端按连接缓存 5 分钟，「刷新额度」会强制重查。老版本 10Router 会提示升级，用量同步不受影响
+- **用量同步**（同 10router-sync 插件 `export-usage.mjs`，行结构逐行一致）：ZCode `~/.zcode/cli/db/db.sqlite`（只导出官方 `builtin:` / `account:` 渠道）、OpenCode `~/.local/share/opencode/opencode.db`、mirasim `~/.mirasim/insights/usage-*.ndjson`（跳过经 10Router 中转的调用）、小米 MiMo `mimocode.db`，POST 到 10Router 的 `/api/settings/database/import-usage`（10Router 1.0.7+，服务端按行签名去重）。每个来源记住已同步到的时间，之后只发新行（回退 2 天重叠兜底）；可开启每小时自动同步，也可手动「同步用量」
+- 读取 SQLite 需要 Node 22.5+ 内置的 `node:sqlite`（桌面版自带；fnOS 依赖 nodejs_v24）；数据库先复制到临时目录再读，不碰客户端正在写的文件
 
 ## Qoder 国际版签到说明（重要）
 
@@ -115,6 +124,10 @@ Qoder 侧（国际版 openapi.qoder.sh，国内版 openapi.qoder.com.cn）：
     POST   /api/local/scan              读取本机已登录账号（Qoder + WorkBuddy + ZCode）
     POST   /api/local/import            导入扫描候选 {candidateId, provider?}
     GET    /api/status                  状态（版本、调度器、风控身份是否可用）
+    GET    /api/tenrouter               10Router 集成配置（key 脱敏）；PUT 保存 {endpoint, key?, syncEnabled?, sources?}；DELETE 断开
+    POST   /api/tenrouter/test          测试地址与 key {endpoint?, key?}
+    GET    /api/tenrouter/quotas        10Router 其他供应商额度总览（?force=1 跳过缓存）
+    POST   /api/tenrouter/sync          立即同步本机用量到 10Router {dryRun?}
     GET    /api/qoder/umid              Qoder 设备身份组件状态（Linux / fnOS）
     POST   /api/qoder/umid/install      下载官方 qodercli 并提取设备身份组件
     GET    /api/logs                    日志
@@ -142,6 +155,8 @@ Qoder 侧（国际版 openapi.qoder.sh，国内版 openapi.qoder.com.cn）：
     src/qoderClient.js   Qoder OpenAPI 客户端（签到核心）
     src/qoderApp.js      本机 Qoder 客户端集成：安装探测、设备风控身份、safeStorage 解密
     src/qoderUmid.js     Qoder 设备身份组件（Linux / fnOS：从官方 qodercli 提取 UMID）
+    src/tenrouter.js     10Router 集成：配置、额度总览、用量同步调度
+    src/usageSync.js     本机 ZCode / OpenCode / mirasim / MiMo 用量读取（同 10router-sync 插件口径）
     src/providers.js     产品线注册表：按 provider 分发签到 / 积分 / 校验
     src/workbuddyClient.js  WorkBuddy API：签到、积分、token 刷新
     src/workbuddyLocal.js   本机 WorkBuddy 会话读取与账号切换

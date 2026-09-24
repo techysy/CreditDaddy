@@ -12,6 +12,7 @@
 import { loadAccounts, loadState, saveState, withAccounts } from './store.js';
 import { productImpl } from './providers.js';
 import { productOf } from './constants.js';
+import { startUsageSyncScheduler } from './tenrouter.js';
 import { refreshContext } from './accounts.js';
 import { logger } from './logger.js';
 
@@ -169,6 +170,7 @@ async function runTickInner(opts) {
 /** 启动定时签到（每 ~2h 一轮，当天已成功的账号自动跳过） */
 export function startScheduler() {
   if (timerHandle) return;
+  startUsageSyncScheduler();   // 10Router 用量同步（未配置 / 未开启时不做任何事）
   const scheduleNext = () => {
     const delay = msUntilNextTick();
     nextTickAt = new Date(Date.now() + delay).toISOString();

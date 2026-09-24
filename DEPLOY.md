@@ -48,6 +48,11 @@ fnOS 应用详情页可启停；命令行：
 
 日志：<数据目录>/creditdaddy.log
 
+## 10Router 集成
+
+面板「10Router」标签页填 10Router 地址（如 `http://127.0.0.1:20128`，NAS 上的 10Router 用其局域网地址）和虚拟 key，即可看其他供应商的额度卡片（需 10Router 1.2.1+）。
+用量同步读的是本机桌面客户端（ZCode / OpenCode / mirasim / MiMo）的数据，NAS 上一般没有这些客户端，请在装有它们的电脑上用桌面版开启同步。
+
 ## 从 QoderDaddy 迁移
 
 CreditDaddy（原名 QoderDaddy）的 fpk appname 为 creditdaddy，会作为新应用安装；首次启动自动把 @appdata/qoderdaddy 的账号数据与 panel_key 复制过来。确认无误后卸载旧的 QoderDaddy 应用。

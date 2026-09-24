@@ -20,6 +20,10 @@
  *   GET    /api/local/detect           检测本机 Qoder 客户端 / IDE / CLI
  *   POST   /api/local/scan             读取本机已登录账号（解密客户端凭据 + 扫描旧版 IDE）
  *   POST   /api/local/import           导入扫描候选 {candidateId, provider?, name?}
+ *   GET    /api/tenrouter              10Router 集成配置（key 脱敏）；PUT 保存 {endpoint, key?, syncEnabled?, sources?}；DELETE 清除
+ *   POST   /api/tenrouter/test         测试地址与 key {endpoint?, key?}
+ *   GET    /api/tenrouter/quotas       10Router 其他供应商额度总览（?force=1 跳过缓存）
+ *   POST   /api/tenrouter/sync         立即同步本机用量到 10Router {dryRun?}
  *   GET    /api/qoder/umid             Qoder 设备身份组件状态（Linux / fnOS）
  *   POST   /api/qoder/umid/install     下载官方 qodercli 并提取设备身份组件
  *   GET    /api/logs                   最近日志
@@ -46,6 +50,7 @@ import { exportAccounts, parseImport, TransferError } from './transfer.js';
 import { runCheckinTick, getSchedulerInfo, dayKey } from './checkin.js';
 import { detectQoderApps, readQoderAppAccounts, riskIdentityAvailable, riskIdentitySource } from './qoderApp.js';
 import { umidInfo, installUmid } from './qoderUmid.js';
+import * as tenrouter from './tenrouter.js';
 import { startDeviceFlow, pollDeviceFlow, LOGIN_KINDS } from './authDevice.js';
 import { detectInstalls, scanLocalTokens, putCandidate, takeCandidate } from './localDetect.js';
 import { PROVIDER_LABEL, APP_VERSION, PROVIDERS } from './constants.js';
@@ -336,6 +341,43 @@ async function handleApi(req, res, url) {
     if (duplicate && !updated) return json(res, 409, { error: '该账号已存在，信息已是最新' });
     logger.info('DAEMON', (updated ? '已用本机凭据更新：' : '从本机导入账号：') + (account.name || account.id));
     return json(res, updated ? 200 : 201, { account: publicAccount(account), updated });
+  }
+
+  // ── 10Router 集成（虚拟 key：额度总览 + 用量同步） ──
+  if (p === '/api/tenrouter' && method === 'GET') {
+    return json(res, 200, await tenrouter.publicConfig());
+  }
+  if (p === '/api/tenrouter' && method === 'PUT') {
+    const body = await readBody(req).catch(() => ({}));
+    try {
+      await tenrouter.updateConfig({ endpoint: body?.endpoint, key: body?.key, syncEnabled: body?.syncEnabled, sources: body?.sources });
+      return json(res, 200, await tenrouter.publicConfig());
+    } catch (e) { return json(res, 400, { error: e.message }); }
+  }
+  if (p === '/api/tenrouter' && method === 'DELETE') {
+    await tenrouter.updateConfig({ endpoint: '' });
+    return json(res, 200, await tenrouter.publicConfig());
+  }
+  if (p === '/api/tenrouter/test' && method === 'POST') {
+    const body = await readBody(req).catch(() => ({}));
+    let override;
+    try {
+      // 可以在保存前测试面板里填的新地址 / key；key 留空则用已保存的
+      if (body?.endpoint) override = { endpoint: tenrouter.normalizeEndpoint(body.endpoint) };
+      if (body?.key && String(body.key).trim()) override = { ...(override || {}), key: String(body.key).trim() };
+    } catch (e) { return json(res, 400, { ok: false, error: '地址格式不正确：' + e.message }); }
+    return json(res, 200, await tenrouter.testConnection(override));
+  }
+  if (p === '/api/tenrouter/quotas' && method === 'GET') {
+    try {
+      return json(res, 200, await tenrouter.fetchQuotas({ force: url.searchParams.get('force') === '1' }));
+    } catch (e) { return json(res, e.code === 'NOT_CONFIGURED' ? 409 : 502, { error: e.message, code: e.code }); }
+  }
+  if (p === '/api/tenrouter/sync' && method === 'POST') {
+    const body = await readBody(req).catch(() => ({}));
+    try {
+      return json(res, 200, await tenrouter.runUsageSync({ dryRun: body?.dryRun === true }));
+    } catch (e) { return json(res, e.code === 'NOT_CONFIGURED' ? 409 : 500, { error: e.message, code: e.code }); }
   }
 
   // Qoder 设备身份组件（Linux / fnOS：从官方 qodercli 提取 UMID，国际版签到用）
