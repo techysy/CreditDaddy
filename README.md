@@ -132,6 +132,7 @@ Qoder 侧（国际版 openapi.qoder.sh，国内版 openapi.qoder.com.cn）：
     GET    /api/tenrouter               10Router 集成配置（key 脱敏）；PUT 保存 {endpoint, key?, syncEnabled?, sources?}；DELETE 断开
     POST   /api/tenrouter/test          测试地址与 key {endpoint?, key?}
     GET    /api/tenrouter/quotas        10Router 其他供应商额度总览（?force=1 跳过缓存）
+    GET    /api/tenrouter/health        10Router 自身健康（ok / driver / lastDriverError，驱动降级有提示）
     POST   /api/tenrouter/sync          立即同步本机用量到 10Router {dryRun?}
     GET    /api/qoder/umid              Qoder 设备身份组件状态（Linux / fnOS）
     POST   /api/qoder/umid/install      下载官方 qodercli 并提取设备身份组件

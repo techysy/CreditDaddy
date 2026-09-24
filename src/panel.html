@@ -1037,7 +1037,13 @@ function renderTenrouter() {
   else if (!tr.quotas) grid = '<div class="empty">正在读取 10Router 供应商额度…</div>';
   else if (!list.length) grid = '<div class="empty">10Router 里还没有可查额度的供应商连接（OAuth 或支持额度查询的 API Key）。</div>';
   else grid = trSorted(list).map(trCardHtml).join('');
+  const h = tr.health;
+  const healthStrong = !h ? '…' : h.ok ? '正常' : '异常';
+  const healthDetail = !h ? '' : h.ok
+    ? (h.driver ? '存储驱动 ' + h.driver : '') + (h.lastDriverError ? '（驱动降级：' + h.lastDriverError + '）' : '')
+    : (h.error || '');
   box.innerHTML = '<div class="toolbar"><div class="summary">'
+    + '<div class="stat" title="' + esc(healthDetail) + '"><span>10Router 健康</span><strong' + (h && !h.ok ? ' style="color:var(--err)"' : (h && h.lastDriverError ? ' style="color:var(--warn,#b45309)"' : '')) + '>' + healthStrong + '</strong></div><div class="divider"></div>'
     + '<div class="stat"><span>供应商连接</span><strong>' + (tr.quotas ? list.length : '-') + '</strong></div><div class="divider"></div>'
     + '<div class="stat"><span>额度告急</span><strong>' + (tr.quotas ? low : '-') + '</strong></div><div class="divider"></div>'
     + '<div class="stat"><span>查询失败</span><strong>' + (tr.quotas ? failed : '-') + '</strong></div>'
@@ -1071,8 +1077,14 @@ async function loadTrConfig() {
   try { tr.config = await api('/api/tenrouter'); } catch (e) { tr.config = null; }
   render();
 }
+async function loadTrHealth() {
+  if (!tr.config || !tr.config.configured) { tr.health = null; render(); return; }
+  try { tr.health = await api('/api/tenrouter/health'); } catch (e) { tr.health = { ok: false, error: e.message }; }
+  render();
+}
 async function loadTrQuotas(force) {
   if (!tr.config || !tr.config.configured) return;
+  loadTrHealth();
   tr.loading = true; render();
   try { tr.quotas = await api('/api/tenrouter/quotas' + (force ? '?force=1' : '')); tr.error = null; }
   catch (e) { tr.error = e.message; if (e.code === 'TOO_OLD') tr.quotas = null; }

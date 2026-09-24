@@ -120,6 +120,27 @@ export async function fetchQuotas({ force = false } = {}) {
   };
 }
 
+/** 10Router 自身健康（/api/health，无需 key；未配置或不可达时返回 ok:false） */
+export async function fetchHealth(override) {
+  const c = { ...loadConfig(), ...(override || {}) };
+  if (!c.endpoint) return { ok: false, error: '未配置 10Router 地址' };
+  try {
+    const res = await fetch(c.endpoint + '/api/health', {
+      headers: { Accept: 'application/json', ...(c.key ? { Authorization: `Bearer ${c.key}` } : {}) },
+      signal: AbortSignal.timeout(8000),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data) return { ok: false, error: `HTTP ${res.status}` };
+    return {
+      ok: data.ok === true,
+      driver: data.driver || null,
+      lastDriverError: typeof data.lastDriverError === 'string' ? data.lastDriverError : null,
+    };
+  } catch (e) {
+    return { ok: false, error: e.cause?.code || e.message };
+  }
+}
+
 /** 测试连接：用额度接口同时验证地址与 key；老版本 10Router 只能同步用量时也视为可用 */
 export async function testConnection(override) {
   const c = { ...loadConfig(), ...(override || {}) };

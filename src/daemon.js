@@ -26,6 +26,7 @@
  *   GET    /api/tenrouter              10Router 集成配置（key 脱敏）；PUT 保存 {endpoint, key?, syncEnabled?, sources?}；DELETE 清除
  *   POST   /api/tenrouter/test         测试地址与 key {endpoint?, key?}
  *   GET    /api/tenrouter/quotas       10Router 其他供应商额度总览（?force=1 跳过缓存）
+ *   GET    /api/tenrouter/health       10Router 自身健康（/api/health 转发：ok / driver / lastDriverError）
  *   POST   /api/tenrouter/sync         立即同步本机用量到 10Router {dryRun?}
  *   GET    /api/qoder/umid             Qoder 设备身份组件状态（Linux / fnOS）
  *   POST   /api/qoder/umid/install     下载官方 qodercli 并提取设备身份组件
@@ -435,6 +436,9 @@ async function handleApi(req, res, url) {
     try {
       return json(res, 200, await tenrouter.fetchQuotas({ force: url.searchParams.get('force') === '1' }));
     } catch (e) { return json(res, e.code === 'NOT_CONFIGURED' ? 409 : 502, { error: e.message, code: e.code }); }
+  }
+  if (p === '/api/tenrouter/health' && method === 'GET') {
+    return json(res, 200, await tenrouter.fetchHealth());
   }
   if (p === '/api/tenrouter/sync' && method === 'POST') {
     const body = await readBody(req).catch(() => ({}));
