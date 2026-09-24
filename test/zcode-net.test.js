@@ -41,6 +41,33 @@ test('proxyFirst / setProxyFirst：默认 false，落盘后可读回', () => {
   zc.setProxyFirst(false);
 });
 
+test('setProxyUrl：设置 / 读取 / 清除；非法地址拒绝', () => {
+  assert.equal(zc.proxyUrl(), null);
+  zc.setProxyUrl('http://127.0.0.1:7890');
+  assert.equal(zc.proxyUrl(), 'http://127.0.0.1:7890');
+  const onDisk = JSON.parse(fs.readFileSync(path.join(process.env.CREDITDADDY_HOME, 'zcode-net.json'), 'utf8'));
+  assert.equal(onDisk.proxyUrl, 'http://127.0.0.1:7890');
+  assert.throws(() => zc.setProxyUrl('socks5://127.0.0.1:1080'), /http:\/\/.*代理/);
+  zc.setProxyUrl('');
+  assert.equal(zc.proxyUrl(), null);
+  zc.setProxyUrl(null);
+  assert.equal(zc.proxyUrl(), null);
+});
+
+test('fetchJsonRace：面板配置的代理优先级高于环境变量', async () => {
+  process.env.HTTPS_PROXY = 'http://127.0.0.1:9';
+  zc.setProxyUrl('http://127.0.0.1:7890');
+  const log = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => { log.push('direct'); return new Response('{"code":0}'); };
+  let usedProxyUrl = null;
+  zc._setViaProxyForTests(async (url) => { log.push('proxy'); usedProxyUrl = url; return new Response('{"code":0}'); });
+  try {
+    await zc.fetchJsonRace('https://zcode.z.ai/api/v1/test');
+    assert.deepEqual(log, ['direct'], '直连成功时不触碰代理');
+  } finally { globalThis.fetch = realFetch; zc._setViaProxyForTests(null); zc.setProxyUrl(''); }
+});
+
 test('fetchJsonRace：无代理环境只尝试直连', async () => {
   const log = [];
   const restore = stubFetch(log);

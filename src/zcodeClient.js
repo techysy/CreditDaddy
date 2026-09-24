@@ -59,26 +59,39 @@ export function zcodeAppVersion() {
 export function _resetAppVersionCache(v) { appVersionCache = v || null; }
 
 // ── HTTP 出口：直连优先 / 代理优先（可切换），任一路成功即返回 ──
+// 代理地址：优先用面板里保存的 proxyUrl（zcode-net.json，0600），没有则退回 HTTPS_PROXY 环境变量
 
 function codeHome() {
   return process.env.CREDITDADDY_HOME || process.env.QODERDADDY_HOME || path.join(os.homedir(), '.creditdaddy');
 }
 const NET_PREFS_FILE = () => path.join(codeHome(), 'zcode-net.json');
 
-let proxyFirstCache = null;
-export function proxyFirst() {
-  if (proxyFirstCache !== null) return proxyFirstCache;
-  try { proxyFirstCache = JSON.parse(fs.readFileSync(NET_PREFS_FILE(), 'utf8')).proxyFirst === true; }
-  catch { proxyFirstCache = false; }
-  return proxyFirstCache;
+let netPrefCache = null;
+function netPref() {
+  if (netPrefCache) return netPrefCache;
+  try {
+    const j = JSON.parse(fs.readFileSync(NET_PREFS_FILE(), 'utf8'));
+    netPrefCache = { proxyFirst: j.proxyFirst === true, proxyUrl: typeof j.proxyUrl === 'string' && j.proxyUrl.trim() ? j.proxyUrl.trim() : null };
+  } catch { netPrefCache = { proxyFirst: false, proxyUrl: null }; }
+  return netPrefCache;
 }
-export function setProxyFirst(v) {
-  proxyFirstCache = v === true;
+function writeNetPref(p) {
+  netPrefCache = p;
   fs.mkdirSync(codeHome(), { recursive: true, mode: 0o700 });
-  fs.writeFileSync(NET_PREFS_FILE(), JSON.stringify({ proxyFirst: proxyFirstCache }, null, 2), { mode: 0o600 });
+  fs.writeFileSync(NET_PREFS_FILE(), JSON.stringify({ proxyFirst: p.proxyFirst, proxyUrl: p.proxyUrl }, null, 2), { mode: 0o600 });
+}
+export function proxyFirst() { return netPref().proxyFirst; }
+export function proxyUrl() { return netPref().proxyUrl; }
+export function setProxyFirst(v) { writeNetPref({ ...netPref(), proxyFirst: v === true }); }
+export function setProxyUrl(u) {
+  const t = typeof u === 'string' ? u.trim() : '';
+  if (t && !/^http:\/\/\S+/i.test(t)) throw new Error('目前只支持 http:// 代理地址');
+  writeNetPref({ ...netPref(), proxyUrl: t || null });
 }
 
 const envProxy = () => process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy || null;
+/** 生效代理：面板保存的优先，其次环境变量 */
+const effectiveProxy = () => proxyUrl() || envProxy();
 
 /** 目标是否应绕过代理（loopback / NO_PROXY 后缀匹配） */
 function proxyBypass(url) {
@@ -118,8 +131,8 @@ function connectTunnel(proxyUrl, target) {
 }
 
 async function fetchViaProxy(url, { method = 'GET', headers = {}, body = null, timeoutMs = 15000 } = {}) {
-  const proxy = envProxy();
-  if (!proxy || !/^http:\/\//i.test(proxy)) throw new Error('没有可用的 http 代理（HTTPS_PROXY 未设置）');
+  const proxy = effectiveProxy();
+  if (!proxy || !/^http:\/\//i.test(proxy)) throw new Error('没有可用的 http 代理（面板配置或 HTTPS_PROXY 环境变量）');
   const u = new URL(url);
   const p = new URL(proxy);
   const isHttps = u.protocol === 'https:';
@@ -163,7 +176,7 @@ export function _setViaProxyForTests(fn) { viaProxyImpl = fn || null; }
 
 export async function fetchJsonRace(url, { method = 'GET', headers = {}, body = null, timeoutMs = 15000 } = {}) {
   const base = { method, headers: { ...headers }, ...(body != null ? { body: typeof body === 'string' ? body : JSON.stringify(body) } : {}), signal: AbortSignal.timeout(timeoutMs) };
-  const useProxy = Boolean(envProxy()) && !proxyBypass(url);
+  const useProxy = Boolean(effectiveProxy()) && !proxyBypass(url);
   const direct = () => fetch(url, base);
   const viaProxy = viaProxyImpl
     ? () => viaProxyImpl(url, { method, headers, body, timeoutMs })

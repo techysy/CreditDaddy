@@ -50,7 +50,7 @@ import { addAccount, importAccounts, refreshContext } from './accounts.js';
 import { productImpl } from './providers.js';
 import { readWorkbuddySessions, writeWorkbuddySession, workbuddyAuthDir, currentWorkbuddyUid } from './workbuddyLocal.js';
 import { liveToAccount as zcodeLiveAccount, switchTo as zcodeSwitchTo, currentZcodeUid, currentZcodeIdentity, detectZcode, ensureVirtualDeviceMid, terminateZcode } from './zcodeLocal.js';
-import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst } from './zcodeClient.js';
+import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl } from './zcodeClient.js';
 import { exportAccounts, parseImport, TransferError } from './transfer.js';
 import { runCheckinTick, getSchedulerInfo, dayKey } from './checkin.js';
 import { detectQoderApps, readQoderAppAccounts, riskIdentityAvailable, riskIdentitySource } from './qoderApp.js';
@@ -259,14 +259,19 @@ async function handleApi(req, res, url) {
       return json(res, 502, { error: e.message });
     }
   }
-  // ZCode 出口偏好：默认「直连优先、代理兜底」，可切「代理优先、直连兜底」（存数据目录 zcode-net.json）
+  // ZCode 出口偏好：默认「直连优先、代理兜底」，可切「代理优先、直连兜底」；代理地址可面板配置（存 zcode-net.json，0600）
   if (p === '/api/zcode/net' && method === 'GET') {
-    return json(res, 200, { proxyFirst: proxyFirst() });
+    const u = proxyUrl();
+    const masked = u ? (() => { try { const x = new URL(u); x.password = x.password ? '*'.repeat(4) : ''; return x.toString(); } catch { return '***'; } })() : null;
+    return json(res, 200, { proxyFirst: proxyFirst(), proxyUrlMasked: masked, hasEnvProxy: Boolean(process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy) });
   }
   if (p === '/api/zcode/net' && method === 'PUT') {
     const body = await readBody(req).catch(() => ({}));
-    setProxyFirst(body?.proxyFirst === true);
-    logger.info('DAEMON', `ZCode 出口切换为：${proxyFirst() ? '代理优先' : '直连优先'}`);
+    try {
+      if (body?.proxyFirst !== undefined) setProxyFirst(body.proxyFirst === true);
+      if (body?.proxyUrl !== undefined) setProxyUrl(body.proxyUrl);
+    } catch (e) { return json(res, 400, { error: e.message }); }
+    logger.info('DAEMON', `ZCode 出口：${proxyFirst() ? '代理优先' : '直连优先'}，代理 ${proxyUrl() || '(环境变量/未设置)'}`);
     return json(res, 200, { proxyFirst: proxyFirst() });
   }
 

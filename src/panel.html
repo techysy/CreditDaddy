@@ -866,8 +866,10 @@ function renderStatus() {
   if (state.view === 'zcode') {
     n.style.display = '';
     const pf = state.zProxyFirst === true;
+    const pu = state.zProxyUrl;
     n.innerHTML = 'ZCode 没有每日签到，积分靠「活动领取」：点卡片上的礼物图标领取当期活动（可能需过一次验证码，通常静默通过）。这里也用于多账号管理、额度查看与一键切换（切换前需先退出 ZCode）。'
-      + ' <button class="btn" id="btn-znet" style="margin-left:6px" title="ZCode 上游接口的访问顺序：直连失败 / 被拦时会自动回退另一条。代理取 HTTPS_PROXY 环境变量">出口：' + (pf ? '代理优先' : '直连优先') + '</button>';
+      + ' <button class="btn" id="btn-znet" style="margin-left:6px" title="ZCode 上游接口的访问顺序：失败 / 被拦时自动回退另一条">出口：' + (pf ? '代理优先' : '直连优先') + '</button>'
+      + ' <button class="btn" id="btn-zproxy" style="margin-left:4px" title="设置 ZCode 出口用的 http 代理（留空则清除；不设置时使用 HTTPS_PROXY 环境变量）">代理：' + esc(pu || (state.zHasEnvProxy ? '环境变量' : '未设置')) + '</button>';
   } else if (hasIntl && !s.riskIdentity && umidOffer(s)) {
     n.style.display = '';
     const busy = s.umid.installing || umidBusy;
@@ -900,16 +902,34 @@ async function installUmid() {
 }
 $('notice').addEventListener('click', (e) => { if (e.target.closest('#btn-umid')) installUmid(); });
 $('notice').addEventListener('click', async (e) => {
-  if (!e.target.closest('#btn-znet')) return;
-  try {
-    const r = await api('/api/zcode/net', { method: 'PUT', json: { proxyFirst: state.zProxyFirst !== true } });
-    state.zProxyFirst = r.proxyFirst;
-    renderStatus();
-    toast('ZCode 出口：' + (r.proxyFirst ? '代理优先（直连兜底）' : '直连优先（代理兜底）'));
-  } catch (err) { toast(err.message, false); }
+  if (e.target.closest('#btn-znet')) {
+    try {
+      const r = await api('/api/zcode/net', { method: 'PUT', json: { proxyFirst: state.zProxyFirst !== true } });
+      state.zProxyFirst = r.proxyFirst;
+      renderStatus();
+      toast('ZCode 出口：' + (r.proxyFirst ? '代理优先（直连兜底）' : '直连优先（代理兜底）'));
+    } catch (err) { toast(err.message, false); }
+    return;
+  }
+  if (e.target.closest('#btn-zproxy')) {
+    const cur = state.zProxyUrl || '';
+    const v = await uiPrompt('ZCode 出口代理（http://host:port，支持口令 http://user:pass@host:port）\n留空 = 清除，退回 HTTPS_PROXY 环境变量', cur, { okText: '保存' });
+    if (v === null) return;
+    try {
+      await api('/api/zcode/net', { method: 'PUT', json: { proxyUrl: v.trim() } });
+      await loadZNet(); renderStatus();
+      toast(v.trim() ? '代理已保存' : '代理已清除');
+    } catch (err) { toast(err.message, false); }
+  }
 });
 async function loadZNet() {
-  try { state.zProxyFirst = (await api('/api/zcode/net')).proxyFirst === true; if (state.view === 'zcode') renderStatus(); } catch (e) {}
+  try {
+    const d = await api('/api/zcode/net');
+    state.zProxyFirst = d.proxyFirst === true;
+    state.zProxyUrl = d.proxyUrlMasked || null;
+    state.zHasEnvProxy = d.hasEnvProxy === true;
+    if (state.view === 'zcode') renderStatus();
+  } catch (e) {}
 }
 
 // ── 10Router ──
