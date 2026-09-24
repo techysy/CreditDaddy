@@ -50,7 +50,7 @@ import { addAccount, importAccounts, refreshContext } from './accounts.js';
 import { productImpl } from './providers.js';
 import { readWorkbuddySessions, writeWorkbuddySession, workbuddyAuthDir, currentWorkbuddyUid } from './workbuddyLocal.js';
 import { liveToAccount as zcodeLiveAccount, switchTo as zcodeSwitchTo, currentZcodeUid, currentZcodeIdentity, detectZcode, ensureVirtualDeviceMid, terminateZcode } from './zcodeLocal.js';
-import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl } from './zcodeClient.js';
+import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl, autoClaimEnabled, setAutoClaimEnabled } from './zcodeClient.js';
 import { exportAccounts, parseImport, TransferError } from './transfer.js';
 import { runCheckinTick, getSchedulerInfo, dayKey } from './checkin.js';
 import { detectQoderApps, readQoderAppAccounts, riskIdentityAvailable, riskIdentitySource } from './qoderApp.js';
@@ -267,16 +267,17 @@ async function handleApi(req, res, url) {
   if (p === '/api/zcode/net' && method === 'GET') {
     const u = proxyUrl();
     const masked = u ? (() => { try { const x = new URL(u); x.password = x.password ? '*'.repeat(4) : ''; return x.toString(); } catch { return '***'; } })() : null;
-    return json(res, 200, { proxyFirst: proxyFirst(), proxyUrlMasked: masked, hasEnvProxy: Boolean(process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy) });
+    return json(res, 200, { proxyFirst: proxyFirst(), proxyUrlMasked: masked, autoClaim: autoClaimEnabled(), hasEnvProxy: Boolean(process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy) });
   }
   if (p === '/api/zcode/net' && method === 'PUT') {
     const body = await readBody(req).catch(() => ({}));
     try {
       if (body?.proxyFirst !== undefined) setProxyFirst(body.proxyFirst === true);
       if (body?.proxyUrl !== undefined) setProxyUrl(body.proxyUrl);
+      if (body?.autoClaim !== undefined) setAutoClaimEnabled(body.autoClaim === true);
     } catch (e) { return json(res, 400, { error: e.message }); }
-    logger.info('DAEMON', `ZCode 出口：${proxyFirst() ? '代理优先' : '直连优先'}，代理 ${proxyUrl() || '(环境变量/未设置)'}`);
-    return json(res, 200, { proxyFirst: proxyFirst() });
+    logger.info('DAEMON', `ZCode 出口：${proxyFirst() ? '代理优先' : '直连优先'}，自动领取：${autoClaimEnabled() ? '开' : '关'}，代理 ${proxyUrl() || '(环境变量/未设置)'}`);
+    return json(res, 200, { proxyFirst: proxyFirst(), autoClaim: autoClaimEnabled() });
   }
 
   // 切换 WorkBuddy / ZCode 客户端当前登录账号

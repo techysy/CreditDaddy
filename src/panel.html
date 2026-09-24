@@ -602,16 +602,8 @@ function initTheme() {
 
 // ── 状态 / 渲染 ──
 function statusOf(a) {
-  // ZCode 没有每日签到（只有活动领取），不显示常驻签到徽标；但显示最近的领取结果（自动轮询 / 手动领取都会写入）
-  if (!CHECKIN_PRODUCTS.has(a.product)) {
-    if (a.product === 'zcode') {
-      const r = a.lastResult;
-      const fresh = r && r.at && state.status && (Date.now() - new Date(r.at).getTime() < 72 * 3600e3);
-      if (r && fresh && r.status === 'checked-in') return { cls: 'ok', text: '已领活动', msg: r.message };
-      if (r && fresh && r.status === 'failed') return { cls: 'fail', text: '领取失败', msg: r.message, err: true };
-    }
-    return { cls: '', text: '', msg: '' };
-  }
+  // ZCode 没有每日签到，卡片不显示任何签到 / 领取徽标（领取结果只进运行日志与仪表盘最近记录）
+  if (!CHECKIN_PRODUCTS.has(a.product)) return { cls: '', text: '', msg: '' };
   const today = state.status && state.status.today;
   const done = state.status && state.status.todayDone && state.status.todayDone[a.id] === today;
   const r = a.lastResult;
@@ -875,8 +867,10 @@ function renderStatus() {
     n.style.display = '';
     const pf = state.zProxyFirst === true;
     const pu = state.zProxyUrl;
-    n.innerHTML = 'ZCode 没有每日签到，积分靠「活动领取」：守护进程每轮签到后自动轮询并领取（桌面版静默过验证码，需要人工时会弹验证码窗口）；也可点卡片上的礼物图标手动领取。这里也用于多账号管理、额度查看与一键切换（切换前需先退出 ZCode）。'
-      + ' <button class="btn" id="btn-znet" style="margin-left:6px" title="ZCode 上游接口的访问顺序：失败 / 被拦时自动回退另一条">出口：' + (pf ? '代理优先' : '直连优先') + '</button>'
+    const ac = state.zAutoClaim === true;
+    n.innerHTML = 'ZCode 没有每日签到，积分靠「活动领取」。打开「自动领取」后，每轮签到结束会轮询可领活动并尝试领取（桌面版静默过验证码，需要人工时弹验证码窗口）；平时保持关闭即可，活动期前再开。也可点卡片上的礼物图标手动领取。'
+      + ' <button class="btn" id="btn-zac" style="margin-left:6px" title="ZCode 活动自动轮询领取（每轮签到后执行一次）">' + (ac ? '自动领取：开' : '自动领取：关') + '</button>'
+      + ' <button class="btn" id="btn-znet" style="margin-left:4px" title="ZCode 上游接口的访问顺序：失败 / 被拦时自动回退另一条">出口：' + (pf ? '代理优先' : '直连优先') + '</button>'
       + ' <button class="btn" id="btn-zproxy" style="margin-left:4px" title="设置 ZCode 出口用的 http 代理（留空则清除；不设置时使用 HTTPS_PROXY 环境变量）">代理：' + esc(pu || (state.zHasEnvProxy ? '环境变量' : '未设置')) + '</button>';
   } else if (hasIntl && !s.riskIdentity && umidOffer(s)) {
     n.style.display = '';
@@ -910,6 +904,15 @@ async function installUmid() {
 }
 $('notice').addEventListener('click', (e) => { if (e.target.closest('#btn-umid')) installUmid(); });
 $('notice').addEventListener('click', async (e) => {
+  if (e.target.closest('#btn-zac')) {
+    try {
+      const r = await api('/api/zcode/net', { method: 'PUT', json: { autoClaim: state.zAutoClaim !== true } });
+      state.zAutoClaim = r.autoClaim;
+      renderStatus();
+      toast('ZCode 自动轮询领取：' + (r.autoClaim ? '已开启（每轮签到后执行）' : '已关闭'));
+    } catch (err) { toast(err.message, false); }
+    return;
+  }
   if (e.target.closest('#btn-znet')) {
     try {
       const r = await api('/api/zcode/net', { method: 'PUT', json: { proxyFirst: state.zProxyFirst !== true } });
@@ -935,6 +938,7 @@ async function loadZNet() {
     const d = await api('/api/zcode/net');
     state.zProxyFirst = d.proxyFirst === true;
     state.zProxyUrl = d.proxyUrlMasked || null;
+    state.zAutoClaim = d.autoClaim === true;
     state.zHasEnvProxy = d.hasEnvProxy === true;
     if (state.view === 'zcode') renderStatus();
   } catch (e) {}

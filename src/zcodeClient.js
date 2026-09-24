@@ -71,17 +71,24 @@ function netPref() {
   if (netPrefCache) return netPrefCache;
   try {
     const j = JSON.parse(fs.readFileSync(NET_PREFS_FILE(), 'utf8'));
-    netPrefCache = { proxyFirst: j.proxyFirst === true, proxyUrl: typeof j.proxyUrl === 'string' && j.proxyUrl.trim() ? j.proxyUrl.trim() : null };
-  } catch { netPrefCache = { proxyFirst: false, proxyUrl: null }; }
+    netPrefCache = {
+      proxyFirst: j.proxyFirst === true,
+      proxyUrl: typeof j.proxyUrl === 'string' && j.proxyUrl.trim() ? j.proxyUrl.trim() : null,
+      autoClaim: j.autoClaim === true,
+    };
+  } catch { netPrefCache = { proxyFirst: false, proxyUrl: null, autoClaim: false }; }
   return netPrefCache;
 }
 function writeNetPref(p) {
   netPrefCache = p;
   fs.mkdirSync(codeHome(), { recursive: true, mode: 0o700 });
-  fs.writeFileSync(NET_PREFS_FILE(), JSON.stringify({ proxyFirst: p.proxyFirst, proxyUrl: p.proxyUrl }, null, 2), { mode: 0o600 });
+  fs.writeFileSync(NET_PREFS_FILE(), JSON.stringify({ proxyFirst: p.proxyFirst, proxyUrl: p.proxyUrl, autoClaim: p.autoClaim }, null, 2), { mode: 0o600 });
 }
 export function proxyFirst() { return netPref().proxyFirst; }
 export function proxyUrl() { return netPref().proxyUrl; }
+/** 活动自动轮询领取开关（默认关：活动期前再开，平时不轮询） */
+export function autoClaimEnabled() { return netPref().autoClaim; }
+export function setAutoClaimEnabled(v) { writeNetPref({ ...netPref(), autoClaim: v === true }); }
 export function setProxyFirst(v) { writeNetPref({ ...netPref(), proxyFirst: v === true }); }
 export function setProxyUrl(u) {
   const t = typeof u === 'string' ? u.trim() : '';

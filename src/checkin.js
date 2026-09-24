@@ -15,6 +15,7 @@ import { productOf } from './constants.js';
 import { startUsageSyncScheduler } from './tenrouter.js';
 import { refreshContext } from './accounts.js';
 import { zcodeAutoClaim } from './zcodeAutoClaim.js';
+import { autoClaimEnabled } from './zcodeClient.js';
 import { logger } from './logger.js';
 
 const TICK_MS = 2 * 60 * 60 * 1000;        // 2 小时
@@ -71,15 +72,24 @@ async function runTickNow(opts) {
 }
 
 async function runTickInner(opts) {
+  const allAccounts = await loadAccounts();
   // 没有每日签到能力的产品（如 ZCode：积分靠需验证码的活动领取）不参与签到轮
-  const accounts = (await loadAccounts()).filter(
+  const accounts = allAccounts.filter(
     (a) => (!opts.provider || a.provider === opts.provider)
         && (!opts.product || productOf(a.provider) === opts.product)
         && (!opts.onlyAccountId || a.id === opts.onlyAccountId)
         && typeof productImpl(a.provider)?.checkin === 'function'
   );
 
-  if (accounts.length === 0) {
+  // ZCode 活动轮询领取：开关打开（标签页可切换，默认关）且未被筛选参数排除时参与
+  const zAccounts = (autoClaimEnabled()
+      && !opts.onlyAccountId
+      && (!opts.provider || opts.provider === 'zcode')
+      && (!opts.product || opts.product === 'zcode'))
+    ? allAccounts.filter((a) => a.provider === 'zcode')
+    : [];
+
+  if (accounts.length === 0 && zAccounts.length === 0) {
     return { results: [], summary: '没有匹配的账号' };
   }
 
@@ -153,26 +163,21 @@ async function runTickInner(opts) {
   });
   await saveState({ ...state, qoderDailyDone: memo, deviceClaim });
 
-  // ZCode 活动自动领取：每轮签到后顺带轮询（preview 为空时零请求副作用）。
+  // ZCode 活动自动领取：每轮签到后顺带轮询（preview 为空时零请求副作用；需开关打开）。
   // 桌面版已注册隐藏窗口验证码提供者，可静默过验证码；其它环境需要验证码时标记「需手动领取」。
-  if (!opts.onlyAccountId
-      && (!opts.provider || opts.provider === 'zcode')
-      && (!opts.product || opts.product === 'zcode')) {
-    const all = await loadAccounts();
-    for (const za of all.filter((a) => a.provider === 'zcode')) {
-      const label = za.name || za.uid || za.id;
-      try {
-        const r = await zcodeAutoClaim(za);
-        if (!r) continue;
-        results.push({ accountId: za.id, account: label, provider: 'zcode', status: r.status === 'checked-in' ? 'checked-in' : r.status, message: r.message });
-        const lastResult = { status: r.status, message: r.message, amount: 0, at: new Date().toISOString() };
-        await withAccounts((list) => {
-          const cur = list.find((a) => a.id === za.id);
-          if (cur) cur.lastResult = lastResult;
-        });
-      } catch (e) {
-        logger.warn('ZCODE-CLAIM', `${label} 自动领取异常：${e.message}`);
-      }
+  for (const za of zAccounts) {
+    const label = za.name || za.uid || za.id;
+    try {
+      const r = await zcodeAutoClaim(za);
+      if (!r) continue;
+      results.push({ accountId: za.id, account: label, provider: 'zcode', status: r.status, message: r.message });
+      const lastResult = { status: r.status, message: r.message, amount: 0, at: new Date().toISOString() };
+      await withAccounts((list) => {
+        const cur = list.find((a) => a.id === za.id);
+        if (cur) cur.lastResult = lastResult;
+      });
+    } catch (e) {
+      logger.warn('ZCODE-CLAIM', `${label} 自动领取异常：${e.message}`);
     }
   }
 

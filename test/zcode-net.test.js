@@ -41,6 +41,16 @@ test('proxyFirst / setProxyFirst：默认 false，落盘后可读回', () => {
   zc.setProxyFirst(false);
 });
 
+test('自动轮询领取开关：默认关，开启后落盘', () => {
+  assert.equal(zc.autoClaimEnabled(), false);
+  zc.setAutoClaimEnabled(true);
+  assert.equal(zc.autoClaimEnabled(), true);
+  const onDisk = JSON.parse(fs.readFileSync(path.join(process.env.CREDITDADDY_HOME, 'zcode-net.json'), 'utf8'));
+  assert.equal(onDisk.autoClaim, true);
+  zc.setAutoClaimEnabled(false);
+  assert.equal(zc.autoClaimEnabled(), false);
+});
+
 test('setProxyUrl：设置 / 读取 / 清除；非法地址拒绝', () => {
   assert.equal(zc.proxyUrl(), null);
   zc.setProxyUrl('http://127.0.0.1:7890');
