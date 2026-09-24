@@ -1,7 +1,7 @@
 {
   "name": "creditdaddy-desktop",
   "productName": "CreditDaddy",
-  "version": "0.8.2",
+  "version": "0.9.0",
   "description": "CreditDaddy desktop shell - Qoder / WorkBuddy / ZCode 多账号管理与每日积分自动签到",
   "main": "main.js",
   "author": "techysy",

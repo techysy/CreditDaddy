@@ -47,6 +47,9 @@ async function boot() {
     const load = (rel) => import(pathToFileURL(path.join(serverRoot, rel)).href);
     const daemon = await load('src/daemon.js');
     const checkin = await load('src/checkin.js');
+    const zauto = await load('src/zcodeAutoClaim.js');
+    // ZCode 自动领取的验证码实现：隐藏窗口跑阿里云验证码 SDK（静默优先，风控时弹出让人工完成）
+    zauto.setZcodeCaptchaProvider(zcodeCaptchaVerify);
     const store = await load('src/store.js');
     const constants = await load('src/constants.js');
     const r = await daemon.startDaemon(PORT, '127.0.0.1');
@@ -61,6 +64,54 @@ async function boot() {
   }
   refreshTrayMenu();
   if (!START_HIDDEN) createWindow();
+}
+
+/**
+ * ZCode 领取用的验证码：隐藏窗口里跑阿里云验证码 SDK。
+ * 静默验证（startTracelessVerification）直接通过则全程无感；8 秒未完成或触发风控时把窗口
+ * 显示出来让人工完成（最长 2 分钟）。返回 { captchaParam, region }。
+ */
+function zcodeCaptchaVerify(cfg) {
+  return new Promise((resolve, reject) => {
+    let capWin = null;
+    let settled = false;
+    const cleanup = () => { settled = true; if (capWin && !capWin.isDestroyed()) capWin.destroy(); };
+    const fail = (msg) => { clearTimeout(timer); if (!settled) { cleanup(); reject(new Error(msg)); } };
+    const pass = (param) => { clearTimeout(timer); if (!settled) { cleanup(); resolve({ captchaParam: param, region: cfg.region || '' }); } };
+    const timer = setTimeout(() => fail('等待验证码超时'), 120000);
+
+    const html = `<!doctype html><meta charset="utf-8"><title>验证码</title><body style="margin:0;background:#fff">
+<script>window.AliyunCaptchaConfig=${JSON.stringify({ region: cfg.region || '', prefix: cfg.prefix || '' })};</script>
+<script src="https://o.alicdn.com/captcha-frontend/aliyunCaptcha/AliyunCaptcha.js"><\/script>
+<div id="c"></div><button id="b" hidden>打开验证码</button>
+<script>
+window.initAliyunCaptcha({
+  SceneId:${JSON.stringify(cfg.sceneId)},mode:'popup',language:'zh-CN',showErrorTip:false,
+  element:'#c',button:'#b',
+  getInstance:(i)=>{
+    if(i&&typeof i.startTracelessVerification==='function'){i.startTracelessVerification();setTimeout(()=>console.log('ZCAP:INTERACTIVE'),8000);}
+    else console.log('ZCAP:INTERACTIVE');
+  },
+  success:(p)=>console.log('ZCAP:OK:'+(typeof p==='string'?p:(p&&p.captchaVerifyParam)||'')),
+  fail:()=>console.log('ZCAP:INTERACTIVE'),
+  onError:()=>console.log('ZCAP:ERR'),
+});
+<\/script></body>`;
+
+    capWin = new BrowserWindow({
+      show: false, width: 420, height: 560, title: '完成验证码（ZCode 活动领取）',
+      icon: iconPath(), autoHideMenuBar: true,
+      webPreferences: { session: session.fromPartition('zcap-' + crypto.randomUUID()), contextIsolation: true, sandbox: true },
+    });
+    capWin.webContents.on('console-message', (e, level, message) => {
+      const msg = typeof message === 'string' ? message : (e && e.message) || '';
+      if (msg.startsWith('ZCAP:OK:')) pass(msg.slice(8));
+      else if (msg === 'ZCAP:INTERACTIVE') { if (capWin && !capWin.isDestroyed() && !capWin.isVisible()) capWin.show(); }
+      else if (msg.startsWith('ZCAP:ERR')) fail('验证码组件加载失败');
+    });
+    capWin.on('closed', () => fail('验证码未完成'));
+    capWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+  });
 }
 
 /**

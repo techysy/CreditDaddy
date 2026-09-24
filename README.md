@@ -39,9 +39,9 @@
 
 - **账号来源**：ZCode 桌面客户端把当前登录存在 `~/.zcode/v2/credentials.json`（值用客户端私有的 `enc:v1:` AES-256-GCM 加密，密钥从机器信息派生），CreditDaddy 本地解密读取，token 不出机器
 - **浏览器登录**：与客户端的 CLI 轮询登录同一协议 —— `POST https://zcode.z.ai/api/v1/oauth/cli/init`（本地随机 poll token）拿授权地址（回调指向 zcode.z.ai 服务端，无需 `zcode://` 协议，任何浏览器都能用），用户登录后轮询 `/api/v1/oauth/cli/poll/{flow_id}`；Z.ai 账号再用 `api.z.ai/api/auth/z/login` 换业务 token。拿到的凭据按 `credentials.json` 格式用本机密钥加密保存，可直接切换到 ZCode 客户端
-- **没有每日签到，支持活动领取**：ZCode 积分靠「活动领取」（billing/preview → billing/claim）。点卡片上的领取按钮，弹窗列出当期活动并可领取 —— 领取时面板会跑阿里云验证码（先静默验证，触发风控时弹出验证码手动完成，任何浏览器环境都能用），故不做后台无人值守的自动签到
+- **没有每日签到，活动领取自动轮询**：ZCode 积分靠「活动领取」（billing/preview → billing/claim）。守护进程每轮签到后自动轮询可领活动：先试免验证码领取，需要验证码时 —— 桌面版用隐藏窗口跑阿里云验证码 SDK 静默验证（触发风控时弹出窗口让人工完成，2 分钟超时），NAS / 纯 CLI 环境标记「需手动领取」；也可点卡片上的领取按钮手动领取
 - **客户端版本跟随本机**：billing 类接口校验客户端版本（过低直接 3001），请求头里上报的版本取本机已安装 ZCode 的版本（Windows 注册表读取），没有客户端时用兜底值
-- **出口可切换**：ZCode 上游请求默认「直连优先、代理兜底」，标签页提示条里可切「代理优先、直连兜底」（代理取 `HTTPS_PROXY` 环境变量，http 代理 + CONNECT 隧道，纯 Node 内置实现；`NO_PROXY` 与 loopback 始终直连）
+- **出口可切换**：ZCode 上游请求默认「直连优先、代理兜底」，标签页提示条里可切「代理优先、直连兜底」。代理地址可在面板配置（`zcode-net.json`，0600，优先），未配置时取 `HTTPS_PROXY` 环境变量；http 代理 + CONNECT 隧道，纯 Node 内置实现；`NO_PROXY` 与 loopback 始终直连
 - **额度展示**：查询 BigModel Coding Plan（quota/limit + subscription/list）与 Z.ai / Start Plan（billing/balance）；balances 为空时从生效套餐的权益派生展示额度（未到生效时间的权益显示「xx 生效」）；无有效套餐时显示「仅免费额度」
 - **账号切换**：写回 `credentials.json` / `config.json`，并为每个账号写入独立的设备 ID（`telemetry-state.json` 的 deviceMid），避免账号间被风控关联；需先退出 ZCode 客户端（运行中会覆盖回内存里的旧登录）。切换前当前登录会先保存进 CreditDaddy，不会丢号
 - 协议移植自 [zcode-switch](https://github.com/pjpv/zcode-switch)（MIT）
@@ -167,7 +167,8 @@ Qoder 侧（国际版 openapi.qoder.sh，国内版 openapi.qoder.com.cn）：
     src/workbuddyClient.js  WorkBuddy API：签到、积分、token 刷新
     src/workbuddyLocal.js   本机 WorkBuddy 会话读取与账号切换
     src/zcrypto.js          ZCode 本机凭据加解密（enc:v1: AES-256-GCM）
-    src/zcodeClient.js      ZCode 额度查询 + 活动领取（billing preview/claim、验证码配置）
+    src/zcodeClient.js      ZCode 额度查询 + 活动领取（billing preview/claim、验证码配置、出口切换）
+    src/zcodeAutoClaim.js   ZCode 活动自动轮询领取（免验证码 → 静默验证码 → 需手动）
     src/zcodeLocal.js       本机 ZCode 凭据读取与账号切换
     desktop/preload.js      桌面版 preload：暴露隐私登录窗口能力
     src/checkin.js       调度器（2h tick + 当日去重 + 本机限领 + 串行执行）
