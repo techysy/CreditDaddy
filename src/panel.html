@@ -236,6 +236,9 @@
   .tr-meter { height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--tertiary) 80%, transparent); overflow: hidden; }
   .tr-meter span { display: block; height: 100%; border-radius: 3px; background: rgb(var(--accent-rgb)); }
   .tr-meter span.low { background: var(--err); }
+  .tr-meter span.mid { background: #d97706; }
+  .tr-reset { color: var(--text-3); font-weight: 400; }
+  .tr-reset.soon { color: var(--err); font-weight: 600; }
   .tr-reset { font-size: 11px; color: var(--text-3); margin-top: 3px; }
   .tr-primary { margin: 2px 0 6px; }
   .tr-primary .lbl { max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -988,38 +991,61 @@ function quotaValue(q) {
 }
 const resetLabel = (q) => (q.resetAt ? fmtTime(q.resetAt).slice(5) + (q.recurring === false ? ' 到期' : ' 重置') : '');
 
+// 相对重置标签（CLIProxyAPI 管理中心风格）：「3 天 后重置」「45 分钟 后到期」；一小时内标红，悬停看绝对时间
+function relReset(q) {
+  if (!q.resetAt) return null;
+  const ms = new Date(q.resetAt).getTime() - Date.now();
+  if (!Number.isFinite(ms)) return null;
+  if (ms <= 0) return { text: '即将' + (q.recurring === false ? '到期' : '重置'), soon: true };
+  const m = Math.ceil(ms / 60000);
+  const d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), mm = m % 60;
+  const dur = d > 0 ? d + ' 天' + (h ? h + ' 小时' : '') : h > 0 ? h + ' 小时' + (mm ? mm + ' 分' : '') : Math.max(1, mm) + ' 分钟';
+  return { text: dur + ' 后' + (q.recurring === false ? '到期' : '重置'), soon: ms < 3600e3 };
+}
+function relResetHtml(q) {
+  const r = relReset(q);
+  return r ? '<span class="tr-reset' + (r.soon ? ' soon' : '') + '" title="' + esc(fmtTime(q.resetAt)) + '">' + esc(r.text) + '</span>' : '';
+}
+// 三档着色水位条（≥70 绿 / ≥30 琥珀 / <30 红）
+const meterCls = (pct) => (pct >= 70 ? 'hi' : pct >= 30 ? 'mid' : 'low');
+function trMeter(pct) {
+  if (pct === null) return '';
+  const w = Math.min(100, Math.max(0, pct)).toFixed(1);
+  return '<div class="tr-meter"><span class="' + meterCls(pct) + '" style="width:' + w + '%"></span></div>';
+}
+// 明细整行：名称 + 数值/相对重置 + 水位条（CLIProxyAPI quotaRow 版式）
+function trRow(q) {
+  return trLine(q.name, lineVal(q)) + trMeter(quotaPct(q));
+}
+
 // 紧凑行（周期额度 / 聚合积分包）：名称在左、数值在右，不带进度条
 function trLine(name, valHtml, title) {
   return '<div class="tr-line"><span class="tr-q-name"' + (title ? ' title="' + esc(title) + '"' : '') + '>' + esc(name) + '</span><span class="tr-q-val">' + valHtml + '</span></div>';
 }
 function lineVal(q) {
   const pct = quotaPct(q);
-  const low = pct !== null && pct < LOW_PCT && q.percentScale;
   const txt = (q.percentScale || !(q.total > 0))
     ? '剩 ' + (pct !== null ? fmtNum(pct) + '%' : fmtNum(quotaRemaining(q)))
     : '剩 ' + fmtNum(quotaRemaining(q)) + ' / ' + fmtNum(q.total || 0) + (q.unit ? ' ' + q.unit : '');
-  return '<span' + (low ? ' class="low-text"' : '') + '>' + esc(txt) + '</span>' + (q.resetAt ? '<span class="tr-q-when"> · ' + esc(resetLabel(q)) + '</span>' : '');
+  return '<span>' + esc(txt) + '</span> ' + relResetHtml(q);
 }
 
-// 主额度行：与账号主卡同款 credit-line + bar
+// 主额度行：名称 + 大值 + 相对重置 + 三档水位条
 function trPrimaryHtml(q) {
   const v = quotaValue(q);
-  const low = v.pct !== null && v.pct < LOW_PCT;
-  const pct01 = v.pct !== null ? Math.max(0, Math.min(1, v.pct / 100)) : null;
-  return '<div class="tr-primary"><div class="credit-line"><span class="credit"><span class="lbl">' + esc(q.name) + '</span><b' + (low ? ' style="color:var(--err)"' : '') + '>' + esc(v.big) + '</b> <small class="dim">' + esc(v.small) + '</small></span>'
-    + '<span class="credit dim">' + (q.resetAt ? esc(resetLabel(q)) : '') + '</span></div>'
-    + (pct01 !== null ? '<div class="bar"><span class="seg" style="flex:' + pct01.toFixed(4) + ' 1 0"></span><span class="seg used" style="flex:' + (1 - pct01).toFixed(4) + ' 1 0"></span></div>' : '')
+  return '<div class="tr-primary"><div class="credit-line"><span class="credit"><span class="lbl">' + esc(q.name) + '</span><b>' + esc(v.big) + '</b> <small class="dim">' + esc(v.small) + '</small></span>'
+    + '<span class="credit dim">' + relResetHtml(q) + '</span></div>'
+    + (v.pct !== null ? trMeter(v.pct) : '')
     + '</div>';
 }
 
 function trQuotaHtml(q, { dimWhenEmpty = false } = {}) {
   const v = quotaValue(q);
   const used = v.pct !== null && v.pct <= 0;
-  const low = !used && v.pct !== null && v.pct < LOW_PCT && q.percentScale;
   const val = used && dimWhenEmpty ? '已用完' : (q.percentScale || !(q.total > 0) ? '剩余 ' + v.big : '剩余 ' + v.big + ' ' + v.small);
   return '<div class="tr-q' + (used && dimWhenEmpty ? ' spent' : '') + '"><div class="tr-q-line"><span class="tr-q-name" title="' + esc(q.name) + '">' + esc(q.name) + '</span>'
-    + '<span class="tr-q-val' + (low ? ' low' : '') + '">' + esc(val) + (q.resetAt ? '<span class="tr-q-when"> · ' + esc(resetLabel(q)) + '</span>' : '') + '</span></div>'
-    + (v.pct !== null && !(used && dimWhenEmpty) ? '<div class="tr-meter"><span class="' + (low ? 'low' : '') + '" style="width:' + v.pct.toFixed(1) + '%"></span></div>' : '')
+    + '<span class="tr-q-val">' + esc(val) + relResetHtml(q) + '</span></div>'
+    + (!(used && dimWhenEmpty) ? trMeter(v.pct) : '')
     + '</div>';
 }
 
@@ -1100,7 +1126,7 @@ function trCardHtml(c) {
             + (nearest ? ' <span class="' + (new Date(nearest) - Date.now() < 7 * 86400e3 ? 'low-text' : '') + '">· 最早 ' + esc(fmtTime(nearest).slice(5, 10)) + '</span>' : '')
             + '</span><button class="tr-more" data-tr="toggle" data-id="' + esc(c.id) + '">' + (open ? '收起' : '明细') + '</button></div>'
           : '')
-        + (open ? windows.map((q) => trLine(q.name, lineVal(q))).join('') + trPacksHtml(c, packs) : '');
+        + (open ? windows.map((q) => trRow(q)).join('') + trPacksHtml(c, packs) : '');
     }
   }
   return '<div class="tr-card' + (c.isActive ? '' : ' off') + '"><div class="row1"><div class="name-group">'
