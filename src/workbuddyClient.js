@@ -127,7 +127,7 @@ export async function checkinWorkbuddyIntl(account, { onRefresh } = {}) {
     if (r.status === 401) return { ...base, status: 'failed', error: '鉴权失败（401），token 已失效，请在客户端重新登录后重新导入' };
     if (r.status === 429) return { ...base, status: 'no-activity', message: '今日额度已耗尽，活跃请求暂不可达（等官方发放后再试）', claimedAmount: 0 };
     if (r.status >= 200 && r.status < 300) {
-      return { ...base, uid: account.uid, status: 'checked-in', claimedAmount: 0, message: '活跃请求成功（当日赠送额度随官方结算发放）' };
+      return { ...base, uid: account.uid, status: 'checked-in', claimedAmount: 0, message: '已发送活跃请求（保持活跃，活跃不等于必有奖励）' };
     }
     const m = (() => { try { return JSON.parse(r.text)?.error?.data?.msg || ''; } catch { return ''; } })();
     return { ...base, status: 'failed', error: `活跃请求失败：HTTP ${r.status} ${m || r.text.slice(0, 120)}`.trim() };

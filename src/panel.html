@@ -313,8 +313,8 @@
     <div class="kpis" id="kpis"></div>
     <div class="prods" id="prods"></div>
     <div class="dash-cols">
+      <section class="pcard"><div class="pcard-title"><span>最近记录</span><span class="hint" id="last-tick"></span></div><div id="recent"></div></section>
       <section class="pcard"><div class="pcard-title"><span>需要处理</span><span class="hint" id="att-count"></span></div><div id="attention"></div></section>
-      <section class="pcard"><div class="pcard-title"><span>最近签到</span><span class="hint" id="last-tick"></span></div><div id="recent"></div></section>
     </div>
   </section>
 
@@ -621,19 +621,21 @@ function initTheme() {
 function statusOf(a) {
   // ZCode 没有每日签到，卡片不显示任何签到 / 领取徽标（领取结果只进运行日志与仪表盘最近记录）
   if (!CHECKIN_PRODUCTS.has(a.product)) return { cls: '', text: '', msg: '' };
+  const intl = a.provider === 'workbuddy-intl';  // 国际版是「保持活跃」语义，且活跃不等于必有奖励
   const today = state.status && state.status.today;
   const done = state.status && state.status.todayDone && state.status.todayDone[a.id] === today;
   const r = a.lastResult;
   const fresh = r && r.at && state.status && (Date.now() - new Date(r.at).getTime() < 26 * 3600e3);
   if (r && fresh && r.status === 'limited' && done) return { cls: 'limited', text: '本机已领', msg: r.message };
   if (done) {
+    if (intl) return { cls: 'ok', text: '今日活跃', msg: r && r.message ? r.message : '' };
     const amt = r && r.status === 'checked-in' && fresh && r.amount ? ' +' + fmtNum(r.amount) : '';
     const streak = r && fresh && r.streakDays ? ' · 连签 ' + r.streakDays + ' 天' : '';
     return { cls: 'ok', text: '今日已签' + amt + streak, msg: r && r.message && !['checked-in', 'already'].includes(r.status) ? r.message : '' };
   }
-  if (r && fresh && r.status === 'failed') return { cls: 'fail', text: '签到失败', msg: r.message, err: true };
-  if (r && fresh && r.status === 'no-activity') return { cls: 'pending', text: '待领取', msg: r.message };
-  return { cls: 'pending', text: '未签到', msg: '' };
+  if (r && fresh && r.status === 'failed') return { cls: 'fail', text: intl ? '活跃失败' : '签到失败', msg: r.message, err: true };
+  if (r && fresh && r.status === 'no-activity') return { cls: 'pending', text: intl ? '待活跃' : '待领取', msg: r.message };
+  return { cls: 'pending', text: intl ? '未活跃' : '未签到', msg: '' };
 }
 
 function expiryCell(a) {
@@ -692,7 +694,7 @@ function cardHtml(a) {
     + (st.text ? '<span class="pill ' + st.cls + '" title="' + esc(a.lastResult ? fmtTime(a.lastResult.at) + ' ' + (a.lastResult.message || a.lastResult.status) : '') + '">' + esc(st.text) + '</span>' : '')
     + '</div><div class="ops">'
     + (a.product === 'zcode' ? '<button class="icon-btn" data-act="claim" title="活动领取（billing/preview → claim，可能需过一次验证码）">' + I.gift + '</button>' : '')
-    + (canCheckin ? '<button class="icon-btn' + (state.busy[a.id] ? ' busy' : '') + '" data-act="checkin" title="立即签到">' + (state.busy[a.id] ? I.refresh : I.play) + '</button>' : '')
+    + (canCheckin ? '<button class="icon-btn' + (state.busy[a.id] ? ' busy' : '') + '" data-act="checkin" title="' + (a.provider === 'workbuddy-intl' ? '发送活跃请求' : '立即签到') + '">' + (state.busy[a.id] ? I.refresh : I.play) + '</button>' : '')
     + (CLIENT_LABEL[a.product] && a.canSwitch && !isCurrent && st.cls !== 'fail' ? '<button class="icon-btn" data-act="switch" title="切换 ' + CLIENT_LABEL[a.product] + ' 客户端到此账号">' + I.swap + '</button>' : '')
     + '<button class="icon-btn" data-act="quota" title="刷新积分">' + I.refresh + '</button>'
     + '<button class="icon-btn del" data-act="del" title="删除（点两次确认）">' + I.trash + '</button>'
@@ -758,7 +760,15 @@ function renderProd() {
   const canCheckin = CHECKIN_PRODUCTS.has(prod);
   $('s-count').textContent = acc.length;
   $('s-done-wrap').style.display = canCheckin ? 'contents' : 'none';
-  $('s-done').textContent = acc.filter(isDone).length + ' / ' + acc.length;
+  if (prod === 'workbuddy') {
+    // 国内版 = 每日签到送积分；国际版 = 保持活跃（活跃不等于必有奖励）
+    const cnAcc = acc.filter((a) => a.provider === 'workbuddy');
+    const intlAcc = acc.filter((a) => a.provider === 'workbuddy-intl');
+    $('s-done-wrap').innerHTML = (cnAcc.length ? '<div class="stat"><span>今日签到（国内）</span><strong>' + cnAcc.filter(isDone).length + ' / ' + cnAcc.length + '</strong></div><div class="divider"></div>' : '')
+      + (intlAcc.length ? '<div class="stat"><span>今日活跃（国际）</span><strong>' + intlAcc.filter(isDone).length + ' / ' + intlAcc.length + '</strong></div><div class="divider"></div>' : '');
+  } else {
+    $('s-done').textContent = acc.filter(isDone).length + ' / ' + acc.length;
+  }
   const c = creditSum(acc);
   $('s-credits-label').textContent = prod === 'zcode' ? '有套餐' : '剩余积分';
   $('s-credits').textContent = prod === 'zcode'
@@ -769,7 +779,10 @@ function renderProd() {
   $('region-div').style.display = hasRegions ? '' : 'none';
   document.querySelectorAll('#region button').forEach((x) => x.classList.toggle('active', x.dataset.r === state.region));
   $('btn-checkin').style.display = canCheckin ? '' : 'none';
-  if (!$('btn-checkin').disabled) $('btn-checkin').innerHTML = I.play + '签到全部 ' + prodLabel(prod);
+  if (!$('btn-checkin').disabled) {
+    const hasIntl = acc.some((a) => a.provider === 'workbuddy-intl');
+    $('btn-checkin').innerHTML = I.play + (prod === 'workbuddy' && hasIntl ? '签到 / 活跃全部' : '签到全部 ' + prodLabel(prod));
+  }
 }
 
 function kpi(label, value, sub) {
@@ -786,10 +799,19 @@ function renderDash() {
   const credit = creditSum(state.accounts.filter((a) => a.product !== 'zcode'));
   const byProd = PRODUCTS.map((p) => p.label + ' ' + ofProduct(p.id).length).join(' · ');
   const creditByProd = ['qoder', 'workbuddy'].map((id) => { const c = creditSum(ofProduct(id)); return prodLabel(id) + ' ' + (c.known ? fmtNum(c.sum) : '-'); }).join(' · ');
+  // 今日进度拆「国内签到 / 国际活跃」：国际版 WorkBuddy 没有签到（保持活跃，活跃不等于必有奖励）
+  const intlAcc = signable.filter((a) => a.provider === 'workbuddy-intl');
+  const domAcc = signable.filter((a) => a.provider !== 'workbuddy-intl');
+  const doneDom = domAcc.filter(isDone).length;
+  const doneIntl = intlAcc.filter(isDone).length;
   $('kpis').innerHTML =
     kpi('账号', state.accounts.length, byProd)
-    + kpi('今日已签', done + ' <small>/ ' + signable.length + '</small>',
-      !signable.length ? '暂无可签到的账号' : done === signable.length ? '今天全部签完' : '待签 ' + (signable.length - done) + (failed ? ' · 失败 ' + failed : ''))
+    + kpi('今日签到' + (intlAcc.length ? ' / 活跃' : ''), intlAcc.length
+        ? doneDom + ' <small>/ ' + domAcc.length + '</small> · 活跃 ' + doneIntl + '<small>/' + intlAcc.length + '</small>'
+        : done + ' <small>/ ' + signable.length + '</small>',
+      !signable.length ? '暂无可签到的账号'
+        : (doneDom === domAcc.length && doneIntl === intlAcc.length ? (intlAcc.length ? '今天全部完成（国际为活跃请求，不保证奖励）' : '今天全部签完')
+        : '待办 ' + (signable.length - done) + (failed ? ' · 失败 ' + failed : '')))
     + kpi('剩余积分', credit.known ? fmtNum(credit.sum) : '-', credit.loading ? '读取中（' + credit.loading + ' 个账号）…' : creditByProd)
     + kpi('下次自动签到', sch.ticking ? '签到中…' : sch.nextTickAt ? fmtTime(sch.nextTickAt).slice(11) : '-',
       sch.lastTick ? '上一轮 ' + fmtTime(sch.lastTick.at).slice(5) + ' · ' + esc(sch.lastTick.summary || '') : '每 ~2 小时一轮');
@@ -802,12 +824,21 @@ function renderDash() {
     } else if (CHECKIN_PRODUCTS.has(p.id)) {
       const d = list.filter(isDone).length;
       const c = creditSum(list);
-      rows = '<span class="lbl">今日签到</span><span class="val">' + d + ' / ' + list.length + '</span>'
-        + '<span style="grid-column:1 / -1">' + meter(d, list.length) + '</span>'
+      if (p.id === 'workbuddy') {
+        // 国内 = 每日签到；国际 = 保持活跃（活跃不等于必有奖励）
+        const cnList = list.filter((a) => a.provider === 'workbuddy');
+        const intlList = list.filter((a) => a.provider === 'workbuddy-intl');
+        if (cnList.length) rows += '<span class="lbl">今日签到（国内）</span><span class="val">' + cnList.filter(isDone).length + ' / ' + cnList.length + '</span>';
+        if (intlList.length) rows += '<span class="lbl">今日活跃（国际）</span><span class="val">' + intlList.filter(isDone).length + ' / ' + intlList.length + '（不保证奖励）</span>';
+      } else {
+        rows = '<span class="lbl">今日签到</span><span class="val">' + d + ' / ' + list.length + '</span>';
+      }
+      rows += '<span style="grid-column:1 / -1">' + meter(d, list.length) + '</span>'
         + '<span class="lbl">剩余积分</span><span class="val">' + (c.known ? fmtNum(c.sum) : '-') + '</span>';
     } else {
       const planned = list.filter((a) => { const q = state.quotas[a.id]; return q && !q.error && !q.empty; }).length;
-      rows = '<span class="lbl">每日签到</span><span class="val dim">无（活动领取需验证码）</span>'
+      // ZCode 没有每日签到：不展示签到语义的行
+      rows = '<span class="lbl">活动领取</span><span class="val dim">手动领取，或在标签页开自动轮询</span>'
         + '<span class="lbl">有效套餐</span><span class="val">' + planned + ' / ' + list.length + '</span>';
     }
     if (p.id === 'qoder' && list.some((a) => a.provider === 'qoder')) {
@@ -858,7 +889,9 @@ function renderDash() {
   $('recent').innerHTML = recent.length
     ? recent.map((a) => {
       const r = a.lastResult;
-      const [cls, txt] = RES[r.status] || ['pending', r.status];
+      let [cls, txt] = RES[r.status] || ['pending', r.status];
+      // 国际版 WorkBuddy 是保持活跃（不保证奖励），不叫「领取」
+      if (a.provider === 'workbuddy-intl' && r.status === 'checked-in') txt = '活跃达成';
       const label = r.status === 'checked-in' && r.amount ? txt + ' +' + fmtNum(r.amount) : txt;
       return '<div class="item" data-view="' + a.product + '" title="' + esc(r.message || '') + '"><span class="item-main"><span class="item-name">' + esc(a.name || a.email || a.id) + '</span>' + provBadges(a.provider) + '</span>'
         + '<span class="item-side"><span class="pill ' + cls + '">' + esc(label) + '</span><span class="item-time">' + fmtTime(r.at).slice(5) + '</span></span></div>';
