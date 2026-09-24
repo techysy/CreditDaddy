@@ -659,8 +659,7 @@ function cardHtml(a) {
   const st = statusOf(a);
   const ex = expiryCell(a);
   const ident = a.email || a.phone || (a.uid ? 'UID ' + a.uid.slice(0, 8) : a.tokenMasked);
-  const curUid = state.status && (a.product === 'workbuddy' ? state.status.workbuddyCurrentUid : a.product === 'zcode' ? state.status.zcodeCurrentUid : null);
-  const isCurrent = Boolean(a.uid && curUid && curUid === a.uid);
+  const isCurrent = isClientCurrent(a);
   const canCheckin = CHECKIN_PRODUCTS.has(a.product);
   return '<div class="card" data-id="' + esc(a.id) + '">'
     + '<div class="row1"><div class="name-group">'
@@ -690,6 +689,17 @@ function cardHtml(a) {
 const isDone = (a) => Boolean(state.status && state.status.todayDone && state.status.todayDone[a.id] === state.status.today);
 const ofProduct = (prod) => state.accounts.filter((a) => a.product === prod);
 const currentUidOf = (prod) => state.status && (prod === 'workbuddy' ? state.status.workbuddyCurrentUid : prod === 'zcode' ? state.status.zcodeCurrentUid : null);
+// 客户端当前登录判定：WorkBuddy 按 uid；ZCode 按 uid 或 email（早期导入的账号可能只存了其中一个）
+function isClientCurrent(a) {
+  const s = state.status;
+  if (!s) return false;
+  if (a.product === 'workbuddy') return Boolean(a.uid && s.workbuddyCurrentUid && s.workbuddyCurrentUid === a.uid);
+  if (a.product === 'zcode') {
+    const id = s.zcodeCurrentIdentity;
+    return Boolean(id && ((a.uid && id.uid != null && String(id.uid) === String(a.uid)) || (a.email && id.email && id.email === a.email)));
+  }
+  return false;
+}
 // 积分合计：只统计「积分」口径（ZCode 是 token 额度，单位不同，不相加）
 function creditSum(list) {
   let sum = 0, known = 0, loading = 0;
@@ -783,9 +793,12 @@ function renderDash() {
       rows += '<span class="lbl">国际版风控身份</span><span class="val' + (s.riskIdentity ? '' : ' warn') + '">' + (s.riskIdentity ? (s.riskSource === 'cli' ? '已就绪（设备身份组件）' : '已就绪') : umidOffer(s) ? '需安装设备身份组件' : '未检测到客户端') + '</span>';
     }
     if (CLIENT_LABEL[p.id]) {
-      const uid = currentUidOf(p.id);
-      const cur = uid && list.find((a) => a.uid === uid);
-      rows += '<span class="lbl">客户端当前</span><span class="val">' + (cur ? esc(cur.name || cur.email || cur.uid) : uid ? '未导入的账号' : '—') + '</span>';
+      const cur = list.find((a) => a.product === p.id && isClientCurrent(a));
+      const zid = p.id === 'zcode' ? s.zcodeCurrentIdentity : null;
+      const live = cur ? esc(cur.name || cur.email || cur.uid)
+        : zid && (zid.email || zid.uid || zid.username) ? '未导入的账号（' + esc(zid.email || zid.username || zid.uid) + '）'
+        : (p.id === 'workbuddy' && s.workbuddyCurrentUid ? '未导入的账号' : '—');
+      rows += '<span class="lbl">客户端当前</span><span class="val">' + live + '</span>';
     }
     return '<div class="prodcard" data-view="' + p.id + '"><div class="prod-head"><span class="prod-name"><span class="dot ' + p.id + '"></span>' + p.label
       + '<span class="badge">' + list.length + ' 个账号</span></span><span class="prod-go">查看 →</span></div><div class="prod-rows">' + rows + '</div></div>';
@@ -1199,10 +1212,10 @@ async function onCardClick(e) {
       try { r = await doSwitch(false); }
       catch (err) {
         if (err.code !== 'ZCODE_RUNNING') throw err;
-        if (!(await uiConfirm(err.message + '\n\n仍要强制切换吗？（建议先退出 ZCode）', 'ZCode 正在运行', '强制切换'))) return;
+        if (!(await uiConfirm(err.message + '\n\n仍要强制切换吗？强制切换会先关闭 ZCode 客户端再写入登录（未保存的对话内容可能丢失），重新打开 ZCode 即为新账号。', 'ZCode 正在运行', '关闭并强制切换'))) return;
         r = await doSwitch(true);
       }
-      toast(r && r.alreadyActive ? client + ' 当前已是该账号' : client + ' 已切换到 ' + (a && a.name || id));
+      toast(r && r.alreadyActive ? client + ' 当前已是该账号' : (r && r.closedClient ? '已关闭 ZCode，' : '') + client + ' 已切换到 ' + (a && a.name || id));
       await loadStatus(); await loadAccounts();
     } catch (err) { toast(err.message, false); }
     return;

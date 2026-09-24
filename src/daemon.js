@@ -48,7 +48,7 @@ import {
 import { addAccount, importAccounts, refreshContext } from './accounts.js';
 import { productImpl } from './providers.js';
 import { readWorkbuddySessions, writeWorkbuddySession, workbuddyAuthDir, currentWorkbuddyUid } from './workbuddyLocal.js';
-import { liveToAccount as zcodeLiveAccount, switchTo as zcodeSwitchTo, currentZcodeUid, detectZcode, ensureVirtualDeviceMid } from './zcodeLocal.js';
+import { liveToAccount as zcodeLiveAccount, switchTo as zcodeSwitchTo, currentZcodeUid, currentZcodeIdentity, detectZcode, ensureVirtualDeviceMid, terminateZcode } from './zcodeLocal.js';
 import { fetchClaimPlans, claimPlan, fetchCaptchaConfig } from './zcodeClient.js';
 import { exportAccounts, parseImport, TransferError } from './transfer.js';
 import { runCheckinTick, getSchedulerInfo, dayKey } from './checkin.js';
@@ -273,6 +273,14 @@ async function handleApi(req, res, url) {
         await addAccount(live, { trusted: true }).catch((e) => logger.warn('DAEMON', '同步 ZCode 当前登录失败：' + e.message));
       }
       try {
+        // 强制切换：先关掉运行中的 ZCode，否则它会把内存里的旧登录覆盖回文件，切换等于没切
+        let closedClient = false;
+        if (body?.force === true) {
+          const t = terminateZcode();
+          closedClient = t.closed === true;
+          if (closedClient) logger.info('DAEMON', '已关闭 ZCode 客户端（强制切换）');
+          else if (t.running) logger.warn('DAEMON', '未能完全结束 ZCode 进程，继续强制切换');
+        }
         ensureVirtualDeviceMid(target);
         const r = zcodeSwitchTo(target, { force: body?.force === true });
         // 虚拟设备 ID 首次生成时需落盘
@@ -281,7 +289,7 @@ async function handleApi(req, res, url) {
           if (cur) cur.meta = { ...(cur.meta || {}), deviceMid: target.meta.deviceMid };
         });
         logger.info('DAEMON', r.alreadyActive ? `ZCode 当前已是 ${target.name || target.id}` : `ZCode 已切换到 ${target.name || target.id}`);
-        return json(res, 200, { ok: true, ...r });
+        return json(res, 200, { ok: true, closedClient, ...r });
       } catch (e) {
         return json(res, e.zcodeRunning ? 409 : 400, { error: e.message, code: e.zcodeRunning ? 'ZCODE_RUNNING' : undefined });
       }
@@ -461,6 +469,7 @@ async function handleApi(req, res, url) {
       platform: process.platform,
       workbuddyCurrentUid: currentWorkbuddyUid(),
       zcodeCurrentUid: currentZcodeUid(),
+      zcodeCurrentIdentity: currentZcodeIdentity(),
       keyRequired: Boolean(PANEL_KEY),
     });
   }

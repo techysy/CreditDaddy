@@ -87,12 +87,19 @@ export function liveToAccount(secretOpts) {
   };
 }
 
-/** ZCode 客户端当前登录账号的 uid（未登录返回 null） */
-export function currentZcodeUid() {
+/** ZCode 客户端当前登录账号的完整身份（未登录返回 null） */
+export function currentZcodeIdentity() {
   const p = zcodePaths();
   const creds = readJson(p.credentials);
   if (!creds || !zc.isLoggedIn(creds)) return null;
-  return zc.identityWithSecret(creds, zc.defaultSecret(p.home)).userId;
+  const id = zc.identityWithSecret(creds, zc.defaultSecret(p.home));
+  return { uid: id.userId ?? null, email: id.email || null, username: id.username || null };
+}
+
+/** ZCode 客户端当前登录账号的 uid（未登录返回 null） */
+export function currentZcodeUid() {
+  const id = currentZcodeIdentity();
+  return id?.uid != null ? String(id.uid) : null;
 }
 
 /** 账号库里是否已有同一登录（先比规范化哈希，哈希对不上再比身份） */
@@ -123,6 +130,28 @@ const WIN_TASKLIST = () => {
 export function zcodeRunning() {
   if (process.platform !== 'win32') return false;
   return /zcode\.exe/i.test(WIN_TASKLIST());
+}
+
+const nap = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+/**
+ * 结束 ZCode 客户端进程（先优雅关闭，超时后强制 kill）。
+ * 只在用户明确选择「强制切换」时调用：运行中的客户端会把内存里的旧登录覆盖回
+ * credentials.json，只写文件不关进程等于没切换。
+ * 注意：不要在测试里调用——它会真的结束本机 ZCode。
+ */
+export function terminateZcode({ timeoutMs = 8000 } = {}) {
+  if (process.platform !== 'win32') return { closed: false, supported: false };
+  if (!zcodeRunning()) return { closed: false, running: false };
+  try { execSync('taskkill /IM ZCode.exe /T', { windowsHide: true, stdio: 'ignore' }); } catch {}
+  let deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline && zcodeRunning()) nap(250);
+  if (zcodeRunning()) {
+    try { execSync('taskkill /IM ZCode.exe /T /F', { windowsHide: true, stdio: 'ignore' }); } catch {}
+    deadline = Date.now() + 3000;
+    while (Date.now() < deadline && zcodeRunning()) nap(250);
+  }
+  return { closed: !zcodeRunning(), running: zcodeRunning() };
 }
 
 /**
