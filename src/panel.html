@@ -769,6 +769,8 @@ function renderProd() {
     $('s-done-wrap').innerHTML = (cnAcc.length ? '<div class="stat"><span>领取（国内）</span><strong>' + cnAcc.filter(isDone).length + ' / ' + cnAcc.length + '</strong></div><div class="divider"></div>' : '')
       + (intlAcc.length ? '<div class="stat"><span>活跃（国际）</span><strong>' + intlAcc.filter(isDone).length + ' / ' + intlAcc.length + '</strong></div><div class="divider"></div>' : '');
   } else {
+    // 从 WorkBuddy 页切回来时 s-done 可能被 innerHTML 换没了，先重建结构再写值
+    if (!$('s-done')) $('s-done-wrap').innerHTML = '<div class="stat"><span>今日已领</span><strong id="s-done"></strong></div><div class="divider"></div>';
     $('s-done').textContent = acc.filter(isDone).length + ' / ' + acc.length;
   }
   const c = creditSum(acc);
