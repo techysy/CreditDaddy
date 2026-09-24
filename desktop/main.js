@@ -1,8 +1,8 @@
 /**
  * CreditDaddy 桌面壳（Electron）：内置 daemon + 托盘常驻。
  *
- *   - 关闭窗口 = 隐藏到托盘，后台自动签到不中断；首次隐藏时弹出气泡提示托盘位置
- *   - 单击托盘图标打开面板；右键菜单：状态 / 打开面板 / 立即签到 / 开机自启 / 打开数据目录 / 项目主页 / 退出
+ *   - 关闭窗口 = 隐藏到托盘，后台自动领取不中断；首次隐藏时弹出气泡提示托盘位置
+ *   - 单击托盘图标打开面板；右键菜单：状态 / 打开面板 / 立即领取 / 开机自启 / 打开数据目录 / 项目主页 / 退出
  *   - 开机自启以 --hidden 启动：只驻留托盘，不弹窗口
  *   - 打包后从 resources/creditdaddy 加载服务端；开发时（electron desktop/）直接用仓库源码
  */
@@ -186,7 +186,7 @@ function createWindow() {
     win.hide();
     if (!hideHintShown) {
       hideHintShown = true;
-      notify('CreditDaddy 仍在后台运行', '已最小化到系统托盘，自动签到不会中断。单击托盘图标可重新打开面板。');
+      notify('CreditDaddy 仍在后台运行', '已最小化到系统托盘，自动领取不会中断。单击托盘图标可重新打开面板。');
     }
   });
   win.on('closed', () => { win = null; });
@@ -208,7 +208,7 @@ function notify(title, body) {
 }
 
 async function checkinNow() {
-  tray.setToolTip('CreditDaddy - 正在签到…');
+  tray.setToolTip('CreditDaddy - 正在领取…');
   try {
     const res = await fetch('http://127.0.0.1:' + boundPort + '/api/checkin', {
       method: 'POST',
@@ -216,10 +216,10 @@ async function checkinNow() {
       body: '{"skipIfCheckedToday":false}',
     });
     const data = await res.json();
-    lastSummary = data.summary || '签到完成';
-    notify('CreditDaddy 签到完成', lastSummary);
+    lastSummary = data.summary || '领取完成';
+    notify('CreditDaddy 领取完成', lastSummary);
   } catch (e) {
-    lastSummary = '签到失败：' + (e && e.message);
+    lastSummary = '领取失败：' + (e && e.message);
     notify('CreditDaddy', lastSummary);
   }
   refreshTrayMenu();
@@ -247,14 +247,14 @@ function createTray() {
 
 function refreshTrayMenu() {
   if (!tray) return;
-  tray.setToolTip('CreditDaddy v' + daemonInfo.version + ' - 后台自动签到运行中' + (lastSummary ? '\n' + lastSummary : ''));
+  tray.setToolTip('CreditDaddy v' + daemonInfo.version + ' - 后台自动领取运行中' + (lastSummary ? '\n' + lastSummary : ''));
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'CreditDaddy v' + daemonInfo.version, enabled: false },
     { label: '面板 127.0.0.1:' + boundPort, enabled: false },
     ...(lastSummary ? [{ label: lastSummary.slice(0, 60), enabled: false }] : []),
     { type: 'separator' },
     { label: '打开面板', click: () => showWin() },
-    { label: '立即签到全部账号', click: () => { checkinNow(); } },
+    { label: '立即领取全部账号', click: () => { checkinNow(); } },
     { type: 'separator' },
     { label: '开机自启（后台运行）', type: 'checkbox', checked: autoLaunchEnabled(), click: (item) => setAutoLaunch(item.checked) },
     { label: '打开数据目录', enabled: Boolean(daemonInfo.dataDir), click: () => shell.openPath(daemonInfo.dataDir) },
@@ -265,6 +265,6 @@ function refreshTrayMenu() {
 }
 
 app.on('window-all-closed', () => {
-  // 保持在托盘运行，自动签到不中断
+  // 保持在托盘运行，自动领取不中断
 });
 app.on('before-quit', () => { quitting = true; });
