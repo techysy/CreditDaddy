@@ -861,7 +861,9 @@ function renderStatus() {
   n.classList.toggle('info', state.view === 'zcode' || (hasIntl && Boolean(s.riskIdentity)));
   if (state.view === 'zcode') {
     n.style.display = '';
-    n.textContent = 'ZCode 没有每日签到，积分靠「活动领取」：点卡片上的礼物图标领取当期活动（可能需过一次验证码，通常静默通过）。这里也用于多账号管理、额度查看与一键切换（切换前需先退出 ZCode）。';
+    const pf = state.zProxyFirst === true;
+    n.innerHTML = 'ZCode 没有每日签到，积分靠「活动领取」：点卡片上的礼物图标领取当期活动（可能需过一次验证码，通常静默通过）。这里也用于多账号管理、额度查看与一键切换（切换前需先退出 ZCode）。'
+      + ' <button class="btn" id="btn-znet" style="margin-left:6px" title="ZCode 上游接口的访问顺序：直连失败 / 被拦时会自动回退另一条。代理取 HTTPS_PROXY 环境变量">出口：' + (pf ? '代理优先' : '直连优先') + '</button>';
   } else if (hasIntl && !s.riskIdentity && umidOffer(s)) {
     n.style.display = '';
     const busy = s.umid.installing || umidBusy;
@@ -893,6 +895,18 @@ async function installUmid() {
   await loadStatus(); render(); loadLogs();
 }
 $('notice').addEventListener('click', (e) => { if (e.target.closest('#btn-umid')) installUmid(); });
+$('notice').addEventListener('click', async (e) => {
+  if (!e.target.closest('#btn-znet')) return;
+  try {
+    const r = await api('/api/zcode/net', { method: 'PUT', json: { proxyFirst: state.zProxyFirst !== true } });
+    state.zProxyFirst = r.proxyFirst;
+    renderStatus();
+    toast('ZCode 出口：' + (r.proxyFirst ? '代理优先（直连兜底）' : '直连优先（代理兜底）'));
+  } catch (err) { toast(err.message, false); }
+});
+async function loadZNet() {
+  try { state.zProxyFirst = (await api('/api/zcode/net')).proxyFirst === true; if (state.view === 'zcode') renderStatus(); } catch (e) {}
+}
 
 // ── 10Router ──
 function quotaPct(q) {
@@ -1695,6 +1709,7 @@ applyView();
 (function boot() {
   function start() {
     loadStatus().then(loadAccounts).catch((e) => toast(e.message, false));
+    loadZNet();
     loadTrConfig().then(() => loadTrQuotas());
     setInterval(() => loadTrQuotas(), 5 * 60 * 1000);
     loadLogs();

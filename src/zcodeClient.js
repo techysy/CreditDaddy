@@ -15,7 +15,13 @@
  */
 
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import http from 'node:http';
+import https from 'node:https';
 import os from 'node:os';
+import path from 'node:path';
+import tls from 'node:tls';
+import { execFileSync } from 'node:child_process';
 import { FETCH_TIMEOUT_MS } from './constants.js';
 import { defaultSecret, safeDecrypt } from './zcrypto.js';
 
@@ -25,7 +31,156 @@ const BILLING_BALANCE_URL = 'https://zcode.z.ai/api/v1/zcode-plan/billing/balanc
 const BILLING_PREVIEW_URL = 'https://zcode.z.ai/api/v1/zcode-plan/billing/preview';
 const BILLING_CLAIM_URL = 'https://zcode.z.ai/api/v1/zcode-plan/billing/claim';
 const CLIENT_CONFIGS_URL = 'https://zcode.z.ai/api/v1/client/configs';
-const APP_VERSION = '3.11.2';
+// 与 zcode-switch 一致：billing 类接口对客户端版本有校验（版本过低直接 3001 parameter error），
+// 所以优先上报本机已安装 ZCode 的版本（注册表读取），没有客户端时退回兜底值。
+const APP_VERSION_FALLBACK = '3.11.2';
+let appVersionCache = null;
+export function zcodeAppVersion() {
+  if (appVersionCache) return appVersionCache;
+  let v = null;
+  if (process.platform === 'win32') {
+    for (const hive of [
+      'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+      'HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+      'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+    ]) {
+      try {
+        const out = execFileSync('reg', ['query', hive, '/s'], { encoding: 'utf8', windowsHide: true, timeout: 8000 });
+        const m = out.match(/ZCode[^\r\n]*\r?\n(?:.*\r?\n)*?\s*DisplayVersion\s+REG_SZ\s+([\d.]+)/)
+          || out.match(/DisplayName\s+REG_SZ\s+ZCode[^\r\n]*[\s\S]{0,400}?DisplayVersion\s+REG_SZ\s+([\d.]+)/);
+        if (m) { v = m[1]; break; }
+      } catch { /* 继续下一个 hive */ }
+    }
+  }
+  appVersionCache = v || APP_VERSION_FALLBACK;
+  return appVersionCache;
+}
+/** 测试用：重置版本探测缓存 */
+export function _resetAppVersionCache(v) { appVersionCache = v || null; }
+
+// ── HTTP 出口：直连优先 / 代理优先（可切换），任一路成功即返回 ──
+
+function codeHome() {
+  return process.env.CREDITDADDY_HOME || process.env.QODERDADDY_HOME || path.join(os.homedir(), '.creditdaddy');
+}
+const NET_PREFS_FILE = () => path.join(codeHome(), 'zcode-net.json');
+
+let proxyFirstCache = null;
+export function proxyFirst() {
+  if (proxyFirstCache !== null) return proxyFirstCache;
+  try { proxyFirstCache = JSON.parse(fs.readFileSync(NET_PREFS_FILE(), 'utf8')).proxyFirst === true; }
+  catch { proxyFirstCache = false; }
+  return proxyFirstCache;
+}
+export function setProxyFirst(v) {
+  proxyFirstCache = v === true;
+  fs.mkdirSync(codeHome(), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(NET_PREFS_FILE(), JSON.stringify({ proxyFirst: proxyFirstCache }, null, 2), { mode: 0o600 });
+}
+
+const envProxy = () => process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy || null;
+
+/** 目标是否应绕过代理（loopback / NO_PROXY 后缀匹配） */
+function proxyBypass(url) {
+  const host = new URL(url).hostname.toLowerCase();
+  if (host === '127.0.0.1' || host === 'localhost' || host === '::1' || host.endsWith('.local')) return true;
+  for (const pat of (process.env.NO_PROXY || process.env.no_proxy || '').split(',')) {
+    const p = pat.trim().toLowerCase();
+    if (!p) continue;
+    const sfx = p.startsWith('.') ? p.slice(1) : p;
+    if (host === sfx || host.endsWith('.' + sfx)) return true;
+  }
+  return false;
+}
+
+/**
+ * 经 HTTP 代理访问目标（纯 node 内置模块实现，保持核心零依赖）：
+ * https 目标走 CONNECT 隧道 + TLS；http 目标走绝对 URI 转发。
+ * 支持代理认证（URL 内嵌 user:password → Proxy-Authorization）。
+ */
+function connectTunnel(proxyUrl, target) {
+  return new Promise((resolve, reject) => {
+    const p = new URL(proxyUrl);
+    const headers = {};
+    if (p.username || p.password) {
+      const auth = `${decodeURIComponent(p.username)}:${decodeURIComponent(p.password)}`;
+      headers['Proxy-Authorization'] = `Basic ${Buffer.from(auth).toString('base64')}`;
+    }
+    const req = http.request({ host: p.hostname, port: Number(p.port) || 80, method: 'CONNECT', path: target, headers, timeout: 10000 });
+    req.on('connect', (res, socket) => {
+      if (res.statusCode !== 200) { socket.destroy(); reject(new Error(`代理隧道失败（CONNECT ${res.statusCode}）`)); return; }
+      resolve(socket);
+    });
+    req.on('error', reject);
+    req.on('timeout', () => req.destroy(new Error('连接代理超时')));
+    req.end();
+  });
+}
+
+async function fetchViaProxy(url, { method = 'GET', headers = {}, body = null, timeoutMs = 15000 } = {}) {
+  const proxy = envProxy();
+  if (!proxy || !/^http:\/\//i.test(proxy)) throw new Error('没有可用的 http 代理（HTTPS_PROXY 未设置）');
+  const u = new URL(url);
+  const p = new URL(proxy);
+  const isHttps = u.protocol === 'https:';
+  let requestOpts;
+  if (isHttps) {
+    const socket = await connectTunnel(proxy, `${u.hostname}:443`);
+    const tlsSocket = tls.connect({ socket, servername: u.hostname });
+    requestOpts = {
+      hostname: u.hostname, port: 443, path: u.pathname + u.search, method,
+      headers: { ...headers, Host: u.host }, timeout: timeoutMs,
+      createConnection: () => tlsSocket,
+    };
+  } else {
+    requestOpts = {
+      hostname: p.hostname, port: Number(p.port) || 80, path: url, method,
+      headers: { ...headers, Host: u.host }, timeout: timeoutMs,
+    };
+  }
+  return new Promise((resolve, reject) => {
+    const req = (isHttps ? https : http).request(requestOpts, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => resolve(new Response(Buffer.concat(chunks), { status: res.statusCode, headers: res.headers })));
+    });
+    req.on('error', reject);
+    req.on('timeout', () => req.destroy(new Error('请求超时')));
+    if (body != null) req.write(typeof body === 'string' ? body : JSON.stringify(body));
+    req.end();
+  });
+}
+
+/**
+ * 统一出口：按「代理优先」开关决定请求顺序，首个成功的返回。
+ * - 默认直连优先、代理兜底（无代理环境时等同纯直连，零行为变化）
+ * - 代理优先适合直连不稳 / 被拦的网络
+ * 返回 fetch Response；调用方按业务 code 自行判定（业务错误也算“成功送达”，不再回退）。
+ */
+// 测试可替换代理请求实现（生产代码不传）
+let viaProxyImpl = null;
+export function _setViaProxyForTests(fn) { viaProxyImpl = fn || null; }
+
+export async function fetchJsonRace(url, { method = 'GET', headers = {}, body = null, timeoutMs = 15000 } = {}) {
+  const base = { method, headers: { ...headers }, ...(body != null ? { body: typeof body === 'string' ? body : JSON.stringify(body) } : {}), signal: AbortSignal.timeout(timeoutMs) };
+  const useProxy = Boolean(envProxy()) && !proxyBypass(url);
+  const direct = () => fetch(url, base);
+  const viaProxy = viaProxyImpl
+    ? () => viaProxyImpl(url, { method, headers, body, timeoutMs })
+    : () => fetchViaProxy(url, { method, headers, body, timeoutMs });
+  const attempts = useProxy ? (proxyFirst() ? [viaProxy, direct] : [direct, viaProxy]) : [direct];
+  let lastErr = null;
+  for (const attempt of attempts) {
+    try { return await attempt(); } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error('fetch failed');
+}
+
+async function getJsonRace(url, headers) {
+  const res = await fetchJsonRace(url, { headers });
+  const text = await res.text();
+  try { return JSON.parse(text); } catch { return { code: res.status, msg: text.slice(0, 120) }; }
+}
 
 /** 领取失败码 → 中文提示（取自 zcode-switch i18n.rs） */
 const CLAIM_FAIL = {
@@ -42,11 +197,12 @@ const CLAIM_FAIL = {
 const platform = () => `${process.platform}-${process.arch === 'arm64' ? 'arm64' : process.arch === 'x64' ? 'x64' : process.arch}`;
 
 function zaiHeaders(token, deviceMid) {
+  const ver = zcodeAppVersion();
   return {
-    'User-Agent': `ZCode/${APP_VERSION}`,
+    'User-Agent': `ZCode/${ver}`,
     'HTTP-Referer': 'https://zcode.z.ai',
     'X-Title': 'Z Code@electron',
-    'X-ZCode-App-Version': APP_VERSION,
+    'X-ZCode-App-Version': ver,
     'X-Platform': platform(),
     'X-Release-Channel': 'stable',
     'X-Client-Language': 'zh-CN',
@@ -59,11 +215,11 @@ function zaiHeaders(token, deviceMid) {
 }
 
 function bigmodelHeaders(token) {
-  return { Authorization: `Bearer ${token}`, 'User-Agent': `ZCode/${APP_VERSION}`, 'x-request-id': crypto.randomUUID() };
+  return { Authorization: `Bearer ${token}`, 'User-Agent': `ZCode/${zcodeAppVersion()}`, 'x-request-id': crypto.randomUUID() };
 }
 
 async function getJson(url, headers) {
-  const res = await fetch(url, { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+  const res = await fetchJsonRace(url, { headers, timeoutMs: FETCH_TIMEOUT_MS });
   const text = await res.text();
   try { return JSON.parse(text); } catch { return { code: res.status, msg: text.slice(0, 120) }; }
 }
@@ -262,7 +418,7 @@ export async function fetchZcodeQuota(account) {
   }
   for (const t of billingTokens(account)) {
     try {
-      const bal = await getJson(`${BILLING_BALANCE_URL}?app_version=${APP_VERSION}`, zaiHeaders(t, account.meta?.deviceMid));
+      const bal = await getJson(`${BILLING_BALANCE_URL}?app_version=${zcodeAppVersion()}`, zaiHeaders(t, account.meta?.deviceMid));
       if (businessOk(bal)) return { ...normalizeBalance(bal), source: 'zcode.z.ai' };
       if (bal?.code === 401) authFails++;
     } catch (e) { lastErr = e.message; }
@@ -281,7 +437,7 @@ export async function fetchZcodeQuota(account) {
 export async function fetchClaimPlans(account) {
   const token = claimToken(account);
   const v = await getJson(
-    `${BILLING_PREVIEW_URL}?app_version=${APP_VERSION}&platform=${platform()}`,
+    `${BILLING_PREVIEW_URL}?app_version=${zcodeAppVersion()}&platform=${platform()}`,
     zaiHeaders(token, account.meta?.deviceMid),
   );
   if (v?.code !== 0) throw new Error(v?.msg || v?.message || `查询活动列表失败（code ${v?.code}）`);
@@ -310,11 +466,11 @@ export async function claimPlan(account, planId, { captchaParam = '', region = '
   const headers = zaiHeaders(token, account.meta?.deviceMid);
   if (captchaParam && captchaParam.trim()) headers['X-Aliyun-Captcha-Verify-Param'] = captchaParam.trim();
   if (region && region.trim()) headers['X-Aliyun-Captcha-Verify-Region'] = region.trim();
-  const res = await fetch(BILLING_CLAIM_URL, {
+  const res = await fetchJsonRace(BILLING_CLAIM_URL, {
     method: 'POST',
     headers: { ...headers, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ plan_id: planId }),
-    signal: AbortSignal.timeout(25_000),
+    body: { plan_id: planId },
+    timeoutMs: 25_000,
   });
   const text = await res.text();
   let v;
