@@ -1106,33 +1106,10 @@ function trCardHtml(c) {
     if (!(primary || windows.length || packs.length)) {
       body = '<div class="msg">' + esc(/no separate quota|billed at standard/i.test(c.message || '') ? '按量计费，无额度可显示' : (c.message || '该供应商未返回额度数据')) + '</div>';
     } else {
-      // 摘要行：其余额度全部收成一行 dim 文本；点「明细」展开逐行
-      const briefs = [];
-      for (const q of windows) {
-        const pct = quotaPct(q);
-        briefs.push(esc(q.name) + ' ' + esc(q.percentScale || !(q.total > 0)
-          ? (pct !== null ? fmtNum(pct) + '%' : fmtNum(quotaRemaining(q)))
-          : fmtNum(quotaRemaining(q)) + '/' + fmtNum(q.total || 0)));
-      }
-      const alivePacks = packs.filter((q) => quotaRemaining(q) > 0);
-      if (alivePacks.length) {
-        const rem = alivePacks.reduce((n, q) => n + quotaRemaining(q), 0);
-        briefs.push('积分包×' + alivePacks.length + ' 剩 ' + fmtNum(rem));
-      } else if (packs.length) {
-        briefs.push('积分包已用完');
-      }
-      const resets = [primary, ...windows, ...packs].filter(Boolean).map((q) => q.resetAt).filter(Boolean).sort();
-      const nearest = resets[0] || null;
-      const open = Boolean(state.trOpen && state.trOpen[c.id]);
-      const hasDetail = windows.length > 0 || packs.length > 0;
+      // 与汇总卡同款默认视图：主额度 + 每个周 / 月窗口额度一条（带进度条）；积分包走聚合行，「逐包明细」展开单包
       body = (primary ? trPrimaryHtml(primary) : '')
-        + (hasDetail
-          ? '<div class="tr-summary dim"><span class="tr-sum-txt" title="' + esc(briefs.join(' · ') + (nearest ? '，最早 ' + fmtTime(nearest).slice(5, 10) : '')) + '">'
-            + briefs.join(' · ')
-            + (nearest ? ' <span class="' + (new Date(nearest) - Date.now() < 7 * 86400e3 ? 'low-text' : '') + '">· 最早 ' + esc(fmtTime(nearest).slice(5, 10)) + '</span>' : '')
-            + '</span><button class="tr-more" data-tr="toggle" data-id="' + esc(c.id) + '">' + (open ? '收起' : '明细') + '</button></div>'
-          : '')
-        + (open ? windows.map((q) => trRow(q)).join('') + trPacksHtml(c, packs) : '');
+        + windows.map((q) => trRow(q)).join('')
+        + trPacksHtml(c, packs);
     }
   }
   return '<div class="tr-card' + (c.isActive ? '' : ' off') + '"><div class="row1"><div class="name-group">'
@@ -1240,9 +1217,6 @@ function trVendorCardHtml(g) {
   const briefs = [];
   if (alivePacks.length) briefs.push('积分包×' + alivePacks.length + ' 剩 ' + fmtNum(packRem));
   else if (packs.length) briefs.push('积分包已用完');
-  const resets = [primary, ...wins, ...packs].filter(Boolean).map((q) => q.resetAt).filter(Boolean).sort();
-  const nearest = resets[0] || null;
-
   const hasQuotas = Boolean(primary || wins.length || packs.length);
   let quotaHtml;
   if (errs === items.length) {
@@ -1250,13 +1224,11 @@ function trVendorCardHtml(g) {
   } else if (!hasQuotas) {
     quotaHtml = '<div class="msg">该供应商没有可汇总的额度</div>';
   } else {
+    // 「全部」视角不显示「最早到期」：每行自带相对重置时间，足够判断
     quotaHtml = (primary ? trPrimaryHtml(primary) : '')
       + winRows
-      + (briefs.length || nearest
-        ? '<div class="tr-summary dim"><span class="tr-sum-txt" title="' + esc(briefs.join(' · ') + (nearest ? '，最早 ' + fmtTime(nearest).slice(5, 10) : '')) + '">'
-          + briefs.join(' · ')
-          + (nearest ? ' <span class="' + (new Date(nearest) - Date.now() < 7 * 86400e3 ? 'low-text' : '') + '">· 最早 ' + esc(fmtTime(nearest).slice(5, 10)) + '</span>' : '')
-          + '</span></div>'
+      + (briefs.length
+        ? '<div class="tr-summary dim"><span class="tr-sum-txt">' + briefs.join(' · ') + '</span></div>'
         : '');
   }
   return '<div class="tr-card"><div class="row1"><div class="name-group">'
@@ -1293,33 +1265,34 @@ function renderTenrouter() {
   let tabStrip = '';
   const groups = list.length ? trGroups(list) : [];
   const vendor = state.trVendor || '';
+  // 「隐藏 0 / 无额度」与列表共用同一过滤：被隐藏的供应商不出现在标签条
+  const shown = state.trHideEmpty
+    ? groups.filter((g) => {
+        if (g.items.every((x) => x.error)) return true;
+        for (const x of g.items) {
+          if (x.error) continue;
+          const s = splitQuotas(x);
+          if (s.primary && quotaRemaining(s.primary) > 0) return true;
+          if (s.windows.some((q) => quotaRemaining(q) > 0 || (quotaPct(q) || 0) > 0)) return true;
+          if (s.packs.some((q) => quotaRemaining(q) > 0)) return true;
+        }
+        return false;
+      })
+    : groups;
+  const activeVendor = vendor && shown.some((g) => g.name === vendor) ? vendor : '';
   if (groups.length) {
     tabStrip = '<div class="tr-tabs">'
-      + '<button class="btn' + (!vendor ? ' primary' : '') + '" data-tr="vendor" data-v="">全部</button>'
-      + groups.map((g) => '<button class="btn' + (vendor === g.name ? ' primary' : '') + '" data-tr="vendor" data-v="' + esc(g.name) + '">' + esc(g.name) + ' ' + g.items.length + '</button>').join('')
+      + '<button class="btn' + (!activeVendor ? ' primary' : '') + '" data-tr="vendor" data-v="">全部</button>'
+      + shown.map((g) => '<button class="btn' + (activeVendor === g.name ? ' primary' : '') + '" data-tr="vendor" data-v="' + esc(g.name) + '">' + esc(g.name) + ' ' + g.items.length + '</button>').join('')
       + '</div>';
   }
   if (tr.error) grid = '<div class="empty">' + esc(tr.error) + '</div>';
   else if (!tr.quotas) grid = '<div class="empty">正在读取 10Router 供应商额度…</div>';
   else if (!list.length) grid = '<div class="empty">10Router 里还没有可查额度的供应商连接（OAuth 或支持额度查询的 API Key）。</div>';
-  else if (vendor) {
-    const g = groups.find((x) => x.name === vendor) || { items: [] };
+  else if (activeVendor) {
+    const g = groups.find((x) => x.name === activeVendor) || { items: [] };
     grid = '<div class="tr-vcards">' + g.items.map(trCardHtml).join('') + '</div>';
   } else {
-    // 设置里可隐藏「0 / 无额度」的汇总卡（全部连接查询失败的保留，那是需要处理的状态）
-    const shown = state.trHideEmpty
-      ? groups.filter((g) => {
-          if (g.items.every((x) => x.error)) return true;
-          for (const x of g.items) {
-            if (x.error) continue;
-            const s = splitQuotas(x);
-            if (s.primary && quotaRemaining(s.primary) > 0) return true;
-            if (s.windows.some((q) => quotaRemaining(q) > 0 || (quotaPct(q) || 0) > 0)) return true;
-            if (s.packs.some((q) => quotaRemaining(q) > 0)) return true;
-          }
-          return false;
-        })
-      : groups;
     grid = shown.length
       ? '<div class="tr-vcards">' + shown.map(trVendorCardHtml).join('') + '</div>'
       : '<div class="empty">没有可显示的供应商（可在「设置」里关掉隐藏）</div>';
