@@ -76,4 +76,4 @@ export const FETCH_TIMEOUT_MS = 15000;
 // 版本号 / 项目主页以 package.json 为唯一来源（桌面版 / fpk 打包时都会一并拷入 package.json）
 const PKG = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 export const APP_VERSION = PKG.version;
-export const PROJECT_URL = PKG.homepage || 'https://github.com/techysy/QoderDaddy';
+export const PROJECT_URL = PKG.homepage || 'https://github.com/techysy/CreditDaddy';

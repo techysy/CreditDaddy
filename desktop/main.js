@@ -20,7 +20,7 @@ let quitting = false;
 let boundPort = PORT;
 let hideHintShown = false;
 let lastSummary = '';
-const DEFAULT_HOMEPAGE = 'https://github.com/techysy/QoderDaddy';
+const DEFAULT_HOMEPAGE = 'https://github.com/techysy/CreditDaddy';
 let daemonInfo = { version: app.getVersion(), dataDir: '', homepage: DEFAULT_HOMEPAGE };
 
 const serverRoot = app.isPackaged
