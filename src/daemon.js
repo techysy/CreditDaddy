@@ -14,6 +14,9 @@
  *   POST   /api/accounts/:id/checkin   手动为单个账号签到
  *   GET    /api/accounts/:id/quota     查询积分（统一结构）
  *   POST   /api/accounts/:id/switch    切换 WorkBuddy / ZCode 客户端当前登录账号 {force?}
+ *   GET    /api/accounts/:id/zcode/plans   ZCode 可领取的活动列表
+ *   POST   /api/accounts/:id/zcode/claim   ZCode 领取活动 {planId, captchaParam?, region?}
+ *   GET    /api/zcode/captcha-config       ZCode 领取验证码配置（sceneId / prefix / region）
  *   POST   /api/checkin                全部签到 {provider?, skipIfCheckedToday?}
  *   POST   /api/auth/device/start      发起浏览器登录 {provider: qoder / qoder-cn / workbuddy / workbuddy-intl / zcode-bigmodel / zcode-zai}
  *   POST   /api/auth/device/poll       轮询浏览器登录结果 {sessionId}
@@ -46,6 +49,7 @@ import { addAccount, importAccounts, refreshContext } from './accounts.js';
 import { productImpl } from './providers.js';
 import { readWorkbuddySessions, writeWorkbuddySession, workbuddyAuthDir, currentWorkbuddyUid } from './workbuddyLocal.js';
 import { liveToAccount as zcodeLiveAccount, switchTo as zcodeSwitchTo, currentZcodeUid, detectZcode, ensureVirtualDeviceMid } from './zcodeLocal.js';
+import { fetchClaimPlans, claimPlan, fetchCaptchaConfig } from './zcodeClient.js';
 import { exportAccounts, parseImport, TransferError } from './transfer.js';
 import { runCheckinTick, getSchedulerInfo, dayKey } from './checkin.js';
 import { detectQoderApps, readQoderAppAccounts, riskIdentityAvailable, riskIdentitySource } from './qoderApp.js';
@@ -209,6 +213,47 @@ async function handleApi(req, res, url) {
     try {
       const ctx = refreshContext(account, (m) => logger.info('QUOTA', `${account.name || account.id}：${m}`));
       return json(res, 200, { quota: await productImpl(account.provider).quota(account, ctx) });
+    } catch (e) {
+      return json(res, 502, { error: e.message });
+    }
+  }
+
+  // ZCode 活动领取
+  const zcodePlansMatch = p.match(/^\/api\/accounts\/([\w-]+)\/zcode\/plans$/);
+  if (zcodePlansMatch && method === 'GET') {
+    const accounts = await loadAccounts();
+    const account = accounts.find((a) => a.id === zcodePlansMatch[1]);
+    if (!account) return json(res, 404, { error: '账号不存在' });
+    if (account.provider !== 'zcode') return json(res, 400, { error: '只有 ZCode 账号支持活动领取' });
+    try {
+      return json(res, 200, await fetchClaimPlans(account));
+    } catch (e) {
+      return json(res, 502, { error: e.message });
+    }
+  }
+  const zcodeClaimMatch = p.match(/^\/api\/accounts\/([\w-]+)\/zcode\/claim$/);
+  if (zcodeClaimMatch && method === 'POST') {
+    const body = await readBody(req).catch(() => ({}));
+    if (!body?.planId || typeof body.planId !== 'string') return json(res, 400, { error: '缺少 planId' });
+    const accounts = await loadAccounts();
+    const account = accounts.find((a) => a.id === zcodeClaimMatch[1]);
+    if (!account) return json(res, 404, { error: '账号不存在' });
+    if (account.provider !== 'zcode') return json(res, 400, { error: '只有 ZCode 账号支持活动领取' });
+    try {
+      const outcome = await claimPlan(account, body.planId.slice(0, 128), {
+        captchaParam: typeof body.captchaParam === 'string' ? body.captchaParam : '',
+        region: typeof body.region === 'string' ? body.region : '',
+      });
+      logger.info('DAEMON', `ZCode ${account.name || account.id} 领取成功：${outcome.planName}`);
+      return json(res, 200, outcome);
+    } catch (e) {
+      logger.warn('DAEMON', `ZCode ${account.name || account.id} 领取失败：${e.message}`);
+      return json(res, 502, { error: e.message, code: e.code, nextAt: e.nextAt });
+    }
+  }
+  if (p === '/api/zcode/captcha-config' && method === 'GET') {
+    try {
+      return json(res, 200, await fetchCaptchaConfig());
     } catch (e) {
       return json(res, 502, { error: e.message });
     }

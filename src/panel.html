@@ -115,6 +115,11 @@
   .credit b { font-weight: 700; }
   .credit svg { width: 13px; height: 13px; color: rgb(var(--accent-rgb)); }
   .dim { color: var(--text-3); }
+  .claim-plan { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 2px; border-bottom: 1px solid var(--border); }
+  .claim-plan:last-of-type { border-bottom: 0; }
+  .claim-plan .grants { font-size: 12px; margin-top: 2px; }
+  #cap-holder { margin-top: 10px; min-height: 0; }
+  #cap-btn { margin-top: 10px; }
   .bar { display: flex; gap: 2px; width: 100%; height: 5px; background: color-mix(in srgb, var(--tertiary) 80%, transparent); border-radius: 3px; overflow: hidden; }
   .seg { display: block; height: 5px; min-width: 3px; background: rgba(var(--accent-rgb), var(--a, 1)); transition: filter .15s; }
   .seg.used { background: color-mix(in srgb, var(--text-3) 35%, transparent); }
@@ -434,6 +439,15 @@
   </div>
 </div>
 
+<!-- ZCode 活动领取 -->
+<div class="mask" id="m-claim">
+  <div class="modal">
+    <div class="modal-title"><span>活动领取</span><button class="close" data-close>✕</button></div>
+    <div class="hint">从 ZCode 官方活动接口领取（billing/preview → billing/claim）。领取时通常静默通过人机验证；触发风控时会弹出验证码，按提示完成即可。</div>
+    <div id="claim-body" style="margin-top:10px"></div>
+  </div>
+</div>
+
 <!-- 通用对话框 -->
 <div class="mask" id="m-dialog">
   <div class="modal sm">
@@ -464,6 +478,7 @@ const I = {
   swap: svg('<path d="M7 7h13l-4-4"/><path d="M17 17H4l4 4"/>'),
   github: svg('<path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65S8.93 17.38 9 18v4"/><path d="M9 18c-4.51 2-5-2-7-2"/>'),
   credit: svg('<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>'),
+  gift: svg('<rect x="3" y="8" width="18" height="4"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8s1-5 4.5-5a2.5 2.5 0 0 1 0 5"/>'),
 };
 
 const $ = (id) => document.getElementById(id);
@@ -560,7 +575,7 @@ async function api(p, opts = {}, attempt = 0) {
     setKey('');
     if (await promptKey(hadKey)) return api(p, opts, attempt + 1);
   }
-  if (!res.ok) { const e = new Error(data.error || ('HTTP ' + res.status)); e.code = data.code; e.status = res.status; throw e; }
+  if (!res.ok) { const e = new Error(data.error || ('HTTP ' + res.status)); e.code = data.code; e.status = res.status; e.nextAt = data.nextAt; throw e; }
   return data;
 }
 
@@ -583,7 +598,8 @@ function initTheme() {
 
 // ── 状态 / 渲染 ──
 function statusOf(a) {
-  if (!CHECKIN_PRODUCTS.has(a.product)) return { cls: 'pending', text: '无每日签到', msg: '' };
+  // ZCode 没有每日签到（只有活动领取），不显示签到徽标
+  if (!CHECKIN_PRODUCTS.has(a.product)) return { cls: '', text: '', msg: '' };
   const today = state.status && state.status.today;
   const done = state.status && state.status.todayDone && state.status.todayDone[a.id] === today;
   const r = a.lastResult;
@@ -613,8 +629,11 @@ function creditHtml(a) {
   if (q.empty) return '<div class="credit-line"><span class="dim">无有效套餐（仅免费额度）</span></div><div class="bar"></div>';
   const unit = q.unit ? ' ' + q.unit : '';
   if (q.unit) {
-    const items = q.parts.map((x) => esc(x.name) + ' ' + fmtNum(x.remaining) + '/' + fmtNum(x.total) + (x.unit ? ' ' + esc(x.unit) : '')
-      + (x.expiresAt ? '（' + fmtTime(x.expiresAt).slice(5, 16) + ' 重置）' : '')).join(' · ');
+    const items = q.parts.map((x) => {
+      const base = esc(x.name) + ' ' + fmtNum(x.remaining) + '/' + fmtNum(x.total) + (x.unit ? ' ' + esc(x.unit) : '');
+      if (x.pending && x.startsAt) return base + '（' + fmtTime(x.startsAt).slice(5, 16) + ' 生效）';
+      return base + (x.expiresAt ? '（' + fmtTime(x.expiresAt).slice(5, 16) + (x.recurring ? ' 重置）' : ' 到期）') : '');
+    }).join(' · ');
     const pct = q.total > 0 ? Math.min(1, q.remaining / q.total) : 0;
     return '<div class="credit-line"><span class="credit"><span class="lbl">剩余</span><b>' + fmtNum(q.remaining) + '</b>' + esc(unit) + '</span>'
       + '<span class="credit dim" title="' + items + '">' + (q.plan ? esc(q.plan) + ' · ' : '') + items + '</span></div>'
@@ -650,8 +669,9 @@ function cardHtml(a) {
     + (isCurrent ? '<span class="pill cur" title="' + esc(CLIENT_LABEL[a.product] || '') + ' 客户端当前登录的账号">客户端当前</span>' : '')
     + (a.isPat ? '<span class="badge">PAT</span>' : '')
     + (a.verified === false ? '<span class="pill fail">token 无效</span>' : '')
-    + '<span class="pill ' + st.cls + '" title="' + esc(a.lastResult ? fmtTime(a.lastResult.at) + ' ' + (a.lastResult.message || a.lastResult.status) : '') + '">' + esc(st.text) + '</span>'
+    + (st.text ? '<span class="pill ' + st.cls + '" title="' + esc(a.lastResult ? fmtTime(a.lastResult.at) + ' ' + (a.lastResult.message || a.lastResult.status) : '') + '">' + esc(st.text) + '</span>' : '')
     + '</div><div class="ops">'
+    + (a.product === 'zcode' ? '<button class="icon-btn" data-act="claim" title="活动领取（billing/preview → claim，可能需过一次验证码）">' + I.gift + '</button>' : '')
     + (canCheckin ? '<button class="icon-btn' + (state.busy[a.id] ? ' busy' : '') + '" data-act="checkin" title="立即签到">' + (state.busy[a.id] ? I.refresh : I.play) + '</button>' : '')
     + (CLIENT_LABEL[a.product] && a.canSwitch && !isCurrent && st.cls !== 'fail' ? '<button class="icon-btn" data-act="switch" title="切换 ' + CLIENT_LABEL[a.product] + ' 客户端到此账号">' + I.swap + '</button>' : '')
     + '<button class="icon-btn" data-act="quota" title="刷新积分">' + I.refresh + '</button>'
@@ -828,7 +848,7 @@ function renderStatus() {
   n.classList.toggle('info', state.view === 'zcode' || (hasIntl && Boolean(s.riskIdentity)));
   if (state.view === 'zcode') {
     n.style.display = '';
-    n.textContent = 'ZCode 没有每日签到：积分靠「活动领取」，领取需要阿里云验证码，无法后台自动完成。这里用于多账号管理、额度查看与一键切换（切换前需先退出 ZCode）。';
+    n.textContent = 'ZCode 没有每日签到，积分靠「活动领取」：点卡片上的礼物图标领取当期活动（可能需过一次验证码，通常静默通过）。这里也用于多账号管理、额度查看与一键切换（切换前需先退出 ZCode）。';
   } else if (hasIntl && !s.riskIdentity && umidOffer(s)) {
     n.style.display = '';
     const busy = s.umid.installing || umidBusy;
@@ -1165,6 +1185,7 @@ async function onCardClick(e) {
   const act = btn.dataset.act;
   if (act === 'checkin') return checkinOne(id);
   if (act === 'quota') { loadQuotas([id]); return; }
+  if (act === 'claim') return openClaim(id);
   if (act === 'switch') {
     const a = state.accounts.find((x) => x.id === id);
     const client = CLIENT_LABEL[a && a.product] || '客户端';
@@ -1206,6 +1227,154 @@ async function onCardClick(e) {
     catch (err) { toast(err.message, false); }
   }
 }
+
+// ── ZCode 活动领取 ──
+const CAPTCHA_SDK_URL = 'https://o.alicdn.com/captcha-frontend/aliyunCaptcha/AliyunCaptcha.js';
+const claimState = { accountId: null, plans: [], captcha: null, busy: false };
+let captchaSdkPromise = null;
+
+function loadCaptchaSdk() {
+  if (typeof window.initAliyunCaptcha === 'function') return Promise.resolve();
+  if (!captchaSdkPromise) {
+    captchaSdkPromise = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = CAPTCHA_SDK_URL;
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error('验证码组件加载失败（网络问题？）'));
+      document.head.appendChild(s);
+    });
+  }
+  return captchaSdkPromise;
+}
+
+async function openClaim(id) {
+  const a = state.accounts.find((x) => x.id === id);
+  claimState.accountId = id;
+  claimState.plans = [];
+  claimState.captcha = null;
+  claimState.busy = false;
+  $('claim-body').innerHTML = '<div class="dim">读取可领取的活动…</div>';
+  openModal('m-claim');
+  try {
+    const [plansResp, cap] = await Promise.all([
+      api('/api/accounts/' + encodeURIComponent(id) + '/zcode/plans'),
+      api('/api/zcode/captcha-config').catch(() => ({ enabled: false })),
+    ]);
+    if (claimState.accountId !== id) return; // 弹窗已被别的账号占用
+    claimState.plans = plansResp.plans || [];
+    claimState.captcha = cap;
+    renderClaimBody();
+  } catch (e) {
+    $('claim-body').innerHTML = '<div class="msg err">' + esc(e.message) + '</div>';
+  }
+}
+
+function renderClaimBody() {
+  if (!claimState.plans.length) {
+    $('claim-body').innerHTML = '<div class="muted-empty">当前没有可领取的活动</div>';
+    return;
+  }
+  $('claim-body').innerHTML = claimState.plans.map((pl, i) =>
+    '<div class="claim-plan"><div><b>' + esc(pl.name || pl.planId) + '</b>'
+    + (pl.description ? '<div class="dim grants">' + esc(pl.description) + '</div>' : '')
+    + (pl.grants && pl.grants.length ? '<div class="dim grants">' + pl.grants.map(esc).join('；') + '</div>' : '')
+    + '</div><button class="btn primary" data-claim="' + i + '"' + (claimState.busy ? ' disabled' : '') + '>领取</button></div>'
+  ).join('')
+    + '<div id="claim-status" class="dim" style="margin-top:8px"></div>'
+    + '<div id="cap-holder"></div><button class="btn" id="cap-btn" hidden>打开验证码</button>';
+}
+
+// 阿里云验证码：先静默验证（8s 超时），不行就让用户点按钮弹验证码。移植自 zcode-switch captcha.js。
+function runCaptcha(cfg) {
+  return new Promise((resolve, reject) => {
+    window.AliyunCaptchaConfig = { region: cfg.region, prefix: cfg.prefix };
+    const st = $('claim-status'), btn = $('cap-btn');
+    let done = false;
+    let timer = 0;
+    const finish = (param) => {
+      if (done || !param) return;
+      done = true;
+      clearTimeout(timer);
+      st.textContent = '人机验证已通过';
+      resolve(param);
+    };
+    const interactive = (why) => {
+      if (done) return;
+      clearTimeout(timer);
+      st.textContent = '需要完成人机验证：点下方按钮，按提示完成验证码';
+      if (btn) { btn.hidden = false; btn.focus(); }
+      if (why && typeof why !== 'string') st.title = JSON.stringify(why).slice(0, 160);
+    };
+    try {
+      window.initAliyunCaptcha({
+        SceneId: cfg.sceneId,
+        mode: 'popup',
+        language: 'zh-CN',
+        showErrorTip: false,
+        element: '#cap-holder',
+        button: '#cap-btn',
+        getInstance: (instance) => {
+          if (instance && typeof instance.startTracelessVerification === 'function') {
+            st.textContent = '人机验证中…';
+            instance.startTracelessVerification();
+            timer = setTimeout(() => interactive(), 8000);
+          } else interactive();
+        },
+        success: (param) => finish(typeof param === 'string' ? param : param && param.captchaVerifyParam),
+        fail: (p) => interactive(p),
+        onError: (p) => interactive(p),
+      });
+    } catch (e) { reject(e); }
+  });
+}
+
+async function doClaim(i) {
+  const pl = claimState.plans[i];
+  if (!pl || claimState.busy) return;
+  const st = $('claim-status');
+  claimState.busy = true;
+  renderClaimBody();
+  $('claim-status').textContent = '准备领取…';
+  let captchaParam = '';
+  let region = '';
+  try {
+    const cfg = claimState.captcha;
+    if (cfg && cfg.enabled && cfg.sceneId) {
+      await loadCaptchaSdk();
+      region = cfg.region || '';
+      captchaParam = await runCaptcha(cfg);
+    } else {
+      $('claim-status').textContent = '验证码配置不可用，按无验证码直接尝试…';
+    }
+  } catch (e) {
+    $('claim-status').innerHTML = '<span class="msg err">' + esc('验证码失败：' + e.message) + '</span>';
+    claimState.busy = false;
+    renderClaimBody();
+    return;
+  }
+  $('claim-status').textContent = '领取中…';
+  try {
+    const r = await api('/api/accounts/' + encodeURIComponent(claimState.accountId) + '/zcode/claim', {
+      json: { planId: pl.planId, captchaParam, region },
+    });
+    toast('领取成功：' + (r.planName || pl.name || pl.planId));
+    closeModal('m-claim');
+    loadQuotas([claimState.accountId]);
+    loadLogs();
+  } catch (e) {
+    const errBox = $('claim-status');
+    if (errBox) {
+      errBox.innerHTML = '<span class="msg err">' + esc(e.message) + (e.nextAt ? '（' + fmtTime(e.nextAt).slice(5, 16) + ' 后可再试）' : '') + '</span>';
+    }
+  }
+  claimState.busy = false;
+  if ($('m-claim').classList.contains('show') && $('claim-status')) renderClaimBody();
+}
+
+$('claim-body').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-claim]');
+  if (b) doClaim(Number(b.dataset.claim));
+});
 
 // ── 弹窗 ──
 function openModal(id) { $(id).classList.add('show'); }
