@@ -504,17 +504,45 @@ function toast(msg, ok) {
 }
 
 // ── API ──
-function getKey() { try { return localStorage.getItem('qd_key') || ''; } catch (e) { return ''; } }
-async function api(p, opts = {}) {
-  opts.headers = Object.assign({}, opts.headers, { 'x-qd-key': getKey() });
-  if (opts.json !== undefined) {
-    opts.method = opts.method || 'POST';
-    opts.headers['Content-Type'] = 'application/json';
-    opts.body = JSON.stringify(opts.json);
+// 面板访问密码（fnOS / 设置了 CREDITDADDY_PASSWORD 时需要）。内存里的值优先：面板嵌在飞牛桌面窗口里是跨域 iframe，
+// 浏览器拦截第三方存储时 localStorage 不可用，只靠它会每个请求都 401
+let memKey = null;
+function getKey() {
+  if (memKey !== null) return memKey;
+  try { return localStorage.getItem('qd_key') || ''; } catch (e) { return ''; }
+}
+function setKey(k) {
+  memKey = k;
+  try { if (k) localStorage.setItem('qd_key', k); else localStorage.removeItem('qd_key'); } catch (e) {}
+}
+let keyPrompt = null;
+/** 弹一次密码输入框（并发的请求共用同一个）；返回 true = 已输入 */
+function promptKey(invalid) {
+  if (!keyPrompt) {
+    keyPrompt = uiPrompt('输入面板访问密码', '', {
+      type: 'password', okText: '进入',
+      message: (invalid ? '密码不正确，请重新输入。\n' : '')
+        + 'fnOS：安装时设置的面板访问密码（忘了可以在 fnOS「应用设置」里重设）。\n命令行部署：环境变量 CREDITDADDY_PASSWORD 的值。',
+    }).then((k) => { keyPrompt = null; if (k === null || !k.trim()) return false; setKey(k.trim()); return true; });
   }
-  const res = await fetch(p, opts);
-  if (res.status === 401) { try { localStorage.removeItem('qd_key'); } catch (e) {} }
+  return keyPrompt;
+}
+async function api(p, opts = {}, attempt = 0) {
+  const o = Object.assign({}, opts, { headers: Object.assign({}, opts.headers, { 'x-qd-key': getKey() }) });
+  if (opts.json !== undefined) {
+    o.method = opts.method || 'POST';
+    o.headers['Content-Type'] = 'application/json';
+    o.body = JSON.stringify(opts.json);
+  }
+  delete o.json;
+  const res = await fetch(p, o);
   const data = await res.json().catch(() => ({}));
+  // 密码缺失 / 不正确：弹框要密码，输入后自动重试这次请求（不再只报一句错误）
+  if (res.status === 401 && data.code === 'PANEL_KEY' && attempt < 3) {
+    const hadKey = Boolean(getKey());
+    setKey('');
+    if (await promptKey(hadKey)) return api(p, opts, attempt + 1);
+  }
   if (!res.ok) { const e = new Error(data.error || ('HTTP ' + res.status)); e.code = data.code; e.status = res.status; throw e; }
   return data;
 }
@@ -1404,22 +1432,9 @@ applyView();
     setInterval(loadLogs, 10000);
     setInterval(async () => { await loadStatus(); render(); }, 30000);
   }
-  async function askKey(first) {
-    const k = await uiPrompt('输入访问密钥', '', {
-      type: 'password', okText: '进入',
-      message: (first ? '' : '密钥无效，请重新输入。\n') + 'NAS 上的访问密钥见数据目录里的 panel_key 文件，或安装完成时的提示。',
-    });
-    if (k === null) { toast('未输入访问密钥，刷新页面可重试', false); return; }
-    try { localStorage.setItem('qd_key', k.trim()); } catch (e) {}
-    probe(false);
-  }
-  function probe(first) {
-    fetch('/api/status', { headers: { 'x-qd-key': getKey() } }).then((res) => {
-      if (res.status === 401) { askKey(first); return; }
-      start();
-    }).catch((e) => toast('无法连接守护进程：' + e.message, false));
-  }
-  probe(true);
+  // 先直接请求（本机模式无需密码）；需要密码时 api() 会弹框并重试
+  api('/api/status').then(start).catch((e) => toast(e.code === 'PANEL_KEY'
+    ? '未输入面板访问密码，刷新页面可重试' : '无法连接守护进程：' + e.message, false));
 })();
 </script>
 </body>

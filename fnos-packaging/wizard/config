@@ -1,0 +1,26 @@
+[
+    {
+        "stepTitle": "面板访问密码",
+        "items": [
+            {
+                "type": "tips",
+                "helpText": "修改 CreditDaddy 面板访问密码。留空则保持当前密码不变；保存后服务会自动重启。"
+            },
+            {
+                "type": "password",
+                "field": "wizard_panel_password",
+                "label": "面板访问密码",
+                "rules": [
+                    {
+                        "min": 6,
+                        "message": "至少 6 位"
+                    },
+                    {
+                        "pattern": "^\\S*$",
+                        "message": "不能包含空格"
+                    }
+                ]
+            }
+        ]
+    }
+]

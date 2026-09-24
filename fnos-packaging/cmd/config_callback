@@ -1,2 +1,47 @@
 #!/bin/bash
+# 应用设置：修改面板访问密码后重启服务生效
+set -uo pipefail
+
+APP_NAME="${TRIM_APPNAME:-creditdaddy}"
+APP_DIR="${TRIM_APPDEST:-/var/apps/${APP_NAME}}"
+APP_VOL=""
+if [ -n "${TRIM_PKGVAR:-}" ]; then
+    DATA_DIR="${TRIM_PKGVAR}"
+else
+    if [ -L "${APP_DIR}/home" ]; then
+        APP_HOME="$(readlink -f "${APP_DIR}/home")"
+        APP_VOL="$(printf '%s' "${APP_HOME}" | awk -F/ 'NF>2 && $2 ~ /^vol/ {print "/"$2; exit}')"
+    fi
+    if [ -z "${APP_VOL}" ]; then
+        APP_VOL="$(printf '%s' "${APP_DIR}" | awk -F/ 'NF>2 && $2 ~ /^vol/ {print "/"$2; exit}')"
+    fi
+    if [ -n "${APP_VOL}" ]; then
+        DATA_DIR="${APP_VOL}/@appdata/${APP_NAME}"
+    else
+        DATA_DIR="${APP_DIR}/var"
+    fi
+fi
+LOG="${DATA_DIR}/install.log"
+mkdir -p "${DATA_DIR}"
+STAGE="config_callback"
+PW_CHANGED=0
+
+# 面板访问密码（向导字段 wizard_panel_password）：写入 panel_key（0600）；留空 = 保持原密码。密码本身不写日志
+PW="${wizard_panel_password:-}"
+if [ -n "${PW}" ]; then
+    case "${PW}" in
+        *[[:space:]]*) echo "面板访问密码不能包含空白字符" >&2; exit 1 ;;
+    esac
+    if [ "${#PW}" -lt 6 ]; then
+        echo "面板访问密码至少 6 位" >&2
+        exit 1
+    fi
+    ( umask 077; printf '%s' "${PW}" > "${DATA_DIR}/panel_key.tmp" ) && mv -f "${DATA_DIR}/panel_key.tmp" "${DATA_DIR}/panel_key"
+    chmod 600 "${DATA_DIR}/panel_key"
+    echo "[$(date '+%F %T')] ${STAGE}: panel password set from wizard" >> "${LOG}"
+    PW_CHANGED=1
+fi
+if [ "${PW_CHANGED}" = "1" ]; then
+    "$(dirname "$0")/main" restart >> "${LOG}" 2>&1 || true
+fi
 exit 0

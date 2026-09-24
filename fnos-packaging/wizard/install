@@ -9,5 +9,33 @@
                 "optional": false
             }
         ]
+    },
+    {
+        "stepTitle": "面板访问密码",
+        "items": [
+            {
+                "type": "tips",
+                "helpText": "CreditDaddy 面板监听 47860 端口，局域网内打开面板需要这个密码。请牢记；之后可以在「应用设置」里修改。"
+            },
+            {
+                "type": "password",
+                "field": "wizard_panel_password",
+                "label": "面板访问密码",
+                "rules": [
+                    {
+                        "required": true,
+                        "message": "请设置面板访问密码"
+                    },
+                    {
+                        "min": 6,
+                        "message": "至少 6 位"
+                    },
+                    {
+                        "pattern": "^\\S*$",
+                        "message": "不能包含空格"
+                    }
+                ]
+            }
+        ]
     }
 ]

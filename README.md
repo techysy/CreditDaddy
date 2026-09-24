@@ -134,7 +134,7 @@ Qoder 侧（国际版 openapi.qoder.sh，国内版 openapi.qoder.com.cn）：
     POST   /api/export                  导出 {password?, provider?, product?}
     POST   /api/import                  导入 {data, password?}
 
-设置环境变量 `CREDITDADDY_PASSWORD` 后，所有 /api/* 需要 `x-qd-key` 头（fnOS 部署自动启用）。
+设置环境变量 `CREDITDADDY_PASSWORD` 后，所有 /api/* 需要 `x-qd-key` 头（fnOS 部署自动启用，密码在安装向导里设置、「应用设置」里可改）。面板遇到密码缺失或错误会弹框要密码并自动重试该请求。
 
 ## 签到状态说明
 

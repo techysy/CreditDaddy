@@ -124,7 +124,7 @@ async function handleApi(req, res, url) {
   if (PANEL_KEY) {
     const key = req.headers['x-qd-key'] || url.searchParams.get('key') || '';
     if (!keyMatches(key)) {
-      return json(res, 401, { error: '需要访问密钥（x-qd-key 头或 ?key= 参数）' });
+      return json(res, 401, { error: '需要访问密钥（x-qd-key 头或 ?key= 参数）', code: 'PANEL_KEY' });
     }
   }
   const p = url.pathname;

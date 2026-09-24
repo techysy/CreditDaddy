@@ -69,15 +69,17 @@ start() {
         echo "already running (pid $(cat "${PID_FILE}"))"
         return 0
     fi
-    # 面板访问密钥：首次随机生成，0600 存 panel_key，安装日志打印一次
+    # 面板访问密码：优先用安装向导设置的（install_callback 已写入 panel_key；这里兜底读环境变量），
+    # 都没有时（如命令行安装）才随机生成。密码只存 panel_key（0600），不打印、不写日志
     if [ ! -f "${KEY_FILE}" ]; then
-        PW="$("${NODE_BIN}" -e 'process.stdout.write(require("crypto").randomBytes(12).toString("base64url"))' 2>/dev/null || head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')"
-        printf '%s' "${PW}" > "${KEY_FILE}"
+        PW="${wizard_panel_password:-}"
+        if [ -z "${PW}" ]; then
+            PW="$("${NODE_BIN}" -e 'process.stdout.write(require("crypto").randomBytes(12).toString("base64url"))' 2>/dev/null || head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+            echo "未设置面板访问密码，已随机生成并存于 ${KEY_FILE}；可在 fnOS「应用设置」里改成自己的密码"
+        fi
+        ( umask 077; printf '%s' "${PW}" > "${KEY_FILE}" )
         chmod 600 "${KEY_FILE}"
-        echo "======================================================================"
-        echo " CreditDaddy 面板访问密钥（仅显示这一次，另存于 ${KEY_FILE}）: ${PW}"
-        echo "======================================================================"
-        printf '%s generated panel_key\n' "$(date '+%F %T')" >> "${LOG}"
+        printf '%s panel_key initialized\n' "$(date '+%F %T')" >> "${LOG}"
     fi
     PW="$(cat "${KEY_FILE}")"
     cd "${SRC_DIR}"

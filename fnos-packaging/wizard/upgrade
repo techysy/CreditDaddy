@@ -1,0 +1,26 @@
+[
+    {
+        "stepTitle": "面板访问密码",
+        "items": [
+            {
+                "type": "tips",
+                "helpText": "0.6.0 及更早版本的面板密码是安装时随机生成的（存放在数据目录的 panel_key 文件里）。如果你不知道当前密码，可以在这里设置一个新的；留空则保留原密码。"
+            },
+            {
+                "type": "password",
+                "field": "wizard_panel_password",
+                "label": "面板访问密码",
+                "rules": [
+                    {
+                        "min": 6,
+                        "message": "至少 6 位"
+                    },
+                    {
+                        "pattern": "^\\S*$",
+                        "message": "不能包含空格"
+                    }
+                ]
+            }
+        ]
+    }
+]
