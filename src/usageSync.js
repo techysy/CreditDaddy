@@ -237,16 +237,21 @@ function collectZcode(files) {
   return { entries: out, notes: skippedCustom ? [`跳过 ${skippedCustom} 行自定义 / 网关渠道（已在别处记账）`] : [] };
 }
 
-function collectOpencode(files) {
+// OpenCode 一个会话一行（会话级累计），会话还在继续时 token 会变 → 签名变 → 10Router 去重拦不住，
+// 同一会话会被记成两行。所以最近 OPENCODE_SETTLE_MS 内仍在更新的会话先不同步，等它停下来再同步。
+const OPENCODE_SETTLE_MS = 60 * 60 * 1000;
+function collectOpencode(files, now = Date.now()) {
   const out = [];
+  let active = 0;
   for (const f of files) {
     withSnapshot(f, (db) => {
       for (const r of db.prepare('SELECT id, title, model, agent, cost, tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write, time_created, time_updated FROM session ORDER BY time_created ASC').all()) {
+        if (Number.isFinite(r.time_updated) && now - r.time_updated < OPENCODE_SETTLE_MS) { active++; continue; }
         out.push(convertOpencodeSession(r));
       }
     });
   }
-  return { entries: out, notes: [] };
+  return { entries: out, notes: active ? [`暂不同步 ${active} 个进行中的会话（1 小时内仍有更新，结束后再同步，避免同一会话记两行）`] : [] };
 }
 
 function collectMimo(files) {

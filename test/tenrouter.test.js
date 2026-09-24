@@ -155,3 +155,19 @@ test('ZCode 数据库来源：只导出官方渠道（需要 node:sqlite）', { 
   assert.equal(r.entries[0].provider, 'zcode-bigmodel');
   assert.match(r.notes[0], /跳过 1 行/);
 });
+
+test('OpenCode 来源：1 小时内仍在更新的会话暂不同步（需要 node:sqlite）', { skip: !hasSqlite && 'node:sqlite 不可用（Node < 22.5）' }, async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const dir = path.join(home, '.local', 'share', 'opencode');
+  fs.mkdirSync(dir, { recursive: true });
+  const db = new DatabaseSync(path.join(dir, 'opencode.db'));
+  db.exec('CREATE TABLE session (id TEXT, title TEXT, model TEXT, agent TEXT, cost REAL, tokens_input INTEGER, tokens_output INTEGER, tokens_reasoning INTEGER, tokens_cache_read INTEGER, tokens_cache_write INTEGER, time_created INTEGER, time_updated INTEGER)');
+  const ins = db.prepare('INSERT INTO session VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
+  const now = Date.now();
+  ins.run('s-done', '已结束', '{"id":"m1","providerID":"opencode"}', 'build', 0, 10, 5, 0, 0, 0, now - 5 * 3600e3, now - 3 * 3600e3);
+  ins.run('s-live', '进行中', '{"id":"m1","providerID":"opencode"}', 'build', 0, 99, 9, 0, 0, 0, now - 2 * 3600e3, now - 60e3);
+  db.close();
+  const r = await us.collectSource('opencode');
+  assert.deepEqual(r.entries.map((e) => e.meta.opencodeSessionId), ['s-done']);
+  assert.match(r.notes[0], /暂不同步 1 个进行中的会话/);
+});

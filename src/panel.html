@@ -209,8 +209,10 @@
   .dot.tenrouter { background: #f59e0b; }
   .badge.prod.tenrouter { color: #b45309; background: rgba(245,158,11,.14); }
   html[data-theme="dark"] .badge.prod.tenrouter { color: #fcd34d; }
-  .tr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 10px; padding: 12px; }
-  .tr-card { border: 1px solid var(--border-subtle); border-radius: 12px; padding: 11px 12px 12px; background: var(--surface); min-width: 0; }
+  /* 瀑布流：卡片高低差异大（积分包多的卡很长），按列填充避免大片空白 */
+  .tr-grid { columns: 3 320px; column-gap: 10px; padding: 12px; }
+  .tr-grid > .empty { column-span: all; }
+  .tr-card { border: 1px solid var(--border-subtle); border-radius: 12px; padding: 11px 12px 12px; background: var(--surface); min-width: 0; break-inside: avoid; margin-bottom: 10px; display: inline-block; width: 100%; }
   .tr-card.off { opacity: .6; }
   .tr-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
   .tr-title { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
@@ -224,6 +226,19 @@
   .tr-meter span { display: block; height: 100%; border-radius: 3px; background: rgb(var(--accent-rgb)); }
   .tr-meter span.low { background: var(--err); }
   .tr-reset { font-size: 11px; color: var(--text-3); margin-top: 3px; }
+  .tr-primary { margin: 2px 0 6px; }
+  .tr-p-line { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 5px; font-size: 12px; }
+  .tr-p-val { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tr-p-val b { font-size: 20px; font-weight: 700; letter-spacing: -.3px; }
+  .tr-p-val small { color: var(--text-3); font-size: 12px; }
+  .tr-p-val.low b { color: var(--err); }
+  .tr-meter.big { height: 7px; }
+  .tr-q-when { color: var(--text-3); font-weight: 400; }
+  .tr-q.spent .tr-q-name, .tr-q.spent .tr-q-val { color: var(--text-3); }
+  .tr-packs { margin-top: 9px; padding-top: 8px; border-top: 1px dashed var(--border-subtle); }
+  .tr-packs-head { font-size: 11px; color: var(--text-3); margin-bottom: 2px; }
+  .tr-packs-head b { color: var(--text-2); }
+  .tr-more { margin-top: 7px; border: none; background: none; color: #4f86ff; font-size: 12px; cursor: pointer; padding: 0; }
   .tr-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid var(--border-subtle); font-size: 12px; color: var(--text-2); }
   .chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; background: var(--tertiary); color: var(--text-3); }
   .chip.on { background: rgba(var(--accent-rgb), .14); color: var(--text); }
@@ -853,36 +868,101 @@ function quotaPct(q) {
   return null;
 }
 const LOW_PCT = 10;
-const quotaLow = (c) => (c.quotas || []).some((q) => { const v = quotaPct(q); return v !== null && v < LOW_PCT; });
+const quotaRemaining = (q) => q.remaining ?? Math.max(0, (q.total || 0) - (q.used || 0));
+// 没有任何信息的行（总量 0、没用过、也没有百分比），如 Qoder 的「Plan Credits 已用 0」
+const quotaEmpty = (q) => !(q.total > 0) && !(q.used > 0) && !Number.isFinite(q.remainingPercentage);
+// 积分包：一次性赠送、会到期的（recurring === false），与主额度 / 周期额度分开展示
+const isPack = (q) => q.recurring === false;
 
-function trQuotaHtml(q) {
+/** 把一个连接的额度拆成：主额度（最上面的汇总数） / 周期额度 / 积分包 */
+function splitQuotas(c) {
+  const list = (c.quotas || []).filter((q) => !quotaEmpty(q));
+  const primary = list.find((q) => q.total > 0 || Number.isFinite(q.remainingPercentage)) || null;
+  const rest = list.filter((q) => q !== primary);
+  return { primary, windows: rest.filter((q) => !isPack(q)), packs: rest.filter(isPack) };
+}
+
+/** 额度告急：只看主额度与按时间窗口计量的额度（如 Claude 5h / 7d），用完的赠送积分包不算 */
+function quotaLow(c) {
+  const { primary, windows } = splitQuotas(c);
+  const watch = [primary, ...windows.filter((q) => q.percentScale)].filter(Boolean);
+  return watch.some((q) => { const v = quotaPct(q); return v !== null && v < LOW_PCT; });
+}
+
+function quotaValue(q) {
   const pct = quotaPct(q);
-  const low = pct !== null && pct < LOW_PCT;
-  let val;
-  if (q.percentScale || (q.total === 0 && pct !== null)) val = '剩余 ' + fmtNum(pct) + '%';
-  else if (q.total > 0) val = '剩余 ' + fmtNum(q.remaining ?? Math.max(0, q.total - (q.used || 0))) + ' / ' + fmtNum(q.total);
-  else val = '已用 ' + fmtNum(q.used || 0);
-  return '<div class="tr-q"><div class="tr-q-line"><span class="tr-q-name" title="' + esc(q.name) + '">' + esc(q.name) + '</span>'
-    + '<span class="tr-q-val' + (low ? ' low' : '') + '">' + esc(val) + '</span></div>'
-    + (pct !== null ? '<div class="tr-meter"><span class="' + (low ? 'low' : '') + '" style="width:' + pct.toFixed(1) + '%"></span></div>' : '')
-    + (q.resetAt ? '<div class="tr-reset">' + esc(fmtTime(q.resetAt).slice(5)) + (q.recurring === false ? ' 到期' : ' 重置') + '</div>' : '')
+  if (q.percentScale || (!(q.total > 0) && pct !== null)) return { big: fmtNum(pct) + '%', small: '剩余', pct };
+  if (q.total > 0) return { big: fmtNum(quotaRemaining(q)), small: '/ ' + fmtNum(q.total) + (q.unit ? ' ' + q.unit : ''), pct };
+  return { big: fmtNum(q.used || 0), small: '已用', pct };
+}
+const resetLabel = (q) => (q.resetAt ? fmtTime(q.resetAt).slice(5) + (q.recurring === false ? ' 到期' : ' 重置') : '');
+
+function trPrimaryHtml(q) {
+  const v = quotaValue(q);
+  const low = v.pct !== null && v.pct < LOW_PCT;
+  return '<div class="tr-primary"><div class="tr-p-line"><span class="tr-q-name" title="' + esc(q.name) + '">' + esc(q.name) + '</span>'
+    + '<span class="tr-p-val' + (low ? ' low' : '') + '"><b>' + esc(v.big) + '</b> <small>' + esc(v.small) + '</small></span></div>'
+    + (v.pct !== null ? '<div class="tr-meter big"><span class="' + (low ? 'low' : '') + '" style="width:' + v.pct.toFixed(1) + '%"></span></div>' : '')
+    + (q.resetAt ? '<div class="tr-reset">' + esc(resetLabel(q)) + '</div>' : '')
+    + '</div>';
+}
+
+function trQuotaHtml(q, { dimWhenEmpty = false } = {}) {
+  const v = quotaValue(q);
+  const used = v.pct !== null && v.pct <= 0;
+  const low = !used && v.pct !== null && v.pct < LOW_PCT && q.percentScale;
+  const val = used && dimWhenEmpty ? '已用完' : (q.percentScale || !(q.total > 0) ? '剩余 ' + v.big : '剩余 ' + v.big + ' ' + v.small);
+  return '<div class="tr-q' + (used && dimWhenEmpty ? ' spent' : '') + '"><div class="tr-q-line"><span class="tr-q-name" title="' + esc(q.name) + '">' + esc(q.name) + '</span>'
+    + '<span class="tr-q-val' + (low ? ' low' : '') + '">' + esc(val) + (q.resetAt ? '<span class="tr-q-when"> · ' + esc(resetLabel(q)) + '</span>' : '') + '</span></div>'
+    + (v.pct !== null && !(used && dimWhenEmpty) ? '<div class="tr-meter"><span class="' + (low ? 'low' : '') + '" style="width:' + v.pct.toFixed(1) + '%"></span></div>' : '')
+    + '</div>';
+}
+
+const PACK_PREVIEW = 3;
+function trPacksHtml(c, packs) {
+  if (!packs.length) return '';
+  const alive = packs.filter((q) => quotaRemaining(q) > 0)
+    .sort((a, b) => String(a.resetAt || '9999').localeCompare(String(b.resetAt || '9999')));
+  const spent = packs.filter((q) => quotaRemaining(q) <= 0);
+  const aliveSum = alive.reduce((n, q) => n + quotaRemaining(q), 0);
+  const open = Boolean(state.trOpen && state.trOpen[c.id]);
+  const shown = open ? [...alive, ...spent] : alive.slice(0, PACK_PREVIEW);
+  const hidden = alive.length + spent.length - shown.length;
+  const head = '<div class="tr-packs-head">积分包 <b>' + alive.length + '</b> 个可用'
+    + (alive.length ? '，共剩 ' + fmtNum(aliveSum) : '')
+    + (spent.length ? ' · ' + spent.length + ' 个已用完' : '') + '</div>';
+  return '<div class="tr-packs">' + head + shown.map((q) => trQuotaHtml(q, { dimWhenEmpty: true })).join('')
+    + (hidden > 0 || open ? '<button class="tr-more" data-tr="toggle" data-id="' + esc(c.id) + '">' + (open ? '收起' : '展开其余 ' + hidden + ' 个') + '</button>' : '')
     + '</div>';
 }
 
 function trCardHtml(c) {
   const who = c.name || c.email || c.id.slice(0, 8);
-  const body = c.error
-    ? '<div class="msg err" title="' + esc(c.error) + '">查询失败：' + esc(c.error.slice(0, 80)) + '</div>'
-    : (c.quotas || []).length ? c.quotas.map(trQuotaHtml).join('')
-      : '<div class="msg">' + esc(c.message || '该供应商未返回额度数据') + '</div>';
+  // 套餐名与供应商名重复时不再单独显示（如 StepFun CN · StepFun CN）
+  const norm = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9一-龥]/g, '');
+  const showPlan = c.plan && !norm(c.plan).includes(norm(c.providerName)) && !norm(c.providerName).includes(norm(c.plan));
+  let body;
+  if (c.error) {
+    body = '<div class="msg err" title="' + esc(c.error) + '">查询失败：' + esc(c.error.slice(0, 80)) + '</div>';
+  } else {
+    const { primary, windows, packs } = splitQuotas(c);
+    body = primary || windows.length || packs.length
+      ? (primary ? trPrimaryHtml(primary) : '') + windows.map((q) => trQuotaHtml(q)).join('') + trPacksHtml(c, packs)
+      : '<div class="msg">' + esc(/no separate quota|billed at standard/i.test(c.message || '') ? '按量计费，无额度可显示' : (c.message || '该供应商未返回额度数据')) + '</div>';
+  }
   return '<div class="tr-card' + (c.isActive ? '' : ' off') + '"><div class="tr-head"><div class="tr-title">'
     + '<span class="badge prod tenrouter">' + esc(c.providerName) + '</span>'
     + '<span class="tr-name" title="' + esc([c.name, c.email].filter(Boolean).join(' · ')) + '">' + esc(who) + '</span>'
-    + (c.plan ? '<span class="badge">' + esc(c.plan) + '</span>' : '')
+    + (showPlan ? '<span class="badge">' + esc(c.plan) + '</span>' : '')
     + (c.isActive ? '' : '<span class="pill pending">已停用</span>')
     + (c.limitReached ? '<span class="pill fail">已达上限</span>' : '')
+    + (c.isActive && !c.error && quotaLow(c) ? '<span class="pill limited">告急</span>' : '')
     + '</div></div>' + body + '</div>';
 }
+
+// 启用的在前，再按供应商、账号名排序
+const trSorted = (list) => list.slice().sort((a, b) => (b.isActive - a.isActive)
+  || String(a.providerName).localeCompare(String(b.providerName)) || String(a.name || a.email || '').localeCompare(String(b.name || b.email || '')));
 
 function trSetupHtml() {
   return '<div class="setup"><h3>接入 10Router</h3>'
@@ -909,7 +989,7 @@ function renderTenrouter() {
   if (tr.error) grid = '<div class="empty">' + esc(tr.error) + '</div>';
   else if (!tr.quotas) grid = '<div class="empty">正在读取 10Router 供应商额度…</div>';
   else if (!list.length) grid = '<div class="empty">10Router 里还没有可查额度的供应商连接（OAuth 或支持额度查询的 API Key）。</div>';
-  else grid = list.map(trCardHtml).join('');
+  else grid = trSorted(list).map(trCardHtml).join('');
   box.innerHTML = '<div class="toolbar"><div class="summary">'
     + '<div class="stat"><span>供应商连接</span><strong>' + (tr.quotas ? list.length : '-') + '</strong></div><div class="divider"></div>'
     + '<div class="stat"><span>额度告急</span><strong>' + (tr.quotas ? low : '-') + '</strong></div><div class="divider"></div>'
@@ -1012,6 +1092,7 @@ async function trDisconnect() {
 $('tr-panel').addEventListener('click', (e) => {
   const b = e.target.closest('[data-tr]');
   if (!b) return;
+  if (b.dataset.tr === 'toggle') { state.trOpen = Object.assign({}, state.trOpen, { [b.dataset.id]: !(state.trOpen && state.trOpen[b.dataset.id]) }); render(); return; }
   if (b.dataset.tr === 'settings') openTrSettings();
   else if (b.dataset.tr === 'refresh') loadTrQuotas(true);
   else if (b.dataset.tr === 'sync') trSync();
