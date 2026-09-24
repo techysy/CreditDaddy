@@ -184,6 +184,7 @@
   .kpi-label { color: var(--text-3); font-size: 12px; font-weight: 500; }
   .kpi-value { font-size: 26px; font-weight: 700; letter-spacing: -.5px; margin-top: 4px; font-variant-numeric: tabular-nums; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .kpi-value small { font-size: 14px; color: var(--text-3); font-weight: 600; letter-spacing: 0; }
+  .kpi-value .kpi-side { font-size: 13px; color: var(--text-2); font-weight: 600; letter-spacing: 0; }
   .kpi-sub { color: var(--text-3); font-size: 11px; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .prods { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin-bottom: 10px; }
   .prodcard { background: var(--surface); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 14px 16px; cursor: pointer; transition: border-color .15s, box-shadow .15s; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
@@ -808,7 +809,7 @@ function renderDash() {
   $('kpis').innerHTML =
     kpi('账号', state.accounts.length, byProd)
     + kpi('今日领取' + (intlAcc.length ? ' / 活跃' : ''), intlAcc.length
-        ? doneDom + ' <small>/ ' + domAcc.length + '</small> · 活跃 ' + doneIntl + '<small>/' + intlAcc.length + '</small>'
+        ? doneDom + ' <small>/ ' + domAcc.length + '</small><small class="kpi-side"> · 活跃 ' + doneIntl + ' / ' + intlAcc.length + '</small>'
         : done + ' <small>/ ' + signable.length + '</small>',
       !signable.length ? '暂无可领取的账号'
         : (doneDom === domAcc.length && doneIntl === intlAcc.length ? (intlAcc.length ? '今天全部完成（国际为活跃请求，不保证奖励）' : '今天全部签完')
