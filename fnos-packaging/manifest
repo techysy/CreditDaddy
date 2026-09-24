@@ -1,5 +1,5 @@
 appname               = creditdaddy
-version               = 0.5.0
+version               = 0.5.1
 display_name          = CreditDaddy
 desc                  = Qoder / WorkBuddy / ZCode 多账号本地管理 + 每日积分自动签到（面板端口 47860）
 platform              = x86
