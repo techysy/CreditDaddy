@@ -73,6 +73,7 @@ flowchart TD
         QP["Qoder 签到与资产接口"]
         WP["WorkBuddy 积分与活跃流式"]
         ZP["ZCode 活动领取接口"]
+        PAD["&nbsp;<br/>&nbsp;"]
     end
 
     Clients --> DETECT
@@ -81,6 +82,7 @@ flowchart TD
     SCHED --> QP
     SCHED --> WP
     SCHED --> ZP
+    ZP ~~~ PAD
     SWITCH --> Clients
 
     SYNC -. "读取各渠道额度卡片 (Bearer sk-)" .-> QUOTA
@@ -89,6 +91,8 @@ flowchart TD
     STORE <-.-> OAUTH
 
     WEB --> STORE
+
+    style PAD fill:transparent,stroke:none,color:transparent
 ```
 
 ---
