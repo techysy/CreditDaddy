@@ -829,11 +829,13 @@ function renderDash() {
       const d = list.filter(isDone).length;
       const c = creditSum(list);
       if (p.id === 'workbuddy') {
-        // 国内 = 每日签到；国际 = 保持活跃（活跃不等于必有奖励）
+        // 国内 = 每日领取；国际 = 保持活跃（活跃不等于必有奖励）——合并一行展示
         const cnList = list.filter((a) => a.provider === 'workbuddy');
         const intlList = list.filter((a) => a.provider === 'workbuddy-intl');
-        if (cnList.length) rows += '<span class="lbl">领取（国内）</span><span class="val">' + cnList.filter(isDone).length + ' / ' + cnList.length + '</span>';
-        if (intlList.length) rows += '<span class="lbl">活跃（国际）</span><span class="val">' + intlList.filter(isDone).length + ' / ' + intlList.length + '（不保证奖励）</span>';
+        const parts = [];
+        if (cnList.length) parts.push(cnList.filter(isDone).length + ' / ' + cnList.length + '（国内）');
+        if (intlList.length) parts.push(intlList.filter(isDone).length + ' / ' + intlList.length + '（国际 · 不保证奖励）');
+        rows += '<span class="lbl">领取 / 活跃</span><span class="val">' + parts.join(' · ') + '</span>';
       } else {
         rows = '<span class="lbl">今日领取</span><span class="val">' + d + ' / ' + list.length + '</span>';
       }
