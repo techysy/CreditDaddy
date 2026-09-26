@@ -45,55 +45,14 @@
 
 ## 🏗️ 架构
 
-```mermaid
-flowchart TD
-    subgraph Clients["本机客户端生态"]
-        Q["Qoder / Qoder CN"]
-        W["WorkBuddy / CodeBuddy"]
-        Z["ZCode (智谱 GLM / Z.ai)"]
-    end
+<div align="center">
 
-    subgraph CD["CreditDaddy 本地管理服务 (127.0.0.1:47860)"]
-        DETECT["本机凭据安全探测<br/>safeStorage 解密 · JWT 域名识别"]
-        SCHED["每日智能签到调度<br/>智能避峰 · 失败重试 · 状态记忆"]
-        SWITCH["客户端一键换号<br/>热更新 · 独立设备指纹"]
-        STORE[("安全存储 store.js<br/>0600权限 · 原子写入 · AES-GCM")]
-        SYNC["用量同步 & 额度模块<br/>tenrouter.js · usageSync.js"]
-        WEB["Electron 桌面托盘 / WebUI<br/>无痕网页登录 · 状态仪表盘"]
-    end
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/architecture.svg">
+  <img src="docs/architecture-light.svg" width="860" alt="CreditDaddy 架构">
+</picture>
 
-    subgraph TR["10Router 智能路由网关"]
-        QUOTA["额度总览接口<br/>GET /api/usage/quotas"]
-        HEALTH["服务健康检查<br/>GET /api/health"]
-        IMPORT["用量入库接口<br/>POST /api/.../import-usage"]
-        OAUTH["OAuth 凭据迁移信封<br/>10router-oauth-secure-v1"]
-    end
-
-    subgraph Cloud["各平台远程服务端"]
-        QP["Qoder 签到与资产接口"]
-        WP["WorkBuddy 积分与活跃流式"]
-        ZP["ZCode 活动领取接口"]
-        PAD["&nbsp;<br/>&nbsp;"]
-    end
-
-    Clients --> DETECT
-    DETECT --> STORE
-    STORE --> SCHED
-    SCHED --> QP
-    SCHED --> WP
-    SCHED --> ZP
-    ZP ~~~ PAD
-    SWITCH --> Clients
-
-    SYNC -. "读取各渠道额度卡片 (Bearer sk-)" .-> QUOTA
-    SYNC -. "检测 10Router 运行健康度" .-> HEALTH
-    SYNC -. "定时回传本地多模型用量" .-> IMPORT
-    STORE <-.-> OAUTH
-
-    WEB --> STORE
-
-    style PAD fill:transparent,stroke:none,color:transparent
-```
+</div>
 
 ---
 
