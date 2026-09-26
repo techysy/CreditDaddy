@@ -1069,14 +1069,18 @@ function trLine(name, valHtml, title) {
 }
 function lineVal(q) {
   const pct = quotaPct(q);
-  const txt = (q.percentScale || !(q.total > 0))
+  // 百分比口径（限时限额额度）：一律显示 %，节约空间；积分类保持实际数字
+  const pctScale = q.percentScale || Number.isFinite(q.remainingPercentage);
+  const txt = (pctScale || !(q.total > 0))
     ? '剩 ' + (pct !== null ? fmtNum(pct) + '%' : fmtNum(quotaRemaining(q)))
     : '剩 ' + fmtNum(quotaRemaining(q)) + ' / ' + fmtNum(q.total || 0) + (q.unit ? ' ' + q.unit : '');
   return '<span>' + esc(txt) + '</span> ' + relResetHtml(q);
 }
 
-// 主额度行：名称靠左（可省略），数值与相对重置时间靠右，下方三档水位条
+// 主额度行：名称靠左（可省略），数值与相对重置时间靠右，下方三档水位条。
+// 百分比口径的主额度（Antigravity 这类「几类限时额度是平等关系」的供应商）不放大，和窗口行同权重。
 function trPrimaryHtml(q) {
+  if (q.percentScale) return trRow(q);
   const v = quotaValue(q);
   return '<div class="tr-primary"><div class="tr-line tr-primary-line"><span class="tr-q-name" title="' + esc(q.name) + '">' + esc(q.name) + '</span>'
     + '<span class="tr-q-val"><b>' + esc(v.big) + '</b> <small class="dim">' + esc(v.small) + '</small> ' + relResetHtml(q) + '</span></div>'
@@ -1202,7 +1206,8 @@ function trVendorCardHtml(g) {
     const name = primaries[0].name;
     const same = primaries.filter((p) => p.name === name);
     const total = same.reduce((n, p) => n + (p.total > 0 ? p.total : 0), 0);
-    const isPct = !(total > 0);
+    // 源数据本身是百分比口径（percentScale / remainingPercentage）→ 聚合也用 %（反重力这类窗口间平等）
+    const isPct = same[0].percentScale || Number.isFinite(same[0].remainingPercentage) || !(total > 0);
     if (isPct) {
       // 限时百分比窗口（如 Claude 5h）：跨连接取平均百分比，而不是加总
       const pcts = same.map((p) => quotaPct(p)).filter((x) => x !== null);
@@ -1224,22 +1229,25 @@ function trVendorCardHtml(g) {
         remaining: same.reduce((n, p) => n + quotaRemaining(p), 0),
         used: same.reduce((n, p) => n + (p.used || 0), 0),
         unit: same[0].unit || '',
-        percentScale: false,
+        percentScale: same[0].percentScale === true,
         recurring: same[0].recurring,
         resetAt: same.map((p) => p.resetAt).filter(Boolean).sort()[0] || null,
       };
     }
   }
 
-  // 周期窗口：同名求和；无固定总额的按百分比平均
+  // 周期窗口：同名加总；本身是百分比口径的行（percentScale / remainingPercentage）按 % 均值聚合
   const winMap = new Map();
   const packs = [];
   for (const { s } of splitOf) {
     for (const q of s.windows.filter((x) => !isAgg(x))) {
-      if (!winMap.has(q.name)) winMap.set(q.name, { name: q.name, total: 0, rem: 0, anyTotal: false, resetAt: null, pcts: [] });
+      if (!winMap.has(q.name)) winMap.set(q.name, { name: q.name, total: 0, rem: 0, anyTotal: false, pctScale: false, resetAt: null, pcts: [] });
       const w = winMap.get(q.name);
-      if (q.total > 0) { w.anyTotal = true; w.total += q.total; w.rem += quotaRemaining(q); }
-      else { const pct = quotaPct(q); if (pct !== null) w.pcts.push(pct); }
+      const isPctRow = q.percentScale || Number.isFinite(q.remainingPercentage);
+      if (isPctRow) w.pctScale = true;
+      const pct = quotaPct(q);
+      if (pct !== null) w.pcts.push(pct);
+      if (!isPctRow && q.total > 0) { w.anyTotal = true; w.total += q.total; w.rem += quotaRemaining(q); }
       if (q.resetAt && (!w.resetAt || String(q.resetAt) < String(w.resetAt))) w.resetAt = q.resetAt;
     }
     packs.push(...s.packs.filter((x) => !isAgg(x)));
@@ -1248,10 +1256,13 @@ function trVendorCardHtml(g) {
   const alivePacks = packs.filter((q) => quotaRemaining(q) > 0);
   const packRem = alivePacks.reduce((n, q) => n + quotaRemaining(q), 0);
 
-  // 周 / 月度等窗口额度也给进度条（同名跨连接已聚合好）：有固定总额的加总，百分比窗口取平均
-  const winRows = wins.map((w) => trRow(w.anyTotal
-    ? { name: w.name, total: w.total, remaining: w.rem, used: w.total - w.rem, unit: '', percentScale: false, resetAt: w.resetAt, recurring: true }
-    : { name: w.name, total: 0, remainingPercentage: w.pcts.length ? w.pcts.reduce((a, b) => a + b, 0) / w.pcts.length : null, percentScale: true, resetAt: w.resetAt, recurring: true })).join('');
+  // 周 / 月度等窗口额度也给进度条：百分比口径显示 % 均值；固定额度加总数字
+  const avgPct = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
+  const winRows = wins.map((w) => trRow(w.pctScale
+    ? { name: w.name, total: 0, remainingPercentage: avgPct(w.pcts), percentScale: true, resetAt: w.resetAt, recurring: true }
+    : (w.anyTotal
+      ? { name: w.name, total: w.total, remaining: w.rem, used: w.total - w.rem, unit: '', percentScale: false, resetAt: w.resetAt, recurring: true }
+      : { name: w.name, total: 0, remainingPercentage: avgPct(w.pcts), percentScale: true, resetAt: w.resetAt, recurring: true }))).join('');
 
   const briefs = [];
   if (alivePacks.length) briefs.push('积分包×' + alivePacks.length + ' 剩 ' + fmtNum(packRem));
