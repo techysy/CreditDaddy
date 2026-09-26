@@ -10,8 +10,43 @@ permissions:
   contents: write
 
 jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract changelog for this version
+        id: changelog
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # 提取 CHANGELOG.md 中当前版本的内容
+          NOTES=$(awk "/^## \[${VERSION}\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md)
+          if [ -z "$NOTES" ]; then
+            NOTES="CreditDaddy ${GITHUB_REF_NAME}: Qoder / WorkBuddy / ZCode 多账号管理与每日积分自动签到."
+          fi
+          # 写入多行输出
+          {
+            echo "notes<<EOF"
+            echo "$NOTES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        shell: bash
+        run: |
+          gh release view "${{ github.ref_name }}" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 || \
+            gh release create "${{ github.ref_name }}" --repo "$GITHUB_REPOSITORY" \
+              --title "CreditDaddy ${{ github.ref_name }}" \
+              --notes "${{ steps.changelog.outputs.notes }}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   build-mac:
     runs-on: macos-latest
+    needs: [create-release]
+    if: always()
     steps:
       - uses: actions/checkout@v4
 
@@ -46,17 +81,6 @@ jobs:
           ( cd release-files-mac && shasum -a 256 * > SHA256SUMS-mac.txt )
           cat release-files-mac/SHA256SUMS-mac.txt
 
-      - name: Ensure release exists with title
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        run: |
-          gh release view "${{ github.ref_name }}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
-            gh release create "${{ github.ref_name }}" --repo "$GITHUB_REPOSITORY" \
-              --title "CreditDaddy ${{ github.ref_name }}" \
-              --notes "CreditDaddy release: Qoder / WorkBuddy / ZCode 多账号管理与每日积分自动签到."
-        env:
-          GH_TOKEN: ${{ github.token }}
-
       - name: Upload macOS artifacts to Release
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
@@ -71,6 +95,8 @@ jobs:
 
   build-windows:
     runs-on: windows-latest
+    needs: [create-release]
+    if: always()
     steps:
       - uses: actions/checkout@v4
 
@@ -109,17 +135,6 @@ jobs:
           cp desktop/dist/CreditDaddy-Portable-*.exe release-files/
           ( cd release-files && sha256sum *.exe > SHA256SUMS-desktop.txt )
           cat release-files/SHA256SUMS-desktop.txt
-
-      - name: Ensure release exists with title
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        run: |
-          gh release view "${{ github.ref_name }}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
-            gh release create "${{ github.ref_name }}" --repo "$GITHUB_REPOSITORY" \
-              --title "CreditDaddy ${{ github.ref_name }}" \
-              --notes "CreditDaddy release: Qoder / WorkBuddy / ZCode 多账号管理与每日积分自动签到."
-        env:
-          GH_TOKEN: ${{ github.token }}
 
       - name: Upload desktop artifacts to Release
         if: startsWith(github.ref, 'refs/tags/v')

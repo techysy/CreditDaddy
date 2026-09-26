@@ -4,7 +4,10 @@ const RING_SIZE = 300;
 const ring = [];
 
 function ts() {
-  return new Date().toISOString().replace('T', ' ').slice(0, 19);
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+    + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
 }
 
 export function log(level, tag, msg) {

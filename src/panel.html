@@ -545,6 +545,7 @@ function mask(s) {
 }
 
 let toastTimer = null;
+const armed = {};
 function toast(msg, ok) {
   const t = $('toast');
   t.textContent = msg;
