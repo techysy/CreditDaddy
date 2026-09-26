@@ -242,8 +242,8 @@
   .tr-reset.soon { color: var(--err); font-weight: 600; }
   .tr-reset { font-size: 11px; color: var(--text-3); margin-top: 3px; }
   .tr-primary { margin: 2px 0 6px; }
-  .tr-primary .lbl { max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .tr-primary small { white-space: nowrap; }
+  .tr-primary-line .tr-q-val b { font-size: 14px; font-weight: 700; }
+  .tr-primary-line .tr-q-val small { white-space: nowrap; }
   .tr-p-line { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 5px; font-size: 12px; }
   .tr-p-val { font-variant-numeric: tabular-nums; white-space: nowrap; }
   .tr-p-val b { font-size: 20px; font-weight: 700; letter-spacing: -.3px; }
@@ -1075,11 +1075,11 @@ function lineVal(q) {
   return '<span>' + esc(txt) + '</span> ' + relResetHtml(q);
 }
 
-// 主额度行：名称 + 大值 + 相对重置 + 三档水位条
+// 主额度行：名称靠左（可省略），数值与相对重置时间靠右，下方三档水位条
 function trPrimaryHtml(q) {
   const v = quotaValue(q);
-  return '<div class="tr-primary"><div class="credit-line"><span class="credit"><span class="lbl">' + esc(q.name) + '</span><b>' + esc(v.big) + '</b> <small class="dim">' + esc(v.small) + '</small></span>'
-    + '<span class="credit dim">' + relResetHtml(q) + '</span></div>'
+  return '<div class="tr-primary"><div class="tr-line tr-primary-line"><span class="tr-q-name" title="' + esc(q.name) + '">' + esc(q.name) + '</span>'
+    + '<span class="tr-q-val"><b>' + esc(v.big) + '</b> <small class="dim">' + esc(v.small) + '</small> ' + relResetHtml(q) + '</span></div>'
     + (v.pct !== null ? trMeter(v.pct) : '')
     + '</div>';
 }
