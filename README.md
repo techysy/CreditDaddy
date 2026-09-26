@@ -64,6 +64,7 @@ flowchart TD
 
     subgraph TR["10Router 智能路由网关"]
         QUOTA["额度总览接口<br/>GET /api/usage/quotas"]
+        HEALTH["服务健康检查<br/>GET /api/health"]
         IMPORT["用量入库接口<br/>POST /api/.../import-usage"]
         OAUTH["OAuth 凭据迁移信封<br/>10router-oauth-secure-v1"]
     end
@@ -83,7 +84,8 @@ flowchart TD
     SWITCH --> Clients
 
     SYNC -. "读取各渠道额度卡片 (Bearer sk-)" .-> QUOTA
-    SYNC -. "定时回传本地用量" .-> IMPORT
+    SYNC -. "检测 10Router 运行健康度" .-> HEALTH
+    SYNC -. "定时回传本地多模型用量" .-> IMPORT
     STORE <-.-> OAUTH
 
     WEB --> STORE
