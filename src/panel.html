@@ -660,9 +660,12 @@ function creditHtml(a) {
       return base + (x.expiresAt ? '（' + fmtTime(x.expiresAt).slice(5, 16) + (x.recurring ? ' 重置）' : ' 到期）') : '');
     }).join(' · ');
     const pct = q.total > 0 ? Math.min(1, q.remaining / q.total) : 0;
+    // 满额（100%）不再渲染灰色「已使用」尾段——它只占 0 宽也会造成几像素的灰边
     return '<div class="credit-line"><span class="credit"><span class="lbl">剩余</span><b>' + fmtNum(q.remaining) + '</b>' + esc(unit) + '</span>'
       + '<span class="credit dim" title="' + items + '">' + (q.plan ? esc(q.plan) + ' · ' : '') + items + '</span></div>'
-      + '<div class="bar"><span class="seg" style="flex:' + pct.toFixed(4) + ' 1 0"></span><span class="seg used" style="flex:' + (1 - pct).toFixed(4) + ' 1 0"></span></div>';
+      + '<div class="bar"><span class="seg" style="flex:' + pct.toFixed(4) + ' 1 0"></span>'
+      + (pct < 0.9999 ? '<span class="seg used" style="flex:' + (1 - pct).toFixed(4) + ' 1 0"></span>' : '')
+      + '</div>';
   }
   const total = q.total || 0;
   let bar = '';
@@ -931,7 +934,8 @@ function renderStatus() {
     n.innerHTML = 'ZCode 没有每日签到，积分靠「活动领取」。打开「自动领取」后，每轮签到结束会轮询可领活动并尝试领取（桌面版静默过验证码，需要人工时弹验证码窗口）；平时保持关闭即可，活动期前再开。也可点卡片上的礼物图标手动领取。'
       + ' <button class="btn" id="btn-zac" style="margin-left:6px" title="ZCode 活动自动轮询领取（每轮签到后执行一次）">' + (ac ? '自动领取：开' : '自动领取：关') + '</button>'
       + ' <button class="btn" id="btn-znet" style="margin-left:4px" title="ZCode 上游接口的访问顺序：失败 / 被拦时自动回退另一条">出口：' + (pf ? '代理优先' : '直连优先') + '</button>'
-      + ' <button class="btn" id="btn-zproxy" style="margin-left:4px" title="设置 ZCode 出口用的 http 代理（留空则清除；不设置时使用 HTTPS_PROXY 环境变量）">代理：' + esc(pu || (state.zHasEnvProxy ? '环境变量' : '未设置')) + '</button>';
+      + ' <button class="btn" id="btn-zproxy" style="margin-left:4px" title="设置 ZCode 出口用的 http 代理（留空则清除；不设置时使用 HTTPS_PROXY 环境变量）">代理：' + esc(pu || (state.zHasEnvProxy ? '环境变量' : '未设置')) + '</button>'
+      + zcodeClientChip(s);
   } else if (hasIntl && !s.riskIdentity && umidOffer(s)) {
     n.style.display = '';
     const busy = s.umid.installing || umidBusy;
@@ -950,6 +954,15 @@ function renderStatus() {
   }
 }
 
+// ZCode 客户端状态芯片 + 「打开客户端」按钮（仅桌面版：面板里有 Electron 桥才显示按钮）
+function zcodeClientChip(s) {
+  const c = s.zcodeClient || {};
+  if (!c.installed) return ' <span class="dim">客户端：未安装</span>';
+  const canOpen = window.creditdaddy && typeof window.creditdaddy.openZcodeClient === 'function';
+  return ' <span class="dim">客户端：' + (c.running ? '运行中' : '未运行') + '</span>'
+    + (canOpen ? ' <button class="btn" id="btn-zopen" style="margin-left:4px" title="打开本机 ZCode 客户端">打开客户端</button>' : '');
+}
+
 // Qoder 设备身份组件（Linux / fnOS）
 const umidOffer = (s) => Boolean(s && s.umid && s.umid.supported && !s.umid.installed);
 let umidBusy = false;
@@ -964,6 +977,14 @@ async function installUmid() {
 }
 $('notice').addEventListener('click', (e) => { if (e.target.closest('#btn-umid')) installUmid(); });
 $('notice').addEventListener('click', async (e) => {
+  if (e.target.closest('#btn-zopen')) {
+    try {
+      const r = await window.creditdaddy.openZcodeClient();
+      if (r && r.ok) toast('已启动 ZCode 客户端');
+      else toast((r && r.error) || '无法打开 ZCode 客户端', false);
+    } catch (err) { toast(String(err && err.message || err), false); }
+    return;
+  }
   if (e.target.closest('#btn-zac')) {
     try {
       const r = await api('/api/zcode/net', { method: 'PUT', json: { autoClaim: state.zAutoClaim !== true } });

@@ -151,6 +151,20 @@ function registerAuthWindowIpc() {
     try { openIncognitoWindow(url); return { ok: true }; }
     catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
   });
+  // ZCode 页「打开客户端」：优先本机安装路径，退到 zcode:// 协议
+  ipcMain.handle('open-zcode-client', async () => {
+    try {
+      const os = require('node:os');
+      const fs = require('node:fs');
+      const exe = path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'ZCode', 'ZCode.exe');
+      if (process.platform === 'win32' && fs.existsSync(exe)) {
+        const err = await shell.openPath(exe);
+        if (!err) return { ok: true };
+      }
+      await shell.openExternal('zcode://');
+      return { ok: true };
+    } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
+  });
 }
 
 function panelUrl() {

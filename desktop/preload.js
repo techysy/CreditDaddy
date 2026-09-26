@@ -10,4 +10,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('creditdaddy', {
   /** @param {string} url 必须是 https:// 开头 @returns {Promise<{ok: boolean, error?: string}>} */
   openAuthWindow: (url) => ipcRenderer.invoke('open-auth-window', String(url || '')),
+  /** 打开本机 ZCode 客户端 @returns {Promise<{ok: boolean, error?: string}>} */
+  openZcodeClient: () => ipcRenderer.invoke('open-zcode-client'),
 });
