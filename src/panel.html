@@ -835,7 +835,11 @@ function renderDash() {
         const parts = [];
         if (cnList.length) parts.push(cnList.filter(isDone).length + ' / ' + cnList.length + '（国内）');
         if (intlList.length) parts.push(intlList.filter(isDone).length + ' / ' + intlList.length + '（国际 · 不保证奖励）');
-        rows += '<span class="lbl">领取 / 活跃</span><span class="val">' + parts.join(' · ') + '</span>';
+        rows += '<span class="lbl">领取 / 活跃</span><span class="val" title="' + esc(parts.join('，') + (intlList.length ? '（国际为活跃请求，不保证奖励）' : '')) + '">'
+          + (cnList.length ? cnList.filter(isDone).length + ' / ' + cnList.length + ' 国内' : '')
+          + (cnList.length && intlList.length ? ' · ' : '')
+          + (intlList.length ? intlList.filter(isDone).length + ' / ' + intlList.length + ' 国际' : '')
+          + '</span>';
       } else {
         rows = '<span class="lbl">今日领取</span><span class="val">' + d + ' / ' + list.length + '</span>';
       }

@@ -4,10 +4,10 @@
  *   creditdaddy daemon          启动守护进程（默认）
  *   creditdaddy add <token>     添加账号（--cn 国内版 --name 名字）
  *   creditdaddy list            查看账号
- *   creditdaddy checkin         立即签到全部账号
+ *   creditdaddy checkin         立即领取全部账号
  *   creditdaddy remove <id>     删除账号
  *   creditdaddy export/import   导出/导入账号
- *   creditdaddy logs            查看签到状态（state.json）
+ *   creditdaddy logs            查看领取状态（state.json）
  *   creditdaddy help            显示帮助
  */
 
@@ -17,21 +17,21 @@ import { logger } from '../src/logger.js';
 const args = process.argv.slice(2);
 const cmd = args[0] || 'daemon';
 
-const HELP = `CreditDaddy — Qoder / WorkBuddy / ZCode 多账号管理 + 每日积分自动签到
+const HELP = `CreditDaddy — Qoder / WorkBuddy / ZCode 多账号管理 + 每日积分自动领取
 
 用法:
   creditdaddy daemon [--port 47860] [--host 127.0.0.1]   启动守护进程 + Web 面板
   creditdaddy add <token> [--cn] [--name 名字]           添加 Qoder 账号（--cn 为国内版）
   creditdaddy add <token> --workbuddy [--intl]           添加 WorkBuddy 账号（登录 token）
   creditdaddy list                                       查看账号
-  creditdaddy checkin [--cn | --intl]                    立即签到
+  creditdaddy checkin [--cn | --intl]                    立即领取
   creditdaddy remove <id前缀>                             删除账号
   creditdaddy export [file.json] [--password 口令] [--cn|--intl]
                                                         导出账号；带口令则加密（与 10router 迁移文件互通）
   creditdaddy import <file.json> [--password 口令]        导入 CreditDaddy / 10router 导出文件
   creditdaddy scan                                       导入本机 Qoder / WorkBuddy / ZCode 客户端已登录的账号
-  creditdaddy umid [install|remove]                      Qoder 设备身份组件（Linux / fnOS 国际版签到用）
-  creditdaddy logs                                       查看签到状态
+  creditdaddy umid [install|remove]                      Qoder 设备身份组件（Linux / fnOS 国际版领取用）
+  creditdaddy logs                                       查看领取状态
   creditdaddy help                                       显示本帮助`;
 
 function flag(name) {
@@ -71,7 +71,7 @@ async function main() {
       if (accounts.length === 0) return console.log('（还没有账号，用 creditdaddy add <token> 添加）');
       for (const a of accounts) {
         const p = publicAccount(a);
-        console.log(`[${p.id.slice(0, 8)}] ${(p.name || '(未命名)').padEnd(16)} ${p.provider.padEnd(14)} ${p.tokenMasked}  ${p.lastCheckin ? '上次签到 ' + p.lastCheckin.slice(0, 16) : '未签到'}`);
+        console.log(`[${p.id.slice(0, 8)}] ${(p.name || '(未命名)').padEnd(16)} ${p.provider.padEnd(14)} ${p.tokenMasked}  ${p.lastCheckin ? '上次领取 ' + p.lastCheckin.slice(0, 16) : '未领取'}`);
       }
       break;
     }
@@ -156,7 +156,7 @@ async function main() {
       if (sub === 'install') {
         console.log('正在从 npm 下载官方 @qoder-ai/qodercli 并提取设备身份组件（约 30MB）…');
         const m = await umid.installUmid();
-        console.log(`✓ 已安装：qodercli ${m.version} / ${m.arch}，Qoder 国际版签到可用`);
+        console.log(`✓ 已安装：qodercli ${m.version} / ${m.arch}，Qoder 国际版领取可用`);
       } else if (sub === 'remove') {
         umid.removeUmid();
         console.log('✓ 已移除设备身份组件');
@@ -164,7 +164,7 @@ async function main() {
         const info = umid.umidInfo();
         if (!info.supported) console.log('当前平台不需要该组件（Windows / macOS 使用 Qoder 客户端自带的 runtime-info）');
         else if (info.installed) console.log(`已安装：qodercli ${info.installed.version} / ${info.installed.arch}（${info.installed.installedAt.slice(0, 10)}）`);
-        else console.log('未安装。运行 creditdaddy umid install 安装后即可签到 Qoder 国际版');
+        else console.log('未安装。运行 creditdaddy umid install 安装后即可领取 Qoder 国际版');
       }
       break;
     }
