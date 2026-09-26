@@ -14,7 +14,7 @@
 [![Node](https://img.shields.io/badge/Node.js-%E2%89%A5%2020-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License](https://img.shields.io/github/license/techysy/CreditDaddy?label=%E8%AE%B8%E5%8F%AF&color=f59e0b)](LICENSE)
 
-[下载](#下载) · [功能](#功能) · [快速开始](#快速开始) · [产品线说明](#产品线说明) · [10Router 集成](#10router-集成) · [HTTP API](#本地-http-api)
+[下载](#下载) · [架构](#%EF%B8%8F-架构) · [功能](#功能) · [10Router 集成](#10router-集成) · [产品线说明](#产品线说明) · [快速开始](#快速开始) · [HTTP API](#本地-http-api) · [相关项目](#-相关项目) · [许可证](#-许可证)
 
 <img src="docs/screenshot-dashboard.png" width="860" alt="CreditDaddy 仪表盘">
 
@@ -40,6 +40,56 @@
 
 > macOS 安装包未做代码签名：首次打开请在「应用程序」里**右键 → 打开**，或在终端执行 `xattr -cr /Applications/CreditDaddy.app`。
 > 飞牛 fnOS 部署自动启用密码保护，首次安装在向导中设置密码，「应用设置」中可重置。
+
+---
+
+## 🏗️ 架构
+
+```mermaid
+flowchart TD
+    subgraph Clients["本机客户端生态"]
+        Q["Qoder / Qoder CN"]
+        W["WorkBuddy / CodeBuddy"]
+        Z["ZCode (智谱 GLM / Z.ai)"]
+    end
+
+    subgraph CD["CreditDaddy 本地管理服务 (127.0.0.1:47860)"]
+        DETECT["本机凭据安全探测<br/>safeStorage 解密 · JWT 域名识别"]
+        SCHED["每日智能签到调度<br/>智能避峰 · 失败重试 · 状态记忆"]
+        SWITCH["客户端一键换号<br/>热更新 · 独立设备指纹"]
+        STORE[("安全存储 store.js<br/>0600权限 · 原子写入 · AES-GCM")]
+        SYNC["用量同步 & 额度模块<br/>tenrouter.js · usageSync.js"]
+        WEB["Electron 桌面托盘 / WebUI<br/>无痕网页登录 · 状态仪表盘"]
+    end
+
+    subgraph TR["10Router 智能路由网关"]
+        QUOTA["额度总览接口<br/>GET /api/usage/quotas"]
+        IMPORT["用量入库接口<br/>POST /api/.../import-usage"]
+        OAUTH["OAuth 凭据迁移信封<br/>10router-oauth-secure-v1"]
+    end
+
+    subgraph Cloud["各平台远程服务端"]
+        QP["Qoder 签到与资产接口"]
+        WP["WorkBuddy 积分与活跃流式"]
+        ZP["ZCode 活动领取接口"]
+    end
+
+    Clients --> DETECT
+    DETECT --> STORE
+    STORE --> SCHED
+    SCHED --> QP
+    SCHED --> WP
+    SCHED --> ZP
+    SWITCH --> Clients
+
+    SYNC -. "读取各渠道额度卡片 (Bearer sk-)" .-> QUOTA
+    SYNC -. "定时回传本地用量" .-> IMPORT
+    STORE <-.-> OAUTH
+
+    WEB --> STORE
+```
+
+---
 
 ## 功能
 
@@ -222,6 +272,16 @@ CreditDaddy/
 npm test
 ```
 
-## 许可证
+---
+
+## 🔗 相关项目
+
+- [🚀 10Router](https://github.com/techysy/10router) — 本地智能 AI 路由网关与用量仪表盘（集成 CreditDaddy 额度总览只读接口与用量计价）
+- [🌉 zcode-feishu-bridge](https://github.com/techysy/zcode-feishu-bridge) — ZCode 飞书流式卡片桥接守护进程
+- [🕊️ feige-fry-cards](https://github.com/techysy/feige-fry-cards) — 跨 Agent 战报结果汇总与多渠道路由插件
+
+---
+
+## 📄 许可证
 
 [MIT](LICENSE)
