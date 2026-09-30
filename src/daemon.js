@@ -56,11 +56,12 @@ import { readWorkbuddySessions, writeWorkbuddySession, workbuddyAuthDir, current
 import { liveToAccount as zcodeLiveAccount, switchTo as zcodeSwitchTo, currentZcodeUid, currentZcodeIdentity, detectZcode, ensureVirtualDeviceMid, terminateZcode, zcodeRunning } from './zcodeLocal.js';
 import { liveToAccount as mirasimLiveAccount, switchTo as mirasimSwitchTo, currentMirasimUid, detectMirasim, terminateMirasim, mirasimRunning } from './mirasimLocal.js';
 import { liveToAccount as catpawLiveAccount, switchTo as catpawSwitchTo, currentCatpawToken, detectCatpaw, terminateCatpaw } from './catpawLocal.js';
+import { liveToAccount as traeLiveAccount, detectTrae, switchTo as traeSwitchTo, snapshotLive as traeSnapshotLive } from './traeLocal.js';
 import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl, autoClaimEnabled, autoClaimUntil, setAutoClaimEnabled } from './zcodeClient.js';
 import { exportAccounts, parseImport, TransferError } from './transfer.js';
 import { syncAccountsTo10r } from './tenrouterAccounts.js';
 import { runCheckinTick, getSchedulerInfo, dayKey, enableZcodeAutoClaimForOneHour, refreshZcodeScheduler, pollZcodeNow } from './checkin.js';
-import { detectQoderApps, readQoderAppAccounts, riskIdentityAvailable, riskIdentitySource } from './qoderApp.js';
+import { detectQoderApps, readQoderAppAccounts, riskIdentityAvailable, riskIdentitySource, switchTo as qoderSwitchTo, qoderRunning } from './qoderApp.js';
 import { umidInfo, installUmid } from './qoderUmid.js';
 import * as tenrouter from './tenrouter.js';
 import * as zcodeGateway from './zcodeGateway.js';
@@ -68,7 +69,7 @@ import { startDeviceFlow, pollDeviceFlow, LOGIN_KINDS } from './authDevice.js';
 import { detectInstalls, scanLocalTokens, putCandidate, peekCandidate } from './localDetect.js';
 import { PROVIDER_LABEL, APP_VERSION, PROVIDERS, PROJECT_URL } from './constants.js';
 
-const PRODUCT_IDS = ['qoder', 'workbuddy', 'zcode', 'mirasim', 'catpaw'];
+const PRODUCT_IDS = ['qoder', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae'];
 
 /** 面板访问密码：面板「设置」写入的 settings.json.panelKey 优先（可设 / 可关）；
  *  未设置（或被面板关闭）时回退环境变量 CREDITDADDY_PASSWORD（fnOS / 命令行部署注入），
@@ -457,7 +458,36 @@ async function handleApi(req, res, url) {
         return json(res, e.catpawRunning ? 409 : 400, { error: e.message, code: e.catpawRunning ? 'CATPAW_RUNNING' : undefined });
       }
     }
-    if (!target.provider.startsWith('workbuddy')) return json(res, 400, { error: '只有 WorkBuddy / ZCode / mirasim / 妙手 账号支持切换' });
+    if (target.provider === 'qoder' || target.provider === 'qoder-cn') {
+      try {
+        // Qoder 的 force 也只用于跳过「已确认」，绝不代退 Qoder：本工具的会话就挂在它上面
+        const r = await qoderSwitchTo(target, { force: true });
+        logger.info('DAEMON', r.alreadyActive ? `Qoder 当前已是 ${target.name || target.id}` : `Qoder 已切换到 ${target.name || target.id}（重新打开 Qoder 生效）`);
+        return json(res, 200, { ok: true, ...r });
+      } catch (e) {
+        return json(res, e.qoderRunning ? 409 : 400, { error: e.message, code: e.qoderRunning ? 'QODER_RUNNING' : undefined });
+      }
+    }
+    if (target.provider === 'trae') {
+      // 防丢号：先把 Trae 当前登录同步进账号库并建快照，再覆盖成目标账号的登录态
+      try {
+        const live = await traeLiveAccount();
+        if (live && live.token !== target.token) {
+          await addAccount(live, { trusted: true }).catch((e) => logger.warn('DAEMON', '同步 Trae 当前登录失败：' + e.message));
+          traeSnapshotLive();
+        }
+      } catch (e) {}
+      try {
+        // 退进程交给 switchTo：它要先确认目标有快照才会动手，避免「白关一次 Trae」
+        const r = await traeSwitchTo(target, { force: body?.force === true });
+        if (r.closedClient) logger.info('DAEMON', '已关闭 Trae 客户端（强制切换）');
+        logger.info('DAEMON', r.alreadyActive ? `Trae 当前已是 ${target.name || target.id}` : `Trae 已切换到 ${target.name || target.id}（重新打开客户端生效）`);
+        return json(res, 200, { ok: true, ...r });
+      } catch (e) {
+        return json(res, e.traeRunning ? 409 : 400, { error: e.message, code: e.traeRunning ? 'TRAE_RUNNING' : undefined });
+      }
+    }
+    if (!target.provider.startsWith('workbuddy')) return json(res, 400, { error: '只有 WorkBuddy / ZCode / mirasim / 妙手 / Trae 账号支持切换' });
     // 先把客户端当前会话的最新 token 收回账号库，避免被覆盖后丢失
     const cur = readWorkbuddySessions().accounts.find((a) => a.current);
     if (cur && cur.uid !== target.uid) {
@@ -522,7 +552,7 @@ async function handleApi(req, res, url) {
 
   // ── 本机检测 / 凭据扫描 ──
   if (p === '/api/local/detect' && method === 'GET') {
-    return json(res, 200, { apps: detectQoderApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), legacy: detectInstalls() });
+    return json(res, 200, { apps: detectQoderApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), trae: detectTrae(), legacy: detectInstalls() });
   }
   if (p === '/api/local/scan' && method === 'POST') {
     const existing = await loadAccounts();
@@ -548,6 +578,8 @@ async function handleApi(req, res, url) {
       addRecord({
         provider: c.provider, token: c.token, name: c.user.name || c.user.email, uid: c.user.id, email: c.user.email,
         refreshToken: c.refreshToken, expiresAt: c.expiresAt, source: 'local-app',
+        // 存整份解密后的 auth.v1.dat：切换时要原样写回（里面除 token 还有客户端读的其它字段）
+        meta: { qoderAuth: c.authJson, qoderAuthFile: c.file },
       }, { source: c.source });
     }
     // 2) WorkBuddy 客户端：当前会话 + 历史会话
@@ -575,7 +607,12 @@ async function handleApi(req, res, url) {
       const cp = await catpawLiveAccount();
       if (cp) addRecord(cp, { source: '妙手当前登录', current: true });
     } catch (e) { errors.push({ file: 'catpaw-moon/catx-credential.json', error: e.message }); }
-    // 6) 旧版 VS Code 系 Qoder IDE / CLI：明文 token 扫描（归属需用户选择）
+    // 6) Trae 客户端：解密 <userData>\User\globalStorage\storage.json 的 tc 信封当前登录
+    try {
+      const tr = await traeLiveAccount();
+      if (tr) addRecord(tr, { source: 'Trae 当前登录', current: true });
+    } catch (e) { errors.push({ file: 'TRAE SOLO CN/User/globalStorage/storage.json', error: e.message }); }
+    // 7) 旧版 VS Code 系 Qoder IDE / CLI：明文 token 扫描（归属需用户选择）
     const det = detectInstalls();
     const dirs = det.ideDataDirs.filter(d => d.exists).map(d => d.path);
     if (det.cliDir.exists) dirs.push(det.cliDir.path);
@@ -598,6 +635,8 @@ async function handleApi(req, res, url) {
       { trusted: Boolean(cand.record) },
     );
     if (duplicate && !updated) return json(res, 409, { error: '该账号已存在，信息已是最新' });
+    // Trae 的登录态是 15 项文件快照而非单个凭据文件，导入时就建一次快照，否则该账号不可切换
+    if (account.provider === 'trae') traeSnapshotLive();
     logger.info('DAEMON', (updated ? '已用本机凭据更新：' : '从本机导入账号：') + (account.name || account.id));
     return json(res, updated ? 200 : 201, { account: publicAccount(account), updated });
   }
@@ -675,6 +714,7 @@ async function handleApi(req, res, url) {
     const state = await loadState();
     // 妙手凭据文件只存 token：当前登录按 token 对齐账号库，避免每轮状态都打网关查 uid
     const cpToken = currentCatpawToken();
+    const traeDet = detectTrae();
     return json(res, 200, {
       ok: true,
       app: 'CreditDaddy',
@@ -697,6 +737,8 @@ async function handleApi(req, res, url) {
       mirasimClient: (() => { const d = detectMirasim(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       catpawCurrentUid: (cpToken && accounts.find((a) => a.provider === 'catpaw' && a.token === cpToken)?.uid) || null,
       catpawClient: (() => { const d = detectCatpaw(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
+      traeCurrentUid: traeDet.uid,
+      traeClient: { installed: traeDet.clientInstalled, signedIn: traeDet.signedIn, running: traeDet.running },
       keyRequired: Boolean(PANEL_KEY),
     });
   }
