@@ -488,7 +488,7 @@
   <div class="modal">
     <div class="modal-title"><span>10Router 连接设置</span><button class="close" data-close>✕</button></div>
     <div class="hint">填 10Router 的访问地址和仪表盘里创建的<b>虚拟 key（sk-…）</b>。key 只保存在 CreditDaddy 守护进程的数据目录（0600），面板里只显示脱敏值。</div>
-    <div class="field" style="margin-top:12px"><label>10Router 地址</label><input class="input mono" id="tr-endpoint" placeholder="http://127.0.0.1:20128 或 http://nas:20128"></div>
+    <div class="field" style="margin-top:12px"><label>10Router 地址</label><input class="input mono" id="tr-endpoint" placeholder="http://127.0.0.1:20128（站点根地址，不要带 /v1）"></div>
     <div class="field"><label>虚拟 key</label><input class="input mono" id="tr-key" placeholder="sk-…" autocomplete="off"></div>
     <div class="field"><label>10Router 面板密码（可选）</label><input class="input mono" id="tr-admin-pw" type="password" placeholder="配置后「同步账号」走 OAuth 通道（带 refreshToken 自动续期）；留空保持不变" autocomplete="new-password"></div>
     <div class="field"><label>账号同步</label>
@@ -1829,7 +1829,8 @@ function openTrSettings() {
 }
 function trForm() {
   return {
-    endpoint: $('tr-endpoint').value.trim(),
+    // 从 LLM 客户端复制的 base URL 常带 /v1 后缀——10Router 只认站点根地址，带 /v1 会让所有 /api/* 调用 404、误报「需要 1.2.1+」
+    endpoint: $('tr-endpoint').value.trim().replace(/\/+$/, '').replace(/\/v1$/, ''),
     key: $('tr-key').value.trim(),
     adminPassword: $('tr-admin-pw').value, // 留空 = 服务端保持原值
     syncEnabled: $('tr-auto').checked,

@@ -61,7 +61,8 @@ export function normalizeEndpoint(raw) {
   if (!s) return '';
   if (!/^https?:\/\//i.test(s)) s = 'http://' + s;
   const u = new URL(s);   // 非法地址直接抛错
-  return (u.origin + u.pathname).replace(/\/+$/, '');
+  // LLM 客户端风格的 base URL 带 /v1 后缀——10Router 只认站点根地址，/v1 会让 /api/* 调用落空并误报版本过旧
+  return (u.origin + u.pathname).replace(/\/+$/, '').replace(/\/v1$/, '');
 }
 
 const maskKey = (k) => (k ? (k.length > 12 ? k.slice(0, 5) + '…' + k.slice(-4) : '…') : '');
@@ -110,9 +111,11 @@ export function updateConfig({ endpoint, key, adminPassword, syncEnabled, source
 
 async function call(c, pathname, { method = 'GET', body, timeout = QUOTA_TIMEOUT_MS } = {}) {
   if (!isConfigured(c)) throw Object.assign(new Error('尚未配置 10Router 地址与 key'), { code: 'NOT_CONFIGURED' });
+  // 兼容历史配置里已存的 /v1 后缀（新版 normalizeEndpoint 剥离，但旧配置不会自动重写）
+  const base = c.endpoint.replace(/\/+$/, '').replace(/\/v1$/, '');
   let res;
   try {
-    res = await fetch(c.endpoint + pathname, {
+    res = await fetch(base + pathname, {
       method,
       headers: { Authorization: `Bearer ${c.key}`, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
@@ -144,10 +147,12 @@ export async function fetchQuotas({ force = false } = {}) {
 
 /** 10Router 自身健康（/api/health，无需 key；未配置或不可达时返回 ok:false） */
 export async function fetchHealth(override) {
-  const c = { ...loadConfig(), ...(override || {}) };
+  const ov = { ...(override || {}) };
+  if (typeof ov.endpoint === 'string') ov.endpoint = normalizeEndpoint(ov.endpoint);
+  const c = { ...loadConfig(), ...ov };
   if (!c.endpoint) return { ok: false, error: '未配置 10Router 地址' };
   try {
-    const res = await fetch(c.endpoint + '/api/health', {
+    const res = await fetch(c.endpoint.replace(/\/v1$/, '') + '/api/health', {
       headers: { Accept: 'application/json', ...(c.key ? { Authorization: `Bearer ${c.key}` } : {}) },
       signal: AbortSignal.timeout(8000),
     });
@@ -165,7 +170,9 @@ export async function fetchHealth(override) {
 
 /** 测试连接：用额度接口同时验证地址与 key；老版本 10Router 只能同步用量时也视为可用 */
 export async function testConnection(override) {
-  const c = { ...loadConfig(), ...(override || {}) };
+  const ov = { ...(override || {}) };
+  if (typeof ov.endpoint === 'string') ov.endpoint = normalizeEndpoint(ov.endpoint);
+  const c = { ...loadConfig(), ...ov };
   try {
     const q = await call(c, '/api/usage/quotas');
     return { ok: true, quotas: true, connections: (q.connections || []).length };
