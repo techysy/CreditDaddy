@@ -16,4 +16,6 @@ contextBridge.exposeInMainWorld('creditdaddy', {
   openMirasimClient: () => ipcRenderer.invoke('open-mirasim-client'),
   /** 打开本机妙手（美团 CatPaw）客户端 @returns {Promise<{ok: boolean, error?: string}>} */
   openCatpawClient: () => ipcRenderer.invoke('open-catpaw-client'),
+  /** 打开本机 Trae 客户端 @returns {Promise<{ok: boolean, error?: string}>} */
+  openTraeClient: () => ipcRenderer.invoke('open-trae-client'),
 });

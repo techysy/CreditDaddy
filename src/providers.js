@@ -14,6 +14,7 @@ import { checkinWorkbuddy, checkinWorkbuddyIntl, fetchWorkbuddyQuota, inspectTok
 import { fetchZcodeQuota } from './zcodeClient.js';
 import { fetchMirasimQuota, fetchMirasimProfile } from './mirasimClient.js';
 import { fetchCatpawQuota, fetchCatpawProfile } from './catpawClient.js';
+import { fetchTraeQuota, checkinTrae, verifyTraeAccount } from './traeClient.js';
 /** 从 userinfo 响应中挑一个可读的显示名 */
 export function displayNameFrom(ui) {
   const pick = [ui?.nickname, ui?.name, ui?.username, ui?.email]
@@ -173,6 +174,14 @@ const PRODUCTS = {
       const p = await fetchCatpawProfile(account.token);
       return { name: p.name, uid: p.userId, email: null };
     },
+  },
+  trae: {
+    label: 'Trae',
+    // 每日签到发 150 通用积分（7 天有效）。凭据只来自本机 Trae 客户端的 storage.json，
+    // 无对外 refresh：token 约 14 天过期，失效后到 Trae 客户端重新登录再重新本机导入。
+    checkin: (account, ctx) => checkinTrae(account, ctx),
+    quota: (account) => fetchTraeQuota(account),
+    verify: (account) => verifyTraeAccount(account),
   },
 };
 

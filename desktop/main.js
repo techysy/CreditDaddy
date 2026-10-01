@@ -1013,6 +1013,23 @@ function registerAuthWindowIpc() {
       return { ok: false, error: '未找到妙手客户端可执行文件' };
     } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
   });
+  // Trae 页「打开客户端」+ 切换后自动重开（安装位置随版本不同：TRAE SOLO CN / Trae CN / TRAE SOLO / Trae）
+  ipcMain.handle('open-trae-client', async () => {
+    try {
+      const os = require('node:os');
+      const fs = require('node:fs');
+      const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+      const names = ['TRAE SOLO CN', 'Trae CN', 'TRAE SOLO', 'Trae'];
+      for (const n of names) {
+        const cand = path.join(local, 'Programs', n, n + '.exe');
+        if (process.platform === 'win32' && fs.existsSync(cand)) {
+          const err = await shell.openPath(cand);
+          if (!err) return { ok: true };
+        }
+      }
+      return { ok: false, error: '未找到 Trae 客户端可执行文件' };
+    } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
+  });
 }
 
 function panelUrl() {

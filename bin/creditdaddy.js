@@ -17,7 +17,7 @@ import { logger } from '../src/logger.js';
 const args = process.argv.slice(2);
 const cmd = args[0] || 'daemon';
 
-const HELP = `CreditDaddy — Qoder / WorkBuddy / ZCode / mirasim / 妙手 多账号管理 + 每日积分自动领取
+const HELP = `CreditDaddy — Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae 多账号管理 + 每日积分自动领取
 
 用法:
   creditdaddy daemon [--port 47860] [--host 127.0.0.1]   启动守护进程 + Web 面板
@@ -29,7 +29,7 @@ const HELP = `CreditDaddy — Qoder / WorkBuddy / ZCode / mirasim / 妙手 多�
   creditdaddy export [file.json] --password 口令 [--cn|--intl]
                                                         导出账号（口令必填，至少 4 位；与 10router 迁移文件互通）
   creditdaddy import <file.json> [--password 口令]        导入 CreditDaddy / 10router 导出文件
-  creditdaddy scan                                       导入本机 Qoder / WorkBuddy / ZCode / mirasim / 妙手 客户端已登录的账号
+  creditdaddy scan                                       导入本机 Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae 客户端已登录的账号
   creditdaddy umid [install|remove]                      Qoder 设备身份组件（Linux / fnOS 国际版领取用）
   creditdaddy logs                                       查看领取状态
   creditdaddy help                                       显示本帮助`;
@@ -138,6 +138,7 @@ async function main() {
       const { liveToAccount: zcodeLive } = await import('../src/zcodeLocal.js');
       const { liveToAccount: mirasimLive } = await import('../src/mirasimLocal.js');
       const { liveToAccount: catpawLive } = await import('../src/catpawLocal.js');
+      const { liveToAccount: traeLive } = await import('../src/traeLocal.js');
       const { addAccount } = await import('../src/accounts.js');
       const qa = await readQoderAppAccounts();
       const wb = readWorkbuddySessions();
@@ -148,10 +149,12 @@ async function main() {
       try { miraAccount = await mirasimLive(); } catch (e) { skipped.push({ file: '~/.mirasim/setting.json', error: e.message }); }
       let cpAccount = null;
       try { cpAccount = await catpawLive(); } catch (e) { skipped.push({ file: 'catpaw-moon/catx-credential.json', error: e.message }); }
+      let traeAccount = null;
+      try { traeAccount = await traeLive(); } catch (e) { skipped.push({ file: 'TRAE SOLO CN/User/globalStorage/storage.json', error: e.message }); }
       const records = [
         ...qa.accounts.map((c) => ({
           label: c.source,
-          rec: { provider: c.provider, token: c.token, name: c.user.name || c.user.email, uid: c.user.id, email: c.user.email, refreshToken: c.refreshToken, expiresAt: c.expiresAt, source: 'local-app' },
+          rec: { provider: c.provider, token: c.token, name: c.user.name || c.user.email, uid: c.user.id, email: c.user.email, refreshToken: c.refreshToken, expiresAt: c.expiresAt, source: 'local-app', meta: { qoderAuth: c.authJson, qoderAuthFile: c.file } },
         })),
         ...wb.accounts.map(({ file: _f, fileTime: _t, current, source, ...rec }) => ({
           label: source, rec: { ...rec, source: current ? 'workbuddy-current' : 'workbuddy-history' },
@@ -159,9 +162,10 @@ async function main() {
         ...(zAccount ? [{ label: 'ZCode 当前登录', rec: zAccount }] : []),
         ...(miraAccount ? [{ label: 'mirasim 当前登录', rec: miraAccount }] : []),
         ...(cpAccount ? [{ label: '妙手当前登录', rec: cpAccount }] : []),
+        ...(traeAccount ? [{ label: 'Trae 当前登录', rec: traeAccount }] : []),
       ];
       for (const e of [...qa.errors, ...wb.errors, ...skipped]) console.log('⚠', e.file, e.error);
-      if (!records.length) { console.log('（本机 Qoder / WorkBuddy / ZCode / mirasim / 妙手 客户端未登录或未安装）'); break; }
+      if (!records.length) { console.log('（本机 Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae 客户端未登录或未安装）'); break; }
       for (const { label, rec } of records) {
         const r = await addAccount(rec, { trusted: true });
         console.log(r.duplicate ? (r.updated ? '↻ 已更新' : '· 已存在') : '✓ 已导入', r.account.name || r.account.id, `（${label}）`);

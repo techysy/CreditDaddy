@@ -28,14 +28,29 @@ function home() {
   return process.env.ZCODE_HOME || os.homedir();
 }
 
+/**
+ * ZCode 支持把数据目录整体挪盘，真实位置写在 ~/.zcode/v2/setting.json 的 dataBaseDir 里
+ * （口径对齐 pjpv/zcode-switch 的 resolve_data_root）。例如实测到 dataBaseDir = "D:\ZCodeData"，
+ * 凭据于是在 D:\ZCodeData\.zcode\v2\credentials.json；而 ~/.zcode/v2/credentials.json
+ * 是挪盘前留下的陈旧副本，读它会一直看到旧账号、切换被误判成 alreadyActive。
+ *
+ * 只挪数据目录、不挪 home：凭据加密密钥仍由 os.homedir() 派生（见 zcrypto.defaultSecret），
+ * setting.json 也仍在 home 下（它就是引导信息本身）。
+ */
+function dataRoot(h) {
+  const s = readJson(path.join(h, '.zcode', 'v2', 'setting.json'));
+  const d = typeof s?.dataBaseDir === 'string' ? s.dataBaseDir.trim() : '';
+  return d && path.isAbsolute(d) ? d : h;
+}
+
 export function zcodePaths() {
   const h = home();
-  const v2 = path.join(h, '.zcode', 'v2');
+  const v2 = path.join(dataRoot(h), '.zcode', 'v2');
   return {
     home: h,
     credentials: path.join(v2, 'credentials.json'),
     config: path.join(v2, 'config.json'),
-    setting: path.join(v2, 'setting.json'),
+    setting: path.join(h, '.zcode', 'v2', 'setting.json'),
     providerConfig: path.join(v2, 'provider_config.json'),
     telemetry: path.join(v2, 'telemetry-state.json'),
   };

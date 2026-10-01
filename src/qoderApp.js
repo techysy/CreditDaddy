@@ -364,10 +364,14 @@ function macKeychainPassword(service) {
 
 const keyCache = new Map();
 
-/** 取得某个 Electron userData 目录对应的 safeStorage 解密器 */
-async function safeStorageDecryptor(userData, appNames) {
+/**
+ * 某个 Electron userData 目录对应的 safeStorage 编解码器。
+ * encrypt 用于把账号库里的登录快照写回客户端（切换账号），与 decrypt 同密钥同格式：
+ * Windows = 'v10' + nonce(12) + AES-256-GCM 密文 + tag(16)；mac/linux = 'v10' + AES-128-CBC。
+ */
+export async function safeStorageCodec(userData, appNames) {
   if (keyCache.has(userData)) return keyCache.get(userData);
-  let decrypt;
+  let decrypt, encrypt;
   if (process.platform === 'win32') {
     const ls = JSON.parse(fs.readFileSync(path.join(userData, 'Local State'), 'utf8'));
     const enc = Buffer.from(ls?.os_crypt?.encrypted_key || '', 'base64');
@@ -381,6 +385,12 @@ async function safeStorageDecryptor(userData, appNames) {
       d.setAuthTag(tag);
       return Buffer.concat([d.update(data.subarray(15, data.length - 16)), d.final()]).toString('utf8');
     };
+    encrypt = (text) => {
+      const nonce = crypto.randomBytes(12);
+      const c = crypto.createCipheriv('aes-256-gcm', key, nonce);
+      const ct = Buffer.concat([c.update(text, 'utf8'), c.final()]);
+      return Buffer.concat([Buffer.from('v10'), nonce, ct, c.getAuthTag()]);
+    };
   } else {
     let password = 'peanuts', iterations = 1;
     if (process.platform === 'darwin') {
@@ -392,15 +402,21 @@ async function safeStorageDecryptor(userData, appNames) {
       iterations = 1003;
     }
     const key = crypto.pbkdf2Sync(password, 'saltysalt', iterations, 16, 'sha1');
+    const iv = Buffer.alloc(16, ' ');
     decrypt = (data) => {
       const ver = data.subarray(0, 3).toString();
       if (ver !== 'v10') throw new Error(ver === 'v11' ? '需要系统密钥环（v11），暂不支持' : '未知的加密格式');
-      const d = crypto.createDecipheriv('aes-128-cbc', key, Buffer.alloc(16, ' '));
+      const d = crypto.createDecipheriv('aes-128-cbc', key, iv);
       return Buffer.concat([d.update(data.subarray(3)), d.final()]).toString('utf8');
     };
+    encrypt = (text) => {
+      const c = crypto.createCipheriv('aes-128-cbc', key, iv);
+      return Buffer.concat([Buffer.from('v10'), c.update(text, 'utf8'), c.final()]);
+    };
   }
-  keyCache.set(userData, decrypt);
-  return decrypt;
+  const codec = { decrypt, encrypt };
+  keyCache.set(userData, codec);
+  return codec;
 }
 
 /**
@@ -414,13 +430,14 @@ export async function readQoderAppAccounts() {
     const file = path.join(app.dataDir, 'auth.v1.dat');
     if (!exists(file)) continue;
     try {
-      const decrypt = await safeStorageDecryptor(app.dataDir, ['Qoder App', app.label.includes('国内') ? 'Qoder CN' : 'Qoder']);
+      const { decrypt } = await safeStorageCodec(app.dataDir, ['Qoder App', app.label.includes('国内') ? 'Qoder CN' : 'Qoder']);
       const obj = JSON.parse(decrypt(fs.readFileSync(file)));
       if (typeof obj?.token !== 'string' || !obj.token) throw new Error('auth.v1.dat 中没有 token');
       accounts.push({
         provider: app.provider,
         source: `${app.label} 客户端`,
         file,
+        authJson: obj,
         token: obj.token,
         refreshToken: typeof obj.refreshToken === 'string' ? obj.refreshToken : null,
         expiresAt: typeof obj.expiresAt === 'string' ? obj.expiresAt : null,
@@ -435,4 +452,49 @@ export async function readQoderAppAccounts() {
     }
   }
   return { accounts, errors };
+}
+
+// ─── 切换本机 Qoder 登录账号 ───
+
+/** Qoder IDE 是否在运行（含本进程所在的会话） */
+export function qoderRunning() {
+  if (process.platform !== 'win32') return false;
+  try {
+    const out = execFileSync('tasklist.exe', ['/FI', 'IMAGENAME eq Qoder.exe', '/NH'],
+      { windowsHide: true, encoding: 'buffer', timeout: 8000 }).toString('latin1');
+    return /qoder\.exe/i.test(out) && !/No Tasks|没有/i.test(out);
+  } catch { return false; }
+}
+
+/**
+ * 把本机 Qoder 客户端的登录换成目标账号（写回 auth.v1.dat）。
+ *
+ * 刻意不在 force 时代为退出 Qoder：Qoder 是编辑器本体，正在跑的这个会话就挂在它上面，
+ * 强退等于把用户手上的工作连同本工具一起掐掉。要切就得自己退出 Qoder。
+ */
+export async function switchTo(account, { force = false } = {}) {
+  const auth = account.meta?.qoderAuth;
+  const file = account.meta?.qoderAuthFile;
+  if (!auth || !file) {
+    throw new Error(`账号「${account.name || account.id}」没有本机登录快照，无法切换：请在 Qoder 里登录该账号后到「添加账号 → 本机导入」导入一次`);
+  }
+  if (!fs.existsSync(file)) throw new Error(`Qoder 凭据文件不存在：${file}（客户端可能被卸载或换了数据目录）`);
+  if (qoderRunning()) {
+    const e = new Error('请先手动退出 Qoder 再切换账号。切换会改写 Qoder 的登录文件，运行中的 Qoder 会在退出时把旧登录写回去；且退出 Qoder 会同时结束你当前正在进行的会话。');
+    e.qoderRunning = true;
+    throw e;
+  }
+  const { encrypt, decrypt } = await safeStorageCodec(path.dirname(file), ['Qoder App', account.provider === 'qoder-cn' ? 'Qoder CN' : 'Qoder']);
+  try {
+    if (JSON.parse(decrypt(fs.readFileSync(file))).token === auth.token) {
+      return { switched: false, alreadyActive: true };
+    }
+  } catch { /* 当前文件解不开就当作不同账号，继续写入 */ }
+  const buf = encrypt(JSON.stringify(auth));
+  const bak = file + '.creditdaddy.bak';
+  try { fs.copyFileSync(file, bak); } catch { /* 备份失败不阻断，下面原子写仍会成功 */ }
+  const tmp = file + '.tmp';
+  fs.writeFileSync(tmp, buf, { mode: 0o600 });
+  fs.renameSync(tmp, file);
+  return { switched: true, alreadyActive: false };
 }
