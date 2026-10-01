@@ -813,10 +813,17 @@ function applyTheme(t) {
   $('btn-theme').innerHTML = t === 'dark' ? I.sun : I.moon;
 }
 function initTheme() {
+  const mq = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null;
   let t = null;
   try { t = localStorage.getItem('qd_theme'); } catch (e) {}
-  if (!t) t = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  if (!t) t = mq && mq.matches ? 'dark' : 'light';
   applyTheme(t);
+  // 未手动锁定主题（localStorage 无记录）时，实时跟随系统日夜切换
+  if (mq && mq.addEventListener) mq.addEventListener('change', (e) => {
+    let saved = null;
+    try { saved = localStorage.getItem('qd_theme'); } catch (err) {}
+    if (!saved) applyTheme(e.matches ? 'dark' : 'light');
+  });
   $('btn-theme').onclick = () => {
     const n = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
     applyTheme(n);
