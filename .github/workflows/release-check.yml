@@ -1,0 +1,38 @@
+name: Release Check
+
+# 发版前审查：本地跑 `npm run release-check`，CI 跑同一个脚本，
+# 逻辑只维护 scripts/release-check.sh 一份，避免两边漂移。
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "要发布的版本号（如 1.2.0），留空则取 package.json 当前值"
+        required: false
+        type: string
+  pull_request:
+    types: [opened, synchronize, labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  release-check:
+    runs-on: ubuntu-latest
+    # PR 触发时只在带 "release" 标签的 PR 上跑完整审查，避免日常 PR 被 tag 检查卡住
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'release')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: 发版前审查
+        shell: bash
+        run: bash scripts/release-check.sh "${{ inputs.version }}"
+
+      - name: 审查结论
+        if: success()
+        run: echo "✅ Release Check 通过——可以打 tag 发版"

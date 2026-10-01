@@ -4,7 +4,7 @@
 
 # CreditDaddy
 
-**AI 编程工具多账号本地管理 + 每日积分自动领取（领鸡蛋）助手：Qoder · WorkBuddy · ZCode · mirasim · 妙手，集成 10Router 额度总览与用量同步**
+**AI 编程工具多账号本地管理 + 每日积分自动领取（领鸡蛋）助手：Qoder · WorkBuddy · ZCode · mirasim · 妙手 · Trae，集成 10Router 额度总览与用量同步**
 
 [![Release](https://img.shields.io/github/v/release/techysy/CreditDaddy?label=%E7%89%88%E6%9C%AC&color=2563eb)](https://github.com/techysy/CreditDaddy/releases/latest)
 [![CI](https://img.shields.io/github/actions/workflow/status/techysy/CreditDaddy/ci.yml?branch=main&label=CI)](https://github.com/techysy/CreditDaddy/actions/workflows/ci.yml)
@@ -59,9 +59,9 @@
 ## 功能
 
 **多账号管理与切换**
-- **仪表盘 + 分产品标签页**：首页仪表盘汇总账号总数、今日领取进度、剩余总积分、下次自动执行时间、各产品概况、待处理异常账号（token 失效 / 即将过期、领取失败）与最近领取审计；Qoder、WorkBuddy、ZCode、mirasim、妙手 各自独立标签页，卡片式展示，支持国内 / 国际版筛选，直观查看连续天数与额度包到期，自适应亮色 / 暗色主题。右上角「组件开关」可整块收起不使用的产品 / 10Router 标签页与仪表盘卡片（偏好保存在浏览器本地）。
-- **本机导入**：一键安全读取本机已登录的客户端凭据 —— 本地解密 Qoder / Qoder CN 的 `auth.v1.dat`，读取 WorkBuddy 客户端（当前与历史会话），解密 ZCode / mirasim / 妙手 客户端凭据。敏感 Token 绝不出机器；同一用户续期时自动覆盖。
-- **客户端一键换号**：一键将桌面客户端切换至指定账号（WorkBuddy 自动热切换；ZCode / mirasim / 妙手 退出客户端后写回并自动重新拉起），切号前自动保存当前在线 Token，各账号拥有独立设备指纹，杜绝风控串号。
+- **仪表盘 + 分产品标签页**：首页仪表盘汇总账号总数、今日领取进度、剩余总积分、下次自动执行时间、各产品概况、待处理异常账号（token 失效 / 即将过期、领取失败）与最近领取审计；Qoder、WorkBuddy、ZCode、mirasim、妙手、Trae 各自独立标签页，卡片式展示，支持国内 / 国际版筛选，直观查看连续天数与额度包到期，自适应亮色 / 暗色主题。右上角「组件开关」可整块收起不使用的产品 / 10Router 标签页与仪表盘卡片（偏好保存在浏览器本地）。
+- **本机导入**：一键安全读取本机已登录的客户端凭据 —— 本地解密 Qoder / Qoder CN 的 `auth.v1.dat`，读取 WorkBuddy 客户端（当前与历史会话），解密 ZCode / mirasim / 妙手 / Trae 客户端凭据。敏感 Token 绝不出机器；同一用户续期时自动覆盖。
+- **客户端一键换号**：一键将桌面客户端切换至指定账号（WorkBuddy 自动热切换；ZCode / mirasim / 妙手 / Trae 退出客户端后写回并自动重新拉起），切号前自动保存当前在线 Token，各账号拥有独立设备指纹，杜绝风控串号。
 - **内置隐私（无痕）授权**：桌面版提供隔离的一次性会话窗口进行网页登录授权，不污染系统浏览器 Cookie，支持同平台无缝扩增多账号。
 - **全流程浏览器登录**：支持三家产品线在面板内直接完成网页 / 设备码授权并入库 —— Qoder 设备码授权（PKCE + nonce）、WorkBuddy 状态轮询、ZCode CLI 轮询（支持智谱 BigModel 与 Z.ai）。
 
@@ -111,6 +111,12 @@
 - **无签到、无对外续期**：按套餐发放 Credits，无每日签到活动；凭据由妙手客户端登录轮转，失效（401）时在客户端重新登录后再本机导入即可。
 - **客户端切号**：妙手启动时读凭据恢复登录（无热加载），切换 = 重写加密凭据 + 重启客户端；客户端运行中默认拒绝切换，强制切换自动退出并重新拉起妙手。
 
+### Trae（字节 TRAE SOLO / Trae CN）
+- **账号来源**：解本机客户端 `<userData>/User/globalStorage/storage.json` 的 `iCubeAuthInfo://icube.cloudide`（Trae 自研「tc」信封：pepper 为随安装包分发的公开常量表，SHA512 两轮派生 + AES-128-CBC + SHA512 完整性前缀），纯 `node:crypto` 实现，不引入依赖、不需要 SQLite。敏感 Token 绝不出机。
+- **签到与积分**：每日签到领积分，查询当前额度；面板显示凭据到期日，临期变红。
+- **有意不做自动续期**：Trae 的 refresh 会轮转 refreshToken 并作废 IDE 自己那份，等于把用户正在用的客户端踢下线，因此不提供自动续期。
+- **客户端切号**：按账号存 15 项登录态快照到 `~/.creditdaddy/trae-slots/<uid>/`，换走前先自动快照当前登录避免丢号；客户端在跑时拒绝切换（Trae 会把内存里的旧登录写回文件），强制切换后自动重新拉起。`x-device-id` 必须为纯数字设备号（传 GUID 触发 `code 9074`），优先取 `storage.json` 里 `iCubeAuthInfo://icube-dc:<数字>` 的键名后缀以与 IDE 自身指纹一致，缺失时按 uid 确定性派生。
+
 ## 快速开始
 
 ### 方式一：桌面安装版 / 便携版（推荐）
@@ -141,7 +147,7 @@ creditdaddy daemon
 **CLI 常用命令**：
 
 ```bash
-creditdaddy scan                    # 扫描导入本机 Qoder / WorkBuddy / ZCode / mirasim / 妙手 客户端登录的账号
+creditdaddy scan                    # 扫描导入本机 Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae 客户端登录的账号
 creditdaddy add <token>             # 添加 Qoder 国际版账号
 creditdaddy add <token> --cn        # 添加 Qoder 国内版账号
 creditdaddy add <token> --workbuddy # 添加 WorkBuddy 国内版账号（--intl 为国际版）
@@ -238,6 +244,8 @@ CreditDaddy/
 │   ├── tenrouter.js            # 10Router 配额查询与调度
 │   ├── tenrouterAccounts.js    # 账号一键推送为 10Router 连接（OAuth / apikey 双通道）
 │   ├── transfer.js             # 加密备份导入导出
+│   ├── traeClient.js           # Trae 签到 / 额度请求
+│   ├── traeLocal.js            # 本机 Trae「tc」信封凭据解密与切号
 │   ├── usageSync.js            # 本地多模型 SQLite 用量抽取
 │   ├── workbuddyAuth.js        # WorkBuddy 授权流程
 │   ├── workbuddyClient.js      # WorkBuddy 业务请求
@@ -245,7 +253,8 @@ CreditDaddy/
 │   ├── zcodeAuth.js            # ZCode 登录授权流程
 │   ├── zcodeAutoClaim.js       # ZCode 自动领活动与验证码处理
 │   ├── zcodeClient.js          # ZCode 权益与配额请求
-│   ├── zcodeLocal.js           # 本机 ZCode 会话切号
+│   ├── zcodeGateway.js         # ZCode 本机网关（额度 / 活动代理）
+│   ├── zcodeLocal.js           # 本机 ZCode 会话切号（支持数据目录挪盘）
 │   └── zcrypto.js              # ZCode 本地凭据 AES-GCM 加解密
 └── test/                       # 自动化单元测试
 ```

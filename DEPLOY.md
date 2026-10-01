@@ -1,5 +1,30 @@
 # fnOS 部署（fpk）
 
+## 发版流程
+
+1. **bump 版本号**（三处必须一致，CI 会校验）：
+   - `package.json`
+   - `desktop/package.json`
+   - `fnos-packaging/manifest`
+2. **归档 CHANGELOG**：把 `[Unreleased]` 内容移到 `## [<新版本>] (<日期>)` 下（GitHub Release notes 从这里提取）。
+3. **跑发版前审查**：
+
+       npm run release-check            # 按 package.json 当前版本
+       npm run release-check -- 1.2.0   # 显式指定期望版本
+
+   审查项：版本三处一致、JS 语法、单元测试、CHANGELOG 归档、tag 未占用、
+   敏感文件、遗留调试代码、npm pack 内容、Desktop/fnOS 打包清单、
+   运行时关键文件、TODO 统计、产品线文案覆盖。
+   同一脚本也被 CI 的 `Release Check` workflow 调用（手动 dispatch，
+   或给 PR 打 `release` 标签触发），本地与 CI 不会漂移。
+4. **打 tag 推送**：
+
+       git tag v1.2.0 && git push origin main --tags
+
+   触发 `build-fpk`（4 个 fpk 变体）和 `build-desktop-win`（Win/macOS 桌面版），
+   自动建 GitHub Release 并上传产物 + SHA256。
+5. **（可选）发 npm**：`npm publish`（包名 `creditdaddy`，CLI 直装）。
+
 ## 构建方式
 
 代码推到 GitHub 后，打 tag 触发 Actions（或手动 workflow_dispatch）：
