@@ -339,3 +339,16 @@ test('领取成功后 clearQuotaMark：耗尽打标立即清除、账号回到�
   await gw.handleGateway(fakeReq('POST', '{}'), after);
   assert.equal(after.status, 200, after.body);
 });
+
+test('remoteAllowed：精确 IP、::ffff: 前缀剥离与 * 通配', async () => {
+  const { remoteAllowed, remoteHost } = await import('../src/zcodeGateway.js');
+  const allow = ['192.168.31.101', '10.0.0.*'];
+  assert.equal(remoteAllowed('192.168.31.101', allow), true);
+  assert.equal(remoteAllowed('::ffff:192.168.31.101', allow), true, 'IPv4-mapped IPv6 应剥前缀后匹配');
+  assert.equal(remoteAllowed('192.168.31.102', allow), false, '未加白的 IP 不放行');
+  assert.equal(remoteAllowed('10.0.0.7', allow), true, '前缀通配放行');
+  assert.equal(remoteAllowed('10.0.1.7', allow), false);
+  assert.equal(remoteAllowed('', allow), false, '空远端不放行');
+  assert.equal(remoteAllowed('192.168.31.101', []), false, '空白名单不放行');
+  assert.equal(remoteHost('::ffff:192.168.31.101'), '192.168.31.101');
+});

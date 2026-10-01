@@ -48,6 +48,16 @@
   .comp-menu-title { font-size: 11px; color: var(--text-3); margin: 10px 0 4px; padding-top: 8px; border-top: 1px dashed var(--border-subtle); }
   .comp-menu-title:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
   .comp-menu .check { margin-right: 0; font-size: 12.5px; color: var(--text); }
+  /* 产品页 notice 的功能分区行 */
+  .z-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .z-row + .z-row { margin-top: 7px; padding-top: 7px; border-top: 1px dashed var(--border-subtle); }
+  .z-label { font-size: 11px; color: var(--text-3); flex: none; width: 68px; }
+  .z-text { flex: 1 1 320px; min-width: 0; }
+  /* 10Router 状态条分两行 */
+  .tr-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+  .tr-line + .tr-line { margin-top: 5px; }
+  .tr-tag { font-size: 11px; color: var(--text-3); flex: none; width: 46px; }
+  .tr-line .chip { margin: 0 2px; }
   .sec-status { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-3); }
   .sec-status.on { color: var(--ok); border-color: rgba(var(--accent-rgb), .45); }
   .comp-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
@@ -299,7 +309,7 @@
   .tr-packs-head { font-size: 11px; color: var(--text-3); margin-bottom: 2px; }
   .tr-packs-head b { color: var(--text-2); }
   .tr-more { margin-top: 7px; border: none; background: none; color: #4f86ff; font-size: 12px; cursor: pointer; padding: 0; }
-  .tr-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid var(--border-subtle); font-size: 12px; color: var(--text-2); }
+  .tr-bar { display: flex; flex-direction: column; align-items: stretch; gap: 0; padding: 10px 16px; border-bottom: 1px solid var(--border-subtle); font-size: 12px; color: var(--text-2); }
   .chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; background: var(--tertiary); color: var(--text-3); }
   .chip.on { background: rgba(var(--accent-rgb), .14); color: var(--text); }
   .setup { padding: 22px; max-width: 620px; }
@@ -547,6 +557,22 @@
     </div>
     <div class="hint">开启后按此周期检查活动资格并自动领取（首次检查在开启 2 分钟后开始）。活动包由服务端在每日 0 点左右刷新放出——若运行时段没有覆盖 0 点，会错过当次领取，建议把运行时长设为 0，或让时段跨过 0 点。需要验证码时无法自动通过，卡片上会提示手动领取。</div>
     <div class="modal-actions"><button class="btn" id="zac-off" style="display:none">停用</button><button class="btn" data-close>取消</button><button class="btn primary" id="zac-ok">保存并启用</button></div>
+  </div>
+</div>
+
+<!-- ZCode 网关局域网白名单 -->
+<div class="mask" id="m-zlan">
+  <div class="modal sm">
+    <div class="modal-title"><span>ZCode 体验包接口 · 局域网访问</span><button class="close" data-close>✕</button></div>
+    <div class="field">
+      <label class="check"><input type="checkbox" id="zlan-on"> 对局域网开放（重启后绑定 0.0.0.0）</label>
+    </div>
+    <div class="field">
+      <label>IP 白名单（每行一个，支持 192.168.31.* 通配）</label>
+      <textarea class="input" id="zlan-allow" rows="4" placeholder="192.168.31.101"></textarea>
+    </div>
+    <div class="hint">白名单内的机器<b>免密直连</b>体验包接口（/gateway/v1/messages）——10Router 的 zcode-free 本就是免授权供应商，把 10Router 服务地址的 IP 加白即可，无需再配虚拟 key；白名单外的局域网请求仍可用「10Router 连接设置」里保存的虚拟 key 鉴权。本机回环（127.0.0.1）始终放行。</div>
+    <div class="modal-actions"><button class="btn" data-close>取消</button><button class="btn primary" id="zlan-ok">保存</button></div>
   </div>
 </div>
 
@@ -1311,18 +1337,21 @@ function renderStatus() {
     const windowText = zwin > 0
       ? '本次自动领取运行 ' + zwin + ' 分钟' + (ac && autoOffAt ? '（约 ' + Math.max(1, Math.ceil((new Date(autoOffAt).getTime() - Date.now()) / 60000)) + ' 分钟后自动关闭）' : '')
       : '一直运行直到手动关闭';
-    n.innerHTML = 'ZCode 没有每日签到，积分靠「活动领取」。开启后每 ' + ziv + ' 分钟检查活动资格，首次检查在 2 分钟后开始；' + windowText + '。也可点卡片上的礼物图标手动领取。'
-      + ' <button class="btn" id="btn-zac" style="margin-left:6px" title="设置自动领取计划：轮询周期与运行时长">' + (ac ? '自动领取：开' : '自动领取：关') + '</button>'
-      + ' <button class="btn" id="btn-znet" style="margin-left:4px" title="ZCode 上游接口的访问顺序：失败 / 被拦时自动回退另一条">出口：' + (pf ? '代理优先' : '直连优先') + '</button>'
-      + ' <button class="btn" id="btn-zproxy" style="margin-left:4px" title="设置 ZCode 出口用的 http 代理（留空则清除；不设置时使用 HTTPS_PROXY 环境变量）">代理：' + esc(pu || (state.zHasEnvProxy ? '环境变量' : '未设置')) + '</button>'
-      + ' <button class="btn" id="btn-zgw" style="margin-left:4px" title="开启后，领到的体验包额度会变成本机的一个补全接口（/gateway/v1/messages）；10Router 建一个 anthropic-compatible 节点指向 http://127.0.0.1:' + location.port + '/gateway 即可调用。需要桌面版（隐藏窗口过验证码）">'
+    n.innerHTML = '<div class="z-row"><span class="z-label">活动领取</span><span class="z-text">ZCode 没有每日签到，积分靠「活动领取」。开启后每 ' + ziv + ' 分钟检查活动资格，首次检查在 2 分钟后开始；' + windowText + '。也可点卡片上的礼物图标手动领取。</span>'
+      + ' <button class="btn" id="btn-zac" title="设置自动领取计划：轮询周期与运行时长">' + (ac ? '自动领取：开' : '自动领取：关') + '</button></div>'
+      + '<div class="z-row"><span class="z-label">网络出口</span>'
+      + ' <button class="btn" id="btn-znet" title="ZCode 上游接口的访问顺序：失败 / 被拦时自动回退另一条">出口：' + (pf ? '代理优先' : '直连优先') + '</button>'
+      + ' <button class="btn" id="btn-zproxy" title="设置 ZCode 出口用的 http 代理（留空则清除；不设置时使用 HTTPS_PROXY 环境变量）">代理：' + esc(pu || (state.zHasEnvProxy ? '环境变量' : '未设置')) + '</button></div>'
+      + '<div class="z-row"><span class="z-label">体验包接口</span>'
+      + ' <button class="btn" id="btn-zgw" title="开启后，领到的体验包额度会变成本机的一个补全接口（/gateway/v1/messages）；10Router 建一个 anthropic-compatible 节点指向 http://127.0.0.1:' + location.port + '/gateway 即可调用。需要桌面版（隐藏窗口过验证码）">'
       + (state.zGateway === true ? '体验包接口：开' : '体验包接口：关') + '</button>'
-      + ' <button class="btn" id="btn-zgwlan" style="margin-left:4px" title="允许局域网其他设备的 10Router 直连本机的体验包接口（daemon 重启后生效）。远程调用需要用「10Router 连接设置」里保存的虚拟 key 鉴权，因此需先配置 10Router 连接并设置面板访问密码">'
+      + ' <button class="btn" id="btn-zgwlan" title="局域网开放与 IP 白名单：白名单内的机器（如 10Router 所在机器）免密直连体验包接口，白名单外仍可用虚拟 key 鉴权；绑定改动重启后生效">'
       + (state.zGatewayLan === true ? '局域网：开' : '局域网：关') + '</button>'
-      + (state.zGateway === true && state.zGatewayStats && state.zGatewayStats.lastAccount ? ' <span class="chip on" style="margin-left:6px" title="体验包接口有调用记录，10Router 正在调用本机接口（最近用的账号见账号卡片上的「接口使用中」标记）">10Router 已接入</span>' : '')
-      + (state.zGateway === true ? ' <span class="ver" style="margin-left:6px">POST http://127.0.0.1:' + location.port + '/gateway/v1/messages</span>' : '')
-      + (state.zGateway === true && state.zGatewayStats && state.zGatewayStats.lastCallAt ? ' <span class="ver" style="margin-left:6px">最近调用 ' + esc(String(state.zGatewayStats.lastCallAt).slice(11, 19)) + ' · 共 ' + state.zGatewayStats.calls + ' 次</span>' : (state.zGateway === true ? ' <span class="ver" style="margin-left:6px">尚未有调用</span>' : ''))
-      + zcodeClientChip(s);
+      + (state.zGateway === true && state.zGatewayStats && state.zGatewayStats.lastAccount ? ' <span class="chip on" title="体验包接口有调用记录，10Router 正在调用本机接口（最近用的账号见账号卡片上的「接口使用中」标记）">10Router 已接入</span>' : '')
+      + (state.zGateway === true ? ' <span class="ver">POST http://127.0.0.1:' + location.port + '/gateway/v1/messages</span>' : '')
+      + (state.zGateway === true && state.zGatewayStats && state.zGatewayStats.lastCallAt ? ' <span class="ver">最近调用 ' + esc(String(state.zGatewayStats.lastCallAt).slice(11, 19)) + ' · 共 ' + state.zGatewayStats.calls + ' 次</span>' : (state.zGateway === true ? ' <span class="ver">尚未有调用</span>' : ''))
+      + '</div>'
+      + '<div class="z-row"><span class="z-label">客户端</span>' + zcodeClientChip(s) + '</div>';
   } else if (hasIntl && !s.riskIdentity && umidOffer(s)) {
     n.style.display = '';
     const busy = s.umid.installing || umidBusy;
@@ -1433,12 +1462,11 @@ $('notice').addEventListener('click', async (e) => {
     return;
   }
   if (e.target.closest('#btn-zgwlan')) {
-    try {
-      const r = await api('/api/zcode-gateway', { method: 'PUT', json: { lan: state.zGatewayLan !== true } });
-      state.zGatewayLan = r.lan === true;
-      renderStatus();
-      toast(r.lan ? '已允许局域网访问：重启 CreditDaddy 后生效（远程调用用 10Router 虚拟 key 鉴权）' : '已限制为本机访问');
-    } catch (err) { toast(err.message, false); }
+    // 局域网白名单弹窗：默认预填 10Router 服务地址的主机
+    $('zlan-on').checked = state.zGatewayLan === true;
+    const allow = Array.isArray(state.zGatewayAllow) ? state.zGatewayAllow : [];
+    $('zlan-allow').value = (allow.length ? allow : (state.zGatewaySuggest ? [state.zGatewaySuggest] : [])).join('\n');
+    openModal('m-zlan');
     return;
   }
   if (e.target.closest('#btn-zgw')) {
@@ -1487,6 +1515,8 @@ async function loadZGateway() {
     const d = await api('/api/zcode-gateway');
     state.zGateway = d.enabled === true;
     state.zGatewayLan = d.lan === true;
+    state.zGatewayAllow = d.allow || [];
+    state.zGatewaySuggest = d.suggestAllow || '';
     state.zGatewayHasCaptcha = d.hasCaptcha === true;
     state.zGatewayStats = d.stats || null;
     if (state.view === 'zcode') renderStatus();
@@ -1810,10 +1840,15 @@ function renderTenrouter() {
     + '<button class="btn" data-tr="sync"' + (tr.syncing || c.syncing ? ' disabled' : '') + '>' + I.upload + (tr.syncing || c.syncing ? '同步中…' : '同步用量') + '</button>'
     + '<button class="btn" data-tr="settings">设置</button>'
     + '</div></div>'
-    + '<div class="tr-bar"><span title="' + esc(c.endpoint) + '">' + esc(c.endpoint) + ' · ' + esc(c.keyMasked) + '</span>'
+    + '<div class="tr-bar">'
+    + '<div class="tr-line"><span class="tr-tag">连接</span>'
+    + '<span title="' + esc(c.endpoint) + '">' + esc(c.endpoint) + ' · ' + esc(c.keyMasked) + '</span>'
     + '<span>用量同步：' + (c.sync.enabled ? '每小时自动' : '手动') + '</span>' + srcChips
-    + '<span style="margin-left:auto" title="' + esc(ls ? ls.summary : '') + '">' + (ls ? '上次同步 ' + esc(fmtTime(ls.at).slice(5)) + ' · ' + esc(ls.summary.slice(0, 40)) : '还没有同步过') + '</span>'
+    + '</div>'
+    + '<div class="tr-line"><span class="tr-tag">状态</span>'
+    + '<span title="' + esc(ls ? ls.summary : '') + '">' + (ls ? '上次同步 ' + esc(fmtTime(ls.at).slice(5)) + ' · ' + esc(ls.summary.slice(0, 40)) : '还没有同步过') + '</span>'
     + (tr.quotas ? '<span>额度更新于 ' + esc(fmtTime(tr.quotas.generatedAt).slice(11)) + '</span>' : '')
+    + '</div>'
     + '</div>'
     + tabStrip
     + '<div class="tr-grid">' + grid + '</div>';
@@ -2307,6 +2342,19 @@ $('zac-off').addEventListener('click', async () => {
     renderStatus();
     closeModal('m-zac');
     toast('ZCode 自动领取：已关闭');
+  } catch (err) { toast(err.message, false); }
+});
+
+// ZCode 网关局域网白名单：保存开放开关 + 免密 IP 名单
+$('zlan-ok').addEventListener('click', async () => {
+  const allow = $('zlan-allow').value.split('\n').map((x) => x.trim()).filter(Boolean);
+  try {
+    const r = await api('/api/zcode-gateway', { method: 'PUT', json: { lan: $('zlan-on').checked, allow } });
+    state.zGatewayLan = r.lan === true;
+    state.zGatewayAllow = r.allow || [];
+    renderStatus();
+    closeModal('m-zlan');
+    toast('局域网访问：' + (r.lan ? '开，白名单 ' + (r.allow && r.allow.length ? r.allow.join('、') : '（空——白名单外需虚拟 key）') : '关（仅本机）') + '；绑定改动重启 CreditDaddy 后生效');
   } catch (err) { toast(err.message, false); }
 });
 document.querySelectorAll('.mask').forEach((m) => {

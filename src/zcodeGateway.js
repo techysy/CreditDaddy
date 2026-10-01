@@ -28,7 +28,7 @@ let PLAN_SHAPE = null;
 try { PLAN_SHAPE = JSON.parse(readFileSync(path.join(__dirname, 'zcodePlanShape.json'), 'utf8')); } catch {}
 
 import { getZcodeCaptchaProvider } from './zcodeAutoClaim.js';
-import { gatewayKey as tenrouterGatewayKey } from './tenrouter.js';
+import { gatewayKey as tenrouterGatewayKey, gatewayHostSuggestion } from './tenrouter.js';
 
 // 整链补全提供者（桌面版注册）：隐藏窗口内「真 Chromium 求解验证码 + 同源发起补全」，
 // 规避 Node fetch 的 TLS 指纹风控。签名 ({ captchaCfg, jwt, rawBody }) → { status, contentType, body }。
@@ -308,6 +308,23 @@ const LOOPBACK_RE = /^(::1|::ffff:127\.0\.0\.1|127\.0\.0\.1)$/;
 function isLoopbackRemote(remote) {
   return !remote || LOOPBACK_RE.test(String(remote));
 }
+
+/** 规范化远端地址（剥 IPv4-mapped IPv6 前缀），与白名单条目比对 */
+export function remoteHost(remote) {
+  return String(remote || '').replace(/^::ffff:/i, '').trim();
+}
+
+/** 白名单匹配：精确 IP / 主机名，或 `*` 结尾的前缀通配（如 192.168.31.*） */
+export function remoteAllowed(remote, allowList) {
+  const host = remoteHost(remote);
+  if (!host) return false;
+  return (Array.isArray(allowList) ? allowList : []).some((entry) => {
+    const e = String(entry || '').trim();
+    if (!e) return false;
+    if (e.endsWith('*')) return host.toLowerCase().startsWith(e.slice(0, -1).toLowerCase());
+    return host.toLowerCase() === e.toLowerCase();
+  });
+}
 function bearerOf(authHeader) {
   const v = String(authHeader || '');
   return v.startsWith('Bearer ') ? v.slice(7) : '';
@@ -345,20 +362,22 @@ export async function handleGateway(req, res) {
     const settings = await loadSettings();
     if (settings.zcodeGatewayLan !== true) {
       res.writeHead(403, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ error: '网关未允许局域网访问（面板 → ZCode → 局域网开关）' }));
+      return res.end(JSON.stringify({ error: '网关未允许局域网访问（面板 → ZCode → 局域网）' }));
     }
-    // 访问密钥 = 10Router 连接设置里保存的虚拟 key（sk-…）——用户从有鉴权的
-    // 10Router 面板复制，同一把 key 也配在 10Router 的 zcode-free 连接里
-    const expected = tenrouterGatewayKey();
-    if (expected.length === 0) {
-      res.writeHead(401, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ error: '网关已对局域网开放但未配置 10Router 虚拟 key（10Router 连接设置）' }));
-    }
-    const h = req.headers || {};
-    const given = String(h['x-api-key'] || bearerOf(h.authorization) || '').trim();
-    if (!given || !fixedTimeEquals(given, expected)) {
-      res.writeHead(401, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ error: '网关密钥不匹配' }));
+    // 白名单内 IP 免密直连（如 10Router 所在机器——zcode-free 本就是免授权供应商）；
+    // 白名单外的局域网请求仍可用「10Router 连接设置」里的虚拟 key 鉴权
+    if (!remoteAllowed(remote, settings.zcodeGatewayAllow)) {
+      const expected = tenrouterGatewayKey();
+      if (expected.length === 0) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: '来源 IP 不在网关白名单内，且未配置 10Router 虚拟 key（10Router 连接设置）' }));
+      }
+      const h = req.headers || {};
+      const given = String(h['x-api-key'] || bearerOf(h.authorization) || '').trim();
+      if (!given || !fixedTimeEquals(given, expected)) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: `来源 ${remoteHost(remote) || '未知'} 不在网关白名单内且密钥不匹配` }));
+      }
     }
   }
 
@@ -555,6 +574,8 @@ export async function gatewayStatus() {
     enabled,
     hasCaptcha,
     lan: settings.zcodeGatewayLan === true,
+    allow: Array.isArray(settings.zcodeGatewayAllow) ? settings.zcodeGatewayAllow : [],
+    suggestAllow: gatewayHostSuggestion(),
     hasKey: key.length > 0,
     stats: {
       lastCallAt: stats.lastCallAt,

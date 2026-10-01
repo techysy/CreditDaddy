@@ -351,9 +351,19 @@ async function handleApi(req, res, url) {
   if (p === '/api/zcode-gateway' && method === 'PUT') {
     const body = await readBody(req).catch(() => ({}));
     if (body?.enabled !== undefined) await zcodeGateway.setGatewayEnabled(body.enabled === true);
-    if (body?.lan !== undefined) {
-      await (await import('./store.js')).saveSettings({ zcodeGatewayLan: body.lan === true });
-      logger.info('DAEMON', `ZCode 网关局域网访问：${body.lan === true ? '开（重启后绑定 0.0.0.0）' : '关（仅本机）'}`);
+    if (body?.lan !== undefined || body?.allow !== undefined) {
+      const patch = {};
+      if (body?.lan !== undefined) patch.zcodeGatewayLan = body.lan === true;
+      if (body?.allow !== undefined) {
+        if (!Array.isArray(body.allow)) return json(res, 400, { error: 'allow 需为字符串数组' });
+        const cleaned = [...new Set(body.allow.map((x) => String(x || '').trim()).filter(Boolean))];
+        if (cleaned.some((x) => /[^\w.*:-]/.test(x))) return json(res, 400, { error: '白名单条目只能是 IP / 主机名（支持 192.168.31.* 通配）' });
+        patch.zcodeGatewayAllow = cleaned;
+      }
+      await (await import('./store.js')).saveSettings(patch);
+      const lanNow = patch.zcodeGatewayLan ?? (await (await import('./store.js')).loadSettings()).zcodeGatewayLan === true;
+      const allowText = patch.zcodeGatewayAllow ? patch.zcodeGatewayAllow.join(', ') : '';
+      logger.info('DAEMON', `ZCode 网关局域网：${lanNow ? '开' : '关（仅本机）'}${allowText ? `，白名单：${allowText}` : ''}（绑定改动重启后生效）`);
     }
     return json(res, 200, await zcodeGateway.gatewayStatus());
   }

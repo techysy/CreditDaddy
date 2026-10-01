@@ -73,6 +73,14 @@ export function gatewayKey() {
   return String(loadConfig().key || '').trim();
 }
 
+/** ZCode 网关白名单预填建议：10Router 服务地址的主机部分（回环地址无加白意义，返回空）。 */
+export function gatewayHostSuggestion() {
+  try {
+    const h = new URL(loadConfig().endpoint || '').hostname;
+    return h && !/^(127\.|localhost$|::1$)/i.test(h) ? h : '';
+  } catch { return ''; }
+}
+
 /** 面板用的配置视图（key 脱敏） */
 export async function publicConfig() {
   const c = loadConfig();
