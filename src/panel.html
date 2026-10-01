@@ -813,10 +813,17 @@ function applyTheme(t) {
   $('btn-theme').innerHTML = t === 'dark' ? I.sun : I.moon;
 }
 function initTheme() {
+  const mq = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null;
   let t = null;
   try { t = localStorage.getItem('qd_theme'); } catch (e) {}
-  if (!t) t = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  if (!t) t = mq && mq.matches ? 'dark' : 'light';
   applyTheme(t);
+  // 未手动锁定主题（localStorage 无记录）时，实时跟随系统日夜切换
+  if (mq && mq.addEventListener) mq.addEventListener('change', (e) => {
+    let saved = null;
+    try { saved = localStorage.getItem('qd_theme'); } catch (err) {}
+    if (!saved) applyTheme(e.matches ? 'dark' : 'light');
+  });
   $('btn-theme').onclick = () => {
     const n = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
     applyTheme(n);
@@ -1415,6 +1422,7 @@ $('notice').addEventListener('click', async (e) => {
       await loadZNet(); renderStatus();
       toast(v.trim() ? '代理已保存' : '代理已清除');
     } catch (err) { toast(err.message, false); }
+    return;
   }
 });
 async function loadZNet() {
@@ -1981,7 +1989,7 @@ async function onCardClick(e) {
         ? '\n需先退出 Mirasim；切换后重新打开即为新账号。当前登录会先保存到 CreditDaddy，不会丢号。'
         : a && a.product === 'catpaw'
           ? '\n需先退出妙手；切换后重新打开妙手即为新账号。当前登录会先保存到 CreditDaddy，不会丢号。'
-          : '\n客户端会自动应用新会话；当前登录账号的最新 token 会先保存到 CreditDaddy。';
+            : '\n客户端会自动应用新会话；当前登录账号的最新 token 会先保存到 CreditDaddy。';
     if (!(await uiConfirm('把 ' + client + ' 切换到「' + (a && a.name || id) + '」？' + tip, '切换账号', '切换'))) return;
     const doSwitch = (force) => api('/api/accounts/' + encodeURIComponent(id) + '/switch', { json: { force } });
     try {
@@ -2777,6 +2785,7 @@ $('btn-logs').onclick = () => {
 initTheme();
 $('btn-home').innerHTML = I.github;
 applyView();
+
 (function boot() {
   function start() {
     loadStatus().then(loadAccounts).catch((e) => toast(e.message, false));

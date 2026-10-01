@@ -701,7 +701,7 @@ async function handleApi(req, res, url) {
     });
   }
 
-  // 面板设置：GET 读取（只回状态不回显密码），PUT 设置 / 修改 / 关闭访问密码
+  // Panel 设置：GET 读取（只回状态不回显密码），PUT 设置 / 修改 / 关闭访问密码
   if (p === '/api/settings' && method === 'GET') {
     return json(res, 200, { panelKeyEnabled: Boolean(PANEL_KEY) });
   }

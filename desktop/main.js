@@ -6,7 +6,7 @@
  *   - 开机自启以 --hidden 启动：只驻留托盘，不弹窗口
  *   - 打包后从 resources/creditdaddy 加载服务端；开发时（electron desktop/）直接用仓库源码
  */
-const { app, BrowserWindow, Tray, Menu, nativeImage, shell, Notification, dialog, ipcMain, session, safeStorage, net } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, nativeTheme, shell, Notification, dialog, ipcMain, session, safeStorage, net } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
@@ -1032,7 +1032,7 @@ function createWindow() {
     title: 'CreditDaddy',
     icon: iconPath(),
     autoHideMenuBar: true,
-    backgroundColor: '#f5f6f8',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0a0a0c' : '#f5f6f8',
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

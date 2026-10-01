@@ -24,6 +24,7 @@ import tls from 'node:tls';
 import { execFile } from 'node:child_process';
 import { FETCH_TIMEOUT_MS } from './constants.js';
 import { defaultSecret, safeDecrypt } from './zcrypto.js';
+import { ensureVirtualDeviceMid } from './zcodeLocal.js';
 
 const QUOTA_LIMIT_URL = 'https://open.bigmodel.cn/api/monitor/usage/quota/limit';
 const SUBSCRIPTION_URL = 'https://open.bigmodel.cn/api/biz/subscription/list';
@@ -33,7 +34,7 @@ const BILLING_CLAIM_URL = 'https://zcode.z.ai/api/v1/zcode-plan/billing/claim';
 const CLIENT_CONFIGS_URL = 'https://zcode.z.ai/api/v1/client/configs';
 // 与 zcode-switch 一致：billing 类接口对客户端版本有校验（版本过低直接 3001 parameter error），
 // 所以优先上报本机已安装 ZCode 的版本（注册表读取），没有客户端时退回兜底值。
-const APP_VERSION_FALLBACK = '3.11.2';
+const APP_VERSION_FALLBACK = '3.14.3';
 let appVersionCache = null;
 let appVersionPromise = null;
 
@@ -470,7 +471,7 @@ export async function fetchZcodeQuota(account) {
   }
   for (const t of billingTokens(account)) {
     try {
-      const bal = await getJson(`${BILLING_BALANCE_URL}?app_version=${await zcodeAppVersion()}`, await zaiHeaders(t, account.meta?.deviceMid));
+      const bal = await getJson(`${BILLING_BALANCE_URL}?app_version=${await zcodeAppVersion()}`, await zaiHeaders(t, ensureVirtualDeviceMid(account)));
       if (businessOk(bal)) return { ...normalizeBalance(bal), source: 'zcode.z.ai' };
       if (bal?.code === 401) authFails++;
     } catch (e) { lastErr = e.message; }
@@ -490,7 +491,7 @@ export async function fetchClaimPlans(account) {
   const token = claimToken(account);
   const v = await getJson(
     `${BILLING_PREVIEW_URL}?app_version=${await zcodeAppVersion()}&platform=${platform()}`,
-    await zaiHeaders(token, account.meta?.deviceMid),
+    await zaiHeaders(token, ensureVirtualDeviceMid(account)),
   );
   if (v?.code !== 0) throw new Error(v?.msg || v?.message || `查询活动列表失败（code ${v?.code}）`);
   return { plans: normalizePlans(v), serverTime: v?.data?.server_time ? new Date(v.data.server_time * 1000).toISOString() : null };
@@ -498,7 +499,8 @@ export async function fetchClaimPlans(account) {
 
 /** 验证码配置（无需登录）。当前服务端未下发时返回 { enabled: false }。 */
 export async function fetchCaptchaConfig() {
-  const v = await getJson(CLIENT_CONFIGS_URL, await zaiHeaders(''));
+  // 公开端点：不带任何鉴权头（空 token 会生成畸形的 "Authorization: Bearer "，被上游判为 3001）
+  const v = await getJson(CLIENT_CONFIGS_URL);
   if (v?.code !== 0) throw new Error('获取验证码配置失败');
   const c = v?.data?.configs?.captcha || {};
   return {
@@ -515,7 +517,7 @@ export async function fetchCaptchaConfig() {
  */
 export async function claimPlan(account, planId, { captchaParam = '', region = '' } = {}) {
   const token = claimToken(account);
-  const headers = await zaiHeaders(token, account.meta?.deviceMid);
+  const headers = await zaiHeaders(token, ensureVirtualDeviceMid(account));
   if (captchaParam && captchaParam.trim()) headers['X-Aliyun-Captcha-Verify-Param'] = captchaParam.trim();
   if (region && region.trim()) headers['X-Aliyun-Captcha-Verify-Region'] = region.trim();
   const res = await fetchJsonRace(BILLING_CLAIM_URL, {
