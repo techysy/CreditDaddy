@@ -21,6 +21,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { execSync } from 'node:child_process';
 import { logger } from './logger.js';
+import { buildExportPayload, sealTransfer, parseImport } from './transfer.js';
 
 /** 原子写 JSON：临时文件 + rename（参照 zcodeLocal.js，避免进程中断损坏配置） */
 function atomicWriteJson(file, obj) {
@@ -188,6 +189,8 @@ export async function liveToAccount() {
       source: 'local-app',
       meta: {
         capturedAt: new Date().toISOString(),
+        // 带上客户端当前设备 ID，会话迁移（导出/导入）时随包走，目标机可沿用同一设备指纹
+        ...(auth.deviceMid ? { deviceMid: auth.deviceMid } : {}),
       },
     };
   } catch (e) {
@@ -309,33 +312,32 @@ export async function switchToMiniMax(account, opts = {}) {
 }
 
 // ── 会话导出/导入（跨设备迁移） ──
+// 与全局账号导出同一格式：transfer.js 加密信封（scrypt + AES-256-GCM，口令必填），不产明文 token。
+// 导出的 .secure.json 也可以在「导入账号」里作为普通 MiniMax 账号导入，两种用途一份文件。
 
 /** 生成虚拟设备 ID（用于风控场景） */
 export function generateDeviceMid() {
   return `mini_${crypto.randomUUID().replace(/-/g, '')}`;
 }
 
-/** 导出当前会话（供跨设备共享） */
-export async function exportCurrentSession() {
+/** 导出当前会话（口令必填，<4 位时 sealTransfer 抛 TransferError）；无登录态返回 null */
+export async function exportCurrentSession(password) {
   const account = await liveToAccount();
   if (!account) return null;
-
-  return {
-    version: '1.0',
-    provider: 'minimax',
-    uid: account.uid,
-    name: account.name,
-    token: account.token.replace(/^Bearer\s+/i, ''), // 去掉前缀方便传输
-    refreshToken: account.refreshToken,
-    deviceMid: account.meta?.deviceMid || generateDeviceMid(),
-    capturedAt: account.meta.capturedAt,
-  };
+  return sealTransfer(buildExportPayload([account], { provider: 'minimax' }), password);
 }
 
-/** 导入远程会话（跨设备迁移） */
-export async function importRemoteSession(sessionData) {
-  if (!sessionData?.token || !sessionData.uid) {
-    return { success: false, error: '无效会话数据' };
+/** 导入远程会话。只接受 transfer.js 加密信封（口令错误/明文 JSON 一律拒绝） */
+export async function importRemoteSession(data, password) {
+  let parsed;
+  try {
+    parsed = parseImport(data, { password });
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+  const acc = parsed.accounts.find((a) => a.provider === 'minimax');
+  if (!acc?.token || !acc.uid) {
+    return { success: false, error: '文件中没有可导入的 MiniMax 会话' };
   }
 
   const dataDir = minimaxDataDir();
@@ -348,23 +350,23 @@ export async function importRemoteSession(sessionData) {
     const s = JSON.parse(fs.readFileSync(file, 'utf8'));
     if (!s.auth) s.auth = {};
 
-    // 确保设备 ID 存在
+    // 目标机已有设备 ID 就沿用本地的（避免顶号），没有才用导出包里的
     if (!s.auth.deviceMid) {
-      s.auth.deviceMid = sessionData.deviceMid || generateDeviceMid();
+      s.auth.deviceMid = acc.meta?.deviceMid || generateDeviceMid();
     }
 
     s.auth = {
       ...s.auth,
-      token: sessionData.token,
-      refreshToken: sessionData.refreshToken || null,
-      userId: sessionData.uid,
-      name: sessionData.name || s.auth.name,
-      exp: sessionData.exp || null,
+      token: String(acc.token).replace(/^Bearer\s+/i, ''),   // 与 writeMiniMaxAuth 一致：去前缀写回
+      refreshToken: acc.refreshToken || null,
+      userId: acc.uid,
+      name: acc.name || s.auth.name,
+      exp: acc.expiresAt ? Math.floor(new Date(acc.expiresAt).getTime() / 1000) : null,
       deviceMid: s.auth.deviceMid,
     };
 
     atomicWriteJson(file, s);
-    return { success: true, importedUid: sessionData.uid };
+    return { success: true, importedUid: acc.uid };
   } catch (e) {
     return { success: false, error: e.message };
   }

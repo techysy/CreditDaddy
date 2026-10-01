@@ -1396,8 +1396,8 @@ function minimaxGatewayCard(s) {
 
     <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;">
       <button class="btn btn-primary" id="btn-mm-gw-status" title="查询 Gateway 状态">查询状态</button>
-      <button class="btn" id="btn-mm-export" title="导出当前会话供跨设备迁移">导出会话</button>
-      <button class="btn" id="btn-mm-import" title="导入远程会话（JSON）">导入会话</button>
+      <button class="btn" id="btn-mm-export" title="加密导出当前会话（.secure.json）供跨设备迁移">导出会话</button>
+      <button class="btn" id="btn-mm-import" title="导入加密会话文件（.secure.json）">导入会话</button>
       ${s.minimaxApiKey ? '<button class="btn" id="btn-mm-key-clear" title="清除 API Key 鉴权">清除鉴权密钥</button>' : ''}
     </div>
 
@@ -1505,25 +1505,37 @@ $('notice').addEventListener('click', async (e) => {
   }
   if (e.target.closest('#btn-mm-export')) {
     const msg = $('mm-gw-message');
+    const password = await uiPrompt('设置导出加密口令（至少 4 位；口令不保存，导入时需要）', '', { okText: '导出', type: 'password' });
+    if (password === null) return;
+    if (password.trim().length < 4) { msg.textContent = '口令至少 4 位'; return; }
     msg.textContent = '导出会话中...';
     try {
-      const session = await api('/api/minimax/export', { method: 'POST', json: {} });
-      if (!session.uid) throw new Error('未检测到登录状态');
-      alert('MiniMax 会话数据（复制到剪贴板）：\n\n' + JSON.stringify(session, null, 2)
-        + '\n\n可在其他设备通过「导入会话」功能迁移。');
-      msg.textContent = '✓ 已导出 UID: ' + session.uid.slice(0, 8) + '...';
+      const payload = await api('/api/minimax/export', { method: 'POST', json: { password } });
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'creditdaddy-minimax-session-' + new Date().toISOString().slice(0, 10) + '.secure.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      msg.textContent = '✓ 已导出加密会话文件（可在其他设备「导入会话」，或作为普通账号导入）';
     } catch (err) { msg.textContent = '导出失败：' + err.message; }
     return;
   }
   if (e.target.closest('#btn-mm-import')) {
-    const input = prompt('请输入 MiniMax 会话 JSON 数据（从导出复制的完整 JSON）：');
+    const input = prompt('请粘贴 MiniMax 会话加密文件（.secure.json）的完整内容：');
     if (!input) return;
     const msg = $('mm-gw-message');
-    msg.textContent = '导入中...';
     try {
-      const session = JSON.parse(input.trim());
-      if (!session.token || !session.uid) throw new Error('无效会话格式，需要包含 token 和 uid 字段');
-      const result = await api('/api/minimax/import', { method: 'POST', json: session });
+      const data = JSON.parse(input.trim());
+      let password;
+      if (data.format === '10router-oauth-secure-v1') {
+        password = await uiPrompt('输入导出时设置的口令', '', { okText: '导入', type: 'password' });
+        if (password === null) return;
+      } else {
+        throw new Error('不是加密会话文件（明文会话已不支持，请用「导出会话」重新生成）');
+      }
+      msg.textContent = '导入中...';
+      const result = await api('/api/minimax/import', { method: 'POST', json: { data, password } });
       if (result.success) {
         msg.textContent = '✓ 成功导入！UID: ' + result.importedUid.slice(0, 8) + '...';
         setTimeout(() => location.reload(), 1500);

@@ -773,24 +773,30 @@ async function handleApi(req, res, url) {
     return json(res, 200, { ok: true, hasKey: Boolean(settings.minimaxGatewayKey) });
   }
 
-  // MiniMax 会话导出
+  // MiniMax 会话导出（与 /api/export 同一加密信封，口令必填）
   if (p === '/api/minimax/export' && method === 'POST') {
+    const body = await readBody(req).catch(() => ({}));
+    const password = typeof body?.password === 'string' ? body.password : '';
+    if (password.length < 4) return json(res, 400, { error: '导出必须设置加密口令（至少 4 位）', code: 'PASSWORD_REQUIRED' });
     try {
-      const session = await exportCurrentSession();
-      if (!session) {
+      const payload = await exportCurrentSession(password);
+      if (!payload) {
         return json(res, 404, { error: '未检测到已登录的 MiniMax 客户端' });
       }
-      return json(res, 200, session);
+      return json(res, 200, payload);
     } catch (e) {
+      if (e instanceof TransferError) return json(res, 400, { error: e.message, code: e.code });
       return json(res, 500, { error: e.message });
     }
   }
 
-  // MiniMax 会话导入
+  // MiniMax 会话导入（只接受加密信封，口令随 {data, password} 提交）
   if (p === '/api/minimax/import' && method === 'POST') {
     try {
       const body = await readBody(req);
-      const result = await importRemoteSession(body);
+      const data = body && typeof body === 'object' && !Array.isArray(body) && 'data' in body ? body.data : body;
+      const password = typeof body?.password === 'string' ? body.password : undefined;
+      const result = await importRemoteSession(data, password);
       if (!result.success) {
         return json(res, 400, { error: result.error });
       }
