@@ -547,7 +547,7 @@ async function handleApi(req, res, url) {
 
   // ── 本机检测 / 凭据扫描 ──
   if (p === '/api/local/detect' && method === 'GET') {
-    return json(res, 200, { apps: detectQoderApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), legacy: detectInstalls() });
+    return json(res, 200, { apps: detectQoderApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), minimax: detectMiniMax(), legacy: detectInstalls() });
   }
   if (p === '/api/local/scan' && method === 'POST') {
     const existing = await loadAccounts();
@@ -600,6 +600,11 @@ async function handleApi(req, res, url) {
       const cp = await catpawLiveAccount();
       if (cp) addRecord(cp, { source: '妙手当前登录', current: true });
     } catch (e) { errors.push({ file: 'catpaw-moon/catx-credential.json', error: e.message }); }
+    // 5.5) MiniMax Code 客户端：读取 %APPDATA%\MiniMax Code\storage.json 的当前登录
+    try {
+      const mm = await minimaxLiveAccount();
+      if (mm) addRecord(mm, { source: 'MiniMax Code 当前登录', current: true });
+    } catch (e) { errors.push({ file: 'MiniMax Code/storage.json', error: e.message }); }
     // 6) 旧版 VS Code 系 Qoder IDE / CLI：明文 token 扫描（归属需用户选择）
     const det = detectInstalls();
     const dirs = det.ideDataDirs.filter(d => d.exists).map(d => d.path);
@@ -723,6 +728,7 @@ async function handleApi(req, res, url) {
       mirasimClient: (() => { const d = detectMirasim(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       minimaxCurrentUid: currentMiniMaxUid(),
       minimaxClient: (() => { const d = detectMiniMax(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
+      minimaxGateway: await minimaxGatewayStatus().catch(() => null),
       minimaxApiKey: Boolean(panelSettings.minimaxGatewayKey),
       catpawCurrentUid: (cpToken && accounts.find((a) => a.provider === 'catpaw' && a.token === cpToken)?.uid) || null,
       catpawClient: (() => { const d = detectCatpaw(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),

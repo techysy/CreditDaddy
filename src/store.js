@@ -200,7 +200,7 @@ export function publicAccount(a) {
     phone: maskPhone(meta.phone),
     domain: meta.domain || null,
     flavor: a.provider === 'zcode' ? zcodeFlavor(meta) : null,
-    canSwitch: Boolean(meta.session?.account || meta.credentials || a.provider === 'catpaw'),
+    canSwitch: Boolean(meta.session?.account || meta.credentials || a.provider === 'catpaw' || a.provider === 'minimax'),
     verified: a.verified ?? null,
     createdAt: a.createdAt,
     lastCheckin: a.lastCheckin,
