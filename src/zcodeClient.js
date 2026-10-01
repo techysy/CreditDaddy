@@ -97,14 +97,16 @@ function netPref() {
       proxyUrl: typeof j.proxyUrl === 'string' && j.proxyUrl.trim() ? j.proxyUrl.trim() : null,
       autoClaim: j.autoClaim === true,
       autoClaimUntil: Number.isFinite(j.autoClaimUntil) ? j.autoClaimUntil : null,
+      claimIntervalMin: Number.isFinite(j.claimIntervalMin) ? Number(j.claimIntervalMin) : null,
+      claimWindowMin: Number.isFinite(j.claimWindowMin) ? Number(j.claimWindowMin) : null,
     };
-  } catch { netPrefCache = { proxyFirst: false, proxyUrl: null, autoClaim: false, autoClaimUntil: null }; }
+  } catch { netPrefCache = { proxyFirst: false, proxyUrl: null, autoClaim: false, autoClaimUntil: null, claimIntervalMin: null, claimWindowMin: null }; }
   return netPrefCache;
 }
 function writeNetPref(p) {
   netPrefCache = p;
   fs.mkdirSync(codeHome(), { recursive: true, mode: 0o700 });
-  fs.writeFileSync(NET_PREFS_FILE(), JSON.stringify({ proxyFirst: p.proxyFirst, proxyUrl: p.proxyUrl, autoClaim: p.autoClaim, autoClaimUntil: p.autoClaimUntil || null }, null, 2), { mode: 0o600 });
+  fs.writeFileSync(NET_PREFS_FILE(), JSON.stringify({ proxyFirst: p.proxyFirst, proxyUrl: p.proxyUrl, autoClaim: p.autoClaim, autoClaimUntil: p.autoClaimUntil || null, claimIntervalMin: p.claimIntervalMin ?? null, claimWindowMin: p.claimWindowMin ?? null }, null, 2), { mode: 0o600 });
 }
 export function proxyFirst() { return netPref().proxyFirst; }
 export function proxyUrl() { return netPref().proxyUrl; }
@@ -125,6 +127,35 @@ export function enableAutoClaimFor(durationMs) {
   const duration = Number(durationMs);
   if (!Number.isFinite(duration) || duration <= 0) throw new Error('自动领取时长无效');
   writeNetPref({ ...netPref(), autoClaim: true, autoClaimUntil: Date.now() + duration });
+}
+
+// ── 自动领取计划：轮询周期 / 单次运行时长（用户可在面板弹窗里改，落 zcode-net.json） ──
+
+/** 轮询周期（分钟）。默认 2，可配 1–720 */
+export function claimIntervalMin() {
+  const raw = netPref().claimIntervalMin;
+  if (raw === null || raw === undefined) return 2;
+  const n = Math.round(Number(raw));
+  return Number.isFinite(n) && n >= 1 && n <= 720 ? n : 2;
+}
+export function setClaimIntervalMin(v) {
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n) || n < 1 || n > 720) throw new Error('轮询周期需在 1–720 分钟之间');
+  writeNetPref({ ...netPref(), claimIntervalMin: n });
+}
+
+/** 单次运行时长（分钟）。默认 60；0 = 一直运行直到手动关闭 */
+export function claimWindowMin() {
+  const raw = netPref().claimWindowMin;
+  if (raw === null || raw === undefined) return 60;
+  const n = Math.round(Number(raw));
+  if (n === 0) return 0;
+  return n >= 5 && n <= 1440 ? n : 60;
+}
+export function setClaimWindowMin(v) {
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n) || n < 0 || n > 1440 || (n > 0 && n < 5)) throw new Error('运行时长需为 0（一直运行）或 5–1440 分钟');
+  writeNetPref({ ...netPref(), claimWindowMin: n });
 }
 export function setProxyFirst(v) { writeNetPref({ ...netPref(), proxyFirst: v === true }); }
 export function setProxyUrl(u) {

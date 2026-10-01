@@ -6,9 +6,9 @@ import path from 'node:path';
 
 process.env.CREDITDADDY_HOME = await fs.mkdtemp(path.join(os.tmpdir(), 'creditdaddy-ztick-'));
 
-const { runCheckinTick, pollZcodeNow, enableZcodeAutoClaimForOneHour, refreshZcodeScheduler, stopScheduler, zcodeMsUntilNextTick } = await import('../src/checkin.js');
+const { runCheckinTick, pollZcodeNow, enableZcodeAutoClaimWindow, refreshZcodeScheduler, stopScheduler, zcodeMsUntilNextTick } = await import('../src/checkin.js');
 const { saveAccounts } = await import('../src/store.js');
-const { setAutoClaimEnabled, enableAutoClaimFor, autoClaimUntil } = await import('../src/zcodeClient.js');
+const { setAutoClaimEnabled, enableAutoClaimFor, autoClaimUntil, autoClaimEnabled, claimIntervalMin, setClaimIntervalMin, setClaimWindowMin } = await import('../src/zcodeClient.js');
 
 const ZACC = {
   id: 'za-1', provider: 'zcode', name: 'Z测试',
@@ -67,8 +67,8 @@ test('pollZcodeNow：手动轮询不受开关限制，可真实领取', async ()
   } finally { globalThis.fetch = realFetch; setAutoClaimEnabled(false); }
 });
 
-test('开启 1 小时时段：落盘到期时间，可随时手动关闭', async () => {
-  const until = enableZcodeAutoClaimForOneHour();
+test('开启时段（默认运行 60 分钟）：落盘到期时间，可随时手动关闭', async () => {
+  const until = enableZcodeAutoClaimWindow();
   assert.ok(autoClaimUntil() > Date.now() + 55 * 60 * 1000, '应是一小时内的未来时刻');
   assert.equal(autoClaimUntil(), until);
   const onDisk = JSON.parse(await fs.readFile(path.join(process.env.CREDITDADDY_HOME, 'zcode-net.json'), 'utf8'));
@@ -80,16 +80,36 @@ test('开启 1 小时时段：落盘到期时间，可随时手动关闭', async
   assert.equal(autoClaimUntil(), null, '手动关闭应清掉到期时间');
 });
 
-test('资格轮询周期为 ~2 分钟 + 15 秒内抖动', () => {
+test('运行时长 0 = 不自动关闭：开关保持开启且无到期时间', async () => {
+  setClaimWindowMin(0);
+  try {
+    const until = enableZcodeAutoClaimWindow();
+    assert.equal(until, null, '不自动关闭时不应有到期时间');
+    assert.equal(autoClaimEnabled(), true);
+    const onDisk = JSON.parse(await fs.readFile(path.join(process.env.CREDITDADDY_HOME, 'zcode-net.json'), 'utf8'));
+    assert.equal(onDisk.autoClaim, true);
+    assert.equal(onDisk.autoClaimUntil, null);
+  } finally { setAutoClaimEnabled(false); setClaimWindowMin(60); refreshZcodeScheduler(); }
+});
+
+test('资格轮询周期可配置：默认 ~2 分钟，改配置后按新周期 + 15 秒内抖动', () => {
   for (let i = 0; i < 20; i++) {
     const ms = zcodeMsUntilNextTick(() => 0.5);
     assert.ok(ms >= 2 * 60_000 && ms <= 2 * 60_000 + 15_000);
   }
+  setClaimIntervalMin(7);
+  try {
+    assert.equal(claimIntervalMin(), 7);
+    for (let i = 0; i < 20; i++) {
+      const ms = zcodeMsUntilNextTick(() => 0.5);
+      assert.ok(ms >= 7 * 60_000 && ms <= 7 * 60_000 + 15_000);
+    }
+  } finally { setClaimIntervalMin(2); }
 });
 
 test('stopScheduler 清掉普通与 ZCode 两套定时器状态', async () => {
   const { getSchedulerInfo } = await import('../src/checkin.js');
-  enableZcodeAutoClaimForOneHour();
+  enableZcodeAutoClaimWindow();
   assert.equal(getSchedulerInfo().zcode.enabled, true);
   stopScheduler();
   assert.equal(getSchedulerInfo().zcode.enabled, true, '开关本身不因 stop 而变');

@@ -11,16 +11,15 @@ import { zcodeAutoClaim } from './zcodeAutoClaim.js';
 import { clearQuotaMark } from './zcodeGateway.js';
 import {
   autoClaimEnabled, autoClaimUntil, enableAutoClaimFor, setAutoClaimEnabled,
+  claimIntervalMin, claimWindowMin,
   warmZcodeAppVersion,
 } from './zcodeClient.js';
 import { logger } from './logger.js';
 
 const TICK_MS = 2 * 60 * 60 * 1000;
 const TICK_JITTER_MS = 10 * 60 * 1000;
-const ZCODE_TICK_MS = 2 * 60 * 1000;
 const ZCODE_JITTER_MS = 15 * 1000;
 const ZCODE_FIRST_DELAY_MS = 2 * 60 * 1000;
-const ZCODE_AUTO_CLAIM_WINDOW_MS = 60 * 60 * 1000;
 
 // 每日积分刷新：10:00 (UTC+8) = 02:00 UTC。签到日 = (now - 2h) 的 UTC 日期
 const REFRESH_UTC_OFFSET_MS = 2 * 60 * 60 * 1000;
@@ -45,6 +44,8 @@ export function getSchedulerInfo() {
     running: Boolean(timerHandle), nextTickAt, lastTick, ticking,
     zcode: {
       enabled,
+      intervalMin: claimIntervalMin(),
+      windowMin: claimWindowMin(),
       autoOffAt: enabled ? autoClaimUntil() : null,
       nextTickAt: enabled ? zcodeNextTickAt : null,
       lastTick: zcodeLastTick,
@@ -62,12 +63,16 @@ export function msUntilNextTick(nowMs = Date.now(), rand = Math.random) {
 }
 
 export function zcodeMsUntilNextTick(rand = Math.random) {
-  return Math.max(ZCODE_TICK_MS + Math.floor(rand() * ZCODE_JITTER_MS), 1000);
+  const base = claimIntervalMin() * 60 * 1000;
+  return Math.max(base + Math.floor(rand() * ZCODE_JITTER_MS), 1000);
 }
 
-/** 开启 ZCode 自动领取一小时；首次资格检查两分钟后开始。 */
-export function enableZcodeAutoClaimForOneHour() {
-  enableAutoClaimFor(ZCODE_AUTO_CLAIM_WINDOW_MS);
+/** 按用户配置的「自动领取计划」开启 ZCode 自动领取；首次资格检查两分钟后开始。
+ *  运行时长在面板弹窗里配置（默认 60 分钟；0 = 一直运行直到手动关闭）。 */
+export function enableZcodeAutoClaimWindow() {
+  const w = claimWindowMin();
+  if (w > 0) enableAutoClaimFor(w * 60 * 1000);
+  else setAutoClaimEnabled(true);
   syncZcodeScheduler(true);
   return autoClaimUntil();
 }
@@ -123,9 +128,14 @@ function syncZcodeScheduler(startFresh = false) {
       zcodeExpiryTimerHandle = null;
       setAutoClaimEnabled(false);
       clearZcodeTimers();
-      logger.info('ZCODE-CLAIM', '一小时自动领取时段已结束，自动领取已关闭');
+      logger.info('ZCODE-CLAIM', '自动领取时段已结束，自动领取已关闭');
     }, Math.max(0, expiresAt - Date.now()));
     zcodeExpiryTimerHandle.unref?.();
+  } else if (!expiresAt && zcodeExpiryTimerHandle) {
+    // 运行时长为 0（不自动关闭）：清掉可能残留的到期定时器
+    clearTimeout(zcodeExpiryTimerHandle);
+    zcodeExpiryTimerHandle = null;
+    zcodeExpiryAt = null;
   }
 }
 

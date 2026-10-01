@@ -57,10 +57,10 @@ import { liveToAccount as zcodeLiveAccount, switchTo as zcodeSwitchTo, currentZc
 import { liveToAccount as mirasimLiveAccount, switchTo as mirasimSwitchTo, currentMirasimUid, detectMirasim, terminateMirasim, mirasimRunning } from './mirasimLocal.js';
 import { liveToAccount as catpawLiveAccount, switchTo as catpawSwitchTo, currentCatpawToken, detectCatpaw, terminateCatpaw } from './catpawLocal.js';
 import { liveToAccount as traeLiveAccount, detectTrae, switchTo as traeSwitchTo, snapshotLive as traeSnapshotLive } from './traeLocal.js';
-import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl, autoClaimEnabled, autoClaimUntil, setAutoClaimEnabled } from './zcodeClient.js';
+import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl, autoClaimEnabled, autoClaimUntil, setAutoClaimEnabled, claimIntervalMin, setClaimIntervalMin, claimWindowMin, setClaimWindowMin } from './zcodeClient.js';
 import { exportAccounts, parseImport, TransferError } from './transfer.js';
 import { syncAccountsTo10r } from './tenrouterAccounts.js';
-import { runCheckinTick, getSchedulerInfo, dayKey, enableZcodeAutoClaimForOneHour, refreshZcodeScheduler, pollZcodeNow } from './checkin.js';
+import { runCheckinTick, getSchedulerInfo, dayKey, enableZcodeAutoClaimWindow, refreshZcodeScheduler, pollZcodeNow } from './checkin.js';
 import { detectQoderApps, readQoderAppAccounts, riskIdentityAvailable, riskIdentitySource, switchTo as qoderSwitchTo, qoderRunning } from './qoderApp.js';
 import { umidInfo, installUmid } from './qoderUmid.js';
 import * as tenrouter from './tenrouter.js';
@@ -361,21 +361,33 @@ async function handleApi(req, res, url) {
     const u = proxyUrl();
     const masked = u ? (() => { try { const x = new URL(u); x.password = x.password ? '*'.repeat(4) : ''; return x.toString(); } catch { return '***'; } })() : null;
     const ac = autoClaimEnabled();
-    return json(res, 200, { proxyFirst: proxyFirst(), proxyUrlMasked: masked, autoClaim: ac, autoClaimUntil: ac ? autoClaimUntil() : null, hasEnvProxy: Boolean(process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy) });
+    return json(res, 200, {
+      proxyFirst: proxyFirst(), proxyUrlMasked: masked,
+      autoClaim: ac, autoClaimUntil: ac ? autoClaimUntil() : null,
+      claimIntervalMin: claimIntervalMin(), claimWindowMin: claimWindowMin(),
+      hasEnvProxy: Boolean(process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy),
+    });
   }
   if (p === '/api/zcode/net' && method === 'PUT') {
     const body = await readBody(req).catch(() => ({}));
     try {
       if (body?.proxyFirst !== undefined) setProxyFirst(body.proxyFirst === true);
       if (body?.proxyUrl !== undefined) setProxyUrl(body.proxyUrl);
+      // 自动领取计划（轮询周期 / 运行时长）先落盘，再按新配置启动
+      if (body?.claimIntervalMin !== undefined) setClaimIntervalMin(body.claimIntervalMin);
+      if (body?.claimWindowMin !== undefined) setClaimWindowMin(body.claimWindowMin);
+      if (body?.claimIntervalMin !== undefined || body?.claimWindowMin !== undefined) refreshZcodeScheduler();
       if (body?.autoClaim !== undefined) {
-        if (body.autoClaim === true) enableZcodeAutoClaimForOneHour();   // 开 = 开启 1 小时时段（2 分钟后首轮，之后每 ~2 分钟）
+        if (body.autoClaim === true) enableZcodeAutoClaimWindow();       // 开 = 按「自动领取计划」启动（2 分钟后首轮）
         else { setAutoClaimEnabled(false); refreshZcodeScheduler(); }    // 关 = 立即停表
       }
     } catch (e) { return json(res, 400, { error: e.message }); }
     const ac = autoClaimEnabled();
-    logger.info('DAEMON', `ZCode 出口：${proxyFirst() ? '代理优先' : '直连优先'}，自动领取：${ac ? '开' : '关'}，代理 ${proxyUrl() || '(环境变量/未设置)'}`);
-    return json(res, 200, { proxyFirst: proxyFirst(), autoClaim: ac, autoClaimUntil: ac ? autoClaimUntil() : null });
+    logger.info('DAEMON', `ZCode 出口：${proxyFirst() ? '代理优先' : '直连优先'}，自动领取：${ac ? `开（每 ${claimIntervalMin()} 分钟，${claimWindowMin() > 0 ? `运行 ${claimWindowMin()} 分钟` : '一直运行'}）` : '关'}，代理 ${proxyUrl() || '(环境变量/未设置)'}`);
+    return json(res, 200, {
+      proxyFirst: proxyFirst(), autoClaim: ac, autoClaimUntil: ac ? autoClaimUntil() : null,
+      claimIntervalMin: claimIntervalMin(), claimWindowMin: claimWindowMin(),
+    });
   }
 
   // 切换 WorkBuddy / ZCode 客户端当前登录账号

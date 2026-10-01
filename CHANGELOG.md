@@ -4,10 +4,11 @@
 
 ---
 
-## [Unreleased]
+## [1.2.0] (2026-10-01)
 
 ### ✨ 新功能
 
+- **ZCode 自动领取计划可配置**：面板「自动领取」改为弹窗设置，轮询周期（1–720 分钟，默认 2）与单次运行时长（0 = 一直运行直到手动关闭，或 5–1440 分钟，默认 60）由用户自己决定，配置落 `zcode-net.json`。此前固定「每 2 分钟 × 最多 1 小时」，活动包若在时段结束后才放出（实测每日 0 点左右刷新）就会错过当次领取、只能手动补领；现在把运行时长设为 0 或让时段跨过 0 点即可覆盖。顺带修复时段到期自动关闭后面板开关仍显示「开」的问题（30 秒轮询补上 `loadZNet`）
 - **接入 Trae（字节 TRAE SOLO / Trae CN）作为第 6 条产品线**：本机导入 + 额度查询 + 每日签到领积分 + 一键切换登录账号。凭据直接解本机客户端 `<userData>/User/globalStorage/storage.json` 的 `iCubeAuthInfo://icube.cloudide`（Trae 自研「tc」信封：pepper 为随安装包分发的公开常量表，SHA512 两轮派生 + AES-128-CBC + SHA512 完整性前缀），纯 `node:crypto` 实现，不引入依赖、不需要 SQLite。切换按账号存 15 项登录态快照到 `~/.creditdaddy/trae-slots/<uid>/`，换走前先自动快照当前登录避免丢号，客户端在跑时拒绝切换（Trae 会把内存里的旧登录写回文件），强制切换后自动重新拉起。
 - 风控口径：`x-device-id` 必须为纯数字设备号（传 GUID 触发 `code 9074`），优先取 `storage.json` 里 `iCubeAuthInfo://icube-dc:<数字>` 的键名后缀以与 IDE 自身指纹一致，缺失时按 uid 确定性派生。
 - 有意**不做自动续期**：Trae 的 refresh 会轮转 refreshToken 并作废 IDE 自己那份，等于把用户正在用的客户端踢下线；面板改为显示凭据到期日并在临期变红。
@@ -16,6 +17,7 @@
 ### 🐛 修复
 
 - **ZCode 数据目录挪盘后一直读到陈旧凭据**：上游只找 `~/.zcode/v2/credentials.json`，而 ZCode 支持把数据目录整体挪盘，真实位置记在 `~/.zcode/v2/setting.json` 的 `dataBaseDir` 里（口径对齐 pjpv/zcode-switch 的 `resolve_data_root`）。此前后果是面板永远显示挪盘前的旧账号、点切换还被误判成「已是当前账号」而什么都不做。加密密钥仍按 home 派生，不随数据目录挪动。
+- **#13** 10Router 地址兼容 LLM 客户端风格的 `/v1` 后缀：从 LLM 客户端复制的 base URL 常带 `/v1`，原样保存后 `/api/*` 调用全部落空，404 被误判成 TOO_OLD、提示「需要 1.2.1+」误导用户去升级。现在 test/save 统一出口剥离尾部 `/v1`（及多余斜杠），`normalizeEndpoint()` 兜底自愈已保存的坏配置，历史配置无需重存、请求前即剥离；地址输入框 placeholder 注明「站点根地址，不要带 /v1」。
 
 ---
 
