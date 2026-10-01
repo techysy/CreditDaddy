@@ -203,6 +203,31 @@ function invalidateCaptcha() { captchaCache = null; }
 
 // ── 数据面 ──
 
+/** 友好化上游错误描述 */
+function formatUpstreamError(status, text) {
+  const content = String(text || '').trim();
+
+  // HTML 错误页面 → 提取关键信息
+  if (content.includes('<html>') || content.includes('<h1>')) {
+    const titleMatch = content.match(/<h1[^>]*>(.*?)<\/h1>/i);
+    if (titleMatch) return `HTML 错误页：${titleMatch[1].trim()}`;
+    return 'HTML 错误页（上游服务异常）';
+  }
+
+  // JSON 错误 → 提取业务码和消息
+  try {
+    const json = JSON.parse(content);
+    const codes = [json.code, json.status, json.error?.code];
+    const codeStr = codes.find(c => typeof c === 'number');
+    const msg = json.message || json.error?.message || '';
+    return codeStr ? (msg ? `[code:${codeStr}] ${msg}` : `[code:${codeStr}]`) : '未知错误';
+  } catch {
+    // 普通文本错误 → 截断显示
+    const preview = content.length > 60 ? `${content.slice(0, 60)}...` : content;
+    return preview || '(无响应内容)';
+  }
+}
+
 function readRawBody(req, limitBytes = 20 * 1024 * 1024) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -410,6 +435,7 @@ export async function handleGateway(req, res) {
           if (isAuthError(200, text)) {
             markDead(account.id);
             attempted.push({ account: label, ok: false, error: 'JWT 已失效，账号拉黑' });
+            logger.info('ZCODE-GW', `${label} JWT 失效（200 业务码）`);
             continue;
           }
           if (isExhausted(200, text)) {
@@ -418,14 +444,12 @@ export async function handleGateway(req, res) {
               // 探不到额度 ≠ 确认耗尽：不打标（否则一次查询失败就把号挡 10 分钟），只短冷却
               markCooling(account.id, 2 * 60_000);
               attempted.push({ account: label, ok: false, error: '额度被拒且额度查询失败，短冷却' });
-              logger.warn('ZCODE-GW', `${label} 额度被拒、额度查询失败，短冷却`);
             } else if (remaining <= 0) {
               // 确认 0 额度 → 打标（持久化到 state.json，重启不复轮换）
               const entry = { remaining, at: Date.now() };
               quotaCache.set(account.id, entry);
               await persistMark(account.id, entry);
               attempted.push({ account: label, ok: false, error: `额度耗尽（剩余 ${remaining}），已打标` });
-              logger.warn('ZCODE-GW', `${label} 额度耗尽，打标不再轮换`);
             } else {
               // 还有额度却被拒 → 瞬时错误，短冷却继续用
               markCooling(account.id, 2 * 60_000);
@@ -433,20 +457,20 @@ export async function handleGateway(req, res) {
             }
             continue;
           }
-          logger.warn('ZCODE-GW', `${label} 上游 200 业务错误：${text.slice(0, 140)}`);
+          logger.warn('ZCODE-GW', `${label} 上游 200 业务错误：${formatUpstreamError(200, text)} (${text.slice(0, 80)})`);
           res.writeHead(502, { 'Content-Type': 'application/json' });
           res.end(text);
           return true;
         }
         // 真 Message（非流式）——原样转发
-        logger.info('ZCODE-GW', `${label} 补全成功（${upstream.status}）`);
+        logger.debug('ZCODE-GW', `${label} 补全成功 (${upstream.status})`);
         stats.lastAccount = label;
         cooling.delete(account.id);
         res.writeHead(upstream.status, { 'Content-Type': ct || 'application/json', 'Cache-Control': 'no-cache' });
         res.end(text);
         return true;
       }
-      logger.info('ZCODE-GW', `${label} 补全成功（${upstream.status}）`);
+      logger.debug('ZCODE-GW', `${label} 补全成功 (${upstream.status})`);
       stats.lastAccount = label;
       cooling.delete(account.id);
       // 注意：undici 已自动解压上游 gzip——body 是明文，绝不能再带 content-encoding 头
@@ -477,9 +501,9 @@ export async function handleGateway(req, res) {
     if (isCaptchaError(upstream.status, text)) {
       invalidateCaptcha();
       attempted.push({ account: label, ok: false, error: `验证码被拒（${upstream.status}）`, captcha: true });
-      logger.warn('ZCODE-GW', `${label} 验证码被拒（${upstream.status}），重解重试`);
+      logger.info('ZCODE-GW', `${label} 验证码被拒 (${formatUpstreamError(upstream.status, text)})`);
       try { captcha = await ensureCaptcha(true); } catch (e) {
-        logger.warn('ZCODE-GW', `重解失败：${e.message}`);
+        logger.info('ZCODE-GW', `验证码重解失败：${e.message}`);
         captcha = null;
       }
       continue;
@@ -487,23 +511,24 @@ export async function handleGateway(req, res) {
     if (isAuthError(upstream.status, text)) {
       markDead(account.id);
       attempted.push({ account: label, ok: false, error: 'JWT 已失效，账号拉黑（重新登录后再导入）' });
-      logger.warn('ZCODE-GW', `${label} JWT 失效，拉黑`);
+      logger.debug('ZCODE-GW', `${label} JWT 失效，拉黑`);
       continue;
     }
     if (isExhausted(upstream.status, text)) {
       markCooling(account.id, 30 * 60_000);
       attempted.push({ account: label, ok: false, error: '额度不足/无资源包' });
-      logger.info('ZCODE-GW', `${label} 额度不足，本轮跳过`);
+      logger.debug('ZCODE-GW', `${label} 额度不足 (${upstream.status})`);
       continue;
     }
     if (upstream.status === 429) {
       markCooling(account.id);
       attempted.push({ account: label, ok: false, error: '429 限流，冷却 5 分钟' });
-      logger.info('ZCODE-GW', `${label} 429，冷却 5 分钟`);
+      logger.debug('ZCODE-GW', `${label} 429 限流，冷却 5 分钟`);
       continue;
     }
-    // 其他错误：原样透传给客户端
-    logger.warn('ZCODE-GW', `${label} 上游错误 ${upstream.status}：${text.slice(0, 120)}`);
+    // 其他错误：友好化展示 + 原样透传给客户端
+    const errorSummary = formatUpstreamError(upstream.status, text);
+    logger.warn('ZCODE-GW', `${label} 上游错误 ${upstream.status} — ${errorSummary}`);
     res.writeHead(upstream.status, { 'Content-Type': 'application/json' });
     res.end(text);
     return true;

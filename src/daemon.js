@@ -56,6 +56,8 @@ import { readWorkbuddySessions, writeWorkbuddySession, workbuddyAuthDir, current
 import { liveToAccount as zcodeLiveAccount, switchTo as zcodeSwitchTo, currentZcodeUid, currentZcodeIdentity, detectZcode, ensureVirtualDeviceMid, terminateZcode, zcodeRunning } from './zcodeLocal.js';
 import { liveToAccount as mirasimLiveAccount, switchTo as mirasimSwitchTo, currentMirasimUid, detectMirasim, terminateMirasim, mirasimRunning } from './mirasimLocal.js';
 import { liveToAccount as catpawLiveAccount, switchTo as catpawSwitchTo, currentCatpawToken, detectCatpaw, terminateCatpaw } from './catpawLocal.js';
+import { liveToAccount as minimaxLiveAccount, switchTo as minimaxSwitchTo, currentMiniMaxUid, detectMiniMax, terminateMiniMax, exportCurrentSession, importRemoteSession } from './minimaxLocal.js';
+import { handleMiniMaxGateway, gatewayStatus as minimaxGatewayStatus, handleSubRoute } from './minimaxGateway.js';
 import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl, autoClaimEnabled, autoClaimUntil, setAutoClaimEnabled } from './zcodeClient.js';
 import { exportAccounts, parseImport, TransferError } from './transfer.js';
 import { syncAccountsTo10r } from './tenrouterAccounts.js';
@@ -68,7 +70,7 @@ import { startDeviceFlow, pollDeviceFlow, LOGIN_KINDS } from './authDevice.js';
 import { detectInstalls, scanLocalTokens, putCandidate, peekCandidate } from './localDetect.js';
 import { PROVIDER_LABEL, APP_VERSION, PROVIDERS, PROJECT_URL } from './constants.js';
 
-const PRODUCT_IDS = ['qoder', 'workbuddy', 'zcode', 'mirasim', 'catpaw'];
+const PRODUCT_IDS = ['qoder', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'minimax'];
 
 /** 面板访问密码：面板「设置」写入的 settings.json.panelKey 优先（可设 / 可关）；
  *  未设置（或被面板关闭）时回退环境变量 CREDITDADDY_PASSWORD（fnOS / 命令行部署注入），
@@ -457,7 +459,30 @@ async function handleApi(req, res, url) {
         return json(res, e.catpawRunning ? 409 : 400, { error: e.message, code: e.catpawRunning ? 'CATPAW_RUNNING' : undefined });
       }
     }
-    if (!target.provider.startsWith('workbuddy')) return json(res, 400, { error: '只有 WorkBuddy / ZCode / mirasim / 妙手 账号支持切换' });
+    if (target.provider === 'minimax') {
+      // 防丢号：先把 MiniMax 当前登录同步进账号库
+      try {
+        const live = await minimaxLiveAccount();
+        if (live && live.token !== target.token) {
+          await addAccount(live, { trusted: true }).catch((e) => logger.warn('DAEMON', '同步 MiniMax 当前登录失败：' + e.message));
+        }
+      } catch (e) {}
+      try {
+        let closedClient = false;
+        if (body?.force === true) {
+          const t = terminateMiniMax();
+          closedClient = t.closed === true;
+          if (closedClient) logger.info('DAEMON', '已关闭 MiniMax Code 客户端（强制切换）');
+          else if (t.running) logger.warn('DAEMON', '未能完全结束 MiniMax 进程，继续强制切换');
+        }
+        const r = await minimaxSwitchTo(target, { force: body?.force === true });
+        logger.info('DAEMON', r.alreadyActive ? `MiniMax Code 当前已是 ${target.name || target.id}` : `MiniMax Code 已切换到 ${target.name || target.id}`);
+        return json(res, 200, { ok: true, closedClient, ...r });
+      } catch (e) {
+        return json(res, e.minimaxRunning ? 409 : 400, { error: e.message, code: e.minimaxRunning ? 'MINIMAX_RUNNING' : undefined });
+      }
+    }
+    if (!target.provider.startsWith('workbuddy')) return json(res, 400, { error: '只有 WorkBuddy / ZCode / mirasim / MiniMax Code / 妙手 账号支持切换' });
     // 先把客户端当前会话的最新 token 收回账号库，避免被覆盖后丢失
     const cur = readWorkbuddySessions().accounts.find((a) => a.current);
     if (cur && cur.uid !== target.uid) {
@@ -695,13 +720,78 @@ async function handleApi(req, res, url) {
       zcodeClient: (() => { const d = detectZcode(); return { installed: d.exists, signedIn: d.signedIn, running: zcodeRunning() }; })(),
       mirasimCurrentUid: currentMirasimUid(),
       mirasimClient: (() => { const d = detectMirasim(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
+      minimaxCurrentUid: currentMiniMaxUid(),
+      minimaxClient: (() => { const d = detectMiniMax(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       catpawCurrentUid: (cpToken && accounts.find((a) => a.provider === 'catpaw' && a.token === cpToken)?.uid) || null,
       catpawClient: (() => { const d = detectCatpaw(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       keyRequired: Boolean(PANEL_KEY),
     });
   }
 
-  // 面板设置：GET 读取（只回状态不回显密码），PUT 设置 / 修改 / 关闭访问密码
+  // ── MiniMax Gateway Routes ──
+
+  // Gateway API 调用：POST /minimax/v1/messages
+  if (p.startsWith('/minimax/v1/') && method === 'POST') {
+    try {
+      const handled = await handleMiniMaxGateway(req, res);
+      if (!handled) { /* should not reach here */ }
+      return;
+    } catch (e) {
+      logger.error('DAEMON-MINIMAX-GW', `网关处理异常：${e.message}`);
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // MiniMax 子路由：GET /minimax/v1/userinfo | /quota
+  if ((p === '/minimax/v1/userinfo' || p === '/minimax/v1/quota') && method === 'GET') {
+    try {
+      const route = p === '/minimax/v1/userinfo' ? 'userinfo' : 'quota';
+      const handled = await handleSubRoute(req, res, route);
+      return;
+    } catch (e) {
+      logger.error('DAEMON-MINIMAX-SUBROUTE', `${p} 失败：${e.message}`);
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // MiniMax Gateway 状态查询
+  if (p === '/api/minimax/status' && method === 'GET') {
+    try {
+      const status = await minimaxGatewayStatus();
+      return json(res, 200, status);
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // MiniMax 会话导出
+  if (p === '/api/minimax/export' && method === 'POST') {
+    try {
+      const session = await exportCurrentSession();
+      if (!session) {
+        return json(res, 404, { error: '未检测到已登录的 MiniMax 客户端' });
+      }
+      return json(res, 200, session);
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // MiniMax 会话导入
+  if (p === '/api/minimax/import' && method === 'POST') {
+    try {
+      const body = await readBody(req);
+      const result = await importRemoteSession(body);
+      if (!result.success) {
+        return json(res, 400, { error: result.error });
+      }
+      return json(res, 200, result);
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // Panel 设置：GET 读取（只回状态不回显密码），PUT 设置 / 修改 / 关闭访问密码
   if (p === '/api/settings' && method === 'GET') {
     return json(res, 200, { panelKeyEnabled: Boolean(PANEL_KEY) });
   }
