@@ -14,6 +14,7 @@ import { checkinWorkbuddy, checkinWorkbuddyIntl, fetchWorkbuddyQuota, inspectTok
 import { fetchZcodeQuota } from './zcodeClient.js';
 import { fetchMirasimQuota, fetchMirasimProfile } from './mirasimClient.js';
 import { fetchCatpawQuota, fetchCatpawProfile } from './catpawClient.js';
+import { checkinOne as checkinMiniMax, fetchQuotaUsage as fetchMiniMaxQuota, fetchUserinfo as fetchMiniMaxUserinfo } from './minimaxClient.js';
 /** 从 userinfo 响应中挑一个可读的显示名 */
 export function displayNameFrom(ui) {
   const pick = [ui?.nickname, ui?.name, ui?.username, ui?.email]
@@ -172,6 +173,29 @@ const PRODUCTS = {
     verify: async (account) => {
       const p = await fetchCatpawProfile(account.token);
       return { name: p.name, uid: p.userId, email: null };
+    },
+  },
+  minimax: {
+    label: 'MiniMax Code',
+    // 有 daily-checkin 签到功能：每日领取免费积分
+    checkin: (account) => checkinMiniMax(account),
+    quota: async (account, ctx = {}) => {
+      const minimaxLocal = await import('./minimaxLocal.js');
+      const wrapped = {
+        ...ctx,
+        onRefresh: async (creds) => {
+          await ctx.onRefresh?.(creds);
+          try {
+            const synced = await minimaxLocal.writeMiniMaxAuth({ uid: account.uid, token: creds.token });
+            if (synced) ctx.log?.('已同步新 token 到 MiniMax Code 客户端');
+          } catch (e) { ctx.log?.('同步到 MiniMax Code 客户端失败：' + e.message); }
+        },
+      };
+      return fetchMiniMaxQuota(account, wrapped);
+    },
+    verify: async (account) => {
+      const ui = await fetchMiniMaxUserinfo(account);
+      return { name: ui?.name || ui?.nickname || ui?.email, uid: ui?.id, email: ui?.email || null };
     },
   },
 };

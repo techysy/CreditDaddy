@@ -699,10 +699,11 @@ const PROV = {
   zcode: { prod: 'zcode', prodLabel: 'ZCode', region: '', cls: '' },
   mirasim: { prod: 'mirasim', prodLabel: 'mirasim', region: '', cls: '' },
   catpaw: { prod: 'catpaw', prodLabel: '妙手', region: '', cls: '' },
+  minimax: { prod: 'minimax', prodLabel: 'MiniMax Code', region: '', cls: '' },
 };
 // 支持每日签到的产品（ZCode / mirasim / 妙手 额度靠套餐或滚动窗口发放，不做签到）
-const CHECKIN_PRODUCTS = new Set(['qoder', 'workbuddy']);
-const CLIENT_LABEL = { workbuddy: 'WorkBuddy', zcode: 'ZCode', mirasim: 'mirasim', catpaw: '妙手' };
+const CHECKIN_PRODUCTS = new Set(['qoder', 'workbuddy', 'minimax']);
+const CLIENT_LABEL = { workbuddy: 'WorkBuddy', zcode: 'ZCode', mirasim: 'mirasim', catpaw: '妙手', minimax: 'MiniMax Code' };
 // 额度单位为 Credits/时长而非「积分」口径的产品（不计入剩余积分合计）
 const CREDIT_VIEWS = new Set(['zcode', 'mirasim', 'catpaw']);
 const provOf = (p) => PROV[p] || { prod: 'qoder', prodLabel: p, region: '', cls: '' };
@@ -1294,6 +1295,11 @@ function renderStatus() {
       + (state.zGateway === true ? ' <span class="ver" style="margin-left:6px">POST http://127.0.0.1:' + location.port + '/gateway/v1/messages</span>' : '')
       + (state.zGateway === true && state.zGatewayStats && state.zGatewayStats.lastCallAt ? ' <span class="ver" style="margin-left:6px">最近调用 ' + esc(String(state.zGatewayStats.lastCallAt).slice(11, 19)) + ' · 共 ' + state.zGatewayStats.calls + ' 次</span>' : (state.zGateway === true ? ' <span class="ver" style="margin-left:6px">尚未有调用</span>' : ''))
       + zcodeClientChip(s);
+  } else if (state.view === 'minimax') {
+    n.style.display = '';
+    n.innerHTML = 'MiniMax Code（Minimax 官方 AI 编程助手）每日签到领取免费积分。支持两种接入模式：本地客户端模式（自动读取桌面版账号）和 Gateway 反向代理模式（多 Token 轮换）。\n'
+      + minimaxClientChip(s)
+      + minimaxGatewayCard(s);
   } else if (hasIntl && !s.riskIdentity && umidOffer(s)) {
     n.style.display = '';
     const busy = s.umid.installing || umidBusy;
@@ -1338,6 +1344,68 @@ function catpawClientChip(s) {
   return ' <span class="dim">客户端：' + (c.running ? '运行中' : '未运行') + (c.signedIn ? '' : ' · 未登录') + '</span>'
     + (canOpen ? ' <button class="btn" id="btn-cpopen" style="margin-left:4px" title="打开本机妙手客户端">打开客户端</button>' : '');
 }
+
+// MiniMax Code 客户端状态芯片 + 模式说明
+function minimaxClientChip(s) {
+  const c = s.minimaxClient || {};
+  if (!c.installed) return ' <span class="dim">客户端：未安装（需安装 MiniMax Code 桌面版）</span>';
+
+  let chip = ' <span class="dim">客户端：' + (c.running ? '运行中' : '未运行') + '</span>';
+
+  if (c.signedIn) {
+    chip += ' <span class="chip on">已登录</span>';
+  } else {
+    chip += ' · <span style="color:#f66">未登录</span>';
+  }
+
+  return chip;
+}
+
+// MiniMax Gateway 模式卡片
+function minimaxGatewayCard(s) {
+  const gw = s.minimaxGateway || {};
+  const accounts = s.accountsCount || 0;
+  const activeTokens = gw.activeTokens || 0;
+
+  return `
+  <div class="card" style="margin-top:12px;border-left:4px solid #3498db;">
+    <h4 style="margin:0 0 8px 0;">🤖 MiniMax Gateway 反向代理</h4>
+
+    <div style="font-size:13px;color:#555;margin-bottom:8px;">
+      <p style="margin:4px 0;">MiniMax Code 支持两种接入模式，可在面板顶部切换：</p>
+
+      <ul style="margin:8px 0 0 18px;font-size:12px;line-height:1.6;">
+        <li><strong>本地客户端模式</strong> - 从桌面客户端自动读取账号，无需配置</li>
+        <li><strong>Gateway 反向代理模式</strong> - 多 Token 轮换，可作为 HTTP 服务被其他应用调用</li>
+      </ul>
+    </div>
+
+    <div style="background:#f8f9fa;padding:10px;border-radius:6px;margin-top:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span style="font-size:12px;color:#666;">启用的账号数</span>
+        <span style="font-weight:bold;color:#27ae60">${activeTokens}/${accounts}</span>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span style="font-size:12px;color:#666;">可用端点</span>
+        <code style="font-size:11px;background:#eee;padding:2px 4px;border-radius:3px;">/minimax/v1/messages</code>
+      </div>
+
+      ${gw.enabled ? '<span class="chip on">✓ Gateway 已启用</span>' : '<span class="chip" style="background:#ccc">⊘ 待启用</span>'}
+    </div>
+
+    <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;">
+      <button class="btn btn-primary" id="btn-mm-gw-status" title="查询 Gateway 状态">查询状态</button>
+      <button class="btn" id="btn-mm-export" title="导出当前会话供跨设备迁移">导出会话</button>
+      <button class="btn" id="btn-mm-import" title="导入远程会话（JSON）">导入会话</button>
+      ${s.minimaxApiKey ? '<button class="btn" id="btn-mm-key-clear" title="清除 API Key 鉴权">清除鉴权密钥</button>' : ''}
+    </div>
+
+    <div id="mm-gw-message" style="margin-top:8px;font-size:12px;"></div>
+  </div>
+  `;
+}
+
 
 // Qoder 设备身份组件（Linux / fnOS）
 const umidOffer = (s) => Boolean(s && s.umid && s.umid.supported && !s.umid.installed);
@@ -1422,6 +1490,59 @@ $('notice').addEventListener('click', async (e) => {
       await loadZNet(); renderStatus();
       toast(v.trim() ? '代理已保存' : '代理已清除');
     } catch (err) { toast(err.message, false); }
+    return;
+  }
+  // ── MiniMax Gateway（按钮由 renderStatus 渲染进 #notice，用事件委托绑定） ──
+  if (e.target.closest('#btn-mm-gw-status')) {
+    const msg = $('mm-gw-message');
+    msg.textContent = '查询中...';
+    try {
+      const status = await api('/api/minimax/status');
+      msg.innerHTML = '<span class="chip ' + (status.enabled ? 'on' : '') + '">' + (status.enabled ? '✓ Gateway 已启用' : '⊘ 待启用') + '</span>'
+        + ' 账号：' + status.stats.totalAccounts + ' | 可用 Token: ' + status.stats.activeTokens;
+    } catch (err) { msg.textContent = '查询失败：' + err.message; }
+    return;
+  }
+  if (e.target.closest('#btn-mm-export')) {
+    const msg = $('mm-gw-message');
+    msg.textContent = '导出会话中...';
+    try {
+      const session = await api('/api/minimax/export', { method: 'POST', json: {} });
+      if (!session.uid) throw new Error('未检测到登录状态');
+      alert('MiniMax 会话数据（复制到剪贴板）：\n\n' + JSON.stringify(session, null, 2)
+        + '\n\n可在其他设备通过「导入会话」功能迁移。');
+      msg.textContent = '✓ 已导出 UID: ' + session.uid.slice(0, 8) + '...';
+    } catch (err) { msg.textContent = '导出失败：' + err.message; }
+    return;
+  }
+  if (e.target.closest('#btn-mm-import')) {
+    const input = prompt('请输入 MiniMax 会话 JSON 数据（从导出复制的完整 JSON）：');
+    if (!input) return;
+    const msg = $('mm-gw-message');
+    msg.textContent = '导入中...';
+    try {
+      const session = JSON.parse(input.trim());
+      if (!session.token || !session.uid) throw new Error('无效会话格式，需要包含 token 和 uid 字段');
+      const result = await api('/api/minimax/import', { method: 'POST', json: session });
+      if (result.success) {
+        msg.textContent = '✓ 成功导入！UID: ' + result.importedUid.slice(0, 8) + '...';
+        setTimeout(() => location.reload(), 1500);
+      } else {
+        throw new Error(result.error || '导入失败');
+      }
+    } catch (err) { msg.textContent = '导入失败：' + err.message; }
+    return;
+  }
+  if (e.target.closest('#btn-mm-key-clear')) {
+    if (!confirm('确定要清除 API Key 鉴权吗？清除后网关将允许所有本地访问。')) return;
+    const msg = $('mm-gw-message');
+    msg.textContent = '处理中...';
+    try {
+      await api('/api/minimax/key', { method: 'POST', json: { key: '' } });
+      msg.textContent = '✓ API Key 已清除';
+      loadStatus();
+    } catch (err) { msg.textContent = '操作失败：' + err.message; }
+    return;
   }
 });
 async function loadZNet() {
@@ -2784,6 +2905,7 @@ $('btn-logs').onclick = () => {
 initTheme();
 $('btn-home').innerHTML = I.github;
 applyView();
+
 (function boot() {
   function start() {
     loadStatus().then(loadAccounts).catch((e) => toast(e.message, false));

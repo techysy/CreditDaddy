@@ -35,7 +35,7 @@ export const WEB_USAGE_PATH = '/api/v2/me/usages/big_model_credits';
 export const JOB_TOKEN_EXCHANGE_PATH = '/api/v1/jobToken/exchange';
 
 // 账号的 provider = 产品 + 区域。新增产品时在此登记，并在 providers.js 挂上对应实现。
-export const PROVIDERS = ['qoder', 'qoder-cn', 'workbuddy', 'workbuddy-intl', 'zcode', 'mirasim', 'catpaw'];
+export const PROVIDERS = ['qoder', 'qoder-cn', 'workbuddy', 'workbuddy-intl', 'zcode', 'mirasim', 'catpaw', 'minimax'];
 export const PROVIDER_LABEL = {
   qoder: 'Qoder 国际版',
   'qoder-cn': 'Qoder 国内版',
@@ -44,6 +44,7 @@ export const PROVIDER_LABEL = {
   zcode: 'ZCode',
   mirasim: 'mirasim',
   catpaw: '妙手',
+  minimax: 'MiniMax Code',
 };
 /** provider → 产品线（qoder / workbuddy / zcode / mirasim / catpaw） */
 export const productOf = (provider) => {
@@ -52,6 +53,7 @@ export const productOf = (provider) => {
   if (p.startsWith('zcode')) return 'zcode';
   if (p === 'mirasim') return 'mirasim';
   if (p === 'catpaw') return 'catpaw';
+  if (p === 'minimax') return 'minimax';
   return 'qoder';
 };
 /** provider 是否国内版 */
