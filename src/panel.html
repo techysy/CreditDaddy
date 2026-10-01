@@ -2723,9 +2723,22 @@ function renderCompMenu() {
     + '<div class="hint">开启后每次打开面板都需要输入密码；密码可随时在此修改或关闭。'
     + (state.sec.enabled ? '' : '账号导出不受影响（导出口令始终必填）。') + '</div>'
     + '<div class="row">' + renderSecActions() + '</div>'
+    + '<div class="comp-menu-title">自动签到</div>'
+    + '<div class="hint">' + autoCheckinHint() + '</div>'
     + '<div class="comp-menu-title">组件顺序（仪表盘与标签栏同步）</div>' + compRows
     + '<div class="comp-menu-title">账号卡片排序</div>'
     + (sortSections || '<div class="sort-hint">暂无账号</div>');
+}
+
+/** 自动签到口径说明：调度周期 + 各产品业务日刷新时点 */
+function autoCheckinHint() {
+  const sch = state.status && state.status.scheduler;
+  const next = sch && sch.nextTickAt ? '，下次执行 ' + esc(String(sch.nextTickAt).slice(11, 16)) : '';
+  const zc = sch && sch.zcode;
+  const zcText = zc && zc.enabled
+    ? 'ZCode 自动领取运行中（每 ' + (zc.intervalMin || 2) + ' 分钟' + (zc.autoOffAt ? '，约 ' + Math.max(1, Math.ceil((new Date(zc.autoOffAt).getTime() - Date.now()) / 60000)) + ' 分钟后自动关闭' : '，一直运行') + '），周期可在 ZCode 页「自动领取计划」里改'
+    : 'ZCode 活动领取默认关闭，可在 ZCode 页「自动领取计划」里开启并配置轮询周期';
+  return '守护进程每 ~2 小时自动扫描执行一轮全部账号' + next + '。各产品「业务日」刷新时点（UTC+8）：<b>Qoder 每日 10:00</b>（每台设备每日限领一个国际版账号）、<b>WorkBuddy 每日 00:00</b>，其余产品按 00:00；已领成功的账号按对应业务日记忆跳过，跨过刷新点后当天照常重试。' + esc(zcText) + '。';
 }
 
 /** 在手动排序列表里移动一个 id；列表不存在时先按当前生效顺序物化一份 */

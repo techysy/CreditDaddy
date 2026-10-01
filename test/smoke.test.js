@@ -25,6 +25,20 @@ test('dayKey 以 10:00 (UTC+8) 为签到日界，与本机时区无关', () => {
   assert.equal(dayKey(new Date('2026-01-05T23:59:59Z').getTime()), '2026-01-05');
 });
 
+test('dayKey 按产品区分业务日界：Qoder 10:00，其余 00:00 (UTC+8)', () => {
+  // 北京 2026-01-05 09:00 = 01:00 UTC：Qoder 业务日仍是 01-04，WorkBuddy 已翻到 01-05
+  assert.equal(dayKey(new Date('2026-01-05T01:59:59Z').getTime(), 'qoder'), '2026-01-04');
+  assert.equal(dayKey(new Date('2026-01-05T01:59:59Z').getTime(), 'qoder-cn'), '2026-01-04');
+  assert.equal(dayKey(new Date('2026-01-05T01:59:59Z').getTime(), 'workbuddy'), '2026-01-05');
+  assert.equal(dayKey(new Date('2026-01-05T01:59:59Z').getTime(), 'mirasim'), '2026-01-05');
+  // 北京 2026-01-05 11:00 = 03:00 UTC：两口径都已翻日
+  assert.equal(dayKey(new Date('2026-01-05T03:00:00Z').getTime(), 'qoder'), '2026-01-05');
+  assert.equal(dayKey(new Date('2026-01-05T03:00:00Z').getTime(), 'workbuddy'), '2026-01-05');
+  // 北京 16:00 前后 = 0 点界翻日（00:00 界按北京日历日）
+  assert.equal(dayKey(new Date('2026-01-05T15:59:59Z').getTime(), 'workbuddy'), '2026-01-05');
+  assert.equal(dayKey(new Date('2026-01-05T16:00:00Z').getTime(), 'workbuddy'), '2026-01-06');
+});
+
 test('下次 tick 在 2h~2h10m 之间', () => {
   for (let i = 0; i < 20; i++) {
     const ms = msUntilNextTick(Date.now(), () => 0.5);

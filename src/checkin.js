@@ -21,8 +21,9 @@ const TICK_JITTER_MS = 10 * 60 * 1000;
 const ZCODE_JITTER_MS = 15 * 1000;
 const ZCODE_FIRST_DELAY_MS = 2 * 60 * 1000;
 
-// 每日积分刷新：10:00 (UTC+8) = 02:00 UTC。签到日 = (now - 2h) 的 UTC 日期
-const REFRESH_UTC_OFFSET_MS = 2 * 60 * 60 * 1000;
+// 各产品「业务日」刷新时点（UTC+8）：Qoder 每日 10:00 放出/重置领取资格，其余产品按 00:00。
+// 签到日 = 对应时点起的日历日：dayKey(now, provider) = (now + (8 - 刷新小时)h) 的 UTC 日期
+const DAY_REFRESH_HOUR_UTC8 = { qoder: 10, 'qoder-cn': 10 };
 
 let timerHandle = null;
 let zcodeTimerHandle = null;
@@ -54,8 +55,10 @@ export function getSchedulerInfo() {
   };
 }
 
-export function dayKey(nowMs = Date.now()) {
-  return new Date(nowMs - REFRESH_UTC_OFFSET_MS).toISOString().slice(0, 10);
+/** 签到业务日。Qoder 以 10:00 (UTC+8) 为界，其余产品以 00:00 (UTC+8) 为界；默认 Qoder 口径（/api/status 展示用）。 */
+export function dayKey(nowMs = Date.now(), provider = 'qoder') {
+  const h = DAY_REFRESH_HOUR_UTC8[provider] ?? 0;
+  return new Date(nowMs + (8 - h) * 3600 * 1000).toISOString().slice(0, 10);
 }
 
 export function msUntilNextTick(nowMs = Date.now(), rand = Math.random) {
@@ -188,10 +191,11 @@ export function pollZcodeNow(accountIds) {
 }
 
 async function getDoneMap(state) {
-  const today = dayKey();
+  // 任一口径下仍属于「今天」的记录都保留（0–10 点间 Qoder 记录的业务日还是昨天，不能误删）
+  const keepDays = new Set([dayKey(Date.now(), 'qoder'), dayKey(Date.now(), 'workbuddy')]);
   const raw = state?.qoderDailyDone;
   const map = raw && typeof raw === 'object' && !Array.isArray(raw) ? { ...raw } : {};
-  for (const key of Object.keys(map)) if (map[key] !== today) delete map[key];
+  for (const key of Object.keys(map)) if (!keepDays.has(map[key])) delete map[key];
   return map;
 }
 
@@ -234,8 +238,10 @@ async function runTickInner(opts) {
 
   for (const account of accounts) {
     const label = account.name || account.id;
+    // 「今日已领」按各产品自己的业务日界比对：Qoder 10 点翻日，其余 0 点翻日
+    const todayFor = dayKey(Date.now(), account.provider);
     try {
-      if (opts.skipIfCheckedToday && memo[account.id] === today) {
+      if (opts.skipIfCheckedToday && memo[account.id] === todayFor) {
         results.push({ accountId: account.id, account: label, provider: account.provider, status: 'already', memoized: true });
         continue;
       }
@@ -260,15 +266,15 @@ async function runTickInner(opts) {
       };
 
       if (outcome.status === 'checked-in') {
-        memo[account.id] = today;
+        memo[account.id] = todayFor;
         account.lastCheckin = new Date().toISOString();
         logger.info('CHECKIN', `${label} 领取成功 +${outcome.claimedAmount} Credits`);
       } else if (outcome.status === 'already') {
-        memo[account.id] = today;
+        memo[account.id] = todayFor;
         account.lastCheckin = account.lastCheckin || new Date().toISOString();
         logger.info('CHECKIN', `${label}：${outcome.message || '今日已领'}`);
       } else if (outcome.status === 'limited') {
-        memo[account.id] = today;
+        memo[account.id] = todayFor;
         logger.info('CHECKIN', `${label}：${outcome.message}`);
       } else if (outcome.status === 'no-activity') {
         logger.debug('CHECKIN', `${label}：${outcome.message || '当前无可领取的活动'}`);
