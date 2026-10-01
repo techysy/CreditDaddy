@@ -20,6 +20,15 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execSync } from 'node:child_process';
+import { logger } from './logger.js';
+
+/** 原子写 JSON：临时文件 + rename（参照 zcodeLocal.js，避免进程中断损坏配置） */
+function atomicWriteJson(file, obj) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.tmp-${crypto.randomUUID()}`;
+  fs.writeFileSync(tmp, JSON.stringify(obj, null, 2) + '\n', { mode: 0o600 });
+  fs.renameSync(tmp, file);
+}
 
 // ── 基础路径 ──
 
@@ -182,7 +191,7 @@ export async function liveToAccount() {
       },
     };
   } catch (e) {
-    console.error('[Minimax] 读取账号失败:', e.message);
+    logger.error('MINIMAX-LOCAL', `读取账号失败：${e.message}`);
     return null;
   }
 }
@@ -237,10 +246,10 @@ export async function writeMiniMaxAuth(account) {
       exp: account.expiresAt ? Math.floor(new Date(account.expiresAt).getTime() / 1000) : s.auth.exp,
     };
 
-    fs.writeFileSync(file, JSON.stringify(s, null, 2) + '\n', { mode: 0o600 });
+    atomicWriteJson(file, s);
     return true;
   } catch (e) {
-    console.error('[Minimax] 写回凭据失败:', e.message);
+    logger.error('MINIMAX-LOCAL', `写回凭据失败：${e.message}`);
     return false;
   }
 }
@@ -290,11 +299,11 @@ export async function switchToMiniMax(account, opts = {}) {
       exp: account.expiresAt ? Math.floor(new Date(account.expiresAt).getTime() / 1000) : null,
     };
 
-    fs.writeFileSync(file, JSON.stringify(s, null, 2) + '\n', { mode: 0o600 });
+    atomicWriteJson(file, s);
 
     return { switched: true, alreadyActive: false };
   } catch (e) {
-    console.error('[Minimax] 切换账号失败:', e.message);
+    logger.error('MINIMAX-LOCAL', `切换账号失败：${e.message}`);
     throw e;
   }
 }
@@ -354,7 +363,7 @@ export async function importRemoteSession(sessionData) {
       deviceMid: s.auth.deviceMid,
     };
 
-    fs.writeFileSync(file, JSON.stringify(s, null, 2) + '\n', { mode: 0o600 });
+    atomicWriteJson(file, s);
     return { success: true, importedUid: sessionData.uid };
   } catch (e) {
     return { success: false, error: e.message };

@@ -1264,10 +1264,6 @@ function renderStatus() {
     n.innerHTML = '妙手（美团 CatPaw）按套餐发放 Credits（体验版 / 专业版…），没有每日签到。凭据由妙手客户端登录管理：读取额度用本机解密出的登录 token 直连桌面网关，token 失效时到妙手客户端重新登录后再「本机导入」即可。'
       + '多账号切换：写入本机凭据后重启妙手客户端即生效（切换会自动保存当前登录，不丢号）。'
       + catpawClientChip(s);
-  } else if (state.view === 'minimax') {
-    n.style.display = '';
-    n.innerHTML = 'MiniMax Code（Minimax 官方 AI 编程助手）每日签到领取免费积分， token 由客户端登录后生成。本集成会读取本机客户端凭据并支持每日签到，token 失效时到客户端重新登录后再「本机导入」即可。'
-      + minimaxClientChip(s);
   } else if (state.view === 'mirasim') {
     n.style.display = '';
     n.innerHTML = 'mirasim（原生 AI 编程开发环境）额度按「平台额度」（5h 滚动窗口、7d 全局上限与分模型上限）分配。Token 约 1 小时过期，读取额度时会自动用 refreshToken 静默续期并同步回客户端，无需手动处理。'
@@ -1292,7 +1288,7 @@ function renderStatus() {
       + (state.zGateway === true ? ' <span class="ver" style="margin-left:6px">POST http://127.0.0.1:' + location.port + '/gateway/v1/messages</span>' : '')
       + (state.zGateway === true && state.zGatewayStats && state.zGatewayStats.lastCallAt ? ' <span class="ver" style="margin-left:6px">最近调用 ' + esc(String(state.zGatewayStats.lastCallAt).slice(11, 19)) + ' · 共 ' + state.zGatewayStats.calls + ' 次</span>' : (state.zGateway === true ? ' <span class="ver" style="margin-left:6px">尚未有调用</span>' : ''))
       + zcodeClientChip(s);
-  } else if (s.view === 'minimax') {
+  } else if (state.view === 'minimax') {
     n.style.display = '';
     n.innerHTML = 'MiniMax Code（Minimax 官方 AI 编程助手）每日签到领取免费积分。支持两种接入模式：本地客户端模式（自动读取桌面版账号）和 Gateway 反向代理模式（多 Token 轮换）。\n'
       + minimaxClientChip(s)
@@ -1487,6 +1483,59 @@ $('notice').addEventListener('click', async (e) => {
       await loadZNet(); renderStatus();
       toast(v.trim() ? '代理已保存' : '代理已清除');
     } catch (err) { toast(err.message, false); }
+    return;
+  }
+  // ── MiniMax Gateway（按钮由 renderStatus 渲染进 #notice，用事件委托绑定） ──
+  if (e.target.closest('#btn-mm-gw-status')) {
+    const msg = $('mm-gw-message');
+    msg.textContent = '查询中...';
+    try {
+      const status = await api('/api/minimax/status');
+      msg.innerHTML = '<span class="chip ' + (status.enabled ? 'on' : '') + '">' + (status.enabled ? '✓ Gateway 已启用' : '⊘ 待启用') + '</span>'
+        + ' 账号：' + status.stats.totalAccounts + ' | 可用 Token: ' + status.stats.activeTokens;
+    } catch (err) { msg.textContent = '查询失败：' + err.message; }
+    return;
+  }
+  if (e.target.closest('#btn-mm-export')) {
+    const msg = $('mm-gw-message');
+    msg.textContent = '导出会话中...';
+    try {
+      const session = await api('/api/minimax/export', { method: 'POST', json: {} });
+      if (!session.uid) throw new Error('未检测到登录状态');
+      alert('MiniMax 会话数据（复制到剪贴板）：\n\n' + JSON.stringify(session, null, 2)
+        + '\n\n可在其他设备通过「导入会话」功能迁移。');
+      msg.textContent = '✓ 已导出 UID: ' + session.uid.slice(0, 8) + '...';
+    } catch (err) { msg.textContent = '导出失败：' + err.message; }
+    return;
+  }
+  if (e.target.closest('#btn-mm-import')) {
+    const input = prompt('请输入 MiniMax 会话 JSON 数据（从导出复制的完整 JSON）：');
+    if (!input) return;
+    const msg = $('mm-gw-message');
+    msg.textContent = '导入中...';
+    try {
+      const session = JSON.parse(input.trim());
+      if (!session.token || !session.uid) throw new Error('无效会话格式，需要包含 token 和 uid 字段');
+      const result = await api('/api/minimax/import', { method: 'POST', json: session });
+      if (result.success) {
+        msg.textContent = '✓ 成功导入！UID: ' + result.importedUid.slice(0, 8) + '...';
+        setTimeout(() => location.reload(), 1500);
+      } else {
+        throw new Error(result.error || '导入失败');
+      }
+    } catch (err) { msg.textContent = '导入失败：' + err.message; }
+    return;
+  }
+  if (e.target.closest('#btn-mm-key-clear')) {
+    if (!confirm('确定要清除 API Key 鉴权吗？清除后网关将允许所有本地访问。')) return;
+    const msg = $('mm-gw-message');
+    msg.textContent = '处理中...';
+    try {
+      await api('/api/minimax/key', { method: 'POST', json: { key: '' } });
+      msg.textContent = '✓ API Key 已清除';
+      loadStatus();
+    } catch (err) { msg.textContent = '操作失败：' + err.message; }
+    return;
   }
 });
 async function loadZNet() {
@@ -2849,80 +2898,6 @@ $('btn-logs').onclick = () => {
 initTheme();
 $('btn-home').innerHTML = I.github;
 applyView();
-
-// ── MiniMax Gateway Handlers ──
-$('btn-mm-gw-status').onclick = async () => {
-  const msg = $('mm-gw-message');
-  msg.textContent = '查询中...';
-  try {
-    const status = await api('/api/minimax/status');
-    msg.innerHTML = `<span class="chip ${status.enabled ? 'on' : ''}">${status.enabled ? '✓ Gateway 已启用' : '⊘ 待启用'}</span>`
-      + ` 账号：${status.stats.totalAccounts} | 可用 Token: ${status.stats.activeTokens}`;
-  } catch (e) {
-    msg.textContent = '查询失败：' + e.message;
-  }
-};
-
-$('btn-mm-export').onclick = async () => {
-  const msg = $('mm-gw-message');
-  msg.textContent = '导出会话中...';
-  try {
-    const session = await api('/api/minimax/export', 'POST', {});
-    if (!session.uid) throw new Error('未检测到登录状态');
-
-    // Show export dialog
-    const code = encodeURIComponent(JSON.stringify(session, null, 2));
-    alert(`MiniMax 会话数据（复制到剪贴板）：\n\n` + JSON.stringify(session, null, 2) +
-          `\n\n可在其他设备通过「导入会话」功能迁移。`);
-    msg.textContent = `✓ 已导出 UID: ${session.uid.slice(0, 8)}...`;
-  } catch (e) {
-    msg.textContent = '导出失败：' + e.message;
-  }
-};
-
-$('btn-mm-import').onclick = async () => {
-  const promptText = '请输入 MiniMax 会话 JSON 数据（从导出复制的完整 JSON）：';
-  const input = prompt(promptText);
-  if (!input) return;
-
-  const msg = $('mm-gw-message');
-  msg.textContent = '导入中...';
-
-  try {
-    const session = JSON.parse(input.trim());
-    if (!session.token || !session.uid) {
-      throw new Error('无效会话格式，需要包含 token 和 uid 字段');
-    }
-
-    const result = await api('/api/minimax/import', 'POST', session);
-    if (result.success) {
-      msg.textContent = `✓ 成功导入！UID: ${result.importedUid.slice(0, 8)}...`;
-      setTimeout(() => location.reload(), 1500);
-    } else {
-      throw new Error(result.error || '导入失败');
-    }
-  } catch (e) {
-    msg.textContent = '导入失败：' + e.message;
-  }
-};
-
-$('btn-mm-key-clear').onclick = async () => {
-  const confirmClear = confirm('确定要清除 API Key 鉴权吗？清除后网关将允许所有本地访问。');
-  if (!confirmClear) return;
-
-  const msg = $('mm-gw-message');
-  msg.textContent = '处理中...';
-
-  try {
-    const settings = await loadSettings();
-    settings.minimaxGatewayKey = '';
-    await fetch('/api/settings', { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(settings) });
-    msg.textContent = '✓ API Key 已清除';
-    render(); // Refresh UI
-  } catch (e) {
-    msg.textContent = '操作失败：' + e.message;
-  }
-};
 
 (function boot() {
   function start() {

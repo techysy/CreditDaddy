@@ -14,7 +14,7 @@ import { checkinWorkbuddy, checkinWorkbuddyIntl, fetchWorkbuddyQuota, inspectTok
 import { fetchZcodeQuota } from './zcodeClient.js';
 import { fetchMirasimQuota, fetchMirasimProfile } from './mirasimClient.js';
 import { fetchCatpawQuota, fetchCatpawProfile } from './catpawClient.js';
-import { checkinOne as checkinMiniMax, fetchQuotaUsage: fetchMiniMaxQuota, fetchUserinfo: fetchMiniMaxUserinfo } from './minimaxClient.js';
+import { checkinOne as checkinMiniMax, fetchQuotaUsage as fetchMiniMaxQuota, fetchUserinfo as fetchMiniMaxUserinfo } from './minimaxClient.js';
 /** 从 userinfo 响应中挑一个可读的显示名 */
 export function displayNameFrom(ui) {
   const pick = [ui?.nickname, ui?.name, ui?.username, ui?.email]

@@ -14,10 +14,13 @@ import { logger } from './logger.js';
 const API_BASE = 'https://api.minimax.com'; // 需要根据实际流量调整
 const FETCH_TIMEOUT_MS = 30_000;
 
-/** 解析账号的有效请求 token：直接从 account.token 中读取 */
+/** 解析账号的有效请求 token：直接从 account.token 中读取。
+ *  统一为 `Bearer <token>` 形式（与 minimaxGateway.js 一致——MiniMax 官方 API 的
+ *  Authorization 约定即 `Bearer <key>`；minimaxLocal 写回客户端配置时会再去掉前缀） */
 export async function resolveToken(account) {
   const token = String(account.token || '').trim();
-  return token.startsWith('Bearer ') ? token : (token || null);
+  if (!token) return null;
+  return token.startsWith('Bearer ') ? token : `Bearer ${token}`;
 }
 
 /** 拉取账号信息（昵称/邮箱/uid），用于给账号起显示名 */
@@ -127,7 +130,8 @@ export async function checkinOne(account) {
 
       // 409 可能表示今日已签到
       if (res.status === 409 || res.status === 400) {
-        const data = JSON.parse(text).catch(() => ({}));
+        let data = {};
+        try { data = JSON.parse(text); } catch { /* 非 JSON 错误体按已签到兜底 */ }
         const msg = data.message || data.error || '今日已签到';
         return { ...base, uid, status: 'already', message: msg };
       }

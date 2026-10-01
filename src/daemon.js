@@ -56,8 +56,8 @@ import { readWorkbuddySessions, writeWorkbuddySession, workbuddyAuthDir, current
 import { liveToAccount as zcodeLiveAccount, switchTo as zcodeSwitchTo, currentZcodeUid, currentZcodeIdentity, detectZcode, ensureVirtualDeviceMid, terminateZcode, zcodeRunning } from './zcodeLocal.js';
 import { liveToAccount as mirasimLiveAccount, switchTo as mirasimSwitchTo, currentMirasimUid, detectMirasim, terminateMirasim, mirasimRunning } from './mirasimLocal.js';
 import { liveToAccount as catpawLiveAccount, switchTo as catpawSwitchTo, currentCatpawToken, detectCatpaw, terminateCatpaw } from './catpawLocal.js';
-import { liveToAccount as minimaxLiveAccount, switchTo as minimaxSwitchTo, currentMiniMaxUid, detectMiniMax, terminateMiniMax, exportCurrentSession, importRemoteSession } from './minimaxLocal.js';
-import { handleMiniMaxGateway, gatewayStatus as minimaxGatewayStatus, handleSubRoute } from './minimaxGateway.js';
+import { liveToAccount as minimaxLiveAccount, switchToMiniMax as minimaxSwitchTo, currentMiniMaxUid, detectMiniMax, terminateMiniMax, exportCurrentSession, importRemoteSession } from './minimaxLocal.js';
+import { handleMiniMaxGateway, gatewayStatus as minimaxGatewayStatus, handleSubRoute, setApiKey as minimaxSetApiKey } from './minimaxGateway.js';
 import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl, autoClaimEnabled, autoClaimUntil, setAutoClaimEnabled } from './zcodeClient.js';
 import { exportAccounts, parseImport, TransferError } from './transfer.js';
 import { syncAccountsTo10r } from './tenrouterAccounts.js';
@@ -700,6 +700,7 @@ async function handleApi(req, res, url) {
     const state = await loadState();
     // 妙手凭据文件只存 token：当前登录按 token 对齐账号库，避免每轮状态都打网关查 uid
     const cpToken = currentCatpawToken();
+    const panelSettings = await loadSettings();
     return json(res, 200, {
       ok: true,
       app: 'CreditDaddy',
@@ -722,6 +723,7 @@ async function handleApi(req, res, url) {
       mirasimClient: (() => { const d = detectMirasim(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       minimaxCurrentUid: currentMiniMaxUid(),
       minimaxClient: (() => { const d = detectMiniMax(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
+      minimaxApiKey: Boolean(panelSettings.minimaxGatewayKey),
       catpawCurrentUid: (cpToken && accounts.find((a) => a.provider === 'catpaw' && a.token === cpToken)?.uid) || null,
       catpawClient: (() => { const d = detectCatpaw(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       keyRequired: Boolean(PANEL_KEY),
@@ -745,7 +747,7 @@ async function handleApi(req, res, url) {
   // MiniMax 子路由：GET /minimax/v1/userinfo | /quota
   if ((p === '/minimax/v1/userinfo' || p === '/minimax/v1/quota') && method === 'GET') {
     try {
-      const route = p === '/minimax/v1/userinfo' ? 'userinfo' : 'quota';
+      const route = p === '/minimax/v1/userinfo' ? '/userinfo' : '/quota';
       const handled = await handleSubRoute(req, res, route);
       return;
     } catch (e) {
@@ -762,6 +764,13 @@ async function handleApi(req, res, url) {
     } catch (e) {
       return json(res, 500, { error: e.message });
     }
+  }
+
+  // MiniMax Gateway 访问密钥：{ key: '新密钥' } 设置，{ key: '' } 清除（落盘 settings.json）
+  if (p === '/api/minimax/key' && method === 'POST') {
+    const body = await readBody(req).catch(() => ({}));
+    const settings = await minimaxSetApiKey(typeof body?.key === 'string' ? body.key : '');
+    return json(res, 200, { ok: true, hasKey: Boolean(settings.minimaxGatewayKey) });
   }
 
   // MiniMax 会话导出
