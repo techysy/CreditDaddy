@@ -17,6 +17,7 @@
 
 ### 🐛 修复
 
+- **Trae 页面残留通用产品线 UI**：Trae 不分国际 / 国内版，产品页顶部不再显示「全部 / 国际版 / 国内版」筛选；「添加账号」弹窗不再显示「粘贴 Token」标签页（Trae 凭据只能从本机客户端 storage.json 解密，不支持贴 Token）
 - **ZCode 数据目录挪盘后一直读到陈旧凭据**：上游只找 `~/.zcode/v2/credentials.json`，而 ZCode 支持把数据目录整体挪盘，真实位置记在 `~/.zcode/v2/setting.json` 的 `dataBaseDir` 里（口径对齐 pjpv/zcode-switch 的 `resolve_data_root`）。此前后果是面板永远显示挪盘前的旧账号、点切换还被误判成「已是当前账号」而什么都不做。加密密钥仍按 home 派生，不随数据目录挪动。
 - **#13** 10Router 地址兼容 LLM 客户端风格的 `/v1` 后缀：从 LLM 客户端复制的 base URL 常带 `/v1`，原样保存后 `/api/*` 调用全部落空，404 被误判成 TOO_OLD、提示「需要 1.2.1+」误导用户去升级。现在 test/save 统一出口剥离尾部 `/v1`（及多余斜杠），`normalizeEndpoint()` 兜底自愈已保存的坏配置，历史配置无需重存、请求前即剥离；地址输入框 placeholder 注明「站点根地址，不要带 /v1」。
 

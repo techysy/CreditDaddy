@@ -1115,7 +1115,7 @@ function renderProd() {
   $('s-credits').textContent = CREDIT_VIEWS.has(prod)
     ? acc.filter((a) => { const q = state.quotas[a.id]; return q && !q.error && !q.empty; }).length + ' / ' + acc.length
     : c.loading ? '…' : (c.known ? fmtNum(c.sum) : '-');
-  const hasRegions = !CREDIT_VIEWS.has(prod);
+  const hasRegions = !CREDIT_VIEWS.has(prod) && prod !== 'trae';   // Trae 不分国际 / 国内版
   $('region').style.display = hasRegions ? '' : 'none';
   $('region-div').style.display = hasRegions ? '' : 'none';
   document.querySelectorAll('#region button').forEach((x) => x.classList.toggle('active', x.dataset.r === state.region));
@@ -2332,7 +2332,8 @@ const LOCAL_HINT = {
 };
 function openAdd(product) {
   state.addProduct = product || '';
-  const tabShown = { local: true, device: product !== 'mirasim' && product !== 'catpaw' && product !== 'trae', token: product !== 'zcode' && product !== 'mirasim' && product !== 'catpaw' };
+  // Trae 凭据只能从本机客户端 storage.json 解密：不支持浏览器登录 / 粘贴 Token
+  const tabShown = { local: true, device: product !== 'mirasim' && product !== 'catpaw' && product !== 'trae', token: product !== 'zcode' && product !== 'mirasim' && product !== 'catpaw' && product !== 'trae' };
   document.querySelectorAll('#m-add .tab').forEach((t) => { t.style.display = tabShown[t.dataset.tab] ? '' : 'none'; });
   $('local-hint').textContent = LOCAL_HINT[state.addProduct];
   let first = null;
