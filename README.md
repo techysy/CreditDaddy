@@ -266,7 +266,15 @@ npm test
 
 ---
 
-## 👥 贡献者致谢
+## 👥 交流群
+
+欢迎加入 **CreditDaddy 交流群** 交流使用体验与反馈 issue：
+
+<div align="center">
+<img src="assets/feishu-group-qr.jpg" width="280" alt="CreditDaddy 交流群二维码">
+</div>
+
+### 贡献者致谢
 
 <p>
   <a href="https://github.com/techysy" title="techysy — 主要维护者"><img src="https://github.com/techysy.png?size=80" width="48" height="48" alt="techysy" /></a>
@@ -280,7 +288,7 @@ npm test
   <a href="https://github.com/juyou1" title="juyou1 — issue 反馈"><img src="https://github.com/juyou1.png?size=80" width="48" height="48" alt="juyou1" /></a>
 </p>
 
-<sub>名单由 issue 与 PR 的反馈者汇总，头像取自 GitHub 公开个人信息；若有遗漏请随时提 issue 补充。</sub>
+<sub>名单由 issue 与 PR 的反馈者及协同项目汇总，头像取自 GitHub 公开个人信息；若有遗漏请随时提 issue 补充。</sub>
 
 ---
 
