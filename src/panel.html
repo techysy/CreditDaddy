@@ -592,6 +592,7 @@
 <div class="mask" id="m-zgw">
   <div class="modal sm">
     <div class="modal-title"><span>ZCode 体验包接口</span><button class="close" data-close>✕</button></div>
+    <div class="hint" id="zgw-url" style="margin-bottom:10px"></div>
     <div class="field">
       <label class="check"><input type="checkbox" id="zgw-on"> 启用体验包接口（/gateway/v1/messages）</label>
     </div>
@@ -1378,21 +1379,12 @@ function renderStatus() {
       + mirasimClientChip(s);
   } else if (state.view === 'zcode') {
     n.style.display = '';
-    const pf = state.zProxyFirst === true;
-    const pu = state.zProxyUrl;
     const ac = state.zAutoClaim === true;
     const ziv = state.zClaimIntervalMin || 2;
     const zwin = state.zClaimWindowMin === 0 ? 0 : (state.zClaimWindowMin || 60);
-    n.innerHTML = '<div class="z-row" title="ZCode 没有每日签到，积分靠官方活动包（每日 0 点左右刷新放出）；临时领取点账号卡片上的礼物图标"><span class="z-label">活动领取</span><span class="z-text">活动包积分 · 每日 0 点刷新' + (ac ? ' · 自动每 ' + ziv + ' 分钟' + (zwin > 0 ? ' × ' + zwin + ' 分钟' : '') : '') + '</span></div>'
-      + '<div class="z-row" title="失败时自动回退另一条线路"><span class="z-label">网络出口</span><span class="z-text">' + (pf ? '代理优先' : '直连优先') + ' · 代理 ' + esc(pu ? String(pu).replace(/\/$/, '') : (state.zHasEnvProxy ? '环境变量' : '无')) + '</span></div>'
-      + (state.zGateway === true
-        ? '<div class="z-row"><span class="z-label">体验包接口</span>'
-          + (state.zGatewayStats && state.zGatewayStats.lastAccount ? ' <span class="chip on" title="体验包接口有调用记录，10Router 正在调用本机接口（最近用的账号见账号卡片上的「接口使用中」标记）">10Router 已接入</span>' : '')
-          + ' <span class="ver">POST http://127.0.0.1:' + location.port + '/gateway/v1/messages</span>'
-          + (state.zGatewayStats && state.zGatewayStats.lastCallAt ? ' <span class="ver">最近调用 ' + esc(String(state.zGatewayStats.lastCallAt).slice(11, 19)) + ' · 共 ' + state.zGatewayStats.calls + ' 次</span>' : ' <span class="ver">尚未有调用</span>')
-          + '</div>'
-        : '')
-      + '<div class="z-row"><span class="z-label">客户端</span>' + zcodeClientChip(s) + '</div>';
+    n.innerHTML = '<div class="z-row"><span class="z-label">活动领取</span><span class="z-text">ZCode 没有每日签到，积分靠官方活动包——每日 0 点左右刷新放出，错过就要等下一天。自动领取'
+      + (ac ? '已开启：每 ' + ziv + ' 分钟检查资格' + (zwin > 0 ? '，本次运行 ' + zwin + ' 分钟' : '，一直运行直到手动关闭') : '未开启（右上角「自动领取」设置轮询计划）')
+      + '；临时补领可点账号卡片上的礼物图标。</span></div>';
   } else if (hasIntl && !s.riskIdentity && umidOffer(s)) {
     n.style.display = '';
     const busy = s.umid.installing || umidBusy;
@@ -1409,13 +1401,6 @@ function renderStatus() {
   } else {
     n.style.display = 'none';
   }
-}
-
-// ZCode 客户端状态芯片 + 「打开客户端」按钮（仅桌面版：面板里有 Electron 桥才显示按钮）
-function zcodeClientChip(s) {
-  const c = s.zcodeClient || {};
-  if (!c.installed) return ' <span class="dim">未安装</span>';
-  return ' <span class="dim">' + (c.running ? '运行中' : '未运行') + '</span>';
 }
 
 // mirasim 客户端状态芯片 + 「打开客户端」按钮
@@ -1507,6 +1492,11 @@ document.addEventListener('click', async (e) => {
     $('zgw-lan').checked = state.zGatewayLan === true;
     const allow = Array.isArray(state.zGatewayAllow) ? state.zGatewayAllow : [];
     $('zgw-allow').value = (allow.length ? allow : (state.zGatewaySuggest ? [state.zGatewaySuggest] : [])).join('\n');
+    const st = state.zGatewayStats;
+    $('zgw-url').innerHTML = '接口地址 <code>POST http://127.0.0.1:' + location.port + '/gateway/v1/messages</code>（局域网开放时把 127.0.0.1 换成本机 IP）'
+      + (st && st.lastCallAt
+        ? '<br>最近调用 ' + esc(String(st.lastCallAt).slice(11, 19)) + ' · 共 ' + st.calls + ' 次' + (st.lastAccount ? ' · 最后用号 ' + esc(st.lastAccount) : '')
+        : '<br>尚未有调用');
     syncZgwLanFields();
     openModal('m-zgw');
     return;
