@@ -412,6 +412,9 @@
             <button class="btn" id="zt-gw"></button>
             <button class="btn" id="zt-open" style="display:none"></button>
           </span>
+          <span id="t-actions" style="display:none">
+            <button class="btn" id="tt-open" style="display:none"></button>
+          </span>
           <button class="btn" id="btn-add"></button>
           <button class="btn" id="btn-import"></button>
           <button class="btn" id="btn-export"></button>
@@ -1165,6 +1168,7 @@ function creditSum(list) {
 
 function render() {
   $('z-actions').style.display = 'none';   // 兜底：切到仪表盘 / 10Router 时 renderProd 不跑，先藏起来
+  $('t-actions').style.display = 'none';
   for (const p of PRODUCTS) $('cnt-' + p.id).textContent = ofProduct(p.id).length;
   $('cnt-tenrouter').textContent = tr.quotas ? tr.quotas.connections.length : tr.config && tr.config.configured ? '…' : '–';
   if (state.view === 'dash') renderDash();
@@ -1216,12 +1220,12 @@ function renderProd() {
     const hasIntl = acc.some((a) => a.provider === 'workbuddy-intl');
     $('btn-checkin').innerHTML = I.play + (prod === 'workbuddy' && hasIntl ? '领取 / 活跃全部' : '领取全部 ' + prodLabel(prod));
   }
-  // ZCode 专属设置入口：自动领取 / 网络出口 / 体验包接口，点开都是弹窗
+  // 顶栏产品专属入口：ZCode 设置组、Trae 打开客户端，带状态灯（运行中绿点呼吸）
+  const dot = (on, pulse) => '<span class="dot' + (on ? ' on' : '') + (on && pulse ? ' pulse' : '') + '"></span>';
   $('z-actions').style.display = prod === 'zcode' ? 'contents' : 'none';
   if (prod === 'zcode') {
     const acOn = state.zAutoClaim === true;
     const gwOn = state.zGateway === true;
-    const dot = (on, pulse) => '<span class="dot' + (on ? ' on' : '') + (on && pulse ? ' pulse' : '') + '"></span>';
     $('zt-ac').innerHTML = dot(acOn) + '自动领取';
     $('zt-ac').title = acOn ? '自动领取运行中——点我调整轮询周期 / 运行时长' : '自动领取已关闭——点我设置轮询周期与运行时长并开启';
     $('zt-net').innerHTML = '出口：<b style="font-weight:700;color:var(--text)">' + (state.zProxyFirst === true ? '代理优先' : '直连优先') + '</b>';
@@ -1234,6 +1238,16 @@ function renderProd() {
     if (canOpen) {
       $('zt-open').innerHTML = dot(zc.running === true, true) + '打开客户端';
       $('zt-open').title = zc.running ? 'ZCode 客户端运行中，点我唤到前台' : 'ZCode 客户端未运行，点我启动';
+    }
+  }
+  $('t-actions').style.display = prod === 'trae' ? 'contents' : 'none';
+  if (prod === 'trae') {
+    const tc = (state.status && state.status.traeClient) || {};
+    const canOpen = tc.installed && window.creditdaddy && typeof window.creditdaddy.openTraeClient === 'function';
+    $('tt-open').style.display = canOpen ? '' : 'none';
+    if (canOpen) {
+      $('tt-open').innerHTML = dot(tc.running === true, true) + '打开客户端';
+      $('tt-open').title = tc.running ? 'Trae 客户端运行中，点我唤到前台' : 'Trae 客户端未运行，点我启动';
     }
   }
 }
@@ -1400,8 +1414,7 @@ function renderStatus() {
     n.style.display = '';
     n.innerHTML = 'Trae 每日签到领约 150 通用积分（领到的额度是独立资源包，7 天后到期，所以会累积成几十包——面板已按名称合并显示）。'
       + '凭据只来自本机 Trae 客户端的 storage.json（本地解密，token 不出本机），token 约 14 天过期，失效后在 Trae 里重新登录再「本机导入」一次即可。'
-      + '多账号：在 Trae 里登录某个账号 → 导入（会自动拍下该账号的登录态快照）→ 换下一个账号登录 → 再导入；之后点账号上的切换按钮即可一键互换，换走的账号登录态都会留着不丢。'
-      + traeClientChip(s);
+      + '多账号：在 Trae 里登录某个账号 → 导入（会自动拍下该账号的登录态快照）→ 换下一个账号登录 → 再导入；之后点账号上的切换按钮即可一键互换，换走的账号登录态都会留着不丢。';
   } else if (state.view === 'catpaw') {
     n.style.display = '';
     n.innerHTML = '妙手（美团 CatPaw）按套餐发放 Credits（体验版 / 专业版…），没有每日签到。凭据由妙手客户端登录管理：读取额度用本机解密出的登录 token 直连桌面网关，token 失效时到妙手客户端重新登录后再「本机导入」即可。'
@@ -1447,14 +1460,6 @@ function mirasimClientChip(s) {
     + (canOpen ? ' <button class="btn" id="btn-miraopen" style="margin-left:4px" title="打开本机 Mirasim 客户端">打开客户端</button>' : '');
 }
 
-// Trae 客户端状态芯片
-function traeClientChip(s) {
-  const c = s.traeClient || {};
-  if (!c.installed) return ' <span class="dim">客户端：未安装（本机导入需要 Windows / macOS 的 Trae 客户端）</span>';
-  const canOpen = window.creditdaddy && typeof window.creditdaddy.openTraeClient === 'function';
-  return ' <span class="dim">客户端：' + (c.running ? '运行中' : '未运行') + (c.signedIn ? '' : ' · 未登录') + '</span>'
-    + (canOpen ? ' <button class="btn" id="btn-traeopen" style="margin-left:4px" title="打开本机 Trae 客户端">打开客户端</button>' : '');
-}
 
 // 妙手客户端状态芯片 + 「打开客户端」按钮
 function catpawClientChip(s) {
@@ -1504,7 +1509,7 @@ document.addEventListener('click', async (e) => {
     } catch (err) { toast(String(err && err.message || err), false); }
     return;
   }
-  if (e.target.closest('#btn-traeopen')) {
+  if (e.target.closest('#tt-open')) {
     try {
       const r = await window.creditdaddy.openTraeClient();
       if (r && r.ok) toast('已启动 Trae 客户端');
