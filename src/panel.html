@@ -517,11 +517,6 @@
     <div class="field"><label>账号同步</label>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn" id="tr-sync-accounts">同步账号到 10R</button><span class="hint">把本机 Qoder / WorkBuddy 账号推为 10Router 上游连接；zcode 待反代就绪后支持</span></div>
     </div>
-    <div class="field"><label>用量同步（同 10router-sync 插件）</label>
-      <div><label class="check"><input type="checkbox" id="tr-auto"> 每小时自动同步本机用量到 10Router</label></div>
-      <div id="tr-sources" style="margin-top:6px"></div>
-      <div class="hint" style="margin-top:4px">ZCode 只同步官方渠道；经 10Router 中转的 mirasim 调用会跳过，避免重复计数。「10Router 本机」只把实例原生产生的行标记为网关同步。10Router 按行签名去重，重复同步不会产生重复数据。</div>
-    </div>
     <div class="field"><label>显示</label>
       <div><label class="check"><input type="checkbox" id="tr-hide-empty"> 「全部」视图隐藏没有额度 / 余额为 0 的供应商汇总卡</label></div>
     </div>
@@ -531,6 +526,18 @@
       <button class="btn" id="tr-test">测试连接</button>
       <button class="btn primary" id="tr-save">保存</button>
     </div>
+  </div>
+</div>
+
+<!-- 10Router 用量同步 -->
+<div class="mask" id="m-trsync">
+  <div class="modal sm">
+    <div class="modal-title"><span>用量同步（同 10router-sync 插件）</span><button class="close" data-close>✕</button></div>
+    <div class="field"><label class="check"><input type="checkbox" id="tr-auto"> 每小时自动同步本机用量到 10Router</label></div>
+    <div class="field"><label>同步来源</label><div id="tr-sources"></div></div>
+    <div class="hint">ZCode 只同步官方渠道；经 10Router 中转的 mirasim 调用会跳过，避免重复计数。「10Router 本机」只把实例原生产生的行标记为网关同步。10Router 按行签名去重，重复同步不会产生重复数据。</div>
+    <div class="hint" id="tr-sync-status" style="margin-top:8px"></div>
+    <div class="modal-actions"><button class="btn" style="margin-right:auto" id="tr-sync-now">立即同步一次</button><button class="btn" data-close>取消</button><button class="btn primary" id="tr-sync-save">保存</button></div>
   </div>
 </div>
 
@@ -1846,9 +1853,9 @@ function renderTenrouter() {
     + '<div class="stat"><span>额度告急</span><strong>' + (tr.quotas ? low : '-') + '</strong></div><div class="divider"></div>'
     + '<div class="stat"><span>查询失败</span><strong>' + (tr.quotas ? failed : '-') + '</strong></div>'
     + '</div><div class="actions">'
-    + '<button class="btn" data-tr="refresh"' + (tr.loading ? ' disabled' : '') + '>' + I.refresh + (tr.loading ? '刷新中…' : '刷新额度') + '</button>'
-    + '<button class="btn" data-tr="sync" title="' + (c.sync.enabled ? '每小时自动同步已开启，点我立即同步一次' : '自动同步已关闭（设置里可开），点我手动同步一次') + '"' + (tr.syncing || c.syncing ? ' disabled' : '') + '>' + I.upload
-    + '<span class="dot' + (c.sync.enabled ? ' on' : '') + '"></span>' + (tr.syncing || c.syncing ? '同步中…' : '同步用量') + '</button>'
+    + '<button class="btn" data-tr="refresh"' + (tr.loading ? ' disabled' : '') + '>' + (tr.loading ? '刷新中…' : '刷新额度') + '</button>'
+    + '<button class="btn" data-tr="sync" title="用量同步：自动开关、同步来源与手动同步（点我打开）"' + (tr.syncing || c.syncing ? ' disabled' : '') + '>'
+    + '<span class="dot' + (c.sync.enabled ? ' on' : '') + '"></span>' + (tr.syncing || c.syncing ? '同步中…' : '用量同步') + '</button>'
     + '<button class="btn" data-tr="settings">设置</button>'
     + '</div></div>'
     + '<div class="tr-bar">'
@@ -1906,15 +1913,29 @@ function openTrSettings() {
   $('tr-key').placeholder = c.keyMasked ? '已保存 ' + c.keyMasked + '（留空保持不变）' : 'sk-…';
   $('tr-admin-pw').value = '';
   $('tr-admin-pw').placeholder = c.hasAdminPassword ? '已保存（留空保持不变）' : '可选：10Router 面板密码';
-  $('tr-auto').checked = c.configured ? c.sync.enabled : true;
   $('tr-hide-empty').checked = state.trHideEmpty === true;
-  $('tr-sources').innerHTML = (c.sources || []).map((x) => '<label class="check"><input type="checkbox" data-src="' + x.id + '"'
-    + ((c.configured ? c.sync.sources.includes(x.id) : true) ? ' checked' : '') + (x.supported ? '' : ' disabled') + '> ' + esc(x.label)
-    + '<span class="dim">' + (x.found ? '' : '（本机未检测到）') + (x.supported ? '' : '（需要 Node 22.5+）') + '</span></label>').join('');
   $('tr-disconnect').style.display = c.configured ? '' : 'none';
   $('tr-test-msg').textContent = '';
   openModal('m-10r');
   setTimeout(() => $(c.configured ? 'tr-key' : 'tr-endpoint').focus(), 30);
+}
+// 用量同步弹窗：自动开关 + 来源勾选 + 手动同步
+function openTrSync() {
+  const c = tr.config || { sync: { enabled: true, sources: [] }, sources: [] };
+  $('tr-auto').checked = c.configured ? c.sync.enabled : true;
+  $('tr-sources').innerHTML = (c.sources || []).map((x) => '<label class="check"><input type="checkbox" data-src="' + x.id + '"'
+    + ((c.configured ? c.sync.sources.includes(x.id) : true) ? ' checked' : '') + (x.supported ? '' : ' disabled') + '> ' + esc(x.label)
+    + '<span class="dim">' + (x.found ? '' : '（本机未检测到）') + (x.supported ? '' : '（需要 Node 22.5+）') + '</span></label>').join('');
+  const ls = c.lastSync;
+  $('tr-sync-status').textContent = ls ? '上次同步 ' + fmtTime(ls.at).slice(5) + '：' + ls.summary : '还没有同步过';
+  $('tr-sync-now').disabled = tr.syncing || c.syncing === true;
+  openModal('m-trsync');
+}
+async function trSyncSave(close) {
+  try {
+    tr.config = await api('/api/tenrouter', { method: 'PUT', json: { syncEnabled: $('tr-auto').checked, sources: [...document.querySelectorAll('#tr-sources input[data-src]:checked')].map((x) => x.dataset.src) } });
+    if (close) { closeModal('m-trsync'); toast('用量同步设置已保存'); render(); }
+  } catch (e) { toast(e.message, false); throw e; }
 }
 function trForm() {
   return {
@@ -1922,8 +1943,6 @@ function trForm() {
     endpoint: $('tr-endpoint').value.trim().replace(/\/+$/, '').replace(/\/v1$/, ''),
     key: $('tr-key').value.trim(),
     adminPassword: $('tr-admin-pw').value, // 留空 = 服务端保持原值
-    syncEnabled: $('tr-auto').checked,
-    sources: [...document.querySelectorAll('#tr-sources input[data-src]:checked')].map((x) => x.dataset.src),
   };
 }
 async function trTest() {
@@ -1976,7 +1995,7 @@ $('tr-panel').addEventListener('click', (e) => {
   if (b.dataset.tr === 'toggle') { state.trOpen = Object.assign({}, state.trOpen, { [b.dataset.id]: !(state.trOpen && state.trOpen[b.dataset.id]) }); render(); return; }
   if (b.dataset.tr === 'settings') openTrSettings();
   else if (b.dataset.tr === 'refresh') loadTrQuotas(true);
-  else if (b.dataset.tr === 'sync') trSync();
+  else if (b.dataset.tr === 'sync') openTrSync();
   else if (b.dataset.tr === 'vendor') {
     const v = b.dataset.v || '';
     state.trVendor = v;
@@ -1985,6 +2004,12 @@ $('tr-panel').addEventListener('click', (e) => {
   }
 });
 $('tr-test').onclick = trTest;
+$('tr-sync-save').onclick = () => trSyncSave(true);
+$('tr-sync-now').onclick = async () => {
+  try { await trSyncSave(false); } catch (e) { return; }
+  closeModal('m-trsync');
+  trSync();
+};
 $('tr-sync-accounts').onclick = trSyncAccounts;
 $('tr-save').onclick = trSave;
 $('tr-disconnect').onclick = trDisconnect;
