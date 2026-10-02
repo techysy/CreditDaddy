@@ -50,7 +50,10 @@
   .comp-menu .check { margin-right: 0; font-size: 12.5px; color: var(--text); }
   /* 产品页 notice 的功能分区行 */
   .z-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .btn.on { color: var(--ok); border-color: rgba(22, 163, 74, .45); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); opacity: .45; flex: none; }
+  .dot.on { background: var(--ok); opacity: 1; box-shadow: 0 0 5px var(--ok); }
+  .dot.pulse { animation: dot-pulse 2.2s ease-out infinite; }
+  @keyframes dot-pulse { 0% { box-shadow: 0 0 0 0 rgba(46, 229, 157, .45); } 70% { box-shadow: 0 0 0 5px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
   .z-row + .z-row { margin-top: 7px; padding-top: 7px; border-top: 1px dashed var(--border-subtle); }
   .z-label { font-size: 11px; color: var(--text-3); flex: none; width: 68px; }
   .z-text { flex: 1 1 320px; min-width: 0; }
@@ -1182,18 +1185,20 @@ function renderProd() {
   if (prod === 'zcode') {
     const acOn = state.zAutoClaim === true;
     const gwOn = state.zGateway === true;
-    $('zt-ac').textContent = '自动领取：' + (acOn ? '开' : '关');
-    $('zt-ac').title = '自动领取计划：轮询周期与单次运行时长';
-    $('zt-ac').classList.toggle('on', acOn);
-    $('zt-net').textContent = '出口：' + (state.zProxyFirst === true ? '代理优先' : '直连优先');
+    const dot = (on, pulse) => '<span class="dot' + (on ? ' on' : '') + (on && pulse ? ' pulse' : '') + '"></span>';
+    $('zt-ac').innerHTML = dot(acOn) + '自动领取';
+    $('zt-ac').title = acOn ? '自动领取运行中——点我调整轮询周期 / 运行时长' : '自动领取已关闭——点我设置轮询周期与运行时长并开启';
+    $('zt-net').innerHTML = '出口：<b style="font-weight:700;color:var(--text)">' + (state.zProxyFirst === true ? '代理优先' : '直连优先') + '</b>';
     $('zt-net').title = '网络出口：直连 / 代理顺序与代理地址';
-    $('zt-gw').textContent = '接口：' + (gwOn ? '开' : '关') + (gwOn && state.zGatewayLan === true ? '·局域网' : '');
+    $('zt-gw').innerHTML = dot(gwOn) + '接口' + (gwOn && state.zGatewayLan === true ? '·局域网' : '');
     $('zt-gw').title = '体验包接口：开关、局域网开放与 IP 白名单';
-    $('zt-gw').classList.toggle('on', gwOn);
     const zc = (state.status && state.status.zcodeClient) || {};
     const canOpen = zc.installed && window.creditdaddy && typeof window.creditdaddy.openZcodeClient === 'function';
     $('zt-open').style.display = canOpen ? '' : 'none';
-    if (canOpen) $('zt-open').textContent = zc.running ? '打开客户端（运行中）' : '打开客户端';
+    if (canOpen) {
+      $('zt-open').innerHTML = dot(zc.running === true, true) + '打开客户端';
+      $('zt-open').title = zc.running ? 'ZCode 客户端运行中，点我唤到前台' : 'ZCode 客户端未运行，点我启动';
+    }
   }
 }
 
