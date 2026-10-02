@@ -783,7 +783,7 @@ const PROV = {
 };
 // 支持每日签到的产品（ZCode / mirasim / 妙手 额度靠套餐或滚动窗口发放，不做签到）
 const CHECKIN_PRODUCTS = new Set(['qoder', 'workbuddy', 'trae']);
-const CLIENT_LABEL = { workbuddy: 'WorkBuddy', zcode: 'ZCode', mirasim: 'mirasim', catpaw: '妙手', trae: 'Trae' };
+const CLIENT_LABEL = { qoder: 'Qoder', workbuddy: 'WorkBuddy', zcode: 'ZCode', mirasim: 'mirasim', catpaw: '妙手', trae: 'Trae' };
 // 额度单位为 Credits/时长而非「积分」口径的产品（不计入剩余积分合计）
 const CREDIT_VIEWS = new Set(['zcode', 'mirasim', 'catpaw']);
 const provOf = (p) => PROV[p] || { prod: 'qoder', prodLabel: p, region: '', cls: '' };
@@ -1107,6 +1107,10 @@ function isClientCurrent(a) {
   const s = state.status;
   if (!s) return false;
   if (a.product === 'workbuddy') return Boolean(a.uid && s.workbuddyCurrentUid && s.workbuddyCurrentUid === a.uid);
+  if (a.product === 'qoder') {
+    const cur = s.qoderCurrent || {};
+    return Boolean(a.uid && cur[a.provider] && String(cur[a.provider]) === String(a.uid));
+  }
   if (a.product === 'mirasim') return Boolean(a.uid && s.mirasimCurrentUid && s.mirasimCurrentUid === a.uid);
   if (a.product === 'catpaw') return Boolean(a.uid && s.catpawCurrentUid && s.catpawCurrentUid === a.uid);
   if (a.product === 'trae') return Boolean(a.uid && s.traeCurrentUid && s.traeCurrentUid === a.uid);

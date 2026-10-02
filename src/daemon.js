@@ -89,6 +89,22 @@ const DEFAULT_PORT = 47860;
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
 
+// Qoder 当前登录缓存：面板 30s 一轮 status，DPAPI 解密结果没必要每轮重算
+let qoderCurCache = { at: 0, data: null };
+async function qoderCurrentInfo() {
+  if (qoderCurCache.data && Date.now() - qoderCurCache.at < 60_000) return qoderCurCache.data;
+  const data = { apps: detectQoderApps(), uids: {}, backfill: [] };
+  try {
+    const r = await readQoderAppAccounts();
+    for (const c of r.accounts) {
+      data.uids[c.provider] = c.user.id || null;
+      if (c.user.id) data.backfill.push({ provider: c.provider, uid: c.user.id, authJson: c.authJson, file: c.file });
+    }
+  } catch { /* 解密失败只留检测信息 */ }
+  qoderCurCache = { at: Date.now(), data };
+  return data;
+}
+
 class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
@@ -734,6 +750,21 @@ async function handleApi(req, res, url) {
   if (p === '/api/status' && method === 'GET') {
     const accounts = await loadAccounts();
     const state = await loadState();
+    // Qoder 当前登录（面板轮询每 30s 打一次，DPAPI 解密结果缓存 1 分钟）
+    const qoder = await qoderCurrentInfo();
+    // 旧账号没赶上「整份 auth 快照」的导入：本机 Qoder 有登录且账号库里有缺快照的同 uid 账号时，顺手回填（可逆、只在缺失时发生）
+    const needBackfill = qoder.backfill.length
+      && accounts.some((a) => (a.provider === 'qoder' || a.provider === 'qoder-cn')
+        && a.uid && !a.meta?.qoderAuth
+        && qoder.backfill.some((b) => b.provider === a.provider && String(b.uid) === String(a.uid)));
+    if (needBackfill) {
+      await withAccounts((list) => {
+        for (const b of qoder.backfill) {
+          const cur = list.find((a) => a.provider === b.provider && a.uid && b.uid && String(a.uid) === String(b.uid) && !a.meta?.qoderAuth);
+          if (cur) cur.meta = { ...(cur.meta || {}), qoderAuth: b.authJson, qoderAuthFile: b.file };
+        }
+      }).catch((e) => logger.warn('DAEMON', '回填 Qoder 登录快照失败：' + e.message));
+    }
     // 妙手凭据文件只存 token：当前登录按 token 对齐账号库，避免每轮状态都打网关查 uid
     const cpToken = currentCatpawToken();
     const traeDet = detectTrae();
@@ -752,6 +783,8 @@ async function handleApi(req, res, url) {
       umid: umidInfo(),
       platform: process.platform,
       workbuddyCurrentUid: currentWorkbuddyUid(),
+      qoderCurrent: qoder.uids,
+      qoderClient: { installed: qoder.apps.some((x) => x.installed), signedIn: qoder.apps.some((x) => x.signedIn), running: qoderRunning() },
       zcodeCurrentUid: currentZcodeUid(),
       zcodeCurrentIdentity: currentZcodeIdentity(),
       zcodeClient: (() => { const d = detectZcode(); return { installed: d.exists, signedIn: d.signedIn, running: zcodeRunning() }; })(),
