@@ -497,6 +497,18 @@ async function handleApi(req, res, url) {
       }
     }
     if (target.provider === 'qoder' || target.provider === 'qoder-cn') {
+      // 防丢号：先把本机当前登录的最新 auth 快照回写账号库（客户端会静默刷新 token，旧快照可能已失效），再覆盖
+      try {
+        const lr = await readQoderAppAccounts();
+        const live = lr.accounts.find((c) => c.provider === target.provider);
+        if (live && live.user.id && String(live.user.id) !== String(target.uid)) {
+          await addAccount({
+            provider: live.provider, token: live.token, name: live.user.name || live.user.email,
+            uid: live.user.id, email: live.user.email, refreshToken: live.refreshToken, expiresAt: live.expiresAt,
+            source: 'local-app', meta: { qoderAuth: live.authJson, qoderAuthFile: live.file },
+          }, { trusted: true }).catch((e) => logger.warn('DAEMON', '同步 Qoder 当前登录失败：' + e.message));
+        }
+      } catch (e) { logger.warn('DAEMON', '读取 Qoder 当前登录失败：' + e.message); }
       try {
         // 强制切换：先关掉运行中的 Qoder，否则它退出时会把内存里的旧登录覆盖回文件
         let closedClient = false;
