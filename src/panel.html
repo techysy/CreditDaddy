@@ -172,6 +172,12 @@
   /* section card */
   .pcard { margin-top: 14px; background: var(--surface); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 12px 14px; }
   .pcard-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 700; }
+  .fold-head { cursor: pointer; user-select: none; }
+  .fold-side { display: inline-flex; align-items: center; gap: 6px; color: var(--text-3); }
+  .fold-ico { display: inline-flex; }
+  .fold-ico svg { width: 14px; height: 14px; }
+  .pcard .fold-body { display: none; margin-top: 4px; }
+  .pcard.open .fold-body { display: block; }
   .logs { margin-top: 8px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; line-height: 1.65; max-height: 240px; overflow-y: auto; background: var(--tertiary); border-radius: 9px; padding: 8px 10px; }
   .logs .info { color: var(--text-2); } .logs .warn { color: var(--warn); } .logs .error { color: var(--err); } .logs .debug { color: var(--text-3); }
   .collapsed .logs { display: none; }
@@ -375,8 +381,8 @@
     </div>
     <div class="prods" id="prods"></div>
     <div class="dash-cols">
-      <section class="pcard"><div class="pcard-title"><span>最近记录</span><span class="hint" id="last-tick"></span></div><div id="recent"></div></section>
-      <section class="pcard"><div class="pcard-title"><span>需要处理</span><span class="hint" id="att-count"></span></div><div id="attention"></div></section>
+      <section class="pcard" data-fold="recent"><div class="pcard-title fold-head"><span>最近记录</span><span class="fold-side"><span class="hint" id="last-tick"></span><span class="fold-ico"></span></span></div><div class="fold-body"><div id="recent"></div></div></section>
+      <section class="pcard" data-fold="attention"><div class="pcard-title fold-head"><span>需要处理</span><span class="fold-side"><span class="hint" id="att-count"></span><span class="fold-ico"></span></span></div><div class="fold-body"><div id="attention"></div></div></section>
     </div>
   </section>
 
@@ -3071,6 +3077,27 @@ $('btn-logs').onclick = () => {
   $('btn-logs').textContent = c ? '展开' : '收起';
   if (!c) { loadLogs(); $('logs').scrollTop = $('logs').scrollHeight; }
 };
+
+// ── 仪表盘底部两卡：默认收起，点标题展开，展开状态存本地 ──
+const DASH_FOLD_KEY = 'qd_dash_fold';
+state.dashFold = (() => { try { return JSON.parse(localStorage.getItem(DASH_FOLD_KEY) || '{}'); } catch { return {}; } })();
+function applyDashFold() {
+  document.querySelectorAll('.dash-cols .pcard[data-fold]').forEach((el) => {
+    const open = state.dashFold[el.dataset.fold] === true;
+    el.classList.toggle('open', open);
+    el.querySelector('.fold-ico').innerHTML = open ? I.chevUp : I.chevDown;
+  });
+}
+document.querySelectorAll('.dash-cols .fold-head').forEach((h) => {
+  h.title = '展开 / 收起';
+  h.addEventListener('click', () => {
+    const k = h.closest('.pcard').dataset.fold;
+    state.dashFold[k] = state.dashFold[k] !== true;
+    try { localStorage.setItem(DASH_FOLD_KEY, JSON.stringify(state.dashFold)); } catch {}
+    applyDashFold();
+  });
+});
+applyDashFold();
 
 // ── 启动：先直接请求（本机模式无需密钥）；只有服务端返回 401 时才询问密钥 ──
 initTheme();
