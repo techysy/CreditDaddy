@@ -1384,9 +1384,9 @@ function renderStatus() {
     const ac = state.zAutoClaim === true;
     const ziv = state.zClaimIntervalMin || 2;
     const zwin = state.zClaimWindowMin === 0 ? 0 : (state.zClaimWindowMin || 60);
-    n.innerHTML = '<div class="z-row"><span class="z-label">活动领取</span><span class="z-text">ZCode 没有每日签到，积分靠官方活动包——每日 0 点左右刷新放出，错过就要等下一天。自动领取'
-      + (ac ? '已开启：每 ' + ziv + ' 分钟检查资格' + (zwin > 0 ? '，本次运行 ' + zwin + ' 分钟' : '，一直运行直到手动关闭') : '未开启（右上角「自动领取」设置轮询计划）')
-      + '；临时补领可点账号卡片上的礼物图标。</span></div>';
+    n.innerHTML = '<div class="z-row"><span class="z-label">活动领取</span><span class="z-text">活动包积分，每日 0 点左右刷新（无每日签到）。自动领取'
+      + (ac ? '每 ' + ziv + ' 分钟检查资格' + (zwin > 0 ? '，本次运行 ' + zwin + ' 分钟' : '，持续运行') : '未开启（右上角设置轮询计划）')
+      + '；礼物图标 = 手动临时领。</span></div>';
   } else if (hasIntl && !s.riskIdentity && umidOffer(s)) {
     n.style.display = '';
     const busy = s.umid.installing || umidBusy;
