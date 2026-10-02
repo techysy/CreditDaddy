@@ -105,9 +105,9 @@
   .notice { margin: 12px 16px 0; padding: 9px 12px; border-radius: 10px; background: var(--warn-soft); color: var(--warn); font-size: 12px; line-height: 1.6; }
 
   /* cards */
-  .list { display: grid; grid-template-columns: repeat(auto-fill, minmax(440px, 1fr)); gap: 4px 10px; padding: 10px; }
-  .card { position: relative; padding: 11px 12px 12px; border-radius: 12px; transition: background .12s; min-width: 0; }
-  .card:hover { background: var(--hover); }
+  .list { display: grid; grid-template-columns: repeat(auto-fill, minmax(440px, 1fr)); gap: 10px; padding: 10px; }
+  .card { position: relative; padding: 11px 12px 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border-subtle); transition: background .12s, border-color .12s; min-width: 0; }
+  .card:hover { background: var(--hover); border-color: var(--border-strong); }
   .row1 { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 28px; margin-bottom: 7px; }
   .name-group { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
   .name { font-size: 14px; font-weight: 600; cursor: text; border-radius: 5px; padding: 0 2px; margin: 0 -2px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
