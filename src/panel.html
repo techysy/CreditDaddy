@@ -1790,17 +1790,15 @@ function renderTenrouter() {
   const c = tr.config;
   if (!c) { box.innerHTML = '<div class="empty">加载中…</div>'; return; }
   const gwLine = state.zGateway === true
-    ? '<div class="gw-line">ZCode 体验包接口：<b>运行中</b>' + (state.zGatewayStats && state.zGatewayStats.lastCallAt ? ' · 最近调用 ' + esc(String(state.zGatewayStats.lastCallAt).slice(11, 19)) + ' · ' + state.zGatewayStats.calls + ' 次 · 最后用号 ' + esc(state.zGatewayStats.lastAccount || '-') : '（尚未有调用）') + ' — 体验包模型 <code>zcode-free/glm-5.3-flash</code></div>'
+    ? '<div class="gw-line"><span class="dot on pulse"></span> ZCode 体验包接口运行中'
+      + (state.zGatewayStats && state.zGatewayStats.lastCallAt ? ' · 最近调用 ' + esc(String(state.zGatewayStats.lastCallAt).slice(11, 19)) + ' · ' + state.zGatewayStats.calls + ' 次 · 最后用号 ' + esc(state.zGatewayStats.lastAccount || '-') : ' · 尚未有调用')
+      + ' · 模型 <code>zcode-free/glm-5.3-flash</code></div>'
     : '';
   if (!c.configured) { box.innerHTML = gwLine + trSetupHtml(); return; }
   const list = (tr.quotas && tr.quotas.connections) || [];
   const low = list.filter((x) => x.isActive && !x.error && quotaLow(x)).length;
   const failed = list.filter((x) => x.error).length;
   const ls = c.lastSync;
-  const srcChips = (c.sources || []).map((x) => {
-    const on = x.found && c.sync.sources.includes(x.id);
-    return '<span class="chip' + (on ? ' on' : '') + '" title="' + (x.found ? (x.supported ? '已检测到' : '需要 Node 22.5+') : '本机未检测到') + '">' + esc(x.label) + (x.found ? '' : ' ·无') + '</span>';
-  }).join('');
   let grid;
   let tabStrip = '';
   const groups = list.length ? trGroups(list) : [];
@@ -1849,14 +1847,11 @@ function renderTenrouter() {
     + '<div class="stat"><span>查询失败</span><strong>' + (tr.quotas ? failed : '-') + '</strong></div>'
     + '</div><div class="actions">'
     + '<button class="btn" data-tr="refresh"' + (tr.loading ? ' disabled' : '') + '>' + I.refresh + (tr.loading ? '刷新中…' : '刷新额度') + '</button>'
-    + '<button class="btn" data-tr="sync"' + (tr.syncing || c.syncing ? ' disabled' : '') + '>' + I.upload + (tr.syncing || c.syncing ? '同步中…' : '同步用量') + '</button>'
+    + '<button class="btn" data-tr="sync" title="' + (c.sync.enabled ? '每小时自动同步已开启，点我立即同步一次' : '自动同步已关闭（设置里可开），点我手动同步一次') + '"' + (tr.syncing || c.syncing ? ' disabled' : '') + '>' + I.upload
+    + '<span class="dot' + (c.sync.enabled ? ' on' : '') + '"></span>' + (tr.syncing || c.syncing ? '同步中…' : '同步用量') + '</button>'
     + '<button class="btn" data-tr="settings">设置</button>'
     + '</div></div>'
     + '<div class="tr-bar">'
-    + '<div class="tr-line"><span class="tr-tag">连接</span>'
-    + '<span title="' + esc(c.endpoint) + '">' + esc(c.endpoint) + ' · ' + esc(c.keyMasked) + '</span>'
-    + '<span>用量同步：' + (c.sync.enabled ? '每小时自动' : '手动') + '</span>' + srcChips
-    + '</div>'
     + '<div class="tr-line"><span class="tr-tag">状态</span>'
     + '<span title="' + esc(ls ? ls.summary : '') + '">' + (ls ? '上次同步 ' + esc(fmtTime(ls.at).slice(5)) + ' · ' + esc(ls.summary.slice(0, 40)) : '还没有同步过') + '</span>'
     + (tr.quotas ? '<span>额度更新于 ' + esc(fmtTime(tr.quotas.generatedAt).slice(11)) + '</span>' : '')
