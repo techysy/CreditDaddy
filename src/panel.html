@@ -58,10 +58,6 @@
   .z-label { font-size: 11px; color: var(--text-3); flex: none; width: 68px; }
   .z-text { flex: 1 1 320px; min-width: 0; }
   /* 10Router 状态条分两行 */
-  .tr-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
-  .tr-line + .tr-line { margin-top: 5px; }
-  .tr-tag { font-size: 11px; color: var(--text-3); flex: none; width: 46px; }
-  .tr-line .chip { margin: 0 2px; }
   .sec-status { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-3); }
   .sec-status.on { color: var(--ok); border-color: rgba(var(--accent-rgb), .45); }
   .comp-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
@@ -313,7 +309,6 @@
   .tr-packs-head { font-size: 11px; color: var(--text-3); margin-bottom: 2px; }
   .tr-packs-head b { color: var(--text-2); }
   .tr-more { margin-top: 7px; border: none; background: none; color: #4f86ff; font-size: 12px; cursor: pointer; padding: 0; }
-  .tr-bar { display: flex; flex-direction: column; align-items: stretch; gap: 0; padding: 10px 16px; border-bottom: 1px solid var(--border-subtle); font-size: 12px; color: var(--text-2); }
   .chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; background: var(--tertiary); color: var(--text-3); }
   .chip.on { background: rgba(var(--accent-rgb), .14); color: var(--text); }
   .setup { padding: 22px; max-width: 620px; }
@@ -1805,7 +1800,6 @@ function renderTenrouter() {
   const list = (tr.quotas && tr.quotas.connections) || [];
   const low = list.filter((x) => x.isActive && !x.error && quotaLow(x)).length;
   const failed = list.filter((x) => x.error).length;
-  const ls = c.lastSync;
   let grid;
   let tabStrip = '';
   const groups = list.length ? trGroups(list) : [];
@@ -1858,12 +1852,6 @@ function renderTenrouter() {
     + '<span class="dot' + (c.sync.enabled ? ' on' : '') + '"></span>' + (tr.syncing || c.syncing ? '同步中…' : '用量同步') + '</button>'
     + '<button class="btn" data-tr="settings">设置</button>'
     + '</div></div>'
-    + '<div class="tr-bar">'
-    + '<div class="tr-line"><span class="tr-tag">状态</span>'
-    + '<span title="' + esc(ls ? ls.summary : '') + '">' + (ls ? '上次同步 ' + esc(fmtTime(ls.at).slice(5)) + ' · ' + esc(ls.summary.slice(0, 40)) : '还没有同步过') + '</span>'
-    + (tr.quotas ? '<span>额度更新于 ' + esc(fmtTime(tr.quotas.generatedAt).slice(11)) + '</span>' : '')
-    + '</div>'
-    + '</div>'
     + tabStrip
     + '<div class="tr-grid">' + grid + '</div>';
 }
