@@ -205,8 +205,9 @@
   .hint { font-size: 12px; color: var(--text-3); line-height: 1.7; }
   .hint a { color: #4f86ff; word-break: break-all; }
   .box { border: 1px solid var(--border-subtle); border-radius: 10px; padding: 10px 12px; margin-top: 10px; background: var(--surface-2); }
-  .cand { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border-subtle); }
-  .cand:last-child { border-bottom: none; }
+  .cand { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--surface); }
+  .cand + .cand { margin-top: 8px; }
+  .cand .row { flex: none; flex-wrap: nowrap; gap: 6px; }
   .cand-main { min-width: 0; }
   .cand-name { font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .cand-sub { font-size: 11px; color: var(--text-3); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
