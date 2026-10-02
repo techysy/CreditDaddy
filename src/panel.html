@@ -220,8 +220,11 @@
   /* 仪表盘 */
   .dash-panel { margin-bottom: 12px; }
   .dash-title { font-size: 13px; font-weight: 700; }
-  .dash-panel .kpis { display: flex; gap: 0; margin: 0; padding: 2px 10px 12px; }
-  .dash-panel .kpi { background: none; border: none; border-radius: 0; padding: 10px 14px; flex: 1 1 0; min-width: 0; }
+  .dash-panel .toolbar { padding: 8px 16px; }
+  .dash-panel .kpis { display: flex; gap: 0; margin: 0; padding: 0 10px 8px; }
+  .dash-panel .kpi { background: none; border: none; border-radius: 0; padding: 6px 14px; flex: 1 1 0; min-width: 0; }
+  .dash-panel .kpi-value { font-size: 22px; margin-top: 2px; }
+  .dash-panel .kpi-sub { margin-top: 2px; }
   .dash-panel .kpi + .kpi { border-left: 1px dashed var(--border-subtle); }
   @media (max-width: 900px) { .dash-panel .kpis { flex-wrap: wrap; } .dash-panel .kpi { flex: 1 1 40%; } .dash-panel .kpi + .kpi { border-left: none; } }
   .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 10px; }
