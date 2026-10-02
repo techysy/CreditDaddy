@@ -456,21 +456,45 @@ export async function readQoderAppAccounts() {
 
 // ─── 切换本机 Qoder 登录账号 ───
 
-/** Qoder IDE 是否在运行（含本进程所在的会话） */
+const QODER_EXES = ['Qoder.exe', 'Qoder CN.exe'];
+
+/** Qoder IDE（国际版 / 国内版）是否在运行 */
 export function qoderRunning() {
   if (process.platform !== 'win32') return false;
-  try {
-    const out = execFileSync('tasklist.exe', ['/FI', 'IMAGENAME eq Qoder.exe', '/NH'],
-      { windowsHide: true, encoding: 'buffer', timeout: 8000 }).toString('latin1');
-    return /qoder\.exe/i.test(out) && !/No Tasks|没有/i.test(out);
-  } catch { return false; }
+  for (const exe of QODER_EXES) {
+    try {
+      const out = execFileSync('tasklist.exe', ['/FI', `IMAGENAME eq ${exe}`, '/NH'],
+        { windowsHide: true, encoding: 'buffer', timeout: 8000 }).toString('latin1');
+      if (!/No Tasks|没有/i.test(out)) return true;
+    } catch { /* 查不到就换下一名 */ }
+  }
+  return false;
+}
+
+const nap = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+/** 结束 Qoder 进程：先普通终止（给客户端落盘的机会），超时后 /F */
+export function terminateQoder({ timeoutMs = 8000 } = {}) {
+  if (process.platform !== 'win32') return { closed: false, supported: false };
+  if (!qoderRunning()) return { closed: false, running: false };
+  for (const exe of QODER_EXES) {
+    try { execFileSync('taskkill.exe', ['/IM', exe, '/T'], { windowsHide: true, stdio: 'ignore' }); } catch {}
+  }
+  let deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline && qoderRunning()) nap(250);
+  if (qoderRunning()) {
+    for (const exe of QODER_EXES) {
+      try { execFileSync('taskkill.exe', ['/IM', exe, '/T', '/F'], { windowsHide: true, stdio: 'ignore' }); } catch {}
+    }
+    deadline = Date.now() + 3000;
+    while (Date.now() < deadline && qoderRunning()) nap(250);
+  }
+  return { closed: !qoderRunning(), running: qoderRunning() };
 }
 
 /**
  * 把本机 Qoder 客户端的登录换成目标账号（写回 auth.v1.dat）。
- *
- * 刻意不在 force 时代为退出 Qoder：Qoder 是编辑器本体，正在跑的这个会话就挂在它上面，
- * 强退等于把用户手上的工作连同本工具一起掐掉。要切就得自己退出 Qoder。
+ * force：由调用方先 terminateQoder 再进来（运行中的 Qoder 退出时会把内存里的旧登录覆盖回文件）。
  */
 export async function switchTo(account, { force = false } = {}) {
   const auth = account.meta?.qoderAuth;
@@ -479,8 +503,8 @@ export async function switchTo(account, { force = false } = {}) {
     throw new Error(`账号「${account.name || account.id}」没有本机登录快照，无法切换：请在 Qoder 里登录该账号后到「添加账号 → 本机导入」导入一次`);
   }
   if (!fs.existsSync(file)) throw new Error(`Qoder 凭据文件不存在：${file}（客户端可能被卸载或换了数据目录）`);
-  if (qoderRunning()) {
-    const e = new Error('请先手动退出 Qoder 再切换账号。切换会改写 Qoder 的登录文件，运行中的 Qoder 会在退出时把旧登录写回去；且退出 Qoder 会同时结束你当前正在进行的会话。');
+  if (!force && qoderRunning()) {
+    const e = new Error('Qoder 正在运行。切换会改写 Qoder 的登录文件，运行中的 Qoder 退出时会把旧登录写回去——退出后重试，或选择「关闭并强制切换」。');
     e.qoderRunning = true;
     throw e;
   }

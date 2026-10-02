@@ -2099,7 +2099,7 @@ async function onCardClick(e) {
           : a && a.product === 'trae'
             ? '\n需先退出 Trae；切换后重新打开 Trae 即为新账号。当前登录会先自动快照保存到 CreditDaddy，不会丢号。'
             : a && a.product === 'qoder'
-              ? '\n请先手动退出 Qoder 再切换——切换会改写 Qoder 的登录文件，而运行中的 Qoder 退出时会把旧登录写回去。⚠ 退出 Qoder 会同时结束你当前正在进行的 Qoder 会话（含本工具所在的窗口）。'
+              ? '\n需先退出 Qoder；切换后重新打开 Qoder 即为新账号。运行中的 Qoder 退出时会把旧登录写回去，可选「关闭并强制切换」代为关进程。'
               : '\n客户端会自动应用新会话；当前登录账号的最新 token 会先保存到 CreditDaddy。';
     if (!(await uiConfirm('把 ' + client + ' 切换到「' + (a && a.name || id) + '」？' + tip, '切换账号', '切换'))) return;
     const doSwitch = (force) => api('/api/accounts/' + encodeURIComponent(id) + '/switch', { json: { force } });
@@ -2107,7 +2107,7 @@ async function onCardClick(e) {
       let r;
       try { r = await doSwitch(false); }
       catch (err) {
-        if (err.code !== 'ZCODE_RUNNING' && err.code !== 'MIRASIM_RUNNING' && err.code !== 'CATPAW_RUNNING' && err.code !== 'TRAE_RUNNING') throw err;
+        if (err.code !== 'ZCODE_RUNNING' && err.code !== 'MIRASIM_RUNNING' && err.code !== 'CATPAW_RUNNING' && err.code !== 'TRAE_RUNNING' && err.code !== 'QODER_RUNNING') throw err;
         if (!(await uiConfirm(err.message + '\n\n仍要强制切换吗？强制切换会先关闭客户端再写入登录，重新打开客户端即为新账号。', client + ' 正在运行', '关闭并强制切换'))) return;
         r = await doSwitch(true);
       }

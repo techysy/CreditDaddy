@@ -61,7 +61,7 @@ import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFir
 import { exportAccounts, parseImport, TransferError } from './transfer.js';
 import { syncAccountsTo10r } from './tenrouterAccounts.js';
 import { runCheckinTick, getSchedulerInfo, dayKey, enableZcodeAutoClaimWindow, refreshZcodeScheduler, pollZcodeNow } from './checkin.js';
-import { detectQoderApps, readQoderAppAccounts, riskIdentityAvailable, riskIdentitySource, switchTo as qoderSwitchTo, qoderRunning } from './qoderApp.js';
+import { detectQoderApps, readQoderAppAccounts, riskIdentityAvailable, riskIdentitySource, switchTo as qoderSwitchTo, qoderRunning, terminateQoder } from './qoderApp.js';
 import { umidInfo, installUmid } from './qoderUmid.js';
 import * as tenrouter from './tenrouter.js';
 import * as zcodeGateway from './zcodeGateway.js';
@@ -498,10 +498,17 @@ async function handleApi(req, res, url) {
     }
     if (target.provider === 'qoder' || target.provider === 'qoder-cn') {
       try {
-        // Qoder 的 force 也只用于跳过「已确认」，绝不代退 Qoder：本工具的会话就挂在它上面
-        const r = await qoderSwitchTo(target, { force: true });
+        // 强制切换：先关掉运行中的 Qoder，否则它退出时会把内存里的旧登录覆盖回文件
+        let closedClient = false;
+        if (body?.force === true) {
+          const t = terminateQoder();
+          closedClient = t.closed === true;
+          if (closedClient) logger.info('DAEMON', '已关闭 Qoder 客户端（强制切换）');
+          else if (t.running) logger.warn('DAEMON', '未能完全结束 Qoder 进程，继续强制切换');
+        }
+        const r = await qoderSwitchTo(target, { force: body?.force === true });
         logger.info('DAEMON', r.alreadyActive ? `Qoder 当前已是 ${target.name || target.id}` : `Qoder 已切换到 ${target.name || target.id}（重新打开 Qoder 生效）`);
-        return json(res, 200, { ok: true, ...r });
+        return json(res, 200, { ok: true, closedClient, ...r });
       } catch (e) {
         return json(res, e.qoderRunning ? 409 : 400, { error: e.message, code: e.qoderRunning ? 'QODER_RUNNING' : undefined });
       }

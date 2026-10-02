@@ -16,7 +16,8 @@
 - **接入 Trae（字节 TRAE SOLO / Trae CN）作为第 6 条产品线**：本机导入 + 额度查询 + 每日签到领积分 + 一键切换登录账号。凭据直接解本机客户端 `<userData>/User/globalStorage/storage.json` 的 `iCubeAuthInfo://icube.cloudide`（Trae 自研「tc」信封：pepper 为随安装包分发的公开常量表，SHA512 两轮派生 + AES-128-CBC + SHA512 完整性前缀），纯 `node:crypto` 实现，不引入依赖、不需要 SQLite。切换按账号存 15 项登录态快照到 `~/.creditdaddy/trae-slots/<uid>/`，换走前先自动快照当前登录避免丢号，客户端在跑时拒绝切换（Trae 会把内存里的旧登录写回文件），强制切换后自动重新拉起。
 - 风控口径：`x-device-id` 必须为纯数字设备号（传 GUID 触发 `code 9074`），优先取 `storage.json` 里 `iCubeAuthInfo://icube-dc:<数字>` 的键名后缀以与 IDE 自身指纹一致，缺失时按 uid 确定性派生。
 - 有意**不做自动续期**：Trae 的 refresh 会轮转 refreshToken 并作废 IDE 自己那份，等于把用户正在用的客户端踢下线；面板改为显示凭据到期日并在临期变红。
-- **给 Qoder 补上一键切换登录账号**（此前仅 WorkBuddy / ZCode / mirasim / 妙手 支持）：把 `auth.v1.dat` 解密后的整份 JSON 存进账号 meta，切换时用同一 DPAPI 密钥重新加密写回并留 `.bak`。刻意不代退 Qoder 进程，要求先手动退出。
+- **给 Qoder 补上一键切换登录账号**（此前仅 WorkBuddy / ZCode / mirasim / 妙手 支持）：把 `auth.v1.dat` 解密后的整份 JSON 存进账号 meta，切换时用同一 DPAPI 密钥重新加密写回并留 `.bak`。Qoder 正在运行时报 409，面板可选「关闭并强制切换」代为结束进程再写入（早期版本按「AI 会话挂在 Qoder 内」的老前提禁止强退；会话迁到 Kimi 后该约束已不存在）。存量账号缺快照时由 status 轮询自动回填本机当前登录的整份 auth，无需重新导入
+- **Qoder 客户端当前检测**：`/api/status` 补 `qoderCurrent`（国际 / 国内分开）与 `qoderClient`，当前登录账号显示「客户端当前」角标并隐藏其切换按钮（此前 Qoder 是唯一没有当前检测的产品线）
 
 ### 🐛 修复
 
