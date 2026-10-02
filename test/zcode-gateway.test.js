@@ -287,7 +287,7 @@ test('401 拉黑 / 额度与 429 跳过 / 最终成功', async () => {
   assert.match(rows[2].headers.Authorization, /^Bearer jwt-good-/);
 });
 
-test('局域网：未开开关 403；key 不匹配 401；匹配放行', async () => {
+test('局域网：未开开关 403；白名单外 403；白名单内免密放行', async () => {
   await resetState();
   providerOk();
   await store.saveSettings({ zcodeGateway: true, zcodeGatewayLan: false });
@@ -296,23 +296,16 @@ test('局域网：未开开关 403；key 不匹配 401；匹配放行', async ()
   await gw.handleGateway(fakeReq('POST', '{}', '192.168.31.5'), denied);
   assert.equal(denied.status, 403);
 
-  const tr = await import('../src/tenrouter.js');
-  tr.updateConfig({ endpoint: 'http://127.0.0.1:20127', key: 'sk-lan-test-key-123456' });
-  await store.saveSettings({ zcodeGateway: true, zcodeGatewayLan: true });
+  await store.saveSettings({ zcodeGateway: true, zcodeGatewayLan: true, zcodeGatewayAllow: ['192.168.31.101'] });
 
   const bad = captureRes();
-  const badReq = fakeReq('POST', '{}', '192.168.31.5');
-  badReq.headers = { 'x-api-key': 'sk-wrong' };
-  await gw.handleGateway(badReq, bad);
-  assert.equal(bad.status, 401);
+  await gw.handleGateway(fakeReq('POST', '{}', '192.168.31.5'), bad);
+  assert.equal(bad.status, 403);
 
   upstreamQueue.push({ status: 200, sse: true, body: sseBody() });
   const good = captureRes();
-  const goodReq = fakeReq('POST', '{}', '192.168.31.5');
-  goodReq.headers = { 'x-api-key': 'sk-lan-test-key-123456' };
-  await gw.handleGateway(goodReq, good);
+  await gw.handleGateway(fakeReq('POST', '{}', '::ffff:192.168.31.101'), good);
   assert.equal(good.status, 200);
-  tr.updateConfig({ endpoint: '' });
 });
 
 test('GET 请求提示用法', async () => {

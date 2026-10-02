@@ -28,7 +28,7 @@ let PLAN_SHAPE = null;
 try { PLAN_SHAPE = JSON.parse(readFileSync(path.join(__dirname, 'zcodePlanShape.json'), 'utf8')); } catch {}
 
 import { getZcodeCaptchaProvider } from './zcodeAutoClaim.js';
-import { gatewayKey as tenrouterGatewayKey, gatewayHostSuggestion } from './tenrouter.js';
+import { gatewayHostSuggestion } from './tenrouter.js';
 
 // 整链补全提供者（桌面版注册）：隐藏窗口内「真 Chromium 求解验证码 + 同源发起补全」，
 // 规避 Node fetch 的 TLS 指纹风控。签名 ({ captchaCfg, jwt, rawBody }) → { status, contentType, body }。
@@ -325,23 +325,12 @@ export function remoteAllowed(remote, allowList) {
     return host.toLowerCase() === e.toLowerCase();
   });
 }
-function bearerOf(authHeader) {
-  const v = String(authHeader || '');
-  return v.startsWith('Bearer ') ? v.slice(7) : '';
-}
-function fixedTimeEquals(a, b) {
-  const ab = Buffer.from(String(a), 'utf8');
-  const bb = Buffer.from(String(b), 'utf8');
-  if (ab.length !== bb.length) {
-    // 比较仍执行一次以保持恒定时间轮廓，然后返回 false
-    crypto.timingSafeEqual(ab, ab);
-    return false;
-  }
-  return crypto.timingSafeEqual(ab, bb);
-}
 
 /**
  * 网关数据面入口。返回 true 表示响应已写出（含失败结论）。
+ *
+ * 访问控制：本机回环始终放行；开局域网后仅 IP 白名单内的机器可访问——
+ * zcode-free 本就是 10Router 侧免授权供应商，10Router 所在机器加白即可，不再保留虚拟 key 鉴权。
  */
 export async function handleGateway(req, res) {
   if (req.method !== 'POST') {
@@ -355,29 +344,17 @@ export async function handleGateway(req, res) {
   // 首发不带验证码（客户端真实流量多数直过），所以纯 daemon / NAS 也能用；
   // 只有当上游索要验证码且本环境没有求解提供者时才失败（见 attempts 汇总）。
 
-  // 鉴权：本机回环免密；局域网/远程访问必须携带与设置一致的密钥
-  // （推荐直接复用 10r 的 LLM key：在 10r 面板复制，填进网关密钥与节点连接各一次）
+  // 鉴权：本机回环免密；开局域网后仅白名单内 IP 免密直连（如 10Router 所在机器——zcode-free 本就是免授权供应商）
   const remote = (req.socket && req.socket.remoteAddress) || '';
   if (!isLoopbackRemote(remote)) {
     const settings = await loadSettings();
     if (settings.zcodeGatewayLan !== true) {
       res.writeHead(403, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ error: '网关未允许局域网访问（面板 → ZCode → 局域网）' }));
+      return res.end(JSON.stringify({ error: '网关未允许局域网访问（面板 → ZCode → 接口设置）' }));
     }
-    // 白名单内 IP 免密直连（如 10Router 所在机器——zcode-free 本就是免授权供应商）；
-    // 白名单外的局域网请求仍可用「10Router 连接设置」里的虚拟 key 鉴权
     if (!remoteAllowed(remote, settings.zcodeGatewayAllow)) {
-      const expected = tenrouterGatewayKey();
-      if (expected.length === 0) {
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ error: '来源 IP 不在网关白名单内，且未配置 10Router 虚拟 key（10Router 连接设置）' }));
-      }
-      const h = req.headers || {};
-      const given = String(h['x-api-key'] || bearerOf(h.authorization) || '').trim();
-      if (!given || !fixedTimeEquals(given, expected)) {
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ error: `来源 ${remoteHost(remote) || '未知'} 不在网关白名单内且密钥不匹配` }));
-      }
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: `来源 ${remoteHost(remote) || '未知'} 不在网关 IP 白名单内（面板 → ZCode → 接口设置里添加）` }));
     }
   }
 
@@ -569,14 +546,12 @@ export async function gatewayStatus() {
   for (const a of all) { try { claimToken(a); withJwt++; } catch { /* 无 plan JWT */ } }
   const now = Date.now();
   const settings = await loadSettings();
-  const key = tenrouterGatewayKey();
   return {
     enabled,
     hasCaptcha,
     lan: settings.zcodeGatewayLan === true,
     allow: Array.isArray(settings.zcodeGatewayAllow) ? settings.zcodeGatewayAllow : [],
     suggestAllow: gatewayHostSuggestion(),
-    hasKey: key.length > 0,
     stats: {
       lastCallAt: stats.lastCallAt,
       calls: stats.calls,

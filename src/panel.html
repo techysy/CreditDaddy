@@ -218,8 +218,12 @@
   .view { display: none; } .view.active { display: block; }
 
   /* 仪表盘 */
-  .dash-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
-  .dash-title { font-size: 15px; font-weight: 700; }
+  .dash-panel { margin-bottom: 12px; }
+  .dash-title { font-size: 13px; font-weight: 700; }
+  .dash-panel .kpis { display: flex; gap: 0; margin: 0; padding: 2px 10px 12px; }
+  .dash-panel .kpi { background: none; border: none; border-radius: 0; padding: 10px 14px; flex: 1 1 0; min-width: 0; }
+  .dash-panel .kpi + .kpi { border-left: 1px dashed var(--border-subtle); }
+  @media (max-width: 900px) { .dash-panel .kpis { flex-wrap: wrap; } .dash-panel .kpi { flex: 1 1 40%; } .dash-panel .kpi + .kpi { border-left: none; } }
   .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 10px; }
   .kpi { background: var(--surface); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 14px 16px; min-width: 0; }
   .kpi-label { color: var(--text-3); font-size: 12px; font-weight: 500; }
@@ -354,16 +358,18 @@
 
   <!-- 仪表盘 -->
   <section class="view active" id="view-dash">
-    <div class="dash-head">
-      <div class="dash-title">总览</div>
-      <div class="actions">
-        <button class="btn primary" id="btn-checkin-all"></button>
-        <button class="btn" id="btn-add-dash"></button>
-        <button class="btn" id="btn-import-dash"></button>
-        <button class="btn" id="btn-export-dash"></button>
+    <div class="panel dash-panel">
+      <div class="toolbar">
+        <div class="summary"><span class="dash-title">总览</span></div>
+        <div class="actions">
+          <button class="btn primary" id="btn-checkin-all"></button>
+          <button class="btn" id="btn-add-dash"></button>
+          <button class="btn" id="btn-import-dash"></button>
+          <button class="btn" id="btn-export-dash"></button>
+        </div>
       </div>
+      <div class="kpis" id="kpis"></div>
     </div>
-    <div class="kpis" id="kpis"></div>
     <div class="prods" id="prods"></div>
     <div class="dash-cols">
       <section class="pcard"><div class="pcard-title"><span>最近记录</span><span class="hint" id="last-tick"></span></div><div id="recent"></div></section>
@@ -497,7 +503,20 @@
   <div class="modal">
     <div class="modal-title"><span>面板设置</span><button class="close" data-close>✕</button></div>
     <div class="comp-menu" id="comp-menu"></div>
+    <div class="field" id="upd-entry" style="display:none;margin-top:12px">
+      <label>版本与更新</label>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="dim" id="upd-ver"></span><button class="btn" id="btn-update">检查更新</button></div>
+    </div>
     <div class="modal-actions"><button class="btn" data-close>关闭</button></div>
+  </div>
+</div>
+
+<!-- 检查更新（桌面版）：状态由主进程 update:state 推送 -->
+<div class="mask" id="m-update">
+  <div class="modal sm">
+    <div class="modal-title"><span>检查更新</span><button class="close" data-close>✕</button></div>
+    <div id="upd-body"></div>
+    <div class="modal-actions" id="upd-actions"></div>
   </div>
 </div>
 
@@ -603,7 +622,7 @@
       <label>IP 白名单（每行一个，支持 192.168.31.* 通配）</label>
       <textarea class="input" id="zgw-allow" rows="4" placeholder="192.168.31.101"></textarea>
     </div>
-    <div class="hint">开启后，领到的体验包额度变成本机的一个补全接口——10Router 建一个 anthropic-compatible 节点指向本机 /gateway 即可调用（需要桌面版，隐藏窗口过验证码）。白名单内的机器<b>免密直连</b>：10Router 的 zcode-free 本就是免授权供应商，把 10Router 服务地址的 IP 加白即可，无需再配虚拟 key；白名单外的局域网请求仍可用「10Router 连接设置」里保存的虚拟 key 鉴权。本机回环（127.0.0.1）始终放行。</div>
+    <div class="hint">开启后，领到的体验包额度变成本机的一个补全接口——10Router 建一个 anthropic-compatible 节点指向本机 /gateway 即可调用（需要桌面版，隐藏窗口过验证码）。白名单内的机器<b>免密直连</b>：10Router 的 zcode-free 本就是免授权供应商，把 10Router 服务地址的 IP 加白即可；白名单外的请求一律拒绝。本机回环（127.0.0.1）始终放行。</div>
     <div class="modal-actions"><button class="btn" data-close>取消</button><button class="btn primary" id="zgw-ok">保存</button></div>
   </div>
 </div>
@@ -2347,6 +2366,80 @@ function okDialog() { const v = $('dlg-field').style.display === 'none' ? true :
 $('dlg-ok').addEventListener('click', okDialog);
 $('dlg-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') okDialog(); });
 
+// ── 检查更新（桌面版）：主进程推状态（update:state），面板只管渲染 ──
+const updBridge = window.creditdaddy && window.creditdaddy.update ? window.creditdaddy.update : null;
+let updState = null;
+function updActBtn(id, text, cls, fn) {
+  return '<button class="btn' + (cls ? ' ' + cls : '') + '" id="' + id + '">' + text + '</button>';
+}
+function renderUpdateModal(s) {
+  updState = s;
+  const body = $('upd-body');
+  const acts = $('upd-actions');
+  const cur = '当前 v' + (s.current || '?');
+  const rel = '<button class="btn" id="upd-rel">打开 Releases</button>';
+  const close = '<button class="btn" data-close-uu>稍后</button>';
+  switch (s.phase) {
+    case 'unsupported':
+      body.innerHTML = '<div class="hint">当前环境不支持应用内更新（开发模式 / Portable / 未签名的 macOS 版），请从 GitHub Releases 手动下载。</div>';
+      acts.innerHTML = rel + '<button class="btn" data-close-uu>取消</button>';
+      break;
+    case 'checking':
+      body.innerHTML = '<div class="hint">正在检查更新…</div>';
+      acts.innerHTML = close;
+      break;
+    case 'latest':
+      body.innerHTML = '<div class="hint"><span class="dot on"></span> 已是最新版本（' + cur + '）</div>';
+      acts.innerHTML = '<button class="btn primary" data-close-uu>好的</button>';
+      break;
+    case 'available':
+      body.innerHTML = s.via === 'updater'
+        ? '<div class="hint">发现新版本 <b>v' + esc(s.version) + '</b>（' + cur + '）——正在后台下载，完成后退出 CreditDaddy 时自动安装。</div>'
+        : '<div class="hint">发现新版本 <b>v' + esc(s.version) + '</b>（' + cur + (s.sizeMB ? '，约 ' + s.sizeMB + ' MB' : '') + '），可由本机直接下载安装。</div>';
+      acts.innerHTML = (s.via === 'github' ? updActBtn('upd-go', '立即下载安装', 'primary') : '') + rel + close;
+      break;
+    case 'downloading':
+      body.innerHTML = '<div class="hint">正在下载 v' + esc(s.version) + '</div>'
+        + '<div class="meter" style="margin:8px 0 4px"><span style="width:' + (s.percent || 0) + '%"></span></div>'
+        + '<div class="hint">' + (s.percent != null ? s.percent + '%' : '') + '（' + (s.mb || '…') + ' MB）' + (s.percent == null ? ' 获取大小中…' : '') + '</div>';
+      acts.innerHTML = '<button class="btn" data-close-uu>后台继续</button>';
+      break;
+    case 'downloaded':
+      body.innerHTML = '<div class="hint"><span class="dot on pulse"></span> <b>v' + esc(s.version) + '</b> '
+        + (s.via === 'updater' ? '已下载完成，重启即完成更新（退出时也会自动安装）。' : '安装包已下载完成，安装时 CreditDaddy 会先退出。') + '</div>';
+      acts.innerHTML = updActBtn('upd-go', s.via === 'updater' ? '立即重启更新' : '立即安装', 'primary') + close;
+      break;
+    case 'error':
+    default:
+      body.innerHTML = '<div class="hint" style="color:var(--err)">检查更新失败：' + esc(s.error || '未知错误') + '</div>';
+      acts.innerHTML = updActBtn('upd-retry', '重试', 'primary') + rel + '<button class="btn" data-close-uu>取消</button>';
+      break;
+  }
+  const relBtn = $('upd-rel');
+  if (relBtn) relBtn.onclick = () => updBridge.openReleases();
+  const goBtn = $('upd-go');
+  if (goBtn) { goBtn.disabled = true; goBtn.textContent = '处理中…'; updBridge.install().then(renderUpdateModal).catch((e) => { goBtn.disabled = false; goBtn.textContent = '重试'; }); }
+  const retryBtn = $('upd-retry');
+  if (retryBtn) retryBtn.onclick = () => updBridge.check().then(renderUpdateModal).catch(() => {});
+  acts.querySelectorAll('[data-close-uu]').forEach((b) => { b.onclick = () => closeModal('m-update'); });
+}
+async function openUpdateModal(autoCheck) {
+  if (!updBridge) return;
+  openModal('m-update');
+  try {
+    updState = await updBridge.state();
+    renderUpdateModal(updState);
+    if (autoCheck) renderUpdateModal(await updBridge.check());
+  } catch (e) {
+    renderUpdateModal({ phase: 'error', error: String((e && e.message) || e), current: (updState && updState.current) || '' });
+  }
+}
+if (updBridge) {
+  updBridge.onState((s) => { updState = s; $('upd-ver') && ($('upd-ver').textContent = '当前 v' + (s.current || '?')); if (document.getElementById('m-update').classList.contains('show')) renderUpdateModal(s); });
+  updBridge.onOpen(() => openUpdateModal(true));
+}
+$('btn-update').onclick = () => openUpdateModal(true);
+
 // ZCode 自动领取计划：保存（按新配置启用）/ 停用
 $('zac-ok').addEventListener('click', async () => {
   try {
@@ -2852,6 +2945,11 @@ $('btn-comp').addEventListener('click', async () => {
   openModal('m-settings');
   await loadSettings();
   renderCompMenu();
+  // 桌面版才有检查更新入口（走 preload 桥到主进程的更新状态机）
+  if (updBridge) {
+    $('upd-entry').style.display = '';
+    try { const s = await updBridge.state(); updState = s; $('upd-ver').textContent = '当前 v' + (s.current || '?'); } catch {}
+  }
 });
 $('comp-menu').addEventListener('change', (e) => {
   const c = e.target.dataset && e.target.dataset.comp;

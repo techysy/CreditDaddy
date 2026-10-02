@@ -68,11 +68,6 @@ export function normalizeEndpoint(raw) {
 const maskKey = (k) => (k ? (k.length > 12 ? k.slice(0, 5) + '…' + k.slice(-4) : '…') : '');
 export const isConfigured = (c = loadConfig()) => Boolean(c.endpoint && c.key);
 
-/** 网关鉴权用：本机存储的 10Router 虚拟 key（sk-…）。仅守护进程内部使用，永不回传面板。 */
-export function gatewayKey() {
-  return String(loadConfig().key || '').trim();
-}
-
 /** ZCode 网关白名单预填建议：10Router 服务地址的主机部分（回环地址无加白意义，返回空）。 */
 export function gatewayHostSuggestion() {
   try {
