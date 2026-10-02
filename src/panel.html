@@ -560,19 +560,38 @@
   </div>
 </div>
 
-<!-- ZCode 网关局域网白名单 -->
-<div class="mask" id="m-zlan">
+<!-- ZCode 网络出口 -->
+<div class="mask" id="m-znet">
   <div class="modal sm">
-    <div class="modal-title"><span>ZCode 体验包接口 · 局域网访问</span><button class="close" data-close>✕</button></div>
+    <div class="modal-title"><span>ZCode 网络出口</span><button class="close" data-close>✕</button></div>
     <div class="field">
-      <label class="check"><input type="checkbox" id="zlan-on"> 对局域网开放（重启后绑定 0.0.0.0）</label>
+      <label>上游接口访问顺序（失败 / 被拦时自动回退另一条）</label>
+      <label class="check"><input type="radio" name="znet-order" id="znet-direct"> 直连优先（代理兜底）</label>
+      <label class="check"><input type="radio" name="znet-order" id="znet-proxy"> 代理优先（直连兜底）</label>
     </div>
     <div class="field">
+      <label>出口代理（http://host:port，支持口令 http://user:pass@host:port）</label>
+      <input class="input" id="znet-url" placeholder="http://192.168.31.101:7890">
+    </div>
+    <div class="hint">留空 = 清除已保存的代理，退回 HTTPS_PROXY 环境变量；取消 = 不改动。当前代理只显示脱敏后的地址。</div>
+    <div class="modal-actions"><button class="btn" data-close>取消</button><button class="btn primary" id="znet-ok">保存</button></div>
+  </div>
+</div>
+
+<!-- ZCode 体验包接口 -->
+<div class="mask" id="m-zgw">
+  <div class="modal sm">
+    <div class="modal-title"><span>ZCode 体验包接口</span><button class="close" data-close>✕</button></div>
+    <div class="field">
+      <label class="check"><input type="checkbox" id="zgw-on"> 启用体验包接口（/gateway/v1/messages）</label>
+    </div>
+    <div class="field" id="zgw-lan-fields">
+      <label class="check"><input type="checkbox" id="zgw-lan"> 对局域网开放（重启后绑定 0.0.0.0）</label>
       <label>IP 白名单（每行一个，支持 192.168.31.* 通配）</label>
-      <textarea class="input" id="zlan-allow" rows="4" placeholder="192.168.31.101"></textarea>
+      <textarea class="input" id="zgw-allow" rows="4" placeholder="192.168.31.101"></textarea>
     </div>
-    <div class="hint">白名单内的机器<b>免密直连</b>体验包接口（/gateway/v1/messages）——10Router 的 zcode-free 本就是免授权供应商，把 10Router 服务地址的 IP 加白即可，无需再配虚拟 key；白名单外的局域网请求仍可用「10Router 连接设置」里保存的虚拟 key 鉴权。本机回环（127.0.0.1）始终放行。</div>
-    <div class="modal-actions"><button class="btn" data-close>取消</button><button class="btn primary" id="zlan-ok">保存</button></div>
+    <div class="hint">开启后，领到的体验包额度变成本机的一个补全接口——10Router 建一个 anthropic-compatible 节点指向本机 /gateway 即可调用（需要桌面版，隐藏窗口过验证码）。白名单内的机器<b>免密直连</b>：10Router 的 zcode-free 本就是免授权供应商，把 10Router 服务地址的 IP 加白即可，无需再配虚拟 key；白名单外的局域网请求仍可用「10Router 连接设置」里保存的虚拟 key 鉴权。本机回环（127.0.0.1）始终放行。</div>
+    <div class="modal-actions"><button class="btn" data-close>取消</button><button class="btn primary" id="zgw-ok">保存</button></div>
   </div>
 </div>
 
@@ -1340,13 +1359,11 @@ function renderStatus() {
     n.innerHTML = '<div class="z-row"><span class="z-label">活动领取</span><span class="z-text">ZCode 没有每日签到，积分靠「活动领取」。开启后每 ' + ziv + ' 分钟检查活动资格，首次检查在 2 分钟后开始；' + windowText + '。也可点卡片上的礼物图标手动领取。</span>'
       + ' <button class="btn" id="btn-zac" title="设置自动领取计划：轮询周期与运行时长">' + (ac ? '自动领取：开' : '自动领取：关') + '</button></div>'
       + '<div class="z-row"><span class="z-label">网络出口</span>'
-      + ' <button class="btn" id="btn-znet" title="ZCode 上游接口的访问顺序：失败 / 被拦时自动回退另一条">出口：' + (pf ? '代理优先' : '直连优先') + '</button>'
-      + ' <button class="btn" id="btn-zproxy" title="设置 ZCode 出口用的 http 代理（留空则清除；不设置时使用 HTTPS_PROXY 环境变量）">代理：' + esc(pu || (state.zHasEnvProxy ? '环境变量' : '未设置')) + '</button></div>'
+      + ' <button class="btn" id="btn-znet" title="设置出口顺序与代理：直连 / 代理，失败时自动回退另一条">出口：' + (pf ? '代理优先' : '直连优先') + '</button>'
+      + ' <span class="ver">代理 ' + esc(pu || (state.zHasEnvProxy ? '环境变量' : '未设置')) + '</span></div>'
       + '<div class="z-row"><span class="z-label">体验包接口</span>'
-      + ' <button class="btn" id="btn-zgw" title="开启后，领到的体验包额度会变成本机的一个补全接口（/gateway/v1/messages）；10Router 建一个 anthropic-compatible 节点指向 http://127.0.0.1:' + location.port + '/gateway 即可调用。需要桌面版（隐藏窗口过验证码）">'
-      + (state.zGateway === true ? '体验包接口：开' : '体验包接口：关') + '</button>'
-      + ' <button class="btn" id="btn-zgwlan" title="局域网开放与 IP 白名单：白名单内的机器（如 10Router 所在机器）免密直连体验包接口，白名单外仍可用虚拟 key 鉴权；绑定改动重启后生效">'
-      + (state.zGatewayLan === true ? '局域网：开' : '局域网：关') + '</button>'
+      + ' <button class="btn" id="btn-zgw" title="体验包接口设置：开关、局域网开放与 IP 白名单">'
+      + (state.zGateway === true ? '接口：开' : '接口：关') + (state.zGateway === true && state.zGatewayLan === true ? ' · 局域网开' : '') + '</button>'
       + (state.zGateway === true && state.zGatewayStats && state.zGatewayStats.lastAccount ? ' <span class="chip on" title="体验包接口有调用记录，10Router 正在调用本机接口（最近用的账号见账号卡片上的「接口使用中」标记）">10Router 已接入</span>' : '')
       + (state.zGateway === true ? ' <span class="ver">POST http://127.0.0.1:' + location.port + '/gateway/v1/messages</span>' : '')
       + (state.zGateway === true && state.zGatewayStats && state.zGatewayStats.lastCallAt ? ' <span class="ver">最近调用 ' + esc(String(state.zGatewayStats.lastCallAt).slice(11, 19)) + ' · 共 ' + state.zGatewayStats.calls + ' 次</span>' : (state.zGateway === true ? ' <span class="ver">尚未有调用</span>' : ''))
@@ -1461,41 +1478,23 @@ $('notice').addEventListener('click', async (e) => {
     openModal('m-zac');
     return;
   }
-  if (e.target.closest('#btn-zgwlan')) {
-    // 局域网白名单弹窗：默认预填 10Router 服务地址的主机
-    $('zlan-on').checked = state.zGatewayLan === true;
-    const allow = Array.isArray(state.zGatewayAllow) ? state.zGatewayAllow : [];
-    $('zlan-allow').value = (allow.length ? allow : (state.zGatewaySuggest ? [state.zGatewaySuggest] : [])).join('\n');
-    openModal('m-zlan');
-    return;
-  }
   if (e.target.closest('#btn-zgw')) {
-    try {
-      const r = await api('/api/zcode-gateway', { method: 'PUT', json: { enabled: state.zGateway !== true } });
-      state.zGateway = r.enabled === true;
-      renderStatus();
-      toast('ZCode 体验包接口：' + (r.enabled ? '已开启（10Router 建 anthropic-compatible 节点指向本机 /gateway/v1/messages）' : '已关闭'));
-    } catch (err) { toast(err.message, false); }
+    // 体验包接口弹窗：开关 + 局域网 + 白名单一次设置；白名单默认预填 10Router 服务地址的主机
+    $('zgw-on').checked = state.zGateway === true;
+    $('zgw-lan').checked = state.zGatewayLan === true;
+    const allow = Array.isArray(state.zGatewayAllow) ? state.zGatewayAllow : [];
+    $('zgw-allow').value = (allow.length ? allow : (state.zGatewaySuggest ? [state.zGatewaySuggest] : [])).join('\n');
+    syncZgwLanFields();
+    openModal('m-zgw');
     return;
   }
   if (e.target.closest('#btn-znet')) {
-    try {
-      const r = await api('/api/zcode/net', { method: 'PUT', json: { proxyFirst: state.zProxyFirst !== true } });
-      state.zProxyFirst = r.proxyFirst;
-      renderStatus();
-      toast('ZCode 出口：' + (r.proxyFirst ? '代理优先（直连兜底）' : '直连优先（代理兜底）'));
-    } catch (err) { toast(err.message, false); }
+    // 出口弹窗：顺序 + 代理地址一起保存；代理只回填到 placeholder（脱敏），留空即清除
+    (state.zProxyFirst === true ? $('znet-proxy') : $('znet-direct')).checked = true;
+    $('znet-url').value = '';
+    $('znet-url').placeholder = state.zProxyUrl || (state.zHasEnvProxy ? '跟随环境变量 HTTPS_PROXY' : 'http://192.168.31.101:7890');
+    openModal('m-znet');
     return;
-  }
-  if (e.target.closest('#btn-zproxy')) {
-    const cur = state.zProxyUrl || '';
-    const v = await uiPrompt('ZCode 出口代理（http://host:port，支持口令 http://user:pass@host:port）\n留空 = 清除，退回 HTTPS_PROXY 环境变量', cur, { okText: '保存' });
-    if (v === null) return;
-    try {
-      await api('/api/zcode/net', { method: 'PUT', json: { proxyUrl: v.trim() } });
-      await loadZNet(); renderStatus();
-      toast(v.trim() ? '代理已保存' : '代理已清除');
-    } catch (err) { toast(err.message, false); }
   }
 });
 async function loadZNet() {
@@ -2345,16 +2344,36 @@ $('zac-off').addEventListener('click', async () => {
   } catch (err) { toast(err.message, false); }
 });
 
-// ZCode 网关局域网白名单：保存开放开关 + 免密 IP 名单
-$('zlan-ok').addEventListener('click', async () => {
-  const allow = $('zlan-allow').value.split('\n').map((x) => x.trim()).filter(Boolean);
+// ZCode 体验包接口：开关 + 局域网开放 + 免密 IP 白名单一次保存
+function syncZgwLanFields() {
+  const off = !$('zgw-on').checked;
+  $('zgw-lan-fields').querySelectorAll('input, textarea').forEach((el) => { el.disabled = off; });
+  $('zgw-lan-fields').style.opacity = off ? '.45' : '';
+}
+$('zgw-on').addEventListener('change', syncZgwLanFields);
+$('zgw-ok').addEventListener('click', async () => {
+  const allow = $('zgw-allow').value.split('\n').map((x) => x.trim()).filter(Boolean);
   try {
-    const r = await api('/api/zcode-gateway', { method: 'PUT', json: { lan: $('zlan-on').checked, allow } });
+    const r = await api('/api/zcode-gateway', { method: 'PUT', json: { enabled: $('zgw-on').checked, lan: $('zgw-lan').checked, allow } });
+    state.zGateway = r.enabled === true;
     state.zGatewayLan = r.lan === true;
     state.zGatewayAllow = r.allow || [];
     renderStatus();
-    closeModal('m-zlan');
-    toast('局域网访问：' + (r.lan ? '开，白名单 ' + (r.allow && r.allow.length ? r.allow.join('、') : '（空——白名单外需虚拟 key）') : '关（仅本机）') + '；绑定改动重启 CreditDaddy 后生效');
+    closeModal('m-zgw');
+    toast('体验包接口：' + (r.enabled ? '已开启' : '已关闭')
+      + (r.enabled && r.lan ? '，局域网开放' + (r.allow && r.allow.length ? '，白名单 ' + r.allow.join('、') : '，白名单为空——白名单外需虚拟 key') + '；绑定改动重启后生效' : ''));
+  } catch (err) { toast(err.message, false); }
+});
+
+// ZCode 网络出口：顺序 + 代理地址保存
+$('znet-ok').addEventListener('click', async () => {
+  try {
+    const body = { proxyFirst: $('znet-proxy').checked, proxyUrl: $('znet-url').value.trim() };
+    const r = await api('/api/zcode/net', { method: 'PUT', json: body });
+    await loadZNet();
+    renderStatus();
+    closeModal('m-znet');
+    toast('ZCode 出口：' + (r.proxyFirst ? '代理优先（直连兜底）' : '直连优先（代理兜底）') + (body.proxyUrl === '' ? '，代理已清除' : ''));
   } catch (err) { toast(err.message, false); }
 });
 document.querySelectorAll('.mask').forEach((m) => {
