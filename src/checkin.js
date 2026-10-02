@@ -248,6 +248,7 @@ async function runTickInner(opts) {
 
       const ctx = refreshContext(account, (message) => logger.info('CHECKIN', `${label}：${message}`));
       let outcome = await productImpl(account.provider).checkin(account, ctx);
+      outcome = { accountId: account.id, account: label, provider: account.provider, ...outcome };
       if (account.provider === 'qoder' && outcome.risk) {
         if (outcome.status === 'checked-in') {
           deviceClaim = { day: today, accountId: account.id, name: label };

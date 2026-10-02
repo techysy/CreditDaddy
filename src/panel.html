@@ -1412,9 +1412,7 @@ function renderStatus() {
   n.classList.toggle('info', state.view === 'zcode' || state.view === 'mirasim' || state.view === 'catpaw' || state.view === 'trae' || (hasIntl && Boolean(s.riskIdentity)));
   if (state.view === 'trae') {
     n.style.display = '';
-    n.innerHTML = 'Trae 每日签到领约 150 通用积分（领到的额度是独立资源包，7 天后到期，所以会累积成几十包——面板已按名称合并显示）。'
-      + '凭据只来自本机 Trae 客户端的 storage.json（本地解密，token 不出本机），token 约 14 天过期，失效后在 Trae 里重新登录再「本机导入」一次即可。'
-      + '多账号：在 Trae 里登录某个账号 → 导入（会自动拍下该账号的登录态快照）→ 换下一个账号登录 → 再导入；之后点账号上的切换按钮即可一键互换，换走的账号登录态都会留着不丢。';
+    n.innerHTML = '<div class="z-row"><span class="z-label">每日签到</span><span class="z-text">每日签到领约 150 通用积分（7 天有效，多资源包自动归并）。凭据由本机 Trae 客户端解密导入，支持多账号快照一键切换。</span></div>';
   } else if (state.view === 'catpaw') {
     n.style.display = '';
     n.innerHTML = '妙手（美团 CatPaw）按套餐发放 Credits（体验版 / 专业版…），没有每日签到。凭据由妙手客户端登录管理：读取额度用本机解密出的登录 token 直连桌面网关，token 失效时到妙手客户端重新登录后再「本机导入」即可。'
@@ -2098,7 +2096,9 @@ async function checkinOne(id) {
   try {
     const d = await api('/api/accounts/' + encodeURIComponent(id) + '/checkin', { method: 'POST' });
     const r = d.results && d.results[0];
-    toast(r ? (r.account + '：' + (r.status === 'checked-in' ? '领取成功 +' + r.claimedAmount + ' Credits' : (r.error || r.message || r.status))) : d.summary, !(r && r.status === 'failed'));
+    const accObj = state.accounts.find((x) => x.id === id);
+    const accLabel = (r && r.account) || (accObj && (accObj.name || accObj.id)) || '该账号';
+    toast(r ? (accLabel + '：' + (r.status === 'checked-in' ? '领取成功 +' + r.claimedAmount + ' Credits' : (r.error || r.message || r.status))) : d.summary, !(r && r.status === 'failed'));
   } catch (e) { toast(e.message, false); }
   delete state.busy[id];
   await loadStatus(); await loadAccounts(); loadLogs();

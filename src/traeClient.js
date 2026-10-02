@@ -206,32 +206,35 @@ async function fetchTraePlan(account) {
  */
 export async function checkinTrae(account, ctx = {}) {
   const uid = account.uid || uidFromJwt(account.token || '');
+  const label = account.name || account.id;
+  const base = { accountId: account.id, account: label, provider: 'trae' };
   let r;
   try {
     r = await post(STATUS_URL, account);
   } catch (e) {
     if (authDead(e)) throw e;
-    return { status: 'failed', message: e.message, uid };
+    return { ...base, status: 'failed', message: e.message, uid };
   }
   if (r.code !== 0) {
-    return { status: r.code === 9074 ? 'limited' : 'failed', message: r.message || `code ${r.code}`, uid };
+    return { ...base, status: r.code === 9074 ? 'limited' : 'failed', message: r.message || `code ${r.code}`, uid };
   }
   const already = findField(r.body, 'checked_in');
   if (already === true || already === 1) {
-    return { status: 'already', message: '今天已签到', uid };
+    return { ...base, status: 'already', message: '今天已签到', uid };
   }
 
   const c = await post(CLAIM_URL, account);
   if (c.code !== 0) {
     ctx.log?.(`Trae 领取失败：${c.message || `code ${c.code}`}`);
     return {
+      ...base,
       status: c.code === 9074 ? 'limited' : 'failed',
       message: c.message || `code ${c.code}`,
       uid,
     };
   }
   const claimed = Number(findField(c.body, 'credits')) || 0;
-  return { status: 'checked-in', claimedAmount: claimed, message: claimed ? `签到成功，+${claimed} 积分` : '签到成功', uid };
+  return { ...base, status: 'checked-in', claimedAmount: claimed, message: claimed ? `签到成功，+${claimed} 积分` : '签到成功', uid };
 }
 
 /**
