@@ -287,6 +287,53 @@ test('401 拉黑 / 额度与 429 跳过 / 最终成功', async () => {
   assert.match(rows[2].headers.Authorization, /^Bearer jwt-good-/);
 });
 
+test('拉黑后重新登录导入（JWT 变化）→ 自动复活，网关恢复', async () => {
+  await resetState();
+  zauto.setZcodeCaptchaProvider(null);
+  await seedAccount('a1', '账号一');
+  upstreamQueue.push({ status: 401, body: '{"code":401,"msg":"令牌已过期"}' });
+  await gw.handleGateway(fakeReq('POST', '{}'), captureRes());
+  let st = await gw.gatewayStatus();
+  assert.ok(st.dead.includes('账号一'), '401 应拉黑');
+
+  // 模拟重新登录后本机导入：同 id 换一份新 zcodejwttoken
+  currentAccounts = [{
+    ...currentAccounts[0],
+    meta: { credentials: { zcodejwttoken: encForStore('jwt-a1-reimport-' + 'y'.repeat(200)) } },
+  }];
+  await store.saveAccounts(currentAccounts);
+
+  st = await gw.gatewayStatus();
+  assert.deepEqual(st.dead, [], '指纹变化应立即解除拉黑');
+  assert.deepEqual(st.cooling, [], '解除拉黑时冷却也应清除');
+
+  upstreamQueue.push({ status: 200, sse: true, body: sseBody() });
+  const res = captureRes();
+  await gw.handleGateway(fakeReq('POST', '{}'), res);
+  assert.equal(res.status, 200, res.body);
+  assert.match(completions().at(-1).headers.Authorization, /^Bearer jwt-a1-reimport-/);
+});
+
+test('setGatewayEnabled(true) → 清空黑名单与冷却', async () => {
+  await resetState();
+  zauto.setZcodeCaptchaProvider(null);
+  await seedAccount('a1', '账号一');
+  upstreamQueue.push({ status: 401, body: '{"code":401,"msg":"令牌已过期"}' });
+  await gw.handleGateway(fakeReq('POST', '{}'), captureRes());
+  assert.ok((await gw.gatewayStatus()).dead.includes('账号一'));
+
+  await gw.setGatewayEnabled(false);
+  await gw.setGatewayEnabled(true);
+  const st = await gw.gatewayStatus();
+  assert.equal(st.enabled, true);
+  assert.deepEqual(st.dead, [], '重开网关应清空旧黑名单');
+
+  upstreamQueue.push({ status: 200, sse: true, body: sseBody() });
+  const res = captureRes();
+  await gw.handleGateway(fakeReq('POST', '{}'), res);
+  assert.equal(res.status, 200, res.body);
+});
+
 test('局域网：未开开关 403；白名单外 403；白名单内免密放行', async () => {
   await resetState();
   providerOk();

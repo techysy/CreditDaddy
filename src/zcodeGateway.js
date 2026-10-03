@@ -53,14 +53,21 @@ export async function gatewayEnabled() {
 }
 
 export async function setGatewayEnabled(v) {
-  await saveSettings({ zcodeGateway: v === true });
+  const on = v === true;
+  await saveSettings({ zcodeGateway: on });
+  // 开启网关视为「重新开始」：清掉进程内的拉黑/冷却状态，
+  // 否则重新登录导入后旧黑名单仍会把账号挡在轮换队列外（与 MiniMax 网关同款 bug）。
+  if (on) {
+    dead.clear();
+    cooling.clear();
+  }
 }
 
 // ── 账号轮换状态（进程内；重启即清零） ──
 
 let rrIndex = 0;
 const cooling = new Map();  // accountId → 冷却截止(ms)
-const dead = new Set();     // JWT 失效的账号
+const dead = new Map();     // accountId → 拉黑时的凭据指纹（指纹变化 = 已重新登录导入，自动复活）
 
 function markCooling(id, ms = ACCOUNT_COOLING_MS) { cooling.set(id, Date.now() + ms); }
 
@@ -76,7 +83,29 @@ export function __resetForTests() {
   stats.calls = 0;
   stats.lastAccount = null;
 }
-function markDead(id) { dead.add(id); cooling.set(id, Number.MAX_SAFE_INTEGER); }
+function markDead(account) {
+  dead.set(account.id, credFingerprint(account));
+  cooling.set(account.id, Number.MAX_SAFE_INTEGER);
+}
+
+/** 拉黑时的凭据指纹：重新登录/重新导入会整体替换 meta.credentials，指纹变化即可复活 */
+function credFingerprint(a) {
+  return `${a.meta?.credentials?.zcodejwttoken || ''}|${a.token || ''}`;
+}
+
+/**
+ * 账号是否仍处于拉黑状态。拉黑记的是「当时那份凭据」的指纹：
+ * 重新登录导入换了 JWT 后指纹不匹配 → 自动复活（清黑名单与冷却）。
+ */
+function isDead(account) {
+  const fp = dead.get(account.id);
+  if (fp === undefined) return false;
+  if (fp === credFingerprint(account)) return true;
+  dead.delete(account.id);
+  cooling.delete(account.id);
+  logger.info('ZCODE-GW', `${account.name || account.uid || account.id} 凭据已更新，解除拉黑`);
+  return false;
+}
 
 /** 可参与轮换的账号（有可解析 plan JWT、未冷却/未拉黑），按轮转序排列 */
 async function rotationQueue() {
@@ -85,7 +114,7 @@ async function rotationQueue() {
   const now = Date.now();
   const ready = [];
   for (const a of all) {
-    if (dead.has(a.id)) continue;
+    if (isDead(a)) continue;
     if (isQuotaExhausted(a.id)) continue; // 0 额度打标，不再轮换
     if ((cooling.get(a.id) || 0) > now) continue;
     try { claimToken(a); ready.push(a); } catch { /* 快照里没有 plan JWT，跳过 */ }
@@ -102,7 +131,7 @@ async function unavailableReason() {
   const now = Date.now();
   const n = { dead: 0, exhausted: 0, cooling: 0, noJwt: 0 };
   for (const a of all) {
-    if (dead.has(a.id)) n.dead++;
+    if (isDead(a)) n.dead++;
     else if (isQuotaExhausted(a.id)) n.exhausted++;
     else if ((cooling.get(a.id) || 0) > now) n.cooling++;
     else n.noJwt++; // 未拉黑/未打标/未冷却却不在队列 → 快照里没有可解析的 plan JWT
@@ -380,12 +409,12 @@ export async function handleGateway(req, res) {
   for (let i = 0; i < Math.min(MAX_ATTEMPTS, queue.length * 2); i++) {
     const account = queue[i % queue.length];
     // 本轮已被打标/冷却/拉黑的号不再重打（第二圈只为验证码重试准备）
-    if (dead.has(account.id) || isQuotaExhausted(account.id) || (cooling.get(account.id) || 0) > Date.now()) continue;
+    if (isDead(account) || isQuotaExhausted(account.id) || (cooling.get(account.id) || 0) > Date.now()) continue;
     const label = account.name || account.uid || account.id;
     let token;
     try { token = claimToken(account); } catch (e) {
       attempted.push({ account: label, ok: false, error: e.message });
-      markDead(account.id);
+      markDead(account);
       continue;
     }
 
@@ -429,7 +458,7 @@ export async function handleGateway(req, res) {
             continue;
           }
           if (isAuthError(200, text)) {
-            markDead(account.id);
+            markDead(account);
             attempted.push({ account: label, ok: false, error: 'JWT 已失效，账号拉黑' });
             logger.info('ZCODE-GW', `${label} JWT 失效（200 业务码）`);
             continue;
@@ -505,7 +534,7 @@ export async function handleGateway(req, res) {
       continue;
     }
     if (isAuthError(upstream.status, text)) {
-      markDead(account.id);
+      markDead(account);
       attempted.push({ account: label, ok: false, error: 'JWT 已失效，账号拉黑（重新登录后再导入）' });
       logger.debug('ZCODE-GW', `${label} JWT 失效，拉黑`);
       continue;
@@ -562,8 +591,8 @@ export async function gatewayStatus() {
       .map((a) => ({ id: a.id, name: a.name || a.uid || a.id, remaining: quotaCache.get(a.id)?.remaining ?? 0 })),
     accounts: all.length,
     accountsWithJwt: withJwt,
-    cooling: all.filter((a) => (cooling.get(a.id) || 0) > now).map((a) => a.name || a.uid || a.id),
-    dead: [...dead],
+    cooling: all.filter((a) => !isDead(a) && (cooling.get(a.id) || 0) > now).map((a) => a.name || a.uid || a.id),
+    dead: all.filter((a) => isDead(a)).map((a) => a.name || a.uid || a.id),
     endpoint: '/gateway/v1/messages',
     note: hasCaptcha ? null : '需要桌面版 CreditDaddy（隐藏窗口验证码），纯 CLI / NAS 环境不可用',
   };

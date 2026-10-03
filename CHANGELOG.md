@@ -23,12 +23,17 @@
 - **MiniMax token 刷新报 `invalid_grant`（"this refresh token can no longer be used"）**：根因是刷新令牌轮换互斥——MiniMax 的 refreshToken 是一次性轮换的（`auth.json` 的 `generation` 随之累加），本机客户端会独立刷新，而账号库里的快照刷新后不回写文件，下次刷新即命中已被服务端作废的旧 token。
   - **刷新前对齐**：本机导入账号（带 `meta.authRecordKey`）在刷新前先从 `auth.json` 重读该 record 的最新 `refreshToken`（`alignMiniMaxFromLocal`），不再用陈旧快照；额度查询、签到与本地网关三处刷新路径统一接入。
   - **刷新后安全回写**：仿 mirasim，刷新成功经 `onRefresh` 回写账号库后，再尝试把新凭据写回 `auth.json`（`writeMiniMaxAuth`，原子写 + `generation+1`）——但**仅当客户端未运行时**：客户端运行中回写会让它内存里的 refreshToken 下次刷新命中已被消费的旧 token，反而弄坏客户端，故此时跳过（账号库已更新，下轮刷新前会再重读对齐）。device 登录账号无 `authRecordKey`，回写对其 no-op。
+- **重新授权后本地网关仍报「凭据已失效」且开关重开也无效（MiniMax / ZCode 同款）**：根因是网关的失效拉黑名单是进程级、且只按账号 id 记账——授权到期那段时间上游 401 触发的刷新失败把账号拉黑后，即便随后重新登录/重新导入换来了新凭据，进程内旧黑名单仍把它挡在轮换队列外，网关持续 503；而 `setGatewayEnabled` 只翻设置开关、从不清这份状态，导致「开关重开也没用」。
+  - **拉黑改记凭据指纹**：MiniMax 记 `token|refreshToken`、ZCode 记 `zcodejwttoken|token`；账号当前指纹与拉黑时不一致即视为已重新授权，自动解除拉黑与冷却并复活入队。凭据未变则拉黑依旧生效，不会反复空打上游。
+  - **刷新成功即复活**：网关内就地刷新拿到新 token 回写账号库后，一并清掉该账号的拉黑/冷却。
+  - **开启网关清场**：`setGatewayEnabled(true)` 视为「重新开始」，清空进程内黑名单与冷却，重开开关即可恢复。
 - 签到「今日已领」徽章改按产品日界刷新（此前统一按 Qoder 的 10:00 UTC+8 翻日，与 MiniMax 口径错位）；客户端当前登录识别与算力币口径修正。
 - 本地网关流式缓冲透传优化，补充签到 `claimedAmount` 字段。
 
 ### 🔧 测试
 
-- 新增 `test/minimax.test.js` 设备码登录与凭据对齐用例：S256 PKCE 请求体校验、`authorization_pending` 轮询、授权完成返回独立凭据链账号（`source=browser`、无 `authRecordKey`）、`expired_token`/`access_denied` 终态、`alignMiniMaxFromLocal` 轮换对齐与 device 账号跳过、`writeMiniMaxAuth` 对 device 账号不回写 / 对本机账号回写并 `generation+1`。全仓 163 例绿。
+- 新增 `test/minimax.test.js` 设备码登录与凭据对齐用例：S256 PKCE 请求体校验、`authorization_pending` 轮询、授权完成返回独立凭据链账号（`source=browser`、无 `authRecordKey`）、`expired_token`/`access_denied` 终态、`alignMiniMaxFromLocal` 轮换对齐与 device 账号跳过、`writeMiniMaxAuth` 对 device 账号不回写 / 对本机账号回写并 `generation+1`。
+- 新增 `test/minimax-gateway.test.js` 拉黑与复活回归：401 且刷新失败拉黑后 503 分类计数、刷新成功自动复活并回写账号库、**重新授权换凭据后自动复活**（本次修复的核心场景）、同指纹期间拉黑保持不空打上游、`setGatewayEnabled(true)` 清场、网关未开启 503；`test/zcode-gateway.test.js` 补同款「重新导入换 JWT 复活」与「开关清场」用例。全仓 171 例绿。
 
 ---
 
