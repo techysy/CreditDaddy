@@ -75,13 +75,22 @@ export async function refreshMiniMaxToken(refreshToken) {
 }
 
 /**
- * 带自动刷新 401 重试的高阶调用
+ * 带自动刷新 401 重试的高阶调用。
+ *
+ * 刷新前若该账号来自本机导入（meta.authRecordKey），先从 ~/.minimax auth.json 重读该 record 的
+ * 最新 refreshToken——本机客户端会独立轮换刷新，账号库快照可能已被服务端作废（invalid_grant）。
+ * 刷新成功后经 ctx.onRefresh 回写账号库，并尝试安全回写 auth.json（见 minimaxLocal.writeMiniMaxAuth）。
  */
 export async function withMiniMaxAuth(account, fn, ctx = {}) {
   try {
     return await fn(account.token);
   } catch (err) {
     if (err?.auth && account.refreshToken) {
+      // 本机导入账号：刷新前对齐客户端最新的 refreshToken，避免用陈旧快照刷新触发 invalid_grant
+      try {
+        const { alignMiniMaxFromLocal } = await import('./minimaxLocal.js');
+        alignMiniMaxFromLocal(account, ctx.log);
+      } catch {}
       ctx.log?.('MiniMax token 已过期，正在自动刷新…');
       try {
         const refreshed = await refreshMiniMaxToken(account.refreshToken);

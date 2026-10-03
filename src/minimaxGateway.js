@@ -213,6 +213,13 @@ export async function handleGateway(req, res) {
       if (upstream.status === 401 && account.refreshToken) {
         logger.info('MINIMAX-GW', `${label} 收到 401，尝试刷新凭据…`);
         try {
+          // 本机导入账号：刷新前对齐 ~/.minimax auth.json 里客户端最新的 refreshToken，避免 invalid_grant
+          try {
+            const { alignMiniMaxFromLocal } = await import('./minimaxLocal.js');
+            if (alignMiniMaxFromLocal(account, (m) => logger.info('MINIMAX-GW', `${label} ${m}`))) {
+              activeToken = account.token;
+            }
+          } catch {}
           const refreshed = await refreshMiniMaxToken(account.refreshToken);
           const expiresAt = new Date(Date.now() + refreshed.expiresIn * 1000).toISOString();
           account.token = refreshed.accessToken;

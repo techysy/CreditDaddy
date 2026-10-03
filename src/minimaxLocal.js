@@ -184,3 +184,76 @@ export function currentMiniMaxToken() {
   const record = Object.values(authData.records).find((r) => r?.accessToken);
   return record?.accessToken || null;
 }
+
+/**
+ * 读取指定 record（刷新前对齐本机客户端最新 refreshToken 用）。
+ * recordKey 见 liveToAccount 写入的 meta.authRecordKey。
+ */
+export function readMiniMaxRecord(recordKey) {
+  if (!recordKey) return null;
+  const authData = readJson(minimaxAuthPath());
+  return authData?.records?.[recordKey] || null;
+}
+
+/**
+ * 刷新前对齐：本机导入账号（带 meta.authRecordKey）从 ~/.minimax auth.json 重读该 record 的
+ * 最新凭据，原地更新 account.{token,refreshToken,expiresAt}。
+ *
+ * 背景：MiniMax 的 refreshToken 是轮换式一次性的，本机客户端会独立刷新（auth.json 的 generation
+ * 随之累加）。账号库里的快照可能早被服务端作废，直接用会触发 invalid_grant
+ * （"this refresh token can no longer be used"）。device 登录账号无 authRecordKey，跳过（自持独立链）。
+ *
+ * @returns {boolean} 是否发生了对齐更新
+ */
+export function alignMiniMaxFromLocal(account, log) {
+  const key = account?.meta?.authRecordKey;
+  if (!key) return false;
+  try {
+    const rec = readMiniMaxRecord(key);
+    if (!rec?.refreshToken || rec.refreshToken === account.refreshToken) return false;
+    account.refreshToken = rec.refreshToken;
+    if (rec.accessToken) account.token = rec.accessToken;
+    if (rec.expiresAtMs) account.expiresAt = new Date(rec.expiresAtMs).toISOString();
+    log?.('检测到本机客户端已轮换凭据，改用最新 refreshToken 刷新…');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 安全回写刷新后的凭据到 ~/.minimax auth.json。返回是否实际写入。
+ *
+ * 仅对「本机导入」账号（带 meta.authRecordKey）且**客户端未运行**时回写：
+ *   - device 登录账号（minimaxAuth.js）持有独立 loginEpoch，绝不回写，避免与客户端刷新链互斥；
+ *   - 客户端运行中不回写——它内存里的 refreshToken 不受文件控制，回写新 token 会让客户端
+ *     下次刷新命中已被我们消费的旧 token（invalid_grant），反而弄坏客户端。
+ * 回写失败静默返回 false：账号库已由 refreshContext 更新，下次刷新前会再重读文件对齐。
+ */
+export function writeMiniMaxAuth(account) {
+  const key = account?.meta?.authRecordKey;
+  if (!key) return false;
+  if (minimaxRunning()) return false;
+  const authFile = minimaxAuthPath();
+  const authData = readJson(authFile);
+  const rec = authData?.records?.[key];
+  if (!rec) return false;
+
+  rec.accessToken = account.token;
+  if (account.refreshToken) rec.refreshToken = account.refreshToken;
+  if (account.expiresAt) {
+    const ms = new Date(account.expiresAt).getTime();
+    if (Number.isFinite(ms)) rec.expiresAtMs = ms;
+  }
+  rec.generation = (Number(rec.generation) || 0) + 1;
+
+  const tmp = authFile + '.tmp';
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(authData, null, 2), { mode: 0o600, encoding: 'utf8' });
+    fs.renameSync(tmp, authFile);
+    return true;
+  } catch {
+    try { fs.rmSync(tmp, { force: true }); } catch {}
+    return false;
+  }
+}

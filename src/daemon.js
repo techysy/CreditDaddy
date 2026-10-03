@@ -18,7 +18,7 @@
  *   POST   /api/accounts/:id/zcode/claim   ZCode 领取活动 {planId, captchaParam?, region?}
  *   GET    /api/zcode/captcha-config       ZCode 领取验证码配置（sceneId / prefix / region）
  *   POST   /api/checkin                全部签到 {provider?, skipIfCheckedToday?}
- *   POST   /api/auth/device/start      发起浏览器登录 {provider: qoder / qoder-cn / workbuddy / workbuddy-intl / zcode-bigmodel / zcode-zai}
+ *   POST   /api/auth/device/start      发起浏览器登录 {provider: qoder / qoder-cn / workbuddy / workbuddy-intl / zcode-bigmodel / zcode-zai / minimax}
  *   POST   /api/auth/device/poll       轮询浏览器登录结果 {sessionId}
  *   GET    /api/local/detect           检测本机 Qoder 客户端 / IDE / CLI
  *   POST   /api/local/scan             读取本机已登录账号（解密客户端凭据 + 扫描旧版 IDE）

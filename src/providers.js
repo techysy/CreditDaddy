@@ -186,11 +186,30 @@ const PRODUCTS = {
   },
   minimax: {
     label: 'MiniMax',
-    checkin: (account, ctx) => checkinMiniMax(account, ctx),
-    quota: (account, ctx) => fetchMiniMaxQuota(account, ctx),
+    // token 约 1 小时过期：checkin / quota 内部 401 时用 refreshToken 自动续期（withMiniMaxAuth）。
+    // 本机导入账号刷新前会重读 ~/.minimax auth.json 对齐客户端最新 refreshToken；
+    // ctx.onRefresh 回写账号库后，这里再安全回写 auth.json（仅客户端未运行时，见 minimaxLocal.writeMiniMaxAuth）。
+    // device 登录账号自持独立凭据链（无 meta.authRecordKey），writeMiniMaxAuth 对其 no-op，不与本机客户端互斥。
+    checkin: (account, ctx = {}) => checkinMiniMax(account, wrapMiniMaxRefresh(account, ctx)),
+    quota: (account, ctx = {}) => fetchMiniMaxQuota(account, wrapMiniMaxRefresh(account, ctx)),
     verify: (account) => verifyMiniMaxAccount(account),
   },
 };
+
+/** 包裹 MiniMax 的 ctx.onRefresh：回写账号库后，安全同步新凭据回本机 auth.json（仅本机导入账号且客户端未运行时） */
+function wrapMiniMaxRefresh(account, ctx = {}) {
+  return {
+    ...ctx,
+    onRefresh: async (creds) => {
+      await ctx.onRefresh?.(creds);
+      try {
+        const { writeMiniMaxAuth } = await import('./minimaxLocal.js');
+        const synced = writeMiniMaxAuth({ ...account, ...creds });
+        if (synced) ctx.log?.('已同步新 token 到 MiniMax 客户端');
+      } catch {}
+    },
+  };
+}
 
 export function productImpl(provider) {
   return PRODUCTS[productOf(provider)];
