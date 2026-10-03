@@ -48,7 +48,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logger, getLogs } from './logger.js';
 import {
-  loadAccounts, loadState, withAccounts, publicAccount, dataDir, loadSettings, saveSettings,
+  loadAccounts, loadState, withAccounts, publicAccount, dataDir, loadSettings, saveSettings, withSettings,
 } from './store.js';
 import { addAccount, importAccounts, refreshContext } from './accounts.js';
 import { productImpl } from './providers.js';
@@ -57,7 +57,7 @@ import { liveToAccount as zcodeLiveAccount, switchTo as zcodeSwitchTo, currentZc
 import { liveToAccount as mirasimLiveAccount, switchTo as mirasimSwitchTo, currentMirasimUid, detectMirasim, terminateMirasim, mirasimRunning } from './mirasimLocal.js';
 import { liveToAccount as catpawLiveAccount, switchTo as catpawSwitchTo, currentCatpawToken, detectCatpaw, terminateCatpaw } from './catpawLocal.js';
 import { liveToAccount as traeLiveAccount, detectTrae, switchTo as traeSwitchTo, snapshotLive as traeSnapshotLive } from './traeLocal.js';
-import { liveToAccount as minimaxLiveAccount, detectMiniMax, minimaxRunning, currentMiniMaxUid, currentMiniMaxToken, currentMiniMaxRecordKey } from './minimaxLocal.js';
+import { liveToAccount as minimaxLiveAccount, detectMiniMax, currentMiniMaxUid, currentMiniMaxToken, currentMiniMaxRecordKey } from './minimaxLocal.js';
 import * as minimaxGateway from './minimaxGateway.js';
 import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl, autoClaimEnabled, autoClaimUntil, setAutoClaimEnabled, claimIntervalMin, setClaimIntervalMin, claimWindowMin, setClaimWindowMin } from './zcodeClient.js';
 import { exportAccounts, parseImport, TransferError } from './transfer.js';
@@ -623,8 +623,12 @@ async function handleApi(req, res, url) {
     });
     if (!bound) {
       // 登录窗口可能先于设备码入库关闭：暂存待绑定会话，addAccount 补全 uid 后自动挂上
-      const pending = (await loadSettings()).pendingQoderWebSessions || {};
-      await saveSettings({ pendingQoderWebSessions: { ...pending, [probe.user_id]: { kind, cookie, capturedAt: now } } });
+      await withSettings((settings) => {
+        settings.pendingQoderWebSessions = {
+          ...(settings.pendingQoderWebSessions || {}),
+          [probe.user_id]: { kind, cookie, capturedAt: now },
+        };
+      });
       logger.info('DAEMON', `收到 Qoder 网页会话（uid ${probe.user_id.slice(0, 8)}…），暂无匹配账号，已暂存待绑定`);
     } else {
       logger.info('DAEMON', `已绑定 Qoder 网页会话到 ${bound} 个账号（逐资源包明细可用）`);
@@ -955,7 +959,7 @@ export async function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
     }
   });
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     let attempts = 0;
     const bind = (p) => {
       // 失败重试时必须摘掉上一次的 listening 监听，否则成功后会重复触发
@@ -967,7 +971,11 @@ export async function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
           server.close();
           setTimeout(() => bind(p + 1), 300);
         } else {
-          logger.error('DAEMON', `监听失败：${err?.message || err}`);
+          // 兜底失败必须 reject：否则这个 promise 永远挂着，调用方的 startScheduler() 不会跑，
+          // 进程既不监听也不退出，只在日志里留一行，看起来像「启动了但没反应」
+          const msg = err?.message || String(err);
+          logger.error('DAEMON', `监听失败：${msg}`);
+          reject(new Error(`无法监听 ${host}:${p}：${msg}`));
         }
       };
       const onListening = () => {

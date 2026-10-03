@@ -1,7 +1,7 @@
 /**
  * ZCode 免费额度网关 — Start Plan 体验包（GLM-5.3-Flash）的本地补全代理。
  *
- * 数据面：POST /gateway/v1/messages（Anthropic /v1/messages 形态，10router
+ * 数据面：POST /gateway/zcode/v1/messages（Anthropic /v1/messages 形态，10router
  * 建一个 anthropic-compatible 自定义节点指向这里即可）。
  *
  * 链路：账号轮换（store 里 provider=zcode、可解析出 zcodejwttoken 的账号）
@@ -16,7 +16,7 @@
  * daemon 加绑定/密钥，见 README）。NAS/纯 CLI 环境没有验证码提供者，网关开不了。
  */
 
-import { claimToken, zaiHeaders, fetchCaptchaConfig, fetchJsonRace, fetchZcodeQuota } from './zcodeClient.js';
+import { claimToken, fetchCaptchaConfig, fetchJsonRace, fetchZcodeQuota } from './zcodeClient.js';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,7 +35,7 @@ import { gatewayHostSuggestion } from './tenrouter.js';
 let completionProvider = null;
 export function setZcodeCompletionProvider(fn) { completionProvider = typeof fn === 'function' ? fn : null; }
 export function getZcodeCompletionProvider() { return completionProvider; }
-import { loadAccounts, loadSettings, saveSettings, loadState, saveState } from './store.js';
+import { loadAccounts, loadSettings, saveSettings, loadState, withState } from './store.js';
 import crypto from 'node:crypto';
 import os from 'node:os';
 import { logger } from './logger.js';
@@ -174,10 +174,9 @@ async function hydrateMarks() {
 
 async function persistMark(accountId, entry) {
   try {
-    const st = await loadState();
-    const saved = st?.zcodeGatewayExhausted || {};
-    saved[accountId] = entry;
-    await saveState({ ...st, zcodeGatewayExhausted: saved });
+    await withState((st) => {
+      st.zcodeGatewayExhausted = { ...(st.zcodeGatewayExhausted || {}), [accountId]: entry };
+    });
   } catch { /* 持久化失败不影响内存态 */ }
 }
 
@@ -189,12 +188,9 @@ export async function clearQuotaMark(accountId) {
   quotaCache.delete(accountId);
   if (!dead.has(accountId)) cooling.delete(accountId);
   try {
-    const st = await loadState();
-    const saved = st?.zcodeGatewayExhausted;
-    if (saved && saved[accountId]) {
-      delete saved[accountId];
-      await saveState({ ...st, zcodeGatewayExhausted: saved });
-    }
+    await withState((st) => {
+      if (st?.zcodeGatewayExhausted?.[accountId]) delete st.zcodeGatewayExhausted[accountId];
+    });
   } catch { /* 持久化失败不影响内存态 */ }
 }
 
@@ -263,7 +259,14 @@ function readRawBody(req, limitBytes = 20 * 1024 * 1024) {
     let size = 0;
     req.on('data', (c) => {
       size += c.length;
-      if (size > limitBytes) { reject(Object.assign(new Error('request body too large'), { status: 413 })); req.destroy(); return; }
+      if (size > limitBytes) {
+        // 只 pause 不 destroy：destroy 会把 socket 打死，调用方随后写的 413 就发不出去，
+        // 客户端只看到 ECONNRESET，分不清「自己请求体写太大」和「网络断了」。
+        // 响应写完（res 'finish'）再由调用方收尾断开。
+        req.pause();
+        reject(Object.assign(new Error(`request body too large (limit ${Math.floor(limitBytes / 1024 / 1024)}MB)`), { status: 413 }));
+        return;
+      }
       chunks.push(c);
     });
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
@@ -271,16 +274,26 @@ function readRawBody(req, limitBytes = 20 * 1024 * 1024) {
   });
 }
 
-// 业务码可能包在 HTTP 200 里（上游对部分错误回 200 + {code}），两类都要看
+// 业务码可能包在 HTTP 200 里（上游对部分错误回 200 + {code}），两类都要看。
+// 裸数字必须加 \b 词边界：否则 "code":4010 会被当成 401 认证失败（→ 账号被永久拉黑），
+// 耗时 10050ms / request-id=11137 / 30071 也会被当成额度耗尽或验证码（→ 冷却 30 分钟 / 空跑一次验证码）。
 const isCaptchaError = (status, text) =>
-  status === 405 || /"code"\s*:\s*(3007|3012)|3007|3012|captcha|unusual activity/i.test(text);
+  status === 405 || /"code"\s*:\s*(3007|3012)\b|\b(3007|3012)\b|captcha|unusual activity/i.test(text);
 
 const isAuthError = (status, text) =>
-  status === 401 || /"code"\s*:\s*401|令牌已过期|验证不正确/.test(text);
+  status === 401 || /"code"\s*:\s*401\b|\b401\b|令牌已过期|验证不正确/.test(text);
 
 const isExhausted = (status, text) =>
-  status === 402 || /"code"\s*:\s*(1005|1113)|1113|1005|余额不足|无可用资源包|exceed quota|insufficient/i.test(text);
+  status === 402 || /"code"\s*:\s*(1005|1113)\b|\b(1113|1005)\b|余额不足|无可用资源包|exceed quota|insufficient/i.test(text);
 
+// 上游成功也会带 code（0 / 200），别把它们当业务错误——与 zcodeClient.businessOk 同一口径
+const BUSINESS_OK = new Set([0, 200]);
+/** 从上游 JSON 信封里取业务码；字符串数字（"3007"）也认，取不到返回 null */
+function businessCode(v) {
+  if (!v || typeof v !== 'object' || v.code === undefined || v.code === null) return null;
+  const n = Number(v.code);
+  return Number.isFinite(n) ? n : null;
+}
 // 组装与 ZCode 客户端真实流量一致的 plan 请求（镜像 R1 捕获，2026-09-29）
 function buildPlanRequest(rawBody, { token, userId }) {
   const ver = '3.14.3';
@@ -364,7 +377,7 @@ export function remoteAllowed(remote, allowList) {
 export async function handleGateway(req, res) {
   if (req.method !== 'POST') {
     res.writeHead(405, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ error: 'POST /gateway/v1/messages（Anthropic /v1/messages 形态）' }));
+    return res.end(JSON.stringify({ error: 'POST /gateway/zcode/v1/messages（Anthropic /v1/messages 形态）' }));
   }
   if (!(await gatewayEnabled())) {
     res.writeHead(503, { 'Content-Type': 'application/json' });
@@ -390,6 +403,8 @@ export async function handleGateway(req, res) {
   let rawBody;
   try { rawBody = await readRawBody(req); } catch (e) {
     res.writeHead(e.status || 400, { 'Content-Type': 'application/json' });
+    // 超限时请求体还没读完：先把 413 发出去，发完再断开，避免客户端继续往这灌数据
+    res.on('finish', () => req.destroy());
     return res.end(JSON.stringify({ error: e.message }));
   }
 
@@ -450,7 +465,9 @@ export async function handleGateway(req, res) {
         const text = await upstream.text().catch(() => '');
         let v;
         try { v = JSON.parse(text); } catch { v = null; }
-        if (v && typeof v.code === 'number') {
+        const code = businessCode(v);
+        // 上游成功信封也可能带 code（0 / 200），那不是业务错误；字符串数字（"3007"）同样要拦
+        if (code !== null && !BUSINESS_OK.has(code)) {
           if (isCaptchaError(200, text)) {
             invalidateCaptcha();
             attempted.push({ account: label, ok: false, error: '验证码被拒（200 业务码）', captcha: true });
@@ -593,7 +610,7 @@ export async function gatewayStatus() {
     accountsWithJwt: withJwt,
     cooling: all.filter((a) => !isDead(a) && (cooling.get(a.id) || 0) > now).map((a) => a.name || a.uid || a.id),
     dead: all.filter((a) => isDead(a)).map((a) => a.name || a.uid || a.id),
-    endpoint: '/gateway/v1/messages',
+    endpoint: '/gateway/zcode/v1/messages',
     note: hasCaptcha ? null : '需要桌面版 CreditDaddy（隐藏窗口验证码），纯 CLI / NAS 环境不可用',
   };
 }

@@ -6,7 +6,7 @@
  * 同一 provider 下 uid 相同但 token 不同 → 视为 token 续期，原地更新而不是新增。
  */
 
-import { normalizeAccountInput, findDuplicate, loadAccounts, withAccounts, loadSettings, saveSettings } from './store.js';
+import { normalizeAccountInput, findDuplicate, loadAccounts, withAccounts, withSettings } from './store.js';
 import { productImpl, displayNameFrom } from './providers.js';
 
 export { displayNameFrom };
@@ -18,11 +18,16 @@ export { displayNameFrom };
 async function attachPendingWebSession(target) {
   if (!String(target.provider || '').startsWith('qoder') || !target.uid) return false;
   if (target.meta?.qoderWebSession) return false;
-  const pending = (await loadSettings()).pendingQoderWebSessions || {};
-  const item = pending[target.uid];
-  if (!item || item.kind !== target.provider || !item.cookie) return false;
-  const { [target.uid]: _used, ...rest } = pending;
-  await saveSettings({ pendingQoderWebSessions: rest });
+  // 与 daemon 写入暂存会话（/api/auth/qoder-web-session）共用 withSettings 队列，
+  // 否则两边同时「读 pending → 改 → 写回」会把对方的暂存项冲掉
+  const item = await withSettings((settings) => {
+    const pending = settings.pendingQoderWebSessions || {};
+    const found = pending[target.uid];
+    if (!found || found.kind !== target.provider || !found.cookie) return null;
+    delete pending[target.uid];
+    return found;
+  });
+  if (!item) return false;
   target.meta = { ...(target.meta || {}), qoderWebSession: { cookie: item.cookie, capturedAt: item.capturedAt || new Date().toISOString() } };
   return true;
 }
@@ -37,7 +42,13 @@ function refreshExisting(existing, incoming) {
   const set = (k, v) => { if (v && existing[k] !== v) { existing[k] = v; changed = true; } };
   if (existing.token !== incoming.token) {
     set('token', incoming.token);
-    set('refreshToken', incoming.refreshToken);
+    // 换了 token 就必须连 refreshToken 一起换：新会话没带 refreshToken（WorkBuddy 会轮换它）时，
+    // 用 set 的真值判断会留下服务端已作废的旧 refreshToken，之后每次刷新都失败，而「重新导入」
+    // 同样清不掉它——死循环。token 变了就以新记录为准，没有就是没有。
+    if (existing.refreshToken !== (incoming.refreshToken || null)) {
+      existing.refreshToken = incoming.refreshToken || null;
+      changed = true;
+    }
     set('expiresAt', incoming.expiresAt);
     if (incoming.verified !== undefined) existing.verified = incoming.verified;
     // 换上了新凭据：旧 token 留下的失败结果（如「登录已失效，请重新登录」）不再成立，

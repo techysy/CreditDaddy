@@ -85,33 +85,53 @@ export async function withMiniMaxAuth(account, fn, ctx = {}) {
   try {
     return await fn(account.token);
   } catch (err) {
-    if (err?.auth && account.refreshToken) {
-      // 本机导入账号：刷新前对齐客户端最新的 refreshToken，避免用陈旧快照刷新触发 invalid_grant
-      try {
-        const { alignMiniMaxFromLocal } = await import('./minimaxLocal.js');
-        alignMiniMaxFromLocal(account, ctx.log);
-      } catch {}
-      ctx.log?.('MiniMax token 已过期，正在自动刷新…');
-      try {
-        const refreshed = await refreshMiniMaxToken(account.refreshToken);
-        const expiresAt = new Date(Date.now() + refreshed.expiresIn * 1000).toISOString();
-        const creds = {
-          token: refreshed.accessToken,
-          refreshToken: refreshed.refreshToken,
-          expiresAt,
-        };
-        account.token = creds.token;
-        account.refreshToken = creds.refreshToken;
-        account.expiresAt = expiresAt;
-        await ctx.onRefresh?.(creds);
-        return await fn(creds.token);
-      } catch (refErr) {
-        ctx.log?.(`MiniMax token 自动刷新失败: ${refErr.message}`);
-        throw refErr;
-      }
-    }
-    throw err;
+    if (!err?.auth || !account.refreshToken) throw err;
+    const creds = await refreshAccountToken(account, ctx);
+    // 重试放在刷新之外：刷新成功但重试再 401 时，日志该说的是「重试仍被拒」，
+    // 而不是误导人的「自动刷新失败」（那时新 token 其实已经拿到并落库了）
+    return await fn(creds.token);
   }
+}
+
+/**
+ * refreshToken 是一次性的、刷新即轮换：两个并发 401 拿同一个 refreshToken 去刷新，
+ * 必然一个成功一个 invalid_grant。签到轮（checkin）与面板的额度查询互不知情，
+ * 面板每 2 分钟刷一轮账号额度，很容易和 2 小时一次的签到轮撞上。
+ * 用 in-flight 表把同一账号的并发刷新合并成一次，后到者直接用刷新出来的新 token 重试。
+ */
+const refreshInFlight = new Map();
+
+function refreshAccountToken(account, ctx = {}) {
+  const key = account.id || account.token;
+  const inflight = refreshInFlight.get(key);
+  if (inflight) return inflight;
+  const p = (async () => {
+    // 本机导入账号：刷新前对齐客户端最新的 refreshToken，避免用陈旧快照刷新触发 invalid_grant
+    try {
+      const { alignMiniMaxFromLocal } = await import('./minimaxLocal.js');
+      alignMiniMaxFromLocal(account, ctx.log);
+    } catch {}
+    ctx.log?.('MiniMax token 已过期，正在自动刷新…');
+    try {
+      const refreshed = await refreshMiniMaxToken(account.refreshToken);
+      const expiresAt = new Date(Date.now() + refreshed.expiresIn * 1000).toISOString();
+      const creds = {
+        token: refreshed.accessToken,
+        refreshToken: refreshed.refreshToken,
+        expiresAt,
+      };
+      account.token = creds.token;
+      account.refreshToken = creds.refreshToken;
+      account.expiresAt = expiresAt;
+      await ctx.onRefresh?.(creds);
+      return creds;
+    } catch (refErr) {
+      ctx.log?.(`MiniMax token 自动刷新失败: ${refErr.message}`);
+      throw refErr;
+    }
+  })().finally(() => refreshInFlight.delete(key));
+  refreshInFlight.set(key, p);
+  return p;
 }
 
 /**

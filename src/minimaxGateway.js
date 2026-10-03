@@ -148,7 +148,8 @@ async function readRawBody(req) {
     req.on('data', (chunk) => {
       size += chunk.length;
       if (size > limit) {
-        req.destroy();
+        // 只 pause 不 destroy：destroy 会把 socket 打死，随后写的 413 客户端收不到（只看到 ECONNRESET）
+        req.pause();
         const err = new Error('请求体过大（上限 20MB）');
         err.status = 413;
         reject(err);
@@ -193,6 +194,8 @@ export async function handleGateway(req, res) {
     rawBody = await readRawBody(req);
   } catch (e) {
     res.writeHead(e.status || 400, { 'Content-Type': 'application/json' });
+    // 超限时请求体还没读完：先把 413 发出去，发完再断开
+    res.on('finish', () => req.destroy());
     return res.end(JSON.stringify({ error: e.message }));
   }
 
