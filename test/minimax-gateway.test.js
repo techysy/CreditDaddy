@@ -24,7 +24,7 @@ let upstreamQueue = [];
 globalThis.fetch = async (url, init = {}) => {
   const u = String(url);
   fetchCalls.push({ url: u, method: init.method, headers: init.headers, body: init.body });
-  // 额度查询（get_membership_info）独立应答，不消费上游消息队列：默认返回 2000 算力币
+  // 额度查询（get_membership_info）独立应答，不消费上游消息队列：默认返回 2000 积分
   if (u.includes('/commerce/get_membership_info')) {
     return {
       ok: true, status: 200,
@@ -105,7 +105,7 @@ const lastCompletionAccount = (tokenOf) => {
   return tokenOf(tok) || null;
 };
 
-test('加权轮询：剩余算力币多的账号分到更多请求', async () => {
+test('加权轮询：剩余积分多的账号分到更多请求', async () => {
   await resetState();
   await seedAccount('rich', { name: '多积分', token: 'tok-rich' });
   await seedAccount('poor', { name: '少积分', token: 'tok-poor' });

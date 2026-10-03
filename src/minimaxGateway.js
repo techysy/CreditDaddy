@@ -44,7 +44,7 @@ export async function setGatewayEnabled(v) {
 
 const cooling = new Map();  // accountId → 冷却截止(ms)
 const dead = new Map();     // accountId → 拉黑时的凭据指纹（指纹变化 = 已重新授权/刷新，自动复活）
-const weights = new Map();  // accountId → 上次查到的剩余算力币（0 时按保底权重轮询，保持可用性）
+const weights = new Map();  // accountId → 上次查到的剩余积分（0 时按保底权重轮询，保持可用性）
 
 export const stats = {
   lastCallAt: null,
@@ -52,7 +52,7 @@ export const stats = {
   lastAccount: null,
 };
 
-// 平滑加权轮询（SWRR）：剩余算力币多的账号分到更多请求，而不是雨露均沾地 round-robin。
+// 平滑加权轮询（SWRR）：剩余积分多的账号分到更多请求，而不是雨露均沾地 round-robin。
 // 查不到额度或为 0 时给保底权重，保证账号仍会被轮询（0 也可能只是查询失败/尚未刷新）。
 const MIN_WEIGHT = 1;
 
@@ -94,7 +94,7 @@ export function __resetForTests() {
   stats.lastAccount = null;
 }
 
-/** 账号权重：剩余算力币（上次快照，避免每个请求都打额度接口）。查不到用保底权重。 */
+/** 账号权重：剩余积分（上次快照，避免每个请求都打额度接口）。查不到用保底权重。 */
 async function accountWeight(a) {
   if (!weights.has(a.id)) {
     try {
@@ -113,7 +113,7 @@ const swrr = new Map();
 function ensureSwrr(id) { if (!swrr.has(id)) swrr.set(id, 0); }
 
 /**
- * 可参与轮转的 MiniMax 账号队列，按剩余算力币加权排序（SWRR）。
+ * 可参与轮转的 MiniMax 账号队列，按剩余积分加权排序（SWRR）。
  * 返回 [账号, ...]：首个为本次该分到的账号；MAX_ATTEMPTS 只取队列头部用于重试，
  * 所以这里直接把权重最高的放最前，其余按有效权重降序兜底。
  */
@@ -138,7 +138,7 @@ async function rotationQueue() {
   const total = ready.reduce((s, it) => s + it.weight, 0);
   swrr.set(pick.account.id, (swrr.get(pick.account.id) || 0) - total);
 
-  // 队首 = 本次中签账号；其余按剩余算力币降序（重试兜底顺序）
+  // 队首 = 本次中签账号；其余按剩余积分降序（重试兜底顺序）
   const rest = ready.filter((it) => it.account.id !== pick.account.id)
     .sort((x, y) => y.weight - x.weight)
     .map((it) => it.account);

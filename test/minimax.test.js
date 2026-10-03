@@ -83,15 +83,16 @@ test('normalizeMiniMaxQuota: 正确解析并区分 free、purchased 与总计', 
   };
 
   const q = client.normalizeMiniMaxQuota(raw);
-  assert.equal(q.unit, '算力币');
+  // 顶层不设 unit：与 Qoder / Trae 同为「积分」口径，计入剩余积分合计
+  assert.equal(q.unit, undefined);
   assert.equal(q.total, 9500);
   assert.equal(q.remaining, 9500);
   assert.equal(q.plan, 'Pro');
   assert.equal(q.parts.length, 2);
-  assert.equal(q.parts[0].name, '免费/活动算力币');
+  assert.equal(q.parts[0].name, '免费/活动积分');
   assert.equal(q.parts[0].remaining, 1500);
   assert.equal(q.parts[0].recurring, true);
-  assert.equal(q.parts[1].name, '购买算力币');
+  assert.equal(q.parts[1].name, '购买积分');
   assert.equal(q.parts[1].remaining, 8000);
   assert.equal(q.parts[1].recurring, false);
 });

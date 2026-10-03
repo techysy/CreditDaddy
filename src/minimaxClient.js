@@ -214,32 +214,32 @@ export function normalizeMiniMaxQuota(data) {
   const parts = [];
   if (free > 0) {
     parts.push({
-      name: '免费/活动算力币',
+      name: '免费/活动积分',
       total: free,
       used: 0,
       remaining: free,
       recurring: true,
-      unit: '算力币',
+      unit: '积分',
     });
   }
   if (purchased > 0) {
     parts.push({
-      name: '购买算力币',
+      name: '购买积分',
       total: purchased,
       used: 0,
       remaining: purchased,
       recurring: false,
-      unit: '算力币',
+      unit: '积分',
     });
   }
   if (!parts.length) {
     parts.push({
-      name: '算力币',
+      name: '积分',
       total,
       used: 0,
       remaining: total,
       recurring: true,
-      unit: '算力币',
+      unit: '积分',
     });
   }
 
@@ -247,7 +247,8 @@ export function normalizeMiniMaxQuota(data) {
     total: Math.round(total * 100) / 100,
     used: 0,
     remaining: Math.round(total * 100) / 100,
-    unit: '算力币',
+    // 顶层不设 unit：面板 creditSum 用「有 unit 即异单位」来排除合计，
+    // MiniMax 与 Qoder / Trae 同为「积分」口径，必须计入剩余积分合计。
     plan: data.plan_name || (data.is_pro_builder ? 'Pro' : '免费版'),
     planExpiresAt: data.expires_at ? new Date(data.expires_at * 1000).toISOString() : null,
     parts,
@@ -283,7 +284,7 @@ export async function checkinMiniMax(account, ctx = {}) {
     if (today && today.status === 3) {
       return {
         status: 'already',
-        message: `今日第 ${today.day_no} 天已签到（${today.points} + ${today.bonus_points} 算力币）`,
+        message: `今日第 ${today.day_no} 天已签到（${today.points} + ${today.bonus_points} 积分）`,
         amount: (today.points || 0) + (today.bonus_points || 0),
         streakDays: today.day_no || 0,
       };
@@ -312,7 +313,7 @@ export async function checkinMiniMax(account, ctx = {}) {
     if (cdata.claim_result === 2) {
       return {
         status: 'already',
-        message: `今日已领取（+${pts} 算力币）`,
+        message: `今日已领取（+${pts} 积分）`,
         amount: pts,
         streakDays: cdata.day_no || today?.day_no || 0,
       };
@@ -320,7 +321,7 @@ export async function checkinMiniMax(account, ctx = {}) {
 
     return {
       status: 'checked-in',
-      message: `签到成功第 ${cdata.day_no || today?.day_no || 1} 天（+${pts} 算力币）`,
+      message: `签到成功第 ${cdata.day_no || today?.day_no || 1} 天（+${pts} 积分）`,
       claimedAmount: pts,
       amount: pts,
       streakDays: cdata.day_no || today?.day_no || 0,

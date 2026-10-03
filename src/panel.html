@@ -669,7 +669,7 @@
       <label>IP 白名单（每行一个，支持 192.168.31.* 通配）</label>
       <textarea class="input" id="mgw-allow" rows="4" placeholder="192.168.31.101"></textarea>
     </div>
-    <div class="hint">开启后，MiniMax 算力币与模型能力变成本机的一个原生 Anthropic Messages 补全接口——在 10Router 或 Claude Code 等工具中建一个 anthropic-compatible 节点指向本机 <code>/gateway/minimax/v1/messages</code> 即可调用。支持多账号自动轮转、429 限流自动冷却 5 分钟、凭据失效自动静默刷新。白名单内的机器<b>免密直连</b>；本机回环（127.0.0.1）始终放行。</div>
+    <div class="hint">开启后，MiniMax 积分与模型能力变成本机的一个原生 Anthropic Messages 补全接口——在 10Router 或 Claude Code 等工具中建一个 anthropic-compatible 节点指向本机 <code>/gateway/minimax/v1/messages</code> 即可调用。支持多账号自动轮转、429 限流自动冷却 5 分钟、凭据失效自动静默刷新。白名单内的机器<b>免密直连</b>；本机回环（127.0.0.1）始终放行。</div>
     <div class="modal-actions"><button class="btn" data-close>取消</button><button class="btn primary" id="mgw-ok">保存</button></div>
   </div>
 </div>
@@ -853,8 +853,8 @@ const PROV = {
 // 支持每日签到的产品（ZCode / mirasim / 妙手 额度靠套餐或滚动窗口发放，不做签到）
 const CHECKIN_PRODUCTS = new Set(['qoder', 'workbuddy', 'trae', 'minimax']);
 const CLIENT_LABEL = { qoder: 'Qoder', workbuddy: 'WorkBuddy', zcode: 'ZCode', mirasim: 'mirasim', catpaw: '妙手', trae: 'Trae', minimax: 'MiniMax' };
-// 额度单位为 Credits/时长/算力币而非「积分」口径的产品（不计入剩余积分合计）
-const CREDIT_VIEWS = new Set(['zcode', 'mirasim', 'catpaw', 'minimax']);
+// 额度单位为 Credits/时长而非「积分」口径的产品（不计入剩余积分合计）
+const CREDIT_VIEWS = new Set(['zcode', 'mirasim', 'catpaw']);
 const provOf = (p) => PROV[p] || { prod: 'qoder', prodLabel: p, region: '', cls: '' };
 const provBadges = (p, regionOnly, flavor) => {
   const v = provOf(p);
@@ -1261,16 +1261,10 @@ function renderProd() {
     $('s-done').textContent = acc.filter(isDone).length + ' / ' + acc.length;
   }
   const c = creditSum(acc);
-  if (prod === 'minimax') {
-    const pts = acc.reduce((s, a) => s + (Number(state.quotas[a.id]?.remaining) || 0), 0);
-    $('s-credits-label').textContent = '剩余算力币';
-    $('s-credits').textContent = fmtNum(pts);
-  } else {
-    $('s-credits-label').textContent = CREDIT_VIEWS.has(prod) ? '有效套餐' : '剩余积分';
-    $('s-credits').textContent = CREDIT_VIEWS.has(prod)
-      ? acc.filter((a) => { const q = state.quotas[a.id]; return q && !q.error && !q.empty; }).length + ' / ' + acc.length
-      : c.loading ? '…' : (c.known ? fmtNum(c.sum) : '-');
-  }
+  $('s-credits-label').textContent = CREDIT_VIEWS.has(prod) ? '有效套餐' : '剩余积分';
+  $('s-credits').textContent = CREDIT_VIEWS.has(prod)
+    ? acc.filter((a) => { const q = state.quotas[a.id]; return q && !q.error && !q.empty; }).length + ' / ' + acc.length
+    : c.loading ? '…' : (c.known ? fmtNum(c.sum) : '-');
   const hasRegions = !CREDIT_VIEWS.has(prod) && prod !== 'trae' && prod !== 'minimax';   // Trae / MiniMax 不分国际 / 国内版
   $('region').style.display = hasRegions ? '' : 'none';
   $('region-div').style.display = hasRegions ? '' : 'none';
@@ -1339,7 +1333,7 @@ function renderDash() {
   const failed = signable.filter((a) => statusOf(a).cls === 'fail').length;
   const credit = creditSum(state.accounts.filter((a) => a.product !== 'zcode'));
   const byProd = orderedVisibleComps().filter((id) => id !== 'tenrouter').map((id) => prodLabel(id) + ' ' + ofProduct(id).length).join(' · ');
-  const creditByProd = ['qoder', 'workbuddy'].filter(compVisible).map((id) => { const c = creditSum(ofProduct(id)); return prodLabel(id) + ' ' + (c.known ? fmtNum(c.sum) : '-'); }).join(' · ');
+  const creditByProd = ['qoder', 'workbuddy', 'minimax'].filter(compVisible).map((id) => { const c = creditSum(ofProduct(id)); return prodLabel(id) + ' ' + (c.known ? fmtNum(c.sum) : '-'); }).join(' · ');
   // 今日进度拆「国内领取 / 国际活跃」：国际版 WorkBuddy 是保持活跃（活跃不等于必有奖励）
   const intlAcc = signable.filter((a) => a.provider === 'workbuddy-intl');
   const domAcc = signable.filter((a) => a.provider !== 'workbuddy-intl');
@@ -1381,10 +1375,9 @@ function renderDash() {
           + '</span>';
       } else if (p.id === 'minimax') {
         const planned = list.filter((a) => { const q = state.quotas[a.id]; return q && !q.error && !q.empty; }).length;
-        const pts = list.reduce((s, a) => s + (Number(state.quotas[a.id]?.remaining) || 0), 0);
         rows = '<span class="lbl">今日领取</span><span class="val">' + d + ' / ' + list.length + '</span>'
           + '<span style="grid-column:1 / -1">' + meter(d, list.length) + '</span>'
-          + '<span class="lbl">剩余算力币</span><span class="val">' + fmtNum(pts) + ' 算力币</span>';
+          + '<span class="lbl">剩余积分</span><span class="val">' + (c.known ? fmtNum(c.sum) : '-') + '</span>';
       } else {
         rows = '<span class="lbl">今日领取</span><span class="val">' + d + ' / ' + list.length + '</span>';
       }
@@ -1494,7 +1487,7 @@ function renderStatus() {
   n.classList.toggle('info', state.view === 'zcode' || state.view === 'mirasim' || state.view === 'catpaw' || state.view === 'trae' || state.view === 'minimax' || (hasIntl && Boolean(s.riskIdentity)));
   if (state.view === 'minimax') {
     n.style.display = '';
-    n.innerHTML = '<div class="z-row"><span class="z-label">每日签到</span><span class="z-text">每日签到领 800~2000 算力币 + 400 连签加成。支持自动检测本机 MiniMax Code 凭据与 Bearer Token 导入，自带标准 Anthropic 本地网关。</span></div>';
+    n.innerHTML = '<div class="z-row"><span class="z-label">每日签到</span><span class="z-text">每日签到领 800~2000 积分 + 400 连签加成。支持自动检测本机 MiniMax Code 凭据与 Bearer Token 导入，自带标准 Anthropic 本地网关。</span></div>';
   } else if (state.view === 'trae') {
     n.style.display = '';
     n.innerHTML = '<div class="z-row"><span class="z-label">每日签到</span><span class="z-text">每日签到领约 150 通用积分（7 天有效，多资源包自动归并）。凭据由本机 Trae 客户端解密导入，支持多账号快照一键切换。</span></div>';

@@ -119,7 +119,7 @@
 
 ### MiniMax（MiniMax Code）
 - **账号来源**：两种方式——① 本机导入，读取 MiniMax Code 客户端的 `~/.minimax/auth/prod/cn/mcode-public/auth.json` 当前登录记录（明文文件，token 不出机）；② **浏览器登录**，走官方 OAuth 设备码授权（RFC 8628 + S256 PKCE），桌面版在内置隐私窗口打开 `account.minimax.cn/oauth-authorize` 完成授权，无需本机客户端。
-- **额度与签到**：查询算力币余额（按「免费/活动」与「购买」拆分，带套餐名与到期）；每日签到领算力币并累计连续天数。
+- **额度与签到**：查询积分余额（按「免费/活动」与「购买」拆分，带套餐名与到期）；每日签到领积分并累计连续天数。
 - **刷新轮换互斥的处理**：MiniMax 的 refreshToken 是一次性轮换的，本机客户端会独立刷新。为避免 CreditDaddy 用陈旧快照刷新触发 `invalid_grant`：本机导入账号在刷新前会从 `auth.json` 重读最新 refreshToken 对齐，刷新成功后再安全回写文件（仅客户端未运行时，运行中回写会作废客户端内存里的 token 故跳过）。浏览器登录拿到的是独立 `loginEpoch` 凭据链，不与本机客户端共用，从根上消除互斥。
 - **本地网关**：内置 Anthropic 兼容端点 `POST /gateway/minimax/v1/messages`，10Router 建 anthropic-compatible 节点指向即可把 MiniMax 当普通供应商调度；多账号轮换、401 自动刷新重试、429 冷却、SSE / JSON 流式透传、局域网 IP 白名单（与 ZCode 体验包接口同机制）。
 
