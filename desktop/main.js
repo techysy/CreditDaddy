@@ -723,10 +723,86 @@ ipcMain.on('pw:focus', (e) => {
   } catch { /* ignore */ }
 });
 
+// ── 面板访问密码验证（打开「已保存的密码」管理窗前校验；未设面板密码则无门槛）──
+let pwVerifyWin = null;
+let pwVerifyResolve = null;
+let pwVerifyKey = '';
+
+function verifyPanelKey(key) {
+  if (pwVerifyWin && !pwVerifyWin.isDestroyed()) { pwVerifyWin.focus(); return pwVerifyResolve || Promise.resolve(false); }
+  return new Promise((resolve) => {
+    pwVerifyKey = String(key || '');
+    pwVerifyResolve = resolve;
+    pwVerifyWin = new BrowserWindow({
+      width: 420,
+      height: 220,
+      parent: (win && !win.isDestroyed()) ? win : undefined,
+      modal: true,
+      alwaysOnTop: true,
+      title: '验证面板访问密码',
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      autoHideMenuBar: true,
+      show: true,
+      webPreferences: { contextIsolation: false, nodeIntegration: true, sandbox: false },
+    });
+    attachShellContextMenu(pwVerifyWin);
+    const html = `<!doctype html><html><head><meta charset="utf-8"></head>
+<body style="font-family:inherit;margin:0;padding:14px;display:flex;flex-direction:column;gap:10px;background:transparent">
+<div style="font-size:14px;font-weight:600">输入面板访问密码</div>
+<div style="font-size:12px;color:#888">已保存的密码需要面板访问密码才能查看。</div>
+<input id="k" type="password" autofocus placeholder="面板访问密码" style="flex:1;min-width:0;padding:6px 10px;font-size:13px;border:1px solid #8883;border-radius:6px;outline:none">
+<div id="err" style="font-size:12px;color:#c0392b;display:none">密码不正确</div>
+<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:2px">
+<button id="cancel" style="padding:5px 12px;font-size:13px;border:1px solid #8883;border-radius:6px;cursor:pointer;background:transparent">取消</button>
+<button id="ok" style="padding:5px 14px;font-size:13px;border:1px solid #8883;border-radius:6px;cursor:pointer">确定</button>
+</div>
+<script>
+const { ipcRenderer } = require('electron');
+const inp = document.getElementById('k');
+const err = document.getElementById('err');
+const submit = () => ipcRenderer.send('pw:verify', String(inp.value || ''));
+document.getElementById('ok').addEventListener('click', submit);
+document.getElementById('cancel').addEventListener('click', () => window.close());
+inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') window.close(); });
+ipcRenderer.on('pw:verify-result', (_e, ok) => { if (!ok) { err.style.display = 'block'; inp.value = ''; inp.focus(); } });
+</script>
+</body></html>`;
+    pwVerifyWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
+      .catch(() => { try { pwVerifyWin.close(); } catch { /* ignore */ } });
+    pwVerifyWin.on('closed', () => {
+      pwVerifyWin = null;
+      if (pwVerifyResolve) { const r = pwVerifyResolve; pwVerifyResolve = null; r(false); }
+    });
+  });
+}
+
+ipcMain.on('pw:verify', (e, entered) => {
+  const fromVerify = pwVerifyWin && !pwVerifyWin.isDestroyed() && e.sender === pwVerifyWin.webContents;
+  if (!fromVerify) return;
+  const a = Buffer.from(String(entered || ''));
+  const b = Buffer.from(String(pwVerifyKey || ''));
+  const ok = pwVerifyKey && a.length === b.length && crypto.timingSafeEqual(a, b);
+  if (ok) {
+    const r = pwVerifyResolve; pwVerifyResolve = null;
+    try { pwVerifyWin.close(); } catch { /* ignore */ }
+    r?.(true);
+  } else {
+    e.sender.send('pw:verify-result', false);
+  }
+});
+
 // ── 管理已保存的密码（列表/手动添加/改/显示/复制/两步删除）──
 let pwMgrWin = null;
-function promptManagePasswords() {
+async function promptManagePasswords() {
   if (pwMgrWin && !pwMgrWin.isDestroyed()) { pwMgrWin.focus(); return; }
+  // 设了面板访问密码时，必须先验证才能查看明文——托盘菜单不能绕过面板密码
+  const panelKey = daemonMod && typeof daemonMod.getPanelKey === 'function' ? daemonMod.getPanelKey() : '';
+  if (panelKey && !(await verifyPanelKey(panelKey))) {
+    notify('密码管理已锁定', '需要输入面板访问密码才能查看已保存的密码。');
+    return;
+  }
   pwMgrWin = new BrowserWindow({
     width: 800,
     height: 520,

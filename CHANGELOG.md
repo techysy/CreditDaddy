@@ -33,7 +33,11 @@
 ### 🔧 测试
 
 - 新增 `test/minimax.test.js` 设备码登录与凭据对齐用例：S256 PKCE 请求体校验、`authorization_pending` 轮询、授权完成返回独立凭据链账号（`source=browser`、无 `authRecordKey`）、`expired_token`/`access_denied` 终态、`alignMiniMaxFromLocal` 轮换对齐与 device 账号跳过、`writeMiniMaxAuth` 对 device 账号不回写 / 对本机账号回写并 `generation+1`。
-- 新增 `test/minimax-gateway.test.js` 拉黑与复活回归：401 且刷新失败拉黑后 503 分类计数、刷新成功自动复活并回写账号库、**重新授权换凭据后自动复活**（本次修复的核心场景）、同指纹期间拉黑保持不空打上游、`setGatewayEnabled(true)` 清场、网关未开启 503；`test/zcode-gateway.test.js` 补同款「重新导入换 JWT 复活」与「开关清场」用例。全仓 171 例绿。
+- 新增 `test/minimax-gateway.test.js` 拉黑与复活回归：401 且刷新失败拉黑后 503 分类计数、刷新成功自动复活并回写账号库、**重新授权换凭据后自动复活**（本次修复的核心场景）、同指纹期间拉黑保持不空打上游、`setGatewayEnabled(true)` 清场、网关未开启 503；`test/zcode-gateway.test.js` 补同款「重新导入换 JWT 复活」与「开关清场」用例。全仓 187 例绿。
+
+### 🔒 安全
+
+- **「已保存的密码」需面板访问密码才能查看**：此前托盘菜单「已保存的密码…」直接打开管理窗，点「显示/复制」即可拿到明文（DPAPI 解密对同系统用户无需口令），绕过面板访问密码。现在设了面板访问密码时，打开管理窗前先弹出密码验证（常量时间比较，失败不提示进度），验证通过才允许查看/复制明文；未设面板密码则维持原行为（桌面壳本身已绑定当前系统用户）。
 
 ---
 
