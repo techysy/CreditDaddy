@@ -16,7 +16,10 @@
 
 [下载](#下载) · [架构](#%EF%B8%8F-架构) · [功能](#功能) · [10Router 集成](#10router-集成) · [产品线说明](#产品线说明) · [快速开始](#快速开始) · [HTTP API](#本地-http-api) · [相关项目](#-相关项目) · [贡献者致谢](#-贡献者致谢) · [许可证](#-许可证)
 
-<img src="docs/screenshot-dashboard.png" width="860" alt="CreditDaddy 仪表盘">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dashboard-dark.png">
+  <img src="docs/screenshot-dashboard-light.png" width="860" alt="CreditDaddy 仪表盘">
+</picture>
 
 </div>
 
