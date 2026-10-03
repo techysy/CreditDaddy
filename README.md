@@ -280,7 +280,9 @@ npm test
 欢迎加入 **CreditDaddy 交流群** 交流使用体验与反馈 issue：
 
 <div align="center">
+
 <img src="assets/feishu-group-qr.jpg" width="280" alt="CreditDaddy 交流群二维码">
+
 </div>
 
 ### 贡献者致谢
