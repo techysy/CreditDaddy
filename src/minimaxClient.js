@@ -290,6 +290,7 @@ export async function checkinMiniMax(account, ctx = {}) {
     return {
       status: 'checked-in',
       message: `签到成功第 ${cdata.day_no || today?.day_no || 1} 天（+${pts} 算力币）`,
+      claimedAmount: pts,
       amount: pts,
     };
   }, ctx);

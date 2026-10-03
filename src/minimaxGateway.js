@@ -245,24 +245,28 @@ export async function handleGateway(req, res) {
       logger.info('MINIMAX-GW', `${label} 补全成功 (${upstream.status})`);
 
       // 透传头（SSE / JSON）
-      const forwardHeaders = {};
-      for (const [k, v] of upstream.headers) {
-        if (/^(content-type|cache-control|connection)$/i.test(k)) forwardHeaders[k] = v;
-      }
+      const forwardHeaders = {
+        'Content-Type': upstream.headers.get('content-type') || 'application/json',
+        'Cache-Control': 'no-cache',
+      };
       res.writeHead(upstream.status, forwardHeaders);
 
       if (upstream.body && typeof upstream.body.pipe === 'function') {
         upstream.body.pipe(res);
       } else if (upstream.body && typeof upstream.body.getReader === 'function') {
         const reader = upstream.body.getReader();
-        const pump = async () => {
+        try {
           while (true) {
             const { done, value } = await reader.read();
-            if (done) { res.end(); break; }
-            res.write(value);
+            if (done) break;
+            if (!res.write(Buffer.from(value))) {
+              await new Promise((r) => res.once('drain', r));
+            }
           }
-        };
-        pump().catch(() => res.end());
+        } catch (e) {
+          logger.warn('MINIMAX-GW', `流式转发中断：${e.message}`);
+        }
+        res.end();
       } else {
         const buf = await upstream.arrayBuffer().catch(() => null);
         res.end(buf ? Buffer.from(buf) : '');
