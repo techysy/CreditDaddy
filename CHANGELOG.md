@@ -4,6 +4,34 @@
 
 ---
 
+## [1.3.0] (2026-10-03)
+
+### ✨ 新功能
+
+- **接入 MiniMax Code（智谱 MiniMax）作为第 7 条产品线**：本机导入 + 额度查询 + 每日签到领算力币 + Anthropic 兼容本地网关。
+  - **本机导入**：读取 `~/.minimax/auth/prod/cn/mcode-public/auth.json` 的当前登录记录（明文凭据文件，token 不出机）；`creditdaddy scan` 与面板「本机导入」均可抓取，并缓存 `uid-cache.json` 供离线比对当前登录账号。
+  - **额度查询**：`POST /matrix/api/v1/commerce/get_membership_info` 解析算力币余额，按「免费/活动算力币」与「购买算力币」拆分为多条 part，带套餐名（Pro / 免费版）与到期时间。
+  - **每日签到**：`signin/status` 判今日是否已领（status 3），未领则 `signin/claim` 领取，返回连续天数与所得算力币（含 `claimedAmount` 供面板「今日已领」徽章按产品日界刷新）。
+  - **Anthropic 兼容本地网关**：`POST /gateway/minimax/v1/messages`（上游 `agent.minimax.cn/mavis/api/v1/llm/v1/messages`），10Router 建 anthropic-compatible 节点指向即可把 MiniMax 当普通供应商调度；多账号轮换、401 自动刷新重试、429 冷却 5 分钟、SSE 与 JSON 流式透明转发、局域网白名单与回环校验（与 ZCode 体验包接口同机制）。面板开关持久化在 `settings.minimaxGateway`。
+- **MiniMax 浏览器登录（官方 OAuth 设备码授权）**：面板「浏览器登录」新增 MiniMax Code 选项，桌面版在内置隐私窗口打开 `account.minimax.cn/oauth-authorize` 完成授权，无需本机客户端、无需粘贴 token。
+  - 走 RFC 8628 设备码 + S256 PKCE：`POST /oauth2/device/code` 取 `verification_uri_complete` 与 `user_code`，`POST /oauth2/token`（`grant_type=urn:ietf:params:oauth:grant-type:device_code`）轮询兑换，`authorization_pending` / `slow_down` 继续等待，`expired_token` / `access_denied` 终态失败。
+  - **独立凭据链**：设备码登录拿到的是独立 `loginEpoch` 的一条新 refresh token 链，不与本机 `~/.minimax` 客户端共用凭据，因此 CreditDaddy 自行刷新不会作废客户端的 token（从根上消除轮换互斥）；该流程绝不回写 `auth.json`。
+  - 登录成功按 uid 与本机导入的同一账号自动去重续期（保留 id 与签到记录）。
+
+### 🐛 修复
+
+- **MiniMax token 刷新报 `invalid_grant`（"this refresh token can no longer be used"）**：根因是刷新令牌轮换互斥——MiniMax 的 refreshToken 是一次性轮换的（`auth.json` 的 `generation` 随之累加），本机客户端会独立刷新，而账号库里的快照刷新后不回写文件，下次刷新即命中已被服务端作废的旧 token。
+  - **刷新前对齐**：本机导入账号（带 `meta.authRecordKey`）在刷新前先从 `auth.json` 重读该 record 的最新 `refreshToken`（`alignMiniMaxFromLocal`），不再用陈旧快照；额度查询、签到与本地网关三处刷新路径统一接入。
+  - **刷新后安全回写**：仿 mirasim，刷新成功经 `onRefresh` 回写账号库后，再尝试把新凭据写回 `auth.json`（`writeMiniMaxAuth`，原子写 + `generation+1`）——但**仅当客户端未运行时**：客户端运行中回写会让它内存里的 refreshToken 下次刷新命中已被消费的旧 token，反而弄坏客户端，故此时跳过（账号库已更新，下轮刷新前会再重读对齐）。device 登录账号无 `authRecordKey`，回写对其 no-op。
+- 签到「今日已领」徽章改按产品日界刷新（此前统一按 Qoder 的 10:00 UTC+8 翻日，与 MiniMax 口径错位）；客户端当前登录识别与算力币口径修正。
+- 本地网关流式缓冲透传优化，补充签到 `claimedAmount` 字段。
+
+### 🔧 测试
+
+- 新增 `test/minimax.test.js` 设备码登录与凭据对齐用例：S256 PKCE 请求体校验、`authorization_pending` 轮询、授权完成返回独立凭据链账号（`source=browser`、无 `authRecordKey`）、`expired_token`/`access_denied` 终态、`alignMiniMaxFromLocal` 轮换对齐与 device 账号跳过、`writeMiniMaxAuth` 对 device 账号不回写 / 对本机账号回写并 `generation+1`。全仓 163 例绿。
+
+---
+
 ## [1.2.0] (2026-10-02)
 
 ### ✨ 新功能
