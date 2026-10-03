@@ -1670,6 +1670,7 @@ async function loadZGateway() {
     state.zGatewayHasCaptcha = d.hasCaptcha === true;
     state.zGatewayStats = d.stats || null;
     if (state.view === 'zcode') { renderStatus(); render(); }
+    applyLogTabs();   // 网关开关变化影响日志标签显隐
   } catch (e) {}
 }
 async function loadMGateway() {
@@ -1681,6 +1682,7 @@ async function loadMGateway() {
     state.mGatewaySuggest = d.suggestAllow || '';
     state.mGatewayStats = d.stats || null;
     if (state.view === 'minimax') { renderStatus(); render(); }
+    applyLogTabs();   // 网关开关变化影响日志标签显隐
   } catch (e) {}
 }
 
@@ -2192,11 +2194,14 @@ async function loadQuotas(ids) {
   await Promise.all([worker(), worker(), worker()]);
 }
 let logTabView = null;   // 当前日志标签所属的视图：切到别的视图时才重置跟随，同一视图内保留手动切换
-async function loadLogs() {
+function followLogTab() {
   if (logTabView !== state.view) {
     state.logTab = (state.view !== 'dash' && GW_LOG_TAG[state.view]) ? state.view : 'run';
     logTabView = state.view;
   }
+}
+async function loadLogs() {
+  followLogTab();
   applyLogTabs();
   await loadCurrentLogs();
 }
@@ -3216,6 +3221,9 @@ function applyView() {
   if (state.view === 'tenrouter') loadZGateway();
   if (state.view === 'minimax') loadMGateway();
   if (state.view === 'tenrouter' && tr.config && tr.config.configured && !tr.quotas && !tr.loading) loadTrQuotas();
+  followLogTab();
+  applyLogTabs();
+  loadCurrentLogs();
   render();
   renderStatus();
 }
