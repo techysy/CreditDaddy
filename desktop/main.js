@@ -993,6 +993,20 @@ function registerAuthWindowIpc() {
       return { ok: false, error: '未找到 Trae 客户端可执行文件' };
     } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
   });
+  // MiniMax Code 页「打开客户端」
+  ipcMain.handle('open-minimax-client', async () => {
+    try {
+      const os = require('node:os');
+      const fs = require('node:fs');
+      const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+      const cand = path.join(local, 'Programs', 'MiniMax Code', 'MiniMax Code.exe');
+      if (process.platform === 'win32' && fs.existsSync(cand)) {
+        const err = await shell.openPath(cand);
+        if (!err) return { ok: true };
+      }
+      return { ok: false, error: '未找到 MiniMax Code 客户端可执行文件' };
+    } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
+  });
 }
 
 function panelUrl() {

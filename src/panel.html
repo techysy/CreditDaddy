@@ -126,6 +126,8 @@
   html[data-theme="dark"] .badge.prod.catpaw { color: #fdba74; }
   .badge.prod.trae { color: #047857; background: rgba(16,185,129,.14); }
   html[data-theme="dark"] .badge.prod.trae { color: #6ee7b7; }
+  .badge.prod.minimax { color: #e11d48; background: rgba(244,63,94,.14); }
+  html[data-theme="dark"] .badge.prod.minimax { color: #fda4af; }
   .seg-ctl { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--hover); }
   .seg-ctl button { border: none; background: transparent; color: var(--text-2); font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 7px; cursor: pointer; }
   .seg-ctl button.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
@@ -247,7 +249,7 @@
   .prod-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .prod-name { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; }
   .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .dot.qoder { background: #7c3aed; } .dot.workbuddy { background: #14b8a6; } .dot.zcode { background: #2563eb; } .dot.mirasim { background: #64748b; } .dot.catpaw { background: #f97316; } .dot.trae { background: #10b981; }
+  .dot.qoder { background: #7c3aed; } .dot.workbuddy { background: #14b8a6; } .dot.zcode { background: #2563eb; } .dot.mirasim { background: #64748b; } .dot.catpaw { background: #f97316; } .dot.trae { background: #10b981; } .dot.minimax { background: #f43f5e; }
   .prod-go { color: var(--text-3); font-size: 12px; white-space: nowrap; display: inline-flex; align-items: center; gap: 2px; }
   .prod-go svg { width: 12px; height: 12px; transition: transform .15s; }
   .prodcard:hover .prod-go { color: var(--text); }
@@ -363,6 +365,7 @@
     <button data-view="mirasim">mirasim<span class="cnt" id="cnt-mirasim">0</span></button>
     <button data-view="catpaw">妙手<span class="cnt" id="cnt-catpaw">0</span></button>
     <button data-view="trae">Trae<span class="cnt" id="cnt-trae">0</span></button>
+    <button data-view="minimax">MiniMax<span class="cnt" id="cnt-minimax">0</span></button>
     <button data-view="tenrouter">10Router<span class="cnt" id="cnt-tenrouter">–</span></button>
   </nav>
 
@@ -414,6 +417,10 @@
           </span>
           <span id="t-actions" style="display:none">
             <button class="btn" id="tt-open" style="display:none"></button>
+          </span>
+          <span id="m-actions" style="display:none">
+            <button class="btn" id="mt-gw"></button>
+            <button class="btn" id="mt-open" style="display:none"></button>
           </span>
           <button class="btn" id="btn-add"></button>
           <button class="btn" id="btn-import"></button>
@@ -475,7 +482,7 @@
     <div class="pane" data-pane="token">
       <div class="field">
         <label>版本</label>
-        <select class="input" id="f-provider"><option value="qoder">Qoder 国际版</option><option value="qoder-cn">Qoder 国内版</option><option value="workbuddy">WorkBuddy 国内版</option><option value="workbuddy-intl">WorkBuddy 国际版</option></select>
+        <select class="input" id="f-provider"><option value="qoder">Qoder 国际版</option><option value="qoder-cn">Qoder 国内版</option><option value="workbuddy">WorkBuddy 国内版</option><option value="workbuddy-intl">WorkBuddy 国际版</option><option value="minimax">MiniMax</option></select>
       </div>
       <div class="field"><label>备注名（可选）</label><input class="input" id="f-name" placeholder="留空则自动读取昵称"></div>
       <div class="field"><label>Token</label><input class="input mono" id="f-token" placeholder="dt-… / jt-… 或 PAT（pt-…，自动兑换）"></div>
@@ -490,7 +497,7 @@
     <div class="modal-title"><span>导出账号</span><button class="close" data-close>✕</button></div>
     <div class="field">
       <label>范围</label>
-      <select class="input" id="ex-provider"><option value="">全部账号</option><option value="p:qoder">Qoder（全部）</option><option value="qoder">仅 Qoder 国际版</option><option value="qoder-cn">仅 Qoder 国内版</option><option value="p:workbuddy">WorkBuddy（全部）</option><option value="workbuddy">仅 WorkBuddy 国内版</option><option value="workbuddy-intl">仅 WorkBuddy 国际版</option><option value="zcode">ZCode</option><option value="p:mirasim">mirasim</option><option value="p:catpaw">妙手</option><option value="p:trae">Trae</option></select>
+      <select class="input" id="ex-provider"><option value="">全部账号</option><option value="p:qoder">Qoder（全部）</option><option value="qoder">仅 Qoder 国际版</option><option value="qoder-cn">仅 Qoder 国内版</option><option value="p:workbuddy">WorkBuddy（全部）</option><option value="workbuddy">仅 WorkBuddy 国内版</option><option value="workbuddy-intl">仅 WorkBuddy 国际版</option><option value="zcode">ZCode</option><option value="p:mirasim">mirasim</option><option value="p:catpaw">妙手</option><option value="p:trae">Trae</option><option value="p:minimax">MiniMax</option></select>
     </div>
     <div class="field">
       <label>加密口令（必填）</label>
@@ -640,6 +647,24 @@
   </div>
 </div>
 
+<!-- MiniMax 本地接口 -->
+<div class="mask" id="m-mgw">
+  <div class="modal sm">
+    <div class="modal-title"><span>MiniMax 本地接口</span><button class="close" data-close>✕</button></div>
+    <div class="hint" id="mgw-url" style="margin-bottom:10px"></div>
+    <div class="field">
+      <label class="check"><input type="checkbox" id="mgw-on"> 启用本地接口（/gateway/minimax/v1/messages）</label>
+    </div>
+    <div class="field" id="mgw-lan-fields">
+      <label class="check"><input type="checkbox" id="mgw-lan"> 对局域网开放（需全局局域网已开启）</label>
+      <label>IP 白名单（每行一个，支持 192.168.31.* 通配）</label>
+      <textarea class="input" id="mgw-allow" rows="4" placeholder="192.168.31.101"></textarea>
+    </div>
+    <div class="hint">开启后，MiniMax 算力币与模型能力变成本机的一个原生 Anthropic Messages 补全接口——在 10Router 或 Claude Code 等工具中建一个 anthropic-compatible 节点指向本机 <code>/gateway/minimax/v1/messages</code> 即可调用。支持多账号自动轮转、429 限流自动冷却 5 分钟、凭据失效自动静默刷新。白名单内的机器<b>免密直连</b>；本机回环（127.0.0.1）始终放行。</div>
+    <div class="modal-actions"><button class="btn" data-close>取消</button><button class="btn primary" id="mgw-ok">保存</button></div>
+  </div>
+</div>
+
 <input type="file" id="file-input" accept=".json,application/json" style="display:none">
 <div id="toast"></div>
 
@@ -670,7 +695,7 @@ const I = {
 
 const $ = (id) => document.getElementById(id);
 const state = { accounts: [], quotas: {}, status: null, busy: {}, view: 'dash', region: '', addProduct: '' };
-const VIEWS = ['dash', 'qoder', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'tenrouter'];
+const VIEWS = ['dash', 'qoder', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'tenrouter'];
 // 10Router 集成：config 来自 /api/tenrouter，quotas 来自 /api/tenrouter/quotas
 const tr = { config: null, quotas: null, error: null, loading: false, syncing: false };
 const PRODUCTS = [
@@ -680,6 +705,7 @@ const PRODUCTS = [
   { id: 'mirasim', label: 'mirasim' },
   { id: 'catpaw', label: '妙手' },
   { id: 'trae', label: 'Trae' },
+  { id: 'minimax', label: 'MiniMax' },
 ];
 const prodLabel = (id) => (PRODUCTS.find((x) => x.id === id) || { label: id }).label;
 
@@ -691,6 +717,7 @@ const COMPONENTS = [
   { id: 'mirasim', label: 'mirasim' },
   { id: 'catpaw', label: '妙手' },
   { id: 'trae', label: 'Trae' },
+  { id: 'minimax', label: 'MiniMax' },
   { id: 'tenrouter', label: '10Router' },
 ];
 const HIDDEN_COMP_KEY = 'qd_hidden_components';
@@ -812,10 +839,11 @@ const PROV = {
   mirasim: { prod: 'mirasim', prodLabel: 'mirasim', region: '', cls: '' },
   catpaw: { prod: 'catpaw', prodLabel: '妙手', region: '', cls: '' },
   trae: { prod: 'trae', prodLabel: 'Trae', region: '', cls: '' },
+  minimax: { prod: 'minimax', prodLabel: 'MiniMax', region: '', cls: '' },
 };
 // 支持每日签到的产品（ZCode / mirasim / 妙手 额度靠套餐或滚动窗口发放，不做签到）
-const CHECKIN_PRODUCTS = new Set(['qoder', 'workbuddy', 'trae']);
-const CLIENT_LABEL = { qoder: 'Qoder', workbuddy: 'WorkBuddy', zcode: 'ZCode', mirasim: 'mirasim', catpaw: '妙手', trae: 'Trae' };
+const CHECKIN_PRODUCTS = new Set(['qoder', 'workbuddy', 'trae', 'minimax']);
+const CLIENT_LABEL = { qoder: 'Qoder', workbuddy: 'WorkBuddy', zcode: 'ZCode', mirasim: 'mirasim', catpaw: '妙手', trae: 'Trae', minimax: 'MiniMax' };
 // 额度单位为 Credits/时长而非「积分」口径的产品（不计入剩余积分合计）
 const CREDIT_VIEWS = new Set(['zcode', 'mirasim', 'catpaw']);
 const provOf = (p) => PROV[p] || { prod: 'qoder', prodLabel: p, region: '', cls: '' };
@@ -1104,6 +1132,7 @@ function cardHtml(a) {
     + provBadges(a.provider, true, a.flavor)
     + (isCurrent ? '<span class="pill cur" title="' + esc(CLIENT_LABEL[a.product] || '') + ' 客户端当前登录的账号">客户端当前</span>' : '')
     + (a.product === 'zcode' && isGatewayCurrent(a) ? '<span class="pill gw" title="体验包接口最近一次补全用的账号（多账号时按轮换自动选择，与客户端登录无关）">接口使用中</span>' : '')
+    + (a.product === 'minimax' && isMiniMaxGatewayCurrent(a) ? '<span class="pill gw" title="本地接口最近一次补全用的账号（多账号时按轮换自动选择，与客户端登录无关）">接口使用中</span>' : '')
     + (a.isPat ? '<span class="badge">PAT</span>' : '')
     + (a.verified === false ? '<span class="pill fail">token 无效</span>' : '')
     + (st.text ? '<span class="pill ' + st.cls + '" title="' + esc(a.lastResult ? fmtTime(a.lastResult.at) + ' ' + (a.lastResult.message || a.lastResult.status) : '') + '">' + esc(st.text) + '</span>' : '')
@@ -1133,8 +1162,13 @@ function isGatewayCurrent(a) {
   const last = state.zGatewayStats && state.zGatewayStats.lastAccount;
   return Boolean(last) && (a.name === last || a.uid === last || a.id === last);
 }
+/** MiniMax 本地接口使用中判定 */
+function isMiniMaxGatewayCurrent(a) {
+  const last = state.mGatewayStats && state.mGatewayStats.lastAccount;
+  return Boolean(last) && (a.name === last || a.uid === last || a.id === last);
+}
 
-// 客户端当前登录判定：WorkBuddy / mirasim / 妙手 按 uid；ZCode 按 uid 或 email（早期导入的账号可能只存了其中一个）
+// 客户端当前登录判定：WorkBuddy / mirasim / 妙手 / MiniMax 按 uid；ZCode 按 uid 或 email（早期导入的账号可能只存了其中一个）
 function isClientCurrent(a) {
   const s = state.status;
   if (!s) return false;
@@ -1146,6 +1180,7 @@ function isClientCurrent(a) {
   if (a.product === 'mirasim') return Boolean(a.uid && s.mirasimCurrentUid && s.mirasimCurrentUid === a.uid);
   if (a.product === 'catpaw') return Boolean(a.uid && s.catpawCurrentUid && s.catpawCurrentUid === a.uid);
   if (a.product === 'trae') return Boolean(a.uid && s.traeCurrentUid && s.traeCurrentUid === a.uid);
+  if (a.product === 'minimax') return Boolean(a.uid && s.minimaxCurrentUid && s.minimaxCurrentUid === a.uid);
   if (a.product === 'zcode') {
     const id = s.zcodeCurrentIdentity;
     return Boolean(id && ((a.uid && id.uid != null && String(id.uid) === String(a.uid)) || (a.email && id.email && id.email === a.email)));
@@ -1169,6 +1204,7 @@ function creditSum(list) {
 function render() {
   $('z-actions').style.display = 'none';   // 兜底：切到仪表盘 / 10Router 时 renderProd 不跑，先藏起来
   $('t-actions').style.display = 'none';
+  $('m-actions').style.display = 'none';
   for (const p of PRODUCTS) $('cnt-' + p.id).textContent = ofProduct(p.id).length;
   $('cnt-tenrouter').textContent = tr.quotas ? tr.quotas.connections.length : tr.config && tr.config.configured ? '…' : '–';
   if (state.view === 'dash') renderDash();
@@ -1183,6 +1219,7 @@ const EMPTY_TIP = {
   mirasim: '还没有 mirasim 账号。<br>点「添加账号」可读取本机 mirasim 客户端当前登录的账号（本地解密，token 不出本机）。',
   catpaw: '还没有妙手账号。<br>点「添加账号」可读取本机妙手（美团 CatPaw）客户端当前登录的账号（本地解密凭据，token 不出本机）。',
   trae: '还没有 Trae 账号。<br>点「添加账号 → 本机导入」可读取本机 Trae 客户端当前登录的账号（本地解密 storage.json 凭据，token 不出本机）。多个账号需先在 Trae 里分别登录并逐个导入。',
+  minimax: '还没有 MiniMax 账号。<br>点「添加账号 → 本机导入」可读取本机 MiniMax Code 客户端当前登录的账号，或粘贴 Bearer Token 添加。',
 };
 
 function renderProd() {
@@ -1211,7 +1248,7 @@ function renderProd() {
   $('s-credits').textContent = CREDIT_VIEWS.has(prod)
     ? acc.filter((a) => { const q = state.quotas[a.id]; return q && !q.error && !q.empty; }).length + ' / ' + acc.length
     : c.loading ? '…' : (c.known ? fmtNum(c.sum) : '-');
-  const hasRegions = !CREDIT_VIEWS.has(prod) && prod !== 'trae';   // Trae 不分国际 / 国内版
+  const hasRegions = !CREDIT_VIEWS.has(prod) && prod !== 'trae' && prod !== 'minimax';   // Trae / MiniMax 不分国际 / 国内版
   $('region').style.display = hasRegions ? '' : 'none';
   $('region-div').style.display = hasRegions ? '' : 'none';
   document.querySelectorAll('#region button').forEach((x) => x.classList.toggle('active', x.dataset.r === state.region));
@@ -1248,6 +1285,19 @@ function renderProd() {
     if (canOpen) {
       $('tt-open').innerHTML = dot(tc.running === true, true) + '打开客户端';
       $('tt-open').title = tc.running ? 'Trae 客户端运行中，点我唤到前台' : 'Trae 客户端未运行，点我启动';
+    }
+  }
+  $('m-actions').style.display = prod === 'minimax' ? 'contents' : 'none';
+  if (prod === 'minimax') {
+    const gwOn = state.mGateway === true;
+    $('mt-gw').innerHTML = dot(gwOn) + '接口' + (gwOn && state.mGatewayLan === true ? '·局域网' : '');
+    $('mt-gw').title = 'MiniMax 本地接口：开关、局域网开放与 IP 白名单';
+    const mc = (state.status && state.status.minimaxClient) || {};
+    const canOpen = mc.installed && window.creditdaddy && typeof window.creditdaddy.openMiniMaxClient === 'function';
+    $('mt-open').style.display = canOpen ? '' : 'none';
+    if (canOpen) {
+      $('mt-open').innerHTML = dot(mc.running === true, true) + '打开客户端';
+      $('mt-open').title = mc.running ? 'MiniMax Code 客户端运行中，点我唤到前台' : 'MiniMax Code 客户端未运行，点我启动';
     }
   }
 }
@@ -1337,6 +1387,7 @@ function renderDash() {
         : p.id === 'mirasim' && s.mirasimCurrentUid ? '未导入的账号'
         : p.id === 'catpaw' && s.catpawClient && s.catpawClient.signedIn && !list.some((a) => isClientCurrent(a)) ? '未导入的账号'
         : p.id === 'trae' && s.traeClient && s.traeClient.signedIn && !list.some((a) => isClientCurrent(a)) ? '未导入的账号'
+        : p.id === 'minimax' && s.minimaxClient && s.minimaxClient.signedIn && !list.some((a) => isClientCurrent(a)) ? '未导入的账号'
         : (p.id === 'workbuddy' && s.workbuddyCurrentUid ? '未导入的账号' : '—');
       rows += '<span class="lbl">客户端当前</span><span class="val">' + live + '</span>';
     }
@@ -1409,8 +1460,11 @@ function renderStatus() {
   // 产品相关提示只在对应标签页出现
   const hasIntl = state.view === 'qoder' && state.region !== 'cn' && state.accounts.some((a) => a.provider === 'qoder');
   const n = $('notice');
-  n.classList.toggle('info', state.view === 'zcode' || state.view === 'mirasim' || state.view === 'catpaw' || state.view === 'trae' || (hasIntl && Boolean(s.riskIdentity)));
-  if (state.view === 'trae') {
+  n.classList.toggle('info', state.view === 'zcode' || state.view === 'mirasim' || state.view === 'catpaw' || state.view === 'trae' || state.view === 'minimax' || (hasIntl && Boolean(s.riskIdentity)));
+  if (state.view === 'minimax') {
+    n.style.display = '';
+    n.innerHTML = '<div class="z-row"><span class="z-label">每日签到</span><span class="z-text">每日签到领 800~2000 算力币 + 400 连签加成。支持自动检测本机 MiniMax Code 凭据与 Bearer Token 导入，自带标准 Anthropic 本地网关。</span></div>';
+  } else if (state.view === 'trae') {
     n.style.display = '';
     n.innerHTML = '<div class="z-row"><span class="z-label">每日签到</span><span class="z-text">每日签到领约 150 通用积分（7 天有效，多资源包自动归并）。凭据由本机 Trae 客户端解密导入，支持多账号快照一键切换。</span></div>';
   } else if (state.view === 'catpaw') {
@@ -1515,6 +1569,29 @@ document.addEventListener('click', async (e) => {
     } catch (err) { toast(String(err && err.message || err), false); }
     return;
   }
+  if (e.target.closest('#mt-open')) {
+    try {
+      const r = await window.creditdaddy.openMiniMaxClient();
+      if (r && r.ok) toast('已启动 MiniMax Code 客户端');
+      else toast((r && r.error) || '无法打开 MiniMax Code 客户端', false);
+    } catch (err) { toast(String(err && err.message || err), false); }
+    return;
+  }
+  if (e.target.closest('#mt-gw')) {
+    // MiniMax 本地接口弹窗：开关 + 局域网 + 白名单设置
+    $('mgw-on').checked = state.mGateway === true;
+    $('mgw-lan').checked = state.mGatewayLan === true;
+    const allow = Array.isArray(state.mGatewayAllow) ? state.mGatewayAllow : [];
+    $('mgw-allow').value = (allow.length ? allow : (state.mGatewaySuggest ? [state.mGatewaySuggest] : [])).join('\n');
+    const st = state.mGatewayStats;
+    $('mgw-url').innerHTML = '接口地址 <code>POST http://127.0.0.1:' + location.port + '/gateway/minimax/v1/messages</code>（局域网开放时把 127.0.0.1 换成本机 IP）'
+      + (st && st.lastCallAt
+        ? '<br>最近调用 ' + esc(String(st.lastCallAt).slice(11, 19)) + ' · 共 ' + st.calls + ' 次' + (st.lastAccount ? ' · 最后用号 ' + esc(st.lastAccount) : '')
+        : '<br>尚未有调用');
+    syncMgwLanFields();
+    openModal('m-mgw');
+    return;
+  }
   if (e.target.closest('#zt-ac')) {
     // 自动领取计划弹窗：周期 / 运行时长由用户决定
     $('zac-interval').value = state.zClaimIntervalMin || 2;
@@ -1570,6 +1647,17 @@ async function loadZGateway() {
     state.zGatewayHasCaptcha = d.hasCaptcha === true;
     state.zGatewayStats = d.stats || null;
     if (state.view === 'zcode') { renderStatus(); render(); }
+  } catch (e) {}
+}
+async function loadMGateway() {
+  try {
+    const d = await api('/api/minimax-gateway');
+    state.mGateway = d.enabled === true;
+    state.mGatewayLan = d.lan === true;
+    state.mGatewayAllow = d.allow || [];
+    state.mGatewaySuggest = d.suggestAllow || '';
+    state.mGatewayStats = d.stats || null;
+    if (state.view === 'minimax') { renderStatus(); render(); }
   } catch (e) {}
 }
 
@@ -2498,6 +2586,27 @@ $('zgw-ok').addEventListener('click', async () => {
   } catch (err) { toast(err.message, false); }
 });
 
+// MiniMax 本地接口：开关 + 局域网开放 + 免密 IP 白名单一次保存
+function syncMgwLanFields() {
+  const off = !$('mgw-on').checked;
+  $('mgw-lan-fields').querySelectorAll('input, textarea').forEach((el) => { el.disabled = off; });
+  $('mgw-lan-fields').style.opacity = off ? '.45' : '';
+}
+$('mgw-on').addEventListener('change', syncMgwLanFields);
+$('mgw-ok').addEventListener('click', async () => {
+  const allow = $('mgw-allow').value.split('\n').map((x) => x.trim()).filter(Boolean);
+  try {
+    const r = await api('/api/minimax-gateway', { method: 'PUT', json: { enabled: $('mgw-on').checked, lan: $('mgw-lan').checked, allow } });
+    state.mGateway = r.enabled === true;
+    state.mGatewayLan = r.lan === true;
+    state.mGatewayAllow = r.allow || [];
+    renderStatus(); render();
+    closeModal('m-mgw');
+    toast('MiniMax 接口：' + (r.enabled ? '已开启' : '已关闭')
+      + (r.enabled && r.lan ? '，局域网开放' + (r.allow && r.allow.length ? '，白名单 ' + r.allow.join('、') : '') : ''));
+  } catch (err) { toast(err.message, false); }
+});
+
 // ZCode 网络出口：顺序 + 代理地址保存
 $('znet-ok').addEventListener('click', async () => {
   try {
@@ -2529,11 +2638,12 @@ const LOCAL_HINT = {
   mirasim: '读取本机 mirasim 客户端当前登录的账号（本地解密 ~/.mirasim/setting.json），token 不出本机。',
   catpaw: '读取本机妙手（美团 CatPaw）客户端当前登录的账号（本地解密 %APPDATA%\\catpaw-moon\\catx-credential.json），token 不出本机。',
   trae: '读取本机 Trae 客户端当前登录的账号（本地解密 <客户端数据目录>\\User\\globalStorage\\storage.json 的 tc 信封），token 不出本机。',
+  minimax: '读取本机 MiniMax Code 客户端当前登录的账号（~/.minimax/auth/.../auth.json），token 不出本机。',
 };
 function openAdd(product) {
   state.addProduct = product || '';
-  // Trae 凭据只能从本机客户端 storage.json 解密：不支持浏览器登录 / 粘贴 Token
-  const tabShown = { local: true, device: product !== 'mirasim' && product !== 'catpaw' && product !== 'trae', token: product !== 'zcode' && product !== 'mirasim' && product !== 'catpaw' && product !== 'trae' };
+  // Trae / MiniMax 凭据特性：MiniMax 支持本机导入与粘贴 Bearer Token，不支持浏览器 OAuth 流程
+  const tabShown = { local: true, device: product !== 'mirasim' && product !== 'catpaw' && product !== 'trae' && product !== 'minimax', token: product !== 'zcode' && product !== 'mirasim' && product !== 'catpaw' && product !== 'trae' };
   document.querySelectorAll('#m-add .tab').forEach((t) => { t.style.display = tabShown[t.dataset.tab] ? '' : 'none'; });
   $('local-hint').textContent = LOCAL_HINT[state.addProduct];
   let first = null;
@@ -2562,7 +2672,7 @@ function openAdd(product) {
 async function localScan() {
   const box = $('scan-result');
   $('scan-status').textContent = '扫描中（最多约 10 秒）…';
-  box.innerHTML = '<div class="hint">正在读取本机客户端凭据（Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae）…</div>';
+  box.innerHTML = '<div class="hint">正在读取本机客户端凭据（Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae / MiniMax）…</div>';
   try {
     const r = await api('/api/local/scan', { method: 'POST' });
     $('scan-status').textContent = '';
@@ -2583,9 +2693,9 @@ async function localScan() {
       html += '<div class="hint" style="color:var(--err)">读取失败：' + esc(e.file) + '：' + esc(e.error) + '</div>';
     }
     if (!cands.length) {
-      const where = state.addProduct ? prodLabel(state.addProduct) : 'Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae';
-      const alt = state.addProduct === 'zcode' || state.addProduct === 'mirasim' || state.addProduct === 'catpaw' ? '' : '，或改用「浏览器登录」「粘贴 Token」';
-      html += '<div class="hint">未发现已登录的 ' + where + ' 账号。请先在客户端登录' + alt + '。<br>已检查：Qoder / Qoder CN 客户端数据目录、WorkBuddy 凭据目录、ZCode 数据目录、mirasim 数据目录、妙手凭据目录、Trae 数据目录'
+      const where = state.addProduct ? prodLabel(state.addProduct) : 'Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae / MiniMax';
+      const alt = state.addProduct === 'zcode' || state.addProduct === 'mirasim' || state.addProduct === 'catpaw' || state.addProduct === 'trae' ? '' : '，或改用「浏览器登录」「粘贴 Token」';
+      html += '<div class="hint">未发现已登录的 ' + where + ' 账号。请先在客户端登录' + alt + '。<br>已检查：Qoder / Qoder CN 客户端数据目录、WorkBuddy 凭据目录、ZCode 数据目录、mirasim 数据目录、妙手凭据目录、Trae 数据目录、MiniMax 数据目录'
         + (r.scannedDirs && r.scannedDirs.length ? '、' + r.scannedDirs.map(esc).join('、') : '') + '</div>';
     }
     box.innerHTML = html;
@@ -3022,7 +3132,7 @@ $('btn-export-dash').onclick = () => { $('ex-provider').value = ''; openModal('m
 $('btn-export').onclick = () => {
   const v = state.view;
   // ZCode 是单一 provider，直接按 provider 选；其余产品页按产品线（p:）；仪表盘 / 10Router 导出全部
-  $('ex-provider').value = v === 'zcode' ? 'zcode' : (v === 'qoder' || v === 'workbuddy' || v === 'mirasim' || v === 'catpaw' || v === 'trae') ? 'p:' + v : '';
+  $('ex-provider').value = v === 'zcode' ? 'zcode' : (v === 'qoder' || v === 'workbuddy' || v === 'mirasim' || v === 'catpaw' || v === 'trae' || v === 'minimax') ? 'p:' + v : '';
   openModal('m-export');
 };
 $('btn-do-export').onclick = doExport;
@@ -3050,6 +3160,7 @@ function applyView() {
   $('view-prod').classList.toggle('active', state.view !== 'dash' && state.view !== 'tenrouter');
   $('view-10r').classList.toggle('active', state.view === 'tenrouter');
   if (state.view === 'tenrouter') loadZGateway();
+  if (state.view === 'minimax') loadMGateway();
   if (state.view === 'tenrouter' && tr.config && tr.config.configured && !tr.quotas && !tr.loading) loadTrQuotas();
   render();
   renderStatus();
@@ -3074,7 +3185,9 @@ $('region').addEventListener('click', (e) => {
   renderStatus();
 });
 $('f-provider').addEventListener('change', () => {
-  $('f-token').placeholder = $('f-provider').value.startsWith('workbuddy')
+  $('f-token').placeholder = $('f-provider').value === 'minimax'
+    ? 'MiniMax OAuth Bearer Token（mmoat_…）'
+    : $('f-provider').value.startsWith('workbuddy')
     ? 'WorkBuddy / CodeBuddy 登录 token（eyJ…，可在 CodeBuddyExtension 的 auth/*.info 中找到）'
     : 'dt-… / jt-… 或 PAT（pt-…，自动兑换）';
 });
@@ -3115,6 +3228,7 @@ applyView();
     loadSettings().then(renderCompMenu);
     loadZNet();
     loadZGateway();
+    loadMGateway();
     loadTrConfig().then(() => loadTrQuotas());
     setInterval(() => loadTrQuotas(), 5 * 60 * 1000);
     // 账号余额（ZCode 剩余 token 等）自动刷新：可见时每 2 分钟一轮；从托盘/后台切回时若超过 1 分钟没刷过立即补一轮
@@ -3124,7 +3238,7 @@ applyView();
     });
     loadLogs();
     setInterval(loadLogs, 10000);
-    setInterval(async () => { await loadStatus(); await loadZNet(); await loadZGateway(); render(); }, 30000);
+    setInterval(async () => { await loadStatus(); await loadZNet(); await loadZGateway(); await loadMGateway(); render(); }, 30000);
   }
   // 先直接请求（本机模式无需密码）；需要密码时 api() 会弹框并重试
   api('/api/status').then(start).catch((e) => toast(e.code === 'PANEL_KEY'

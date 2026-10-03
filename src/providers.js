@@ -15,6 +15,7 @@ import { fetchZcodeQuota } from './zcodeClient.js';
 import { fetchMirasimQuota, fetchMirasimProfile } from './mirasimClient.js';
 import { fetchCatpawQuota, fetchCatpawProfile } from './catpawClient.js';
 import { fetchTraeQuota, checkinTrae, verifyTraeAccount } from './traeClient.js';
+import { fetchMiniMaxQuota, checkinMiniMax, verifyMiniMaxAccount } from './minimaxClient.js';
 /** 从 userinfo 响应中挑一个可读的显示名 */
 export function displayNameFrom(ui) {
   const pick = [ui?.nickname, ui?.name, ui?.username, ui?.email]
@@ -182,6 +183,12 @@ const PRODUCTS = {
     checkin: (account, ctx) => checkinTrae(account, ctx),
     quota: (account) => fetchTraeQuota(account),
     verify: (account) => verifyTraeAccount(account),
+  },
+  minimax: {
+    label: 'MiniMax',
+    checkin: (account, ctx) => checkinMiniMax(account, ctx),
+    quota: (account, ctx) => fetchMiniMaxQuota(account, ctx),
+    verify: (account) => verifyMiniMaxAccount(account),
   },
 };
 

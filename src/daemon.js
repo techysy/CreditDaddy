@@ -57,6 +57,8 @@ import { liveToAccount as zcodeLiveAccount, switchTo as zcodeSwitchTo, currentZc
 import { liveToAccount as mirasimLiveAccount, switchTo as mirasimSwitchTo, currentMirasimUid, detectMirasim, terminateMirasim, mirasimRunning } from './mirasimLocal.js';
 import { liveToAccount as catpawLiveAccount, switchTo as catpawSwitchTo, currentCatpawToken, detectCatpaw, terminateCatpaw } from './catpawLocal.js';
 import { liveToAccount as traeLiveAccount, detectTrae, switchTo as traeSwitchTo, snapshotLive as traeSnapshotLive } from './traeLocal.js';
+import { liveToAccount as minimaxLiveAccount, detectMiniMax, minimaxRunning, currentMiniMaxUid } from './minimaxLocal.js';
+import * as minimaxGateway from './minimaxGateway.js';
 import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl, autoClaimEnabled, autoClaimUntil, setAutoClaimEnabled, claimIntervalMin, setClaimIntervalMin, claimWindowMin, setClaimWindowMin } from './zcodeClient.js';
 import { exportAccounts, parseImport, TransferError } from './transfer.js';
 import { syncAccountsTo10r } from './tenrouterAccounts.js';
@@ -69,7 +71,7 @@ import { startDeviceFlow, pollDeviceFlow, LOGIN_KINDS } from './authDevice.js';
 import { detectInstalls, scanLocalTokens, putCandidate, peekCandidate } from './localDetect.js';
 import { PROVIDER_LABEL, APP_VERSION, PROVIDERS, PROJECT_URL } from './constants.js';
 
-const PRODUCT_IDS = ['qoder', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae'];
+const PRODUCT_IDS = ['qoder', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax'];
 
 /** 面板访问密码：面板「设置」写入的 settings.json.panelKey 优先（可设 / 可关）；
  *  未设置（或被面板关闭）时回退环境变量 CREDITDADDY_PASSWORD（fnOS / 命令行部署注入），
@@ -383,6 +385,29 @@ async function handleApi(req, res, url) {
     }
     return json(res, 200, await zcodeGateway.gatewayStatus());
   }
+  // MiniMax 本地网关控制
+  if (p === '/api/minimax-gateway' && method === 'GET') {
+    return json(res, 200, await minimaxGateway.gatewayStatus());
+  }
+  if (p === '/api/minimax-gateway' && method === 'PUT') {
+    const body = await readBody(req).catch(() => ({}));
+    if (body?.enabled !== undefined) await minimaxGateway.setGatewayEnabled(body.enabled === true);
+    if (body?.lan !== undefined || body?.allow !== undefined) {
+      const patch = {};
+      if (body?.lan !== undefined) patch.minimaxGatewayLan = body.lan === true;
+      if (body?.allow !== undefined) {
+        if (!Array.isArray(body.allow)) return json(res, 400, { error: 'allow 需为字符串数组' });
+        const cleaned = [...new Set(body.allow.map((x) => String(x || '').trim()).filter(Boolean))];
+        if (cleaned.some((x) => /[^\w.*:-]/.test(x))) return json(res, 400, { error: '白名单条目只能是 IP / 主机名（支持 192.168.31.* 通配）' });
+        patch.minimaxGatewayAllow = cleaned;
+      }
+      await (await import('./store.js')).saveSettings(patch);
+      const lanNow = patch.minimaxGatewayLan ?? (await (await import('./store.js')).loadSettings()).minimaxGatewayLan === true;
+      const allowText = patch.minimaxGatewayAllow ? patch.minimaxGatewayAllow.join(', ') : '';
+      logger.info('DAEMON', `MiniMax 网关局域网：${lanNow ? '开' : '关（仅本机）'}${allowText ? `，白名单：${allowText}` : ''}`);
+    }
+    return json(res, 200, await minimaxGateway.gatewayStatus());
+  }
   if (p === '/api/zcode/net' && method === 'GET') {
     const u = proxyUrl();
     const masked = u ? (() => { try { const x = new URL(u); x.password = x.password ? '*'.repeat(4) : ''; return x.toString(); } catch { return '***'; } })() : null;
@@ -609,7 +634,7 @@ async function handleApi(req, res, url) {
 
   // ── 本机检测 / 凭据扫描 ──
   if (p === '/api/local/detect' && method === 'GET') {
-    return json(res, 200, { apps: detectQoderApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), trae: detectTrae(), legacy: detectInstalls() });
+    return json(res, 200, { apps: detectQoderApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), trae: detectTrae(), minimax: detectMiniMax(), legacy: detectInstalls() });
   }
   if (p === '/api/local/scan' && method === 'POST') {
     const existing = await loadAccounts();
@@ -669,7 +694,12 @@ async function handleApi(req, res, url) {
       const tr = await traeLiveAccount();
       if (tr) addRecord(tr, { source: 'Trae 当前登录', current: true });
     } catch (e) { errors.push({ file: 'TRAE SOLO CN/User/globalStorage/storage.json', error: e.message }); }
-    // 7) 旧版 VS Code 系 Qoder IDE / CLI：明文 token 扫描（归属需用户选择）
+    // 7) MiniMax 客户端：读取 ~/.minimax 凭据当前登录
+    try {
+      const mm = await minimaxLiveAccount();
+      if (mm) addRecord(mm, { source: 'MiniMax 当前登录', current: true });
+    } catch (e) { errors.push({ file: '~/.minimax/auth/.../auth.json', error: e.message }); }
+    // 8) 旧版 VS Code 系 Qoder IDE / CLI：明文 token 扫描（归属需用户选择）
     const det = detectInstalls();
     const dirs = det.ideDataDirs.filter(d => d.exists).map(d => d.path);
     if (det.cliDir.exists) dirs.push(det.cliDir.path);
@@ -813,6 +843,8 @@ async function handleApi(req, res, url) {
       catpawClient: (() => { const d = detectCatpaw(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       traeCurrentUid: traeDet.uid,
       traeClient: { installed: traeDet.clientInstalled, signedIn: traeDet.signedIn, running: traeDet.running },
+      minimaxCurrentUid: currentMiniMaxUid(),
+      minimaxClient: (() => { const d = detectMiniMax(); return { installed: d.installed, signedIn: d.signedIn, running: d.running }; })(),
       keyRequired: Boolean(PANEL_KEY),
     });
   }
@@ -883,6 +915,10 @@ export async function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
       // 只需换 host:port 即可在 CreditDaddy 网关与 zcode-api 之间切换。
       if (url.pathname === '/gateway/v1/messages' || url.pathname === '/v1/messages') {
         return await zcodeGateway.handleGateway(req, res);
+      }
+      // MiniMax Code 本地 Anthropic 兼容网关
+      if (url.pathname === '/gateway/minimax/v1/messages') {
+        return await minimaxGateway.handleGateway(req, res);
       }
       if (url.pathname.startsWith('/api/')) {
         return await handleApi(req, res, url);
