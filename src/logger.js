@@ -56,8 +56,9 @@ export const logger = {
   debug: (tag, msg) => log('debug', tag, msg),
 };
 
-export function getLogs(limit = 100) {
-  return ring.slice(-limit);
+export function getLogs(limit = 100, tag = null) {
+  const lines = tag ? ring.filter((l) => l.tag === tag) : ring;
+  return lines.slice(-limit);
 }
 
 /** 测试收尾用：归档流的句柄不关，测试进程的临时目录在 Windows 上删不掉 */

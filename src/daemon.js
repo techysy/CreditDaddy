@@ -794,9 +794,10 @@ async function handleApi(req, res, url) {
     } catch (e) { return json(res, 500, { error: e.message }); }
   }
 
-  // 日志
+  // 日志（tag 过滤：?tag=MINIMAX-GW / ZCODE-GW 取网关调用日志，与运行日志分开展示）
   if (p === '/api/logs' && method === 'GET') {
-    return json(res, 200, { logs: getLogs(200) });
+    const tag = url.searchParams.get('tag') || null;
+    return json(res, 200, { logs: getLogs(200, tag) });
   }
 
   // 状态

@@ -24,6 +24,16 @@ let upstreamQueue = [];
 globalThis.fetch = async (url, init = {}) => {
   const u = String(url);
   fetchCalls.push({ url: u, method: init.method, headers: init.headers, body: init.body });
+  // 额度查询（get_membership_info）独立应答，不消费上游消息队列：默认返回 2000 算力币
+  if (u.includes('/commerce/get_membership_info')) {
+    return {
+      ok: true, status: 200,
+      headers: { get: () => 'application/json' },
+      text: async () => '',
+      json: async () => ({ base_resp: { status_code: 0 }, op_credit_summary: { total_remaining_amount: 2000, free_remaining_amount: 2000, purchased_remaining_amount: 0 } }),
+      body: new ReadableStream({ start(c) { c.close(); } }),
+    };
+  }
   const next = upstreamQueue.shift();
   if (!next) throw new Error('no queued upstream response: ' + u);
   const ct = next.sse ? 'text/event-stream' : 'application/json';
@@ -86,6 +96,51 @@ const msg401 = () => ({ status: 401, body: '{"error":{"type":"unauthorized"}}' }
 const msgOk = () => ({ status: 200, sse: true, body: sseBody() });
 const completions = () => fetchCalls.filter((c) => c.url.includes('/mavis/api/v1/llm/v1/messages'));
 const refreshCalls = () => fetchCalls.filter((c) => c.url.includes('/oauth2/token'));
+// 本次请求实际用的账号（从 Authorization 头解析），过滤掉额度/刷新等非消息请求
+const lastCompletionAccount = (tokenOf) => {
+  const rows = completions();
+  if (!rows.length) return null;
+  const auth = rows[rows.length - 1].headers.Authorization || '';
+  const tok = auth.replace(/^Bearer /, '');
+  return tokenOf(tok) || null;
+};
+
+test('加权轮询：剩余算力币多的账号分到更多请求', async () => {
+  await resetState();
+  await seedAccount('rich', { name: '多积分', token: 'tok-rich' });
+  await seedAccount('poor', { name: '少积分', token: 'tok-poor' });
+  // 两个账号额度不同：rich 9000 / poor 1000 → 期望 9:1
+  let quotaCalls = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    const u = String(url);
+    if (u.includes('/commerce/get_membership_info')) {
+      const auth = (init.headers && init.headers.Authorization) || '';
+      const remaining = auth.includes('tok-rich') ? 9000 : 1000;
+      quotaCalls += 1;
+      return {
+        ok: true, status: 200, headers: { get: () => 'application/json' }, text: async () => '',
+        json: async () => ({ base_resp: { status_code: 0 }, op_credit_summary: { total_remaining_amount: remaining, free_remaining_amount: remaining, purchased_remaining_amount: 0 } }),
+        body: new ReadableStream({ start(c) { c.close(); } }),
+      };
+    }
+    return realFetch(url, init);
+  };
+
+  const tokenOf = (tok) => (tok === 'tok-rich' ? '多积分' : tok === 'tok-poor' ? '少积分' : null);
+  const counts = { '多积分': 0, '少积分': 0 };
+  const N = 20;
+  for (let i = 0; i < N; i++) {
+    upstreamQueue.push(msgOk());
+    const res = captureRes();
+    await gw.handleGateway(fakeReq('POST', '{}'), res);
+    const who = lastCompletionAccount(tokenOf);
+    counts[who] = (counts[who] || 0) + 1;
+  }
+  // 权重 9:1，20 次里 rich 应明显多于 poor（容差宽一点，只验证趋势）
+  assert.ok(counts['多积分'] > counts['少积分'], `期望多积分更多请求，实际 ${JSON.stringify(counts)}`);
+  assert.equal(quotaCalls, 2, '每个账号的额度只应查询一次（进程内缓存）');
+});
 
 test('401 且刷新失败 → 拉黑；下一请求 503「凭据已失效」', async () => {
   await resetState();

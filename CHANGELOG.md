@@ -12,7 +12,7 @@
   - **本机导入**：读取 `~/.minimax/auth/prod/cn/mcode-public/auth.json` 的当前登录记录（明文凭据文件，token 不出机）；`creditdaddy scan` 与面板「本机导入」均可抓取，并缓存 `uid-cache.json` 供离线比对当前登录账号。
   - **额度查询**：`POST /matrix/api/v1/commerce/get_membership_info` 解析算力币余额，按「免费/活动算力币」与「购买算力币」拆分为多条 part，带套餐名（Pro / 免费版）与到期时间。
   - **每日签到**：`signin/status` 判今日是否已领（status 3），未领则 `signin/claim` 领取，返回连续天数与所得算力币（含 `claimedAmount` 供面板「今日已领」徽章按产品日界刷新）。
-  - **Anthropic 兼容本地网关**：`POST /gateway/minimax/v1/messages`（上游 `agent.minimax.cn/mavis/api/v1/llm/v1/messages`），10Router 建 anthropic-compatible 节点指向即可把 MiniMax 当普通供应商调度；多账号轮换、401 自动刷新重试、429 冷却 5 分钟、SSE 与 JSON 流式透明转发、局域网白名单与回环校验（与 ZCode 体验包接口同机制）。面板开关持久化在 `settings.minimaxGateway`。
+  - **Anthropic 兼容本地网关**：`POST /gateway/minimax/v1/messages`（上游 `agent.minimax.cn/mavis/api/v1/llm/v1/messages`），10Router 建 anthropic-compatible 节点指向即可把 MiniMax 当普通供应商调度；多账号按**剩余算力币加权轮询**（平滑加权轮询 SWRR，积分多的分到更多请求，不再雨露均沾的 round-robin）、401 自动刷新重试、429 冷却 5 分钟、SSE 与 JSON 流式透明转发、局域网白名单与回环校验（与 ZCode 体验包接口同机制）。面板开关持久化在 `settings.minimaxGateway`。
 - **MiniMax 浏览器登录（官方 OAuth 设备码授权）**：面板「浏览器登录」新增 MiniMax Code 选项，桌面版在内置隐私窗口打开 `account.minimax.cn/oauth-authorize` 完成授权，无需本机客户端、无需粘贴 token。
   - 走 RFC 8628 设备码 + S256 PKCE：`POST /oauth2/device/code` 取 `verification_uri_complete` 与 `user_code`，`POST /oauth2/token`（`grant_type=urn:ietf:params:oauth:grant-type:device_code`）轮询兑换，`authorization_pending` / `slow_down` 继续等待，`expired_token` / `access_denied` 终态失败。
   - **独立凭据链**：设备码登录拿到的是独立 `loginEpoch` 的一条新 refresh token 链，不与本机 `~/.minimax` 客户端共用凭据，因此 CreditDaddy 自行刷新不会作废客户端的 token（从根上消除轮换互斥）；该流程绝不回写 `auth.json`。
@@ -30,10 +30,14 @@
 - 签到「今日已领」徽章改按产品日界刷新（此前统一按 Qoder 的 10:00 UTC+8 翻日，与 MiniMax 口径错位）；客户端当前登录识别与算力币口径修正。
 - 本地网关流式缓冲透传优化，补充签到 `claimedAmount` 字段。
 
+### 🎨 界面
+
+- **「网关调用」日志独立标签**：面板底部新增「网关调用」卡片，单独展示 MiniMax / ZCode 网关的调用与报错日志（`MINIMAX-GW` / `ZCODE-GW`，按时间合并），与「运行日志」分开；`/api/logs` 支持 `?tag=` 过滤。
+
 ### 🔧 测试
 
 - 新增 `test/minimax.test.js` 设备码登录与凭据对齐用例：S256 PKCE 请求体校验、`authorization_pending` 轮询、授权完成返回独立凭据链账号（`source=browser`、无 `authRecordKey`）、`expired_token`/`access_denied` 终态、`alignMiniMaxFromLocal` 轮换对齐与 device 账号跳过、`writeMiniMaxAuth` 对 device 账号不回写 / 对本机账号回写并 `generation+1`。
-- 新增 `test/minimax-gateway.test.js` 拉黑与复活回归：401 且刷新失败拉黑后 503 分类计数、刷新成功自动复活并回写账号库、**重新授权换凭据后自动复活**（本次修复的核心场景）、同指纹期间拉黑保持不空打上游、`setGatewayEnabled(true)` 清场、网关未开启 503；`test/zcode-gateway.test.js` 补同款「重新导入换 JWT 复活」与「开关清场」用例。全仓 187 例绿。
+- 新增 `test/minimax-gateway.test.js` 拉黑与复活回归：401 且刷新失败拉黑后 503 分类计数、刷新成功自动复活并回写账号库、**重新授权换凭据后自动复活**（本次修复的核心场景）、同指纹期间拉黑保持不空打上游、`setGatewayEnabled(true)` 清场、网关未开启 503、**按剩余算力币加权轮询**（积分多的分到更多请求、额度只查一次）；`test/zcode-gateway.test.js` 补同款「重新导入换 JWT 复活」与「开关清场」用例。全仓 188 例绿。
 
 ### 🔒 安全
 

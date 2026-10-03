@@ -14,7 +14,8 @@
 
 import { fetchJsonRace } from './zcodeClient.js';
 import { loadAccounts, loadSettings, saveSettings } from './store.js';
-import { refreshMiniMaxToken, MINIMAX_MESSAGES_URL } from './minimaxClient.js';
+import { refreshMiniMaxToken, fetchMiniMaxQuota, MINIMAX_MESSAGES_URL } from './minimaxClient.js';
+import { refreshContext } from './accounts.js';
 import { gatewayHostSuggestion } from './tenrouter.js';
 import { logger } from './logger.js';
 
@@ -41,15 +42,19 @@ export async function setGatewayEnabled(v) {
 
 // ── 账号轮换状态（进程内） ──
 
-let rrIndex = 0;
 const cooling = new Map();  // accountId → 冷却截止(ms)
 const dead = new Map();     // accountId → 拉黑时的凭据指纹（指纹变化 = 已重新授权/刷新，自动复活）
+const weights = new Map();  // accountId → 上次查到的剩余算力币（0 时按保底权重轮询，保持可用性）
 
 export const stats = {
   lastCallAt: null,
   calls: 0,
   lastAccount: null,
 };
+
+// 平滑加权轮询（SWRR）：剩余算力币多的账号分到更多请求，而不是雨露均沾地 round-robin。
+// 查不到额度或为 0 时给保底权重，保证账号仍会被轮询（0 也可能只是查询失败/尚未刷新）。
+const MIN_WEIGHT = 1;
 
 function credFingerprint(a) {
   return `${a.token || ''}|${a.refreshToken || ''}`;
@@ -80,15 +85,38 @@ function isDead(account) {
 
 /** 测试专用：清空进程内状态 */
 export function __resetForTests() {
-  rrIndex = 0;
   cooling.clear();
   dead.clear();
+  weights.clear();
+  swrr.clear();
   stats.lastCallAt = null;
   stats.calls = 0;
   stats.lastAccount = null;
 }
 
-/** 可参与轮转的 MiniMax 账号队列 */
+/** 账号权重：剩余算力币（上次快照，避免每个请求都打额度接口）。查不到用保底权重。 */
+async function accountWeight(a) {
+  if (!weights.has(a.id)) {
+    try {
+      const q = await fetchMiniMaxQuota(a, refreshContext(a, (m) => logger.info('MINIMAX-GW', `${a.name || a.uid || a.id} ${m}`)));
+      const remaining = Number(q?.remaining) || 0;
+      weights.set(a.id, Math.max(MIN_WEIGHT, remaining));
+    } catch {
+      weights.set(a.id, MIN_WEIGHT);
+    }
+  }
+  return weights.get(a.id);
+}
+
+// SWRR 状态：accountId → 当前有效权重（每次调度累加，被选中的减去总权重）
+const swrr = new Map();
+function ensureSwrr(id) { if (!swrr.has(id)) swrr.set(id, 0); }
+
+/**
+ * 可参与轮转的 MiniMax 账号队列，按剩余算力币加权排序（SWRR）。
+ * 返回 [账号, ...]：首个为本次该分到的账号；MAX_ATTEMPTS 只取队列头部用于重试，
+ * 所以这里直接把权重最高的放最前，其余按有效权重降序兜底。
+ */
 async function rotationQueue() {
   const all = (await loadAccounts()).filter((a) => a.provider === 'minimax');
   const now = Date.now();
@@ -96,11 +124,25 @@ async function rotationQueue() {
   for (const a of all) {
     if (isDead(a)) continue;
     if ((cooling.get(a.id) || 0) > now) continue;
-    if (a.token) ready.push(a);
+    if (!a.token) continue;
+    ensureSwrr(a.id);
+    const w = await accountWeight(a);
+    swrr.set(a.id, (swrr.get(a.id) || 0) + w);
+    ready.push({ account: a, weight: w });
   }
   if (!ready.length) return [];
-  rrIndex = ((rrIndex % ready.length) + ready.length) % ready.length;
-  return [...ready.slice(rrIndex), ...ready.slice(0, rrIndex)];
+
+  // 有效权重最大者中签（SWRR 的「选出 current 最大」步）
+  let pick = ready[0];
+  for (const it of ready) if ((swrr.get(it.account.id) || 0) > (swrr.get(pick.account.id) || 0)) pick = it;
+  const total = ready.reduce((s, it) => s + it.weight, 0);
+  swrr.set(pick.account.id, (swrr.get(pick.account.id) || 0) - total);
+
+  // 队首 = 本次中签账号；其余按剩余算力币降序（重试兜底顺序）
+  const rest = ready.filter((it) => it.account.id !== pick.account.id)
+    .sort((x, y) => y.weight - x.weight)
+    .map((it) => it.account);
+  return [pick.account, ...rest];
 }
 
 async function unavailableReason() {
@@ -279,7 +321,6 @@ export async function handleGateway(req, res) {
 
     if (upstream.ok) {
       stats.lastAccount = label;
-      rrIndex = (rrIndex + 1) % queue.length;
       logger.info('MINIMAX-GW', `${label} 补全成功 (${upstream.status})`);
 
       // 透传头（SSE / JSON）

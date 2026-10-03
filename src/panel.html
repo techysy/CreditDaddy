@@ -444,6 +444,14 @@
     </div>
     <div class="logs" id="logs">（暂无）</div>
   </section>
+
+  <section class="pcard collapsed" id="gwlog-card">
+    <div class="pcard-title">
+      <span>网关调用</span>
+      <button class="btn" id="btn-gwlogs">展开</button>
+    </div>
+    <div class="logs" id="gwlogs">（暂无）</div>
+  </section>
 </div>
 
 <!-- 添加账号 -->
@@ -2192,11 +2200,29 @@ async function loadQuotas(ids) {
   await Promise.all([worker(), worker(), worker()]);
 }
 async function loadLogs() {
+  await Promise.all([loadRunLogs(), loadGwLogs()]);
+}
+async function loadRunLogs() {
   try {
     const data = await api('/api/logs');
     const el = $('logs');
     const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
     el.innerHTML = data.logs.length ? data.logs.map((l) => '<div class="' + esc(l.level) + '">[' + esc(l.at) + '] ' + esc(l.tag) + ' · ' + esc(l.msg) + '</div>').join('') : '（暂无）';
+    if (atBottom) el.scrollTop = el.scrollHeight;
+  } catch (e) {}
+}
+async function loadGwLogs() {
+  try {
+    // 网关调用日志：MINIMAX-GW + ZCODE-GW，从运行日志里独立出来
+    const [mm, zc] = await Promise.all([
+      api('/api/logs?tag=MINIMAX-GW'),
+      api('/api/logs?tag=ZCODE-GW'),
+    ]);
+    const lines = [...(mm.logs || []), ...(zc.logs || [])]
+      .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+    const el = $('gwlogs');
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
+    el.innerHTML = lines.length ? lines.map((l) => '<div class="' + esc(l.level) + '">[' + esc(l.at) + '] ' + esc(l.tag) + ' · ' + esc(l.msg) + '</div>').join('') : '（暂无）';
     if (atBottom) el.scrollTop = el.scrollHeight;
   } catch (e) {}
 }
@@ -3217,7 +3243,12 @@ $('f-provider').addEventListener('change', () => {
 $('btn-logs').onclick = () => {
   const c = $('log-card').classList.toggle('collapsed');
   $('btn-logs').textContent = c ? '展开' : '收起';
-  if (!c) { loadLogs(); $('logs').scrollTop = $('logs').scrollHeight; }
+  if (!c) { loadRunLogs(); $('logs').scrollTop = $('logs').scrollHeight; }
+};
+$('btn-gwlogs').onclick = () => {
+  const c = $('gwlog-card').classList.toggle('collapsed');
+  $('btn-gwlogs').textContent = c ? '展开' : '收起';
+  if (!c) { loadGwLogs(); $('gwlogs').scrollTop = $('gwlogs').scrollHeight; }
 };
 
 // ── 仪表盘底部两卡：默认收起，点标题展开，展开状态存本地 ──
