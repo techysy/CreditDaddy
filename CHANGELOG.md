@@ -4,6 +4,49 @@
 
 ---
 
+## [1.3.0] (2026-10-03)
+
+### ✨ 新功能
+
+- **接入 MiniMax Code（智谱 MiniMax）作为第 7 条产品线**：本机导入 + 额度查询 + 每日签到领积分 + Anthropic 兼容本地网关。
+  - **本机导入**：读取 `~/.minimax/auth/prod/cn/mcode-public/auth.json` 的当前登录记录（明文凭据文件，token 不出机）；`creditdaddy scan` 与面板「本机导入」均可抓取，并缓存 `uid-cache.json` 供离线比对当前登录账号。
+  - **额度查询**：`POST /matrix/api/v1/commerce/get_membership_info` 解析积分余额（原「算力币」），按「免费/活动积分」与「购买积分」拆分为多条 part，带套餐名（Pro / 免费版）与到期时间；与 Qoder / Trae 同为「积分」口径，计入仪表盘剩余积分合计。
+  - **每日签到**：`signin/status` 判今日是否已领（status 3），未领则 `signin/claim` 领取，返回连续天数与所得积分（含 `claimedAmount` 供面板「今日已领」徽章按产品日界刷新）。
+  - **Anthropic 兼容本地网关**：`POST /gateway/minimax/v1/messages`（上游 `agent.minimax.cn/mavis/api/v1/llm/v1/messages`），10Router 建 anthropic-compatible 节点指向即可把 MiniMax 当普通供应商调度；多账号按**剩余积分加权轮询**（平滑加权轮询 SWRR，积分多的分到更多请求，不再雨露均沾的 round-robin）、401 自动刷新重试、429 冷却 5 分钟、SSE 与 JSON 流式透明转发、局域网白名单与回环校验（与 ZCode 体验包接口同机制）。面板开关持久化在 `settings.minimaxGateway`。
+- **MiniMax 浏览器登录（官方 OAuth 设备码授权）**：面板「浏览器登录」新增 MiniMax Code 选项，桌面版在内置隐私窗口打开 `account.minimax.cn/oauth-authorize` 完成授权，无需本机客户端、无需粘贴 token。
+  - 走 RFC 8628 设备码 + S256 PKCE：`POST /oauth2/device/code` 取 `verification_uri_complete` 与 `user_code`，`POST /oauth2/token`（`grant_type=urn:ietf:params:oauth:grant-type:device_code`）轮询兑换，`authorization_pending` / `slow_down` 继续等待，`expired_token` / `access_denied` 终态失败。
+  - **独立凭据链**：设备码登录拿到的是独立 `loginEpoch` 的一条新 refresh token 链，不与本机 `~/.minimax` 客户端共用凭据，因此 CreditDaddy 自行刷新不会作废客户端的 token（从根上消除轮换互斥）；该流程绝不回写 `auth.json`。
+  - 登录成功按 uid 与本机导入的同一账号自动去重续期（保留 id 与签到记录）。
+
+### 🐛 修复
+
+- **MiniMax token 刷新报 `invalid_grant`（"this refresh token can no longer be used"）**：根因是刷新令牌轮换互斥——MiniMax 的 refreshToken 是一次性轮换的（`auth.json` 的 `generation` 随之累加），本机客户端会独立刷新，而账号库里的快照刷新后不回写文件，下次刷新即命中已被服务端作废的旧 token。
+  - **刷新前对齐**：本机导入账号（带 `meta.authRecordKey`）在刷新前先从 `auth.json` 重读该 record 的最新 `refreshToken`（`alignMiniMaxFromLocal`），不再用陈旧快照；额度查询、签到与本地网关三处刷新路径统一接入。
+  - **刷新后安全回写**：仿 mirasim，刷新成功经 `onRefresh` 回写账号库后，再尝试把新凭据写回 `auth.json`（`writeMiniMaxAuth`，原子写 + `generation+1`）——但**仅当客户端未运行时**：客户端运行中回写会让它内存里的 refreshToken 下次刷新命中已被消费的旧 token，反而弄坏客户端，故此时跳过（账号库已更新，下轮刷新前会再重读对齐）。device 登录账号无 `authRecordKey`，回写对其 no-op。
+- **重新授权后本地网关仍报「凭据已失效」且开关重开也无效（MiniMax / ZCode 同款）**：根因是网关的失效拉黑名单是进程级、且只按账号 id 记账——授权到期那段时间上游 401 触发的刷新失败把账号拉黑后，即便随后重新登录/重新导入换来了新凭据，进程内旧黑名单仍把它挡在轮换队列外，网关持续 503；而 `setGatewayEnabled` 只翻设置开关、从不清这份状态，导致「开关重开也没用」。
+  - **拉黑改记凭据指纹**：MiniMax 记 `token|refreshToken`、ZCode 记 `zcodejwttoken|token`；账号当前指纹与拉黑时不一致即视为已重新授权，自动解除拉黑与冷却并复活入队。凭据未变则拉黑依旧生效，不会反复空打上游。
+  - **刷新成功即复活**：网关内就地刷新拿到新 token 回写账号库后，一并清掉该账号的拉黑/冷却。
+  - **开启网关清场**：`setGatewayEnabled(true)` 视为「重新开始」，清空进程内黑名单与冷却，重开开关即可恢复。
+- 签到「今日已领」徽章改按产品日界刷新（此前统一按 Qoder 的 10:00 UTC+8 翻日，与 MiniMax 口径错位）；客户端当前登录识别与积分口径修正。
+- 本地网关流式缓冲透传优化，补充签到 `claimedAmount` 字段。
+
+### 🎨 界面
+
+- **日志卡内标签切换（运行日志 + 各网关调用）**：面板底部一张日志卡，卡内「运行日志 / ZCode 网关 / MiniMax 网关」三段切换；`/api/logs` 支持 `?tag=` 过滤（`MINIMAX-GW` / `ZCODE-GW`）。
+  - **默认跟随当前页**：仪表盘默认显示运行日志（签到、额度查询、token 失效、异常等），切到 ZCode / MiniMax 产品页默认显示对应网关调用日志；同一页内手动切换会记住，切到别的页才重置跟随。
+  - **网关开关联动**：对应网关开关关闭时隐藏该日志标签（无网关的产品页也不会出现多余的网关标签）。
+
+### 🔧 测试
+
+- 新增 `test/minimax.test.js` 设备码登录与凭据对齐用例：S256 PKCE 请求体校验、`authorization_pending` 轮询、授权完成返回独立凭据链账号（`source=browser`、无 `authRecordKey`）、`expired_token`/`access_denied` 终态、`alignMiniMaxFromLocal` 轮换对齐与 device 账号跳过、`writeMiniMaxAuth` 对 device 账号不回写 / 对本机账号回写并 `generation+1`。
+- 新增 `test/minimax-gateway.test.js` 拉黑与复活回归：401 且刷新失败拉黑后 503 分类计数、刷新成功自动复活并回写账号库、**重新授权换凭据后自动复活**（本次修复的核心场景）、同指纹期间拉黑保持不空打上游、`setGatewayEnabled(true)` 清场、网关未开启 503、**按剩余积分加权轮询**（积分多的分到更多请求、额度只查一次）；`test/zcode-gateway.test.js` 补同款「重新导入换 JWT 复活」与「开关清场」用例。全仓 188 例绿。
+
+### 🔒 安全
+
+- **「已保存的密码」需面板访问密码才能查看**：此前托盘菜单「已保存的密码…」直接打开管理窗，点「显示/复制」即可拿到明文（DPAPI 解密对同系统用户无需口令），绕过面板访问密码。现在设了面板访问密码时，打开管理窗前先弹出密码验证（常量时间比较，失败不提示进度），验证通过才允许查看/复制明文；未设面板密码则维持原行为（桌面壳本身已绑定当前系统用户）。
+
+---
+
 ## [1.2.0] (2026-10-02)
 
 ### ✨ 新功能

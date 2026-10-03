@@ -37,6 +37,28 @@ function deriveKey(password, salt, kdf = KDF) {
   });
 }
 
+/**
+ * 导入文件里的 kdf 参数不可信：文件自报 {N:2,r:1,p:1} 会让 scrypt 瞬间算完（0ms vs 42ms），
+ * 密钥强度被文件作者单方面降级，而且没有任何地方会提示。KDF 是本格式的固定契约（见文件头），
+ * 不一致就拒收。注意 kdf 整个对象缺失时要报「参数不对」而不是「口令错误」——后者会把
+ * 用户的排查方向带偏。
+ */
+function checkKdf(blob) {
+  const k = blob?.kdf;
+  if (!k || typeof k !== 'object') {
+    throw new TransferError('BAD_KDF', '迁移文件缺少 KDF 参数，可能不是本工具导出的文件');
+  }
+  if (k.alg !== KDF.alg) {
+    throw new TransferError('BAD_KDF', `不支持的 KDF 算法：${k.alg}`);
+  }
+  for (const f of ['N', 'r', 'p', 'keyLen']) {
+    if (k[f] !== KDF[f]) {
+      throw new TransferError('BAD_KDF', `KDF 参数 ${f} 与本工具不一致（文件 ${k[f]}，期望 ${KDF[f]}）：为避免密钥强度被文件单方面降级，已拒绝导入`);
+    }
+  }
+  return k;
+}
+
 export function sealTransfer(payload, password) {
   if (typeof password !== 'string' || password.length < 4) {
     throw new TransferError('PASSPHRASE_TOO_SHORT', '加密口令至少 4 个字符');
@@ -58,8 +80,9 @@ export function sealTransfer(payload, password) {
 export function openTransfer(blob, password) {
   if (blob?.format !== TRANSFER_FORMAT) throw new TransferError('UNSUPPORTED_FORMAT', '不是加密迁移文件');
   if (!password) throw new TransferError('NEED_PASSWORD', '该文件已加密，请输入导出时设置的口令');
+  const kdf = checkKdf(blob);
   try {
-    const decipher = crypto.createDecipheriv('aes-256-gcm', deriveKey(password, unb64(blob.kdf?.salt), blob.kdf), unb64(blob.iv));
+    const decipher = crypto.createDecipheriv('aes-256-gcm', deriveKey(password, unb64(kdf.salt), kdf), unb64(blob.iv));
     decipher.setAuthTag(unb64(blob.tag));
     const plain = Buffer.concat([decipher.update(unb64(blob.payload)), decipher.final()]);
     return JSON.parse(plain.toString('utf8'));

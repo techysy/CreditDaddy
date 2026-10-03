@@ -205,7 +205,7 @@ function connectTunnel(proxyUrl, target) {
   });
 }
 
-async function fetchViaProxy(url, { method = 'GET', headers = {}, body = null, timeoutMs = 15000 } = {}) {
+async function fetchViaProxy(url, { method = 'GET', headers = {}, body = null, timeoutMs = 15000, signal = null } = {}) {
   const proxy = effectiveProxy();
   if (!proxy || !/^http:\/\//i.test(proxy)) throw new Error('没有可用的 http 代理（面板配置或 HTTPS_PROXY 环境变量）');
   const u = new URL(url);
@@ -227,12 +227,22 @@ async function fetchViaProxy(url, { method = 'GET', headers = {}, body = null, t
     };
   }
   return new Promise((resolve, reject) => {
+    // request 的 timeout 是「无活动」超时：对端每 14 秒吐一个字节就能一直吊着请求不放。
+    // 这里再补一个整条请求的墙钟上限，并接上外部 abort（客户端断开 / 上层取消）。
+    const deadline = setTimeout(() => req.destroy(new Error('请求超时')), timeoutMs);
+    const onAbort = () => req.destroy(Object.assign(new Error('请求已取消'), { name: 'AbortError' }));
+    if (signal) {
+      if (signal.aborted) { clearTimeout(deadline); reject(signal.reason || new Error('请求已取消')); return; }
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+    const done = (fn, arg) => { clearTimeout(deadline); signal?.removeEventListener('abort', onAbort); fn(arg); };
     const req = (isHttps ? https : http).request(requestOpts, (res) => {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
-      res.on('end', () => resolve(new Response(Buffer.concat(chunks), { status: res.statusCode, headers: res.headers })));
+      res.on('end', () => done(resolve, new Response(Buffer.concat(chunks), { status: res.statusCode, headers: res.headers })));
+      res.on('error', (e) => done(reject, e));
     });
-    req.on('error', reject);
+    req.on('error', (e) => done(reject, e));
     req.on('timeout', () => req.destroy(new Error('请求超时')));
     if (body != null) req.write(typeof body === 'string' ? body : JSON.stringify(body));
     req.end();
@@ -250,18 +260,25 @@ let viaProxyImpl = null;
 export function _setViaProxyForTests(fn) { viaProxyImpl = fn || null; }
 
 export async function fetchJsonRace(url, { method = 'GET', headers = {}, body = null, timeoutMs = 15000, signal = null } = {}) {
-  const timeoutSignal = AbortSignal.timeout(timeoutMs);
-  const abortSignal = signal ? AbortSignal.any([timeoutSignal, signal]) : timeoutSignal;
-  const base = { method, headers: { ...headers }, ...(body != null ? { body: typeof body === 'string' ? body : JSON.stringify(body) } : {}), signal: abortSignal };
   const useProxy = Boolean(effectiveProxy()) && !proxyBypass(url);
-  const direct = () => fetch(url, base);
-  const viaProxy = viaProxyImpl
-    ? () => viaProxyImpl(url, { method, headers, body, timeoutMs })
-    : () => fetchViaProxy(url, { method, headers, body, timeoutMs });
-  const attempts = useProxy ? (proxyFirst() ? [viaProxy, direct] : [direct, viaProxy]) : [direct];
+  // 超时信号必须每次尝试各建一个：共用一个的话，代理优先模式下第一条路吃完 timeoutMs，
+  // 兜底那条就对着已触发的 signal 发请求，必定瞬间失败——「代理优先」就此形同虚设
+  const makeAttempt = () => {
+    const timeoutSignal = AbortSignal.timeout(timeoutMs);
+    const abortSignal = signal ? AbortSignal.any([timeoutSignal, signal]) : timeoutSignal;
+    const base = { method, headers: { ...headers }, ...(body != null ? { body: typeof body === 'string' ? body : JSON.stringify(body) } : {}), signal: abortSignal };
+    return {
+      direct: () => fetch(url, base),
+      viaProxy: () => (viaProxyImpl
+        ? viaProxyImpl(url, { method, headers, body, timeoutMs, signal: abortSignal })
+        : fetchViaProxy(url, { method, headers, body, timeoutMs, signal: abortSignal })),
+    };
+  };
+  const order = useProxy ? (proxyFirst() ? ['viaProxy', 'direct'] : ['direct', 'viaProxy']) : ['direct'];
   let lastErr = null;
-  for (const attempt of attempts) {
-    try { return await attempt(); } catch (e) { lastErr = e; }
+  for (const which of order) {
+    const attempts = makeAttempt();
+    try { return await attempts[which](); } catch (e) { lastErr = e; }
   }
   throw lastErr || new Error('fetch failed');
 }

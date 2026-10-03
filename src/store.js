@@ -215,12 +215,37 @@ export async function loadSettings() {
   return s && typeof s === 'object' && !Array.isArray(s) ? s : {};
 }
 
-/** 合并写入设置并返回合并后的完整对象（原子写） */
-export async function saveSettings(patch) {
-  await ensureDir();
-  const next = Object.assign(await loadSettings(), patch);
-  await atomicWrite(SETTINGS_FILE(), JSON.stringify(next, null, 2));
-  return next;
+// 与 accountsQueue 同样的串行队列：saveSettings 内部是「读 → 合并 → 写」三步，
+// 不串行的话两个并发写（面板改密码 + 网关切局域网）会各自基于旧快照落盘，互相覆盖。
+let settingsQueue = Promise.resolve();
+
+/** 合并写入设置并返回合并后的完整对象（原子写，串行执行） */
+export function saveSettings(patch) {
+  const run = settingsQueue.then(async () => {
+    await ensureDir();
+    const next = Object.assign(await loadSettings(), patch);
+    await atomicWrite(SETTINGS_FILE(), JSON.stringify(next, null, 2));
+    return next;
+  });
+  settingsQueue = run.catch(() => {});
+  return run;
+}
+
+/**
+ * 串行地读取 → 修改 settings.json。fn 直接改传入对象即可，返回 fn 的结果。
+ * 只用于「读出来算一算再写回去」的调用方（单次 saveSettings 已经是原子的）。
+ * 锁顺序：先 accountsQueue 再 settingsQueue，禁止反向嵌套，否则会死锁。
+ */
+export function withSettings(fn) {
+  const run = settingsQueue.then(async () => {
+    await ensureDir();
+    const settings = await loadSettings();
+    const result = await fn(settings);
+    await atomicWrite(SETTINGS_FILE(), JSON.stringify(settings, null, 2));
+    return result;
+  });
+  settingsQueue = run.catch(() => {});
+  return run;
 }
 
 // ─── 运行状态（签到日历） ───
@@ -233,6 +258,24 @@ export async function loadState() {
 export async function saveState(state) {
   await ensureDir();
   await atomicWrite(STATE_FILE(), JSON.stringify(state, null, 2));
+}
+
+// state.json 有多个互不相干的写入方（签到轮写 qoderDailyDone / deviceClaim，
+// 网关写 zcodeGatewayExhausted），各自「读 → 改几个键 → 写回」会丢更新：
+// 签到轮拿旧快照落盘，就把网关刚写的耗尽打标抹掉了。与 settings 共用一个队列。
+let stateQueue = Promise.resolve();
+
+/** 串行地读取 → 修改 → 保存运行状态；fn 直接改传入对象即可，返回 fn 的结果。 */
+export function withState(fn) {
+  const run = stateQueue.then(async () => {
+    await ensureDir();
+    const state = await loadState();
+    const result = await fn(state);
+    await atomicWrite(STATE_FILE(), JSON.stringify(state, null, 2));
+    return result;
+  });
+  stateQueue = run.catch(() => {});
+  return run;
 }
 
 // 导入 / 导出（含 10router 互通）见 transfer.js

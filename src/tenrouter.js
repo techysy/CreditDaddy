@@ -123,8 +123,16 @@ async function call(c, pathname, { method = 'GET', body, timeout = QUOTA_TIMEOUT
       headers: { Authorization: `Bearer ${c.key}`, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(timeout),
+      // 请求体里是本机各账号的 token/用量，Authorization 是 10Router 的 key。
+      // fetch 默认跟随重定向，而 307/308 会把请求体原样重放到新地址（Authorization 会被
+      // 剥掉，但 body 不会）——一个被 307 的 10Router 就足以把凭据送到别处。直接拒绝重定向。
+      redirect: 'error',
     });
   } catch (e) {
+    // redirect:'error' 抛的是 cause.message === 'unexpected redirect'（顶层 message 只是 "fetch failed"）
+    if (e?.cause?.message === 'unexpected redirect') {
+      throw new Error(`10Router（${c.endpoint}）返回了重定向，已拒绝跟随：凭据只发往你填写的地址，请把地址改成最终地址`);
+    }
     throw new Error(`无法连接 10Router（${c.endpoint}）：${e.cause?.code || e.message}`);
   }
   const text = await res.text();

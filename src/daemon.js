@@ -18,7 +18,7 @@
  *   POST   /api/accounts/:id/zcode/claim   ZCode 领取活动 {planId, captchaParam?, region?}
  *   GET    /api/zcode/captcha-config       ZCode 领取验证码配置（sceneId / prefix / region）
  *   POST   /api/checkin                全部签到 {provider?, skipIfCheckedToday?}
- *   POST   /api/auth/device/start      发起浏览器登录 {provider: qoder / qoder-cn / workbuddy / workbuddy-intl / zcode-bigmodel / zcode-zai}
+ *   POST   /api/auth/device/start      发起浏览器登录 {provider: qoder / qoder-cn / workbuddy / workbuddy-intl / zcode-bigmodel / zcode-zai / minimax}
  *   POST   /api/auth/device/poll       轮询浏览器登录结果 {sessionId}
  *   GET    /api/local/detect           检测本机 Qoder 客户端 / IDE / CLI
  *   POST   /api/local/scan             读取本机已登录账号（解密客户端凭据 + 扫描旧版 IDE）
@@ -48,7 +48,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logger, getLogs } from './logger.js';
 import {
-  loadAccounts, loadState, withAccounts, publicAccount, dataDir, loadSettings, saveSettings,
+  loadAccounts, loadState, withAccounts, publicAccount, dataDir, loadSettings, saveSettings, withSettings,
 } from './store.js';
 import { addAccount, importAccounts, refreshContext } from './accounts.js';
 import { productImpl } from './providers.js';
@@ -57,6 +57,8 @@ import { liveToAccount as zcodeLiveAccount, switchTo as zcodeSwitchTo, currentZc
 import { liveToAccount as mirasimLiveAccount, switchTo as mirasimSwitchTo, currentMirasimUid, detectMirasim, terminateMirasim, mirasimRunning } from './mirasimLocal.js';
 import { liveToAccount as catpawLiveAccount, switchTo as catpawSwitchTo, currentCatpawToken, detectCatpaw, terminateCatpaw } from './catpawLocal.js';
 import { liveToAccount as traeLiveAccount, detectTrae, switchTo as traeSwitchTo, snapshotLive as traeSnapshotLive } from './traeLocal.js';
+import { liveToAccount as minimaxLiveAccount, detectMiniMax, currentMiniMaxUid, currentMiniMaxToken, currentMiniMaxRecordKey } from './minimaxLocal.js';
+import * as minimaxGateway from './minimaxGateway.js';
 import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl, autoClaimEnabled, autoClaimUntil, setAutoClaimEnabled, claimIntervalMin, setClaimIntervalMin, claimWindowMin, setClaimWindowMin } from './zcodeClient.js';
 import { exportAccounts, parseImport, TransferError } from './transfer.js';
 import { syncAccountsTo10r } from './tenrouterAccounts.js';
@@ -69,7 +71,7 @@ import { startDeviceFlow, pollDeviceFlow, LOGIN_KINDS } from './authDevice.js';
 import { detectInstalls, scanLocalTokens, putCandidate, peekCandidate } from './localDetect.js';
 import { PROVIDER_LABEL, APP_VERSION, PROVIDERS, PROJECT_URL } from './constants.js';
 
-const PRODUCT_IDS = ['qoder', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae'];
+const PRODUCT_IDS = ['qoder', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax'];
 
 /** 面板访问密码：面板「设置」写入的 settings.json.panelKey 优先（可设 / 可关）；
  *  未设置（或被面板关闭）时回退环境变量 CREDITDADDY_PASSWORD（fnOS / 命令行部署注入），
@@ -383,6 +385,29 @@ async function handleApi(req, res, url) {
     }
     return json(res, 200, await zcodeGateway.gatewayStatus());
   }
+  // MiniMax 本地网关控制
+  if (p === '/api/minimax-gateway' && method === 'GET') {
+    return json(res, 200, await minimaxGateway.gatewayStatus());
+  }
+  if (p === '/api/minimax-gateway' && method === 'PUT') {
+    const body = await readBody(req).catch(() => ({}));
+    if (body?.enabled !== undefined) await minimaxGateway.setGatewayEnabled(body.enabled === true);
+    if (body?.lan !== undefined || body?.allow !== undefined) {
+      const patch = {};
+      if (body?.lan !== undefined) patch.minimaxGatewayLan = body.lan === true;
+      if (body?.allow !== undefined) {
+        if (!Array.isArray(body.allow)) return json(res, 400, { error: 'allow 需为字符串数组' });
+        const cleaned = [...new Set(body.allow.map((x) => String(x || '').trim()).filter(Boolean))];
+        if (cleaned.some((x) => /[^\w.*:-]/.test(x))) return json(res, 400, { error: '白名单条目只能是 IP / 主机名（支持 192.168.31.* 通配）' });
+        patch.minimaxGatewayAllow = cleaned;
+      }
+      await (await import('./store.js')).saveSettings(patch);
+      const lanNow = patch.minimaxGatewayLan ?? (await (await import('./store.js')).loadSettings()).minimaxGatewayLan === true;
+      const allowText = patch.minimaxGatewayAllow ? patch.minimaxGatewayAllow.join(', ') : '';
+      logger.info('DAEMON', `MiniMax 网关局域网：${lanNow ? '开' : '关（仅本机）'}${allowText ? `，白名单：${allowText}` : ''}`);
+    }
+    return json(res, 200, await minimaxGateway.gatewayStatus());
+  }
   if (p === '/api/zcode/net' && method === 'GET') {
     const u = proxyUrl();
     const masked = u ? (() => { try { const x = new URL(u); x.password = x.password ? '*'.repeat(4) : ''; return x.toString(); } catch { return '***'; } })() : null;
@@ -598,8 +623,12 @@ async function handleApi(req, res, url) {
     });
     if (!bound) {
       // 登录窗口可能先于设备码入库关闭：暂存待绑定会话，addAccount 补全 uid 后自动挂上
-      const pending = (await loadSettings()).pendingQoderWebSessions || {};
-      await saveSettings({ pendingQoderWebSessions: { ...pending, [probe.user_id]: { kind, cookie, capturedAt: now } } });
+      await withSettings((settings) => {
+        settings.pendingQoderWebSessions = {
+          ...(settings.pendingQoderWebSessions || {}),
+          [probe.user_id]: { kind, cookie, capturedAt: now },
+        };
+      });
       logger.info('DAEMON', `收到 Qoder 网页会话（uid ${probe.user_id.slice(0, 8)}…），暂无匹配账号，已暂存待绑定`);
     } else {
       logger.info('DAEMON', `已绑定 Qoder 网页会话到 ${bound} 个账号（逐资源包明细可用）`);
@@ -609,7 +638,7 @@ async function handleApi(req, res, url) {
 
   // ── 本机检测 / 凭据扫描 ──
   if (p === '/api/local/detect' && method === 'GET') {
-    return json(res, 200, { apps: detectQoderApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), trae: detectTrae(), legacy: detectInstalls() });
+    return json(res, 200, { apps: detectQoderApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), trae: detectTrae(), minimax: detectMiniMax(), legacy: detectInstalls() });
   }
   if (p === '/api/local/scan' && method === 'POST') {
     const existing = await loadAccounts();
@@ -669,7 +698,12 @@ async function handleApi(req, res, url) {
       const tr = await traeLiveAccount();
       if (tr) addRecord(tr, { source: 'Trae 当前登录', current: true });
     } catch (e) { errors.push({ file: 'TRAE SOLO CN/User/globalStorage/storage.json', error: e.message }); }
-    // 7) 旧版 VS Code 系 Qoder IDE / CLI：明文 token 扫描（归属需用户选择）
+    // 7) MiniMax 客户端：读取 ~/.minimax 凭据当前登录
+    try {
+      const mm = await minimaxLiveAccount();
+      if (mm) addRecord(mm, { source: 'MiniMax 当前登录', current: true });
+    } catch (e) { errors.push({ file: '~/.minimax/auth/.../auth.json', error: e.message }); }
+    // 8) 旧版 VS Code 系 Qoder IDE / CLI：明文 token 扫描（归属需用户选择）
     const det = detectInstalls();
     const dirs = det.ideDataDirs.filter(d => d.exists).map(d => d.path);
     if (det.cliDir.exists) dirs.push(det.cliDir.path);
@@ -760,9 +794,10 @@ async function handleApi(req, res, url) {
     } catch (e) { return json(res, 500, { error: e.message }); }
   }
 
-  // 日志
+  // 日志（tag 过滤：?tag=MINIMAX-GW / ZCODE-GW 取网关调用日志，与运行日志分开展示）
   if (p === '/api/logs' && method === 'GET') {
-    return json(res, 200, { logs: getLogs(200) });
+    const tag = url.searchParams.get('tag') || null;
+    return json(res, 200, { logs: getLogs(200, tag) });
   }
 
   // 状态
@@ -786,6 +821,17 @@ async function handleApi(req, res, url) {
     }
     // 妙手凭据文件只存 token：当前登录按 token 对齐账号库，避免每轮状态都打网关查 uid
     const cpToken = currentCatpawToken();
+    const mmToken = currentMiniMaxToken();
+    const mmRecKey = currentMiniMaxRecordKey();
+    // 1) token match；2) record-key match (token 轮换时仍稳定);3) uid-cache fallback
+    let mmLiveUid = null;
+    if (mmToken) {
+      mmLiveUid = accounts.find((a) => a.provider === 'minimax' && a.token === mmToken)?.uid;
+    }
+    if (!mmLiveUid && mmRecKey) {
+      mmLiveUid = accounts.find((a) => a.provider === 'minimax' && a.meta?.authRecordKey === mmRecKey)?.uid;
+    }
+    if (!mmLiveUid) mmLiveUid = currentMiniMaxUid();
     const traeDet = detectTrae();
     return json(res, 200, {
       ok: true,
@@ -796,6 +842,12 @@ async function handleApi(req, res, url) {
       dataDir: dataDir(),
       today: dayKey(),
       todayDone: state?.qoderDailyDone || {},
+      todayByProduct: {
+        qoder: dayKey(Date.now(), 'qoder'),
+        workbuddy: dayKey(Date.now(), 'workbuddy'),
+        trae: dayKey(Date.now(), 'trae'),
+        minimax: dayKey(Date.now(), 'minimax'),
+      },
       scheduler: getSchedulerInfo(),
       riskIdentity: riskIdentityAvailable(),
       riskSource: riskIdentitySource(),
@@ -813,6 +865,8 @@ async function handleApi(req, res, url) {
       catpawClient: (() => { const d = detectCatpaw(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       traeCurrentUid: traeDet.uid,
       traeClient: { installed: traeDet.clientInstalled, signedIn: traeDet.signedIn, running: traeDet.running },
+      minimaxCurrentUid: mmLiveUid,
+      minimaxClient: (() => { const d = detectMiniMax(); return { installed: d.installed, signedIn: d.signedIn, running: d.running }; })(),
       keyRequired: Boolean(PANEL_KEY),
     });
   }
@@ -884,6 +938,10 @@ export async function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
       if (url.pathname === '/gateway/v1/messages' || url.pathname === '/v1/messages') {
         return await zcodeGateway.handleGateway(req, res);
       }
+      // MiniMax Code 本地 Anthropic 兼容网关
+      if (url.pathname === '/gateway/minimax/v1/messages') {
+        return await minimaxGateway.handleGateway(req, res);
+      }
       if (url.pathname.startsWith('/api/')) {
         return await handleApi(req, res, url);
       }
@@ -902,7 +960,7 @@ export async function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
     }
   });
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     let attempts = 0;
     const bind = (p) => {
       // 失败重试时必须摘掉上一次的 listening 监听，否则成功后会重复触发
@@ -914,7 +972,11 @@ export async function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
           server.close();
           setTimeout(() => bind(p + 1), 300);
         } else {
-          logger.error('DAEMON', `监听失败：${err?.message || err}`);
+          // 兜底失败必须 reject：否则这个 promise 永远挂着，调用方的 startScheduler() 不会跑，
+          // 进程既不监听也不退出，只在日志里留一行，看起来像「启动了但没反应」
+          const msg = err?.message || String(err);
+          logger.error('DAEMON', `监听失败：${msg}`);
+          reject(new Error(`无法监听 ${host}:${p}：${msg}`));
         }
       };
       const onListening = () => {

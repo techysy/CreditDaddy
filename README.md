@@ -4,7 +4,7 @@
 
 # CreditDaddy
 
-**AI 编程工具多账号本地管理 + 每日积分自动领取（领鸡蛋）助手：Qoder · WorkBuddy · ZCode · mirasim · 妙手 · Trae，集成 10Router 额度总览与用量同步**
+**AI 编程工具多账号本地管理 + 每日积分自动领取（领鸡蛋）助手：Qoder · WorkBuddy · ZCode · mirasim · 妙手 · Trae · MiniMax，集成 10Router 额度总览与用量同步**
 
 [![Release](https://img.shields.io/github/v/release/techysy/CreditDaddy?label=%E7%89%88%E6%9C%AC&color=2563eb)](https://github.com/techysy/CreditDaddy/releases/latest)
 [![CI](https://img.shields.io/github/actions/workflow/status/techysy/CreditDaddy/ci.yml?branch=main&label=CI)](https://github.com/techysy/CreditDaddy/actions/workflows/ci.yml)
@@ -59,11 +59,11 @@
 ## 功能
 
 **多账号管理与切换**
-- **仪表盘 + 分产品标签页**：首页仪表盘汇总账号总数、今日领取进度、剩余总积分、下次自动执行时间、各产品概况、待处理异常账号（token 失效 / 即将过期、领取失败）与最近领取审计；Qoder、WorkBuddy、ZCode、mirasim、妙手、Trae 各自独立标签页，卡片式展示，支持国内 / 国际版筛选，直观查看连续天数与额度包到期，自适应亮色 / 暗色主题。右上角「组件开关」可整块收起不使用的产品 / 10Router 标签页与仪表盘卡片（偏好保存在浏览器本地）。
-- **本机导入**：一键安全读取本机已登录的客户端凭据 —— 本地解密 Qoder / Qoder CN 的 `auth.v1.dat`，读取 WorkBuddy 客户端（当前与历史会话），解密 ZCode / mirasim / 妙手 / Trae 客户端凭据。敏感 Token 绝不出机器；同一用户续期时自动覆盖。
+- **仪表盘 + 分产品标签页**：首页仪表盘汇总账号总数、今日领取进度、剩余总积分、下次自动执行时间、各产品概况、待处理异常账号（token 失效 / 即将过期、领取失败）与最近领取审计；Qoder、WorkBuddy、ZCode、mirasim、妙手、Trae、MiniMax 各自独立标签页，卡片式展示，支持国内 / 国际版筛选，直观查看连续天数与额度包到期，自适应亮色 / 暗色主题。右上角「组件开关」可整块收起不使用的产品 / 10Router 标签页与仪表盘卡片（偏好保存在浏览器本地）。
+- **本机导入**：一键安全读取本机已登录的客户端凭据 —— 本地解密 Qoder / Qoder CN 的 `auth.v1.dat`，读取 WorkBuddy 客户端（当前与历史会话），解密 ZCode / mirasim / 妙手 / Trae 客户端凭据，读取 MiniMax Code 的 `~/.minimax` 登录记录。敏感 Token 绝不出机器；同一用户续期时自动覆盖。
 - **客户端一键换号**：一键将桌面客户端切换至指定账号（WorkBuddy 自动热切换；ZCode / mirasim / 妙手 / Trae 退出客户端后写回并自动重新拉起），切号前自动保存当前在线 Token，各账号拥有独立设备指纹，杜绝风控串号。
 - **内置隐私（无痕）授权**：桌面版提供隔离的一次性会话窗口进行网页登录授权，不污染系统浏览器 Cookie，支持同平台无缝扩增多账号。
-- **全流程浏览器登录**：支持三家产品线在面板内直接完成网页 / 设备码授权并入库 —— Qoder 设备码授权（PKCE + nonce）、WorkBuddy 状态轮询、ZCode CLI 轮询（支持智谱 BigModel 与 Z.ai）。
+- **全流程浏览器登录**：支持四家产品线在面板内直接完成网页 / 设备码授权并入库 —— Qoder 设备码授权（PKCE + nonce）、WorkBuddy 状态轮询、ZCode CLI 轮询（支持智谱 BigModel 与 Z.ai）、MiniMax 官方 OAuth 设备码授权（S256 PKCE）。
 
 **自动领取与资产保障**
 - **每日智能轮询**：本地守护进程每 ~2 小时自动扫描执行；当日已领成功的账号自动记忆跳过，未开启活动的账号不落记忆，以每日 10:00 (UTC+8) 刷新周期为准自动重试。
@@ -117,6 +117,12 @@
 - **有意不做自动续期**：Trae 的 refresh 会轮转 refreshToken 并作废 IDE 自己那份，等于把用户正在用的客户端踢下线，因此不提供自动续期。
 - **客户端切号**：按账号存 15 项登录态快照到 `~/.creditdaddy/trae-slots/<uid>/`，换走前先自动快照当前登录避免丢号；客户端在跑时拒绝切换（Trae 会把内存里的旧登录写回文件），强制切换后自动重新拉起。`x-device-id` 必须为纯数字设备号（传 GUID 触发 `code 9074`），优先取 `storage.json` 里 `iCubeAuthInfo://icube-dc:<数字>` 的键名后缀以与 IDE 自身指纹一致，缺失时按 uid 确定性派生。
 
+### MiniMax（MiniMax Code）
+- **账号来源**：两种方式——① 本机导入，读取 MiniMax Code 客户端的 `~/.minimax/auth/prod/cn/mcode-public/auth.json` 当前登录记录（明文文件，token 不出机）；② **浏览器登录**，走官方 OAuth 设备码授权（RFC 8628 + S256 PKCE），桌面版在内置隐私窗口打开 `account.minimax.cn/oauth-authorize` 完成授权，无需本机客户端。
+- **额度与签到**：查询积分余额（按「免费/活动」与「购买」拆分，带套餐名与到期）；每日签到领积分并累计连续天数。
+- **刷新轮换互斥的处理**：MiniMax 的 refreshToken 是一次性轮换的，本机客户端会独立刷新。为避免 CreditDaddy 用陈旧快照刷新触发 `invalid_grant`：本机导入账号在刷新前会从 `auth.json` 重读最新 refreshToken 对齐，刷新成功后再安全回写文件（仅客户端未运行时，运行中回写会作废客户端内存里的 token 故跳过）。浏览器登录拿到的是独立 `loginEpoch` 凭据链，不与本机客户端共用，从根上消除互斥。
+- **本地网关**：内置 Anthropic 兼容端点 `POST /gateway/minimax/v1/messages`，10Router 建 anthropic-compatible 节点指向即可把 MiniMax 当普通供应商调度；多账号轮换、401 自动刷新重试、429 冷却、SSE / JSON 流式透传、局域网 IP 白名单（与 ZCode 体验包接口同机制）。
+
 ## 快速开始
 
 ### 方式一：桌面安装版 / 便携版（推荐）
@@ -147,7 +153,7 @@ creditdaddy daemon
 **CLI 常用命令**：
 
 ```bash
-creditdaddy scan                    # 扫描导入本机 Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae 客户端登录的账号
+creditdaddy scan                    # 扫描导入本机 Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae / MiniMax 客户端登录的账号
 creditdaddy add <token>             # 添加 Qoder 国际版账号
 creditdaddy add <token> --cn        # 添加 Qoder 国内版账号
 creditdaddy add <token> --workbuddy # 添加 WorkBuddy 国内版账号（--intl 为国际版）
@@ -194,7 +200,7 @@ creditdaddy help                    # 查看完整命令行帮助
 | `POST` | `/api/tenrouter/sync` | 立即触发本机模型用量向 10Router 同步 |
 | `POST` | `/api/tenrouter/sync-accounts` | 把本机账号推送到 10Router 连接 `{adminPassword?}`（OAuth / apikey 双通道） |
 | `GET` / `POST` | `/api/qoder/umid` | 获取 / 一键安装 Linux 平台 Qoder 设备身份组件 |
-| `GET` | `/api/logs` | 查看环形内存日志 |
+| `GET` | `/api/logs` | 查看环形内存日志（`?tag=MINIMAX-GW` / `?tag=ZCODE-GW` 可只看网关调用日志） |
 | `POST` | `/api/export` / `/api/import` | 账号数据安全加密导出与导入 |
 
 ## 状态与记录说明
@@ -235,6 +241,10 @@ CreditDaddy/
 │   ├── logger.js               # 内存环形日志缓冲
 │   ├── mirasimClient.js        # mirasim 套餐 / 额度请求
 │   ├── mirasimLocal.js         # 本机 mirasim 凭据解密与切号
+│   ├── minimaxAuth.js          # MiniMax 浏览器登录（OAuth 设备码 + S256 PKCE）
+│   ├── minimaxClient.js        # MiniMax 用户信息 / 额度 / 签到 / Token 续期请求
+│   ├── minimaxGateway.js       # MiniMax 本地 Anthropic 兼容网关（多账号轮换）
+│   ├── minimaxLocal.js         # 本机 MiniMax 凭据读取、刷新对齐与安全回写
 │   ├── panel.html              # Web 管理面板前端
 │   ├── providers.js            # 多产品线适配器注册表
 │   ├── qoderApp.js             # 本机 Qoder 客户端探测与 safeStorage 解密

@@ -41,8 +41,15 @@ async function trFetch(url, { key, cookie, method = 'GET', body } = {}) {
       },
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(TIMEOUT_MS),
+      // 这里的 body 是账号明文 token（/api/oauth/transfer/import）与 apiKey（/api/providers）。
+      // 307/308 重定向会把 body 原样重放到新地址，Authorization 反而会被剥掉——所以必须拒绝。
+      redirect: 'error',
     });
   } catch (e) {
+    // redirect:'error' 抛的是 cause.message === 'unexpected redirect'（顶层 message 只是 "fetch failed"）
+    if (e?.cause?.message === 'unexpected redirect') {
+      throw new Error(`10Router 返回了重定向，已拒绝跟随：账号凭据只发往你填写的地址，请把地址改成最终地址`);
+    }
     throw new Error(`无法连接 10Router：${e.cause?.code || e.message}`);
   }
   const text = await res.text();

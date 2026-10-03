@@ -2,7 +2,7 @@
  * 签到调度：普通账号每 ~2h 扫描一次；ZCode 自动活动领取使用独立的短周期调度。
  */
 
-import { loadAccounts, loadState, saveState, withAccounts } from './store.js';
+import { loadAccounts, loadState, withAccounts, withState } from './store.js';
 import { productImpl } from './providers.js';
 import { productOf } from './constants.js';
 import { startUsageSyncScheduler } from './tenrouter.js';
@@ -299,7 +299,12 @@ async function runTickInner(opts) {
         if (updated.uid && !current.uid) current.uid = updated.uid;
       }
     });
-    await saveState({ ...state, qoderDailyDone: memo, deviceClaim });
+    await withState((fresh) => {
+      // 只覆盖签到轮自己负责的两个键：state.json 里还有网关写的 zcodeGatewayExhausted，
+      // 拿本轮开头读到的旧快照整份落盘会把别人刚写的东西抹掉
+      fresh.qoderDailyDone = memo;
+      fresh.deviceClaim = deviceClaim;
+    });
   }
 
   if (zAccounts.length) {
