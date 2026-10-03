@@ -200,7 +200,7 @@ creditdaddy help                    # 查看完整命令行帮助
 | `POST` | `/api/tenrouter/sync` | 立即触发本机模型用量向 10Router 同步 |
 | `POST` | `/api/tenrouter/sync-accounts` | 把本机账号推送到 10Router 连接 `{adminPassword?}`（OAuth / apikey 双通道） |
 | `GET` / `POST` | `/api/qoder/umid` | 获取 / 一键安装 Linux 平台 Qoder 设备身份组件 |
-| `GET` | `/api/logs` | 查看环形内存日志 |
+| `GET` | `/api/logs` | 查看环形内存日志（`?tag=MINIMAX-GW` / `?tag=ZCODE-GW` 可只看网关调用日志） |
 | `POST` | `/api/export` / `/api/import` | 账号数据安全加密导出与导入 |
 
 ## 状态与记录说明

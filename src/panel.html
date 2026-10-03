@@ -388,6 +388,13 @@
       <section class="pcard" data-fold="recent"><div class="pcard-title fold-head"><span>最近记录</span><span class="fold-side"><span class="hint" id="last-tick"></span><span class="fold-ico"></span></span></div><div class="fold-body"><div id="recent"></div></div></section>
       <section class="pcard" data-fold="attention"><div class="pcard-title fold-head"><span>需要处理</span><span class="fold-side"><span class="hint" id="att-count"></span><span class="fold-ico"></span></span></div><div class="fold-body"><div id="attention"></div></div></section>
     </div>
+    <section class="pcard collapsed" id="log-card">
+      <div class="pcard-title">
+        <span>运行日志</span>
+        <button class="btn" id="btn-logs">展开</button>
+      </div>
+      <div class="logs" id="logs">（暂无）</div>
+    </section>
   </section>
 
   <!-- 产品页（Qoder / WorkBuddy / ZCode 共用） -->
@@ -430,27 +437,26 @@
       <div class="notice" id="notice" style="display:none"></div>
       <div class="list" id="list"><div class="empty">加载中…</div></div>
     </div>
+    <!-- 本产品的网关调用日志（ZCode / MiniMax 各自独立） -->
+    <section class="pcard collapsed gw-log" id="zcode-gwlog-card" style="display:none">
+      <div class="pcard-title">
+        <span>ZCode 网关调用</span>
+        <button class="btn" id="btn-zcode-gwlogs">展开</button>
+      </div>
+      <div class="logs" id="zcode-gwlogs">（暂无）</div>
+    </section>
+    <section class="pcard collapsed gw-log" id="minimax-gwlog-card" style="display:none">
+      <div class="pcard-title">
+        <span>MiniMax 网关调用</span>
+        <button class="btn" id="btn-minimax-gwlogs">展开</button>
+      </div>
+      <div class="logs" id="minimax-gwlogs">（暂无）</div>
+    </section>
   </section>
 
   <!-- 10Router：其他供应商额度 + 用量同步 -->
   <section class="view" id="view-10r">
     <div class="panel" id="tr-panel"><div class="empty">加载中…</div></div>
-  </section>
-
-  <section class="pcard collapsed" id="log-card">
-    <div class="pcard-title">
-      <span>运行日志</span>
-      <button class="btn" id="btn-logs">展开</button>
-    </div>
-    <div class="logs" id="logs">（暂无）</div>
-  </section>
-
-  <section class="pcard collapsed" id="gwlog-card">
-    <div class="pcard-title">
-      <span>网关调用</span>
-      <button class="btn" id="btn-gwlogs">展开</button>
-    </div>
-    <div class="logs" id="gwlogs">（暂无）</div>
   </section>
 </div>
 
@@ -855,6 +861,8 @@ const CHECKIN_PRODUCTS = new Set(['qoder', 'workbuddy', 'trae', 'minimax']);
 const CLIENT_LABEL = { qoder: 'Qoder', workbuddy: 'WorkBuddy', zcode: 'ZCode', mirasim: 'mirasim', catpaw: '妙手', trae: 'Trae', minimax: 'MiniMax' };
 // 额度单位为 Credits/时长而非「积分」口径的产品（不计入剩余积分合计）
 const CREDIT_VIEWS = new Set(['zcode', 'mirasim', 'catpaw']);
+// 网关调用日志：tag → 所属产品页（无网关的产品不展示日志卡）
+const GW_LOG_TAG = { zcode: 'ZCODE-GW', minimax: 'MINIMAX-GW' };
 const provOf = (p) => PROV[p] || { prod: 'qoder', prodLabel: p, region: '', cls: '' };
 const provBadges = (p, regionOnly, flavor) => {
   const v = provOf(p);
@@ -2193,29 +2201,33 @@ async function loadQuotas(ids) {
   await Promise.all([worker(), worker(), worker()]);
 }
 async function loadLogs() {
-  await Promise.all([loadRunLogs(), loadGwLogs()]);
+  await loadRunLogs();
+  for (const prod of Object.keys(GW_LOG_TAG)) loadGwLogs(prod);
 }
 async function loadRunLogs() {
   try {
     const data = await api('/api/logs');
     const el = $('logs');
+    if (!el) return;
     const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
     el.innerHTML = data.logs.length ? data.logs.map((l) => '<div class="' + esc(l.level) + '">[' + esc(l.at) + '] ' + esc(l.tag) + ' · ' + esc(l.msg) + '</div>').join('') : '（暂无）';
     if (atBottom) el.scrollTop = el.scrollHeight;
   } catch (e) {}
 }
-async function loadGwLogs() {
+function renderLogLines(el, lines) {
+  el.innerHTML = lines.length ? lines.map((l) => '<div class="' + esc(l.level) + '">[' + esc(l.at) + '] ' + esc(l.msg) + '</div>').join('') : '（暂无）';
+}
+async function loadGwLogs(prod) {
+  const el = $(prod + '-gwlogs');
+  if (!el) return;
+  // 本产品网关日志只在对应产品页展示；网关开关关闭时收起整卡
+  const enabled = prod === 'zcode' ? state.zGateway : prod === 'minimax' ? state.mGateway : false;
+  $(prod + '-gwlog-card').style.display = enabled ? '' : 'none';
+  if (!enabled) return;
   try {
-    // 网关调用日志：MINIMAX-GW + ZCODE-GW，从运行日志里独立出来
-    const [mm, zc] = await Promise.all([
-      api('/api/logs?tag=MINIMAX-GW'),
-      api('/api/logs?tag=ZCODE-GW'),
-    ]);
-    const lines = [...(mm.logs || []), ...(zc.logs || [])]
-      .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
-    const el = $('gwlogs');
+    const data = await api('/api/logs?tag=' + encodeURIComponent(GW_LOG_TAG[prod]));
     const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
-    el.innerHTML = lines.length ? lines.map((l) => '<div class="' + esc(l.level) + '">[' + esc(l.at) + '] ' + esc(l.tag) + ' · ' + esc(l.msg) + '</div>').join('') : '（暂无）';
+    renderLogLines(el, data.logs || []);
     if (atBottom) el.scrollTop = el.scrollHeight;
   } catch (e) {}
 }
@@ -3238,10 +3250,15 @@ $('btn-logs').onclick = () => {
   $('btn-logs').textContent = c ? '展开' : '收起';
   if (!c) { loadRunLogs(); $('logs').scrollTop = $('logs').scrollHeight; }
 };
-$('btn-gwlogs').onclick = () => {
-  const c = $('gwlog-card').classList.toggle('collapsed');
-  $('btn-gwlogs').textContent = c ? '展开' : '收起';
-  if (!c) { loadGwLogs(); $('gwlogs').scrollTop = $('gwlogs').scrollHeight; }
+$('btn-zcode-gwlogs').onclick = () => {
+  const c = $('zcode-gwlog-card').classList.toggle('collapsed');
+  $('btn-zcode-gwlogs').textContent = c ? '展开' : '收起';
+  if (!c) { loadGwLogs('zcode'); $('zcode-gwlogs').scrollTop = $('zcode-gwlogs').scrollHeight; }
+};
+$('btn-minimax-gwlogs').onclick = () => {
+  const c = $('minimax-gwlog-card').classList.toggle('collapsed');
+  $('btn-minimax-gwlogs').textContent = c ? '展开' : '收起';
+  if (!c) { loadGwLogs('minimax'); $('minimax-gwlogs').scrollTop = $('minimax-gwlogs').scrollHeight; }
 };
 
 // ── 仪表盘底部两卡：默认收起，点标题展开，展开状态存本地 ──
