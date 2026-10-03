@@ -388,13 +388,6 @@
       <section class="pcard" data-fold="recent"><div class="pcard-title fold-head"><span>最近记录</span><span class="fold-side"><span class="hint" id="last-tick"></span><span class="fold-ico"></span></span></div><div class="fold-body"><div id="recent"></div></div></section>
       <section class="pcard" data-fold="attention"><div class="pcard-title fold-head"><span>需要处理</span><span class="fold-side"><span class="hint" id="att-count"></span><span class="fold-ico"></span></span></div><div class="fold-body"><div id="attention"></div></div></section>
     </div>
-    <section class="pcard collapsed" id="log-card">
-      <div class="pcard-title">
-        <span>运行日志</span>
-        <button class="btn" id="btn-logs">展开</button>
-      </div>
-      <div class="logs" id="logs">（暂无）</div>
-    </section>
   </section>
 
   <!-- 产品页（Qoder / WorkBuddy / ZCode 共用） -->
@@ -437,26 +430,24 @@
       <div class="notice" id="notice" style="display:none"></div>
       <div class="list" id="list"><div class="empty">加载中…</div></div>
     </div>
-    <!-- 本产品的网关调用日志（ZCode / MiniMax 各自独立） -->
-    <section class="pcard collapsed gw-log" id="zcode-gwlog-card" style="display:none">
-      <div class="pcard-title">
-        <span>ZCode 网关调用</span>
-        <button class="btn" id="btn-zcode-gwlogs">展开</button>
-      </div>
-      <div class="logs" id="zcode-gwlogs">（暂无）</div>
-    </section>
-    <section class="pcard collapsed gw-log" id="minimax-gwlog-card" style="display:none">
-      <div class="pcard-title">
-        <span>MiniMax 网关调用</span>
-        <button class="btn" id="btn-minimax-gwlogs">展开</button>
-      </div>
-      <div class="logs" id="minimax-gwlogs">（暂无）</div>
-    </section>
   </section>
 
   <!-- 10Router：其他供应商额度 + 用量同步 -->
   <section class="view" id="view-10r">
     <div class="panel" id="tr-panel"><div class="empty">加载中…</div></div>
+  </section>
+
+  <!-- 日志卡：运行日志 + 各网关调用日志，卡内标签切换（默认跟随当前页，可手动切） -->
+  <section class="pcard collapsed" id="log-card">
+    <div class="pcard-title">
+      <div class="seg-ctl" id="log-tabs">
+        <button data-log-tab="run" class="active">运行日志</button>
+        <button data-log-tab="zcode">ZCode 网关</button>
+        <button data-log-tab="minimax">MiniMax 网关</button>
+      </div>
+      <button class="btn" id="btn-logs">展开</button>
+    </div>
+    <div class="logs" id="logs">（暂无）</div>
   </section>
 </div>
 
@@ -709,7 +700,7 @@ const I = {
 };
 
 const $ = (id) => document.getElementById(id);
-const state = { accounts: [], quotas: {}, status: null, busy: {}, view: 'dash', region: '', addProduct: '' };
+const state = { accounts: [], quotas: {}, status: null, busy: {}, view: 'dash', region: '', addProduct: '', logTab: 'run' };
 const VIEWS = ['dash', 'qoder', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'tenrouter'];
 // 10Router 集成：config 来自 /api/tenrouter，quotas 来自 /api/tenrouter/quotas
 const tr = { config: null, quotas: null, error: null, loading: false, syncing: false };
@@ -2200,34 +2191,43 @@ async function loadQuotas(ids) {
   };
   await Promise.all([worker(), worker(), worker()]);
 }
+let logTabView = null;   // 当前日志标签所属的视图：切到别的视图时才重置跟随，同一视图内保留手动切换
 async function loadLogs() {
-  await loadRunLogs();
-  for (const prod of Object.keys(GW_LOG_TAG)) loadGwLogs(prod);
+  if (logTabView !== state.view) {
+    state.logTab = (state.view !== 'dash' && GW_LOG_TAG[state.view]) ? state.view : 'run';
+    logTabView = state.view;
+  }
+  applyLogTabs();
+  await loadCurrentLogs();
 }
-async function loadRunLogs() {
-  try {
-    const data = await api('/api/logs');
-    const el = $('logs');
-    if (!el) return;
-    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
-    el.innerHTML = data.logs.length ? data.logs.map((l) => '<div class="' + esc(l.level) + '">[' + esc(l.at) + '] ' + esc(l.tag) + ' · ' + esc(l.msg) + '</div>').join('') : '（暂无）';
-    if (atBottom) el.scrollTop = el.scrollHeight;
-  } catch (e) {}
+function applyLogTabs() {
+  // 网关开关关闭时，隐藏对应日志标签（无该网关时也看不到）
+  document.querySelectorAll('#log-tabs button').forEach((b) => {
+    const t = b.dataset.logTab;
+    let show = true;
+    if (t === 'zcode') show = Boolean(state.zGateway);
+    if (t === 'minimax') show = Boolean(state.mGateway);
+    b.style.display = show ? '' : 'none';
+    b.classList.toggle('active', t === state.logTab);
+  });
 }
-function renderLogLines(el, lines) {
-  el.innerHTML = lines.length ? lines.map((l) => '<div class="' + esc(l.level) + '">[' + esc(l.at) + '] ' + esc(l.msg) + '</div>').join('') : '（暂无）';
-}
-async function loadGwLogs(prod) {
-  const el = $(prod + '-gwlogs');
+async function loadCurrentLogs() {
+  const el = $('logs');
   if (!el) return;
-  // 本产品网关日志只在对应产品页展示；网关开关关闭时收起整卡
-  const enabled = prod === 'zcode' ? state.zGateway : prod === 'minimax' ? state.mGateway : false;
-  $(prod + '-gwlog-card').style.display = enabled ? '' : 'none';
-  if (!enabled) return;
+  let logs = [];
   try {
-    const data = await api('/api/logs?tag=' + encodeURIComponent(GW_LOG_TAG[prod]));
+    if (state.logTab === 'run') {
+      const data = await api('/api/logs');
+      logs = data.logs || [];
+    } else {
+      const data = await api('/api/logs?tag=' + encodeURIComponent(GW_LOG_TAG[state.logTab]));
+      logs = data.logs || [];
+    }
     const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
-    renderLogLines(el, data.logs || []);
+    const withTag = state.logTab === 'run';
+    el.innerHTML = logs.length
+      ? logs.map((l) => '<div class="' + esc(l.level) + '">[' + esc(l.at) + '] ' + (withTag ? esc(l.tag) + ' · ' : '') + esc(l.msg) + '</div>').join('')
+      : '（暂无）';
     if (atBottom) el.scrollTop = el.scrollHeight;
   } catch (e) {}
 }
@@ -3248,18 +3248,17 @@ $('f-provider').addEventListener('change', () => {
 $('btn-logs').onclick = () => {
   const c = $('log-card').classList.toggle('collapsed');
   $('btn-logs').textContent = c ? '展开' : '收起';
-  if (!c) { loadRunLogs(); $('logs').scrollTop = $('logs').scrollHeight; }
+  if (!c) { loadCurrentLogs(); $('logs').scrollTop = $('logs').scrollHeight; }
 };
-$('btn-zcode-gwlogs').onclick = () => {
-  const c = $('zcode-gwlog-card').classList.toggle('collapsed');
-  $('btn-zcode-gwlogs').textContent = c ? '展开' : '收起';
-  if (!c) { loadGwLogs('zcode'); $('zcode-gwlogs').scrollTop = $('zcode-gwlogs').scrollHeight; }
-};
-$('btn-minimax-gwlogs').onclick = () => {
-  const c = $('minimax-gwlog-card').classList.toggle('collapsed');
-  $('btn-minimax-gwlogs').textContent = c ? '展开' : '收起';
-  if (!c) { loadGwLogs('minimax'); $('minimax-gwlogs').scrollTop = $('minimax-gwlogs').scrollHeight; }
-};
+$('log-tabs').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-log-tab]');
+  if (!b) return;
+  state.logTab = b.dataset.logTab;
+  logTabView = state.view;   // 手动切换后，本视图内不再被 10s 轮询重置
+  applyLogTabs();
+  loadCurrentLogs();
+  $('logs').scrollTop = $('logs').scrollHeight;
+});
 
 // ── 仪表盘底部两卡：默认收起，点标题展开，展开状态存本地 ──
 const DASH_FOLD_KEY = 'qd_dash_fold';
