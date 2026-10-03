@@ -57,7 +57,7 @@ import { liveToAccount as zcodeLiveAccount, switchTo as zcodeSwitchTo, currentZc
 import { liveToAccount as mirasimLiveAccount, switchTo as mirasimSwitchTo, currentMirasimUid, detectMirasim, terminateMirasim, mirasimRunning } from './mirasimLocal.js';
 import { liveToAccount as catpawLiveAccount, switchTo as catpawSwitchTo, currentCatpawToken, detectCatpaw, terminateCatpaw } from './catpawLocal.js';
 import { liveToAccount as traeLiveAccount, detectTrae, switchTo as traeSwitchTo, snapshotLive as traeSnapshotLive } from './traeLocal.js';
-import { liveToAccount as minimaxLiveAccount, detectMiniMax, minimaxRunning, currentMiniMaxUid } from './minimaxLocal.js';
+import { liveToAccount as minimaxLiveAccount, detectMiniMax, minimaxRunning, currentMiniMaxUid, currentMiniMaxToken, currentMiniMaxRecordKey } from './minimaxLocal.js';
 import * as minimaxGateway from './minimaxGateway.js';
 import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl, autoClaimEnabled, autoClaimUntil, setAutoClaimEnabled, claimIntervalMin, setClaimIntervalMin, claimWindowMin, setClaimWindowMin } from './zcodeClient.js';
 import { exportAccounts, parseImport, TransferError } from './transfer.js';
@@ -816,6 +816,17 @@ async function handleApi(req, res, url) {
     }
     // 妙手凭据文件只存 token：当前登录按 token 对齐账号库，避免每轮状态都打网关查 uid
     const cpToken = currentCatpawToken();
+    const mmToken = currentMiniMaxToken();
+    const mmRecKey = currentMiniMaxRecordKey();
+    // 1) token match；2) record-key match (token 轮换时仍稳定);3) uid-cache fallback
+    let mmLiveUid = null;
+    if (mmToken) {
+      mmLiveUid = accounts.find((a) => a.provider === 'minimax' && a.token === mmToken)?.uid;
+    }
+    if (!mmLiveUid && mmRecKey) {
+      mmLiveUid = accounts.find((a) => a.provider === 'minimax' && a.meta?.authRecordKey === mmRecKey)?.uid;
+    }
+    if (!mmLiveUid) mmLiveUid = currentMiniMaxUid();
     const traeDet = detectTrae();
     return json(res, 200, {
       ok: true,
@@ -826,6 +837,12 @@ async function handleApi(req, res, url) {
       dataDir: dataDir(),
       today: dayKey(),
       todayDone: state?.qoderDailyDone || {},
+      todayByProduct: {
+        qoder: dayKey(Date.now(), 'qoder'),
+        workbuddy: dayKey(Date.now(), 'workbuddy'),
+        trae: dayKey(Date.now(), 'trae'),
+        minimax: dayKey(Date.now(), 'minimax'),
+      },
       scheduler: getSchedulerInfo(),
       riskIdentity: riskIdentityAvailable(),
       riskSource: riskIdentitySource(),
@@ -843,7 +860,7 @@ async function handleApi(req, res, url) {
       catpawClient: (() => { const d = detectCatpaw(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       traeCurrentUid: traeDet.uid,
       traeClient: { installed: traeDet.clientInstalled, signedIn: traeDet.signedIn, running: traeDet.running },
-      minimaxCurrentUid: currentMiniMaxUid(),
+      minimaxCurrentUid: mmLiveUid,
       minimaxClient: (() => { const d = detectMiniMax(); return { installed: d.installed, signedIn: d.signedIn, running: d.running }; })(),
       keyRequired: Boolean(PANEL_KEY),
     });

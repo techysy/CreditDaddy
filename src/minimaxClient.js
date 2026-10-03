@@ -256,6 +256,7 @@ export async function checkinMiniMax(account, ctx = {}) {
         status: 'already',
         message: `今日第 ${today.day_no} 天已签到（${today.points} + ${today.bonus_points} 算力币）`,
         amount: (today.points || 0) + (today.bonus_points || 0),
+        streakDays: today.day_no || 0,
       };
     }
 
@@ -284,6 +285,7 @@ export async function checkinMiniMax(account, ctx = {}) {
         status: 'already',
         message: `今日已领取（+${pts} 算力币）`,
         amount: pts,
+        streakDays: cdata.day_no || today?.day_no || 0,
       };
     }
 
@@ -292,6 +294,7 @@ export async function checkinMiniMax(account, ctx = {}) {
       message: `签到成功第 ${cdata.day_no || today?.day_no || 1} 天（+${pts} 算力币）`,
       claimedAmount: pts,
       amount: pts,
+      streakDays: cdata.day_no || today?.day_no || 0,
     };
   }, ctx);
 }

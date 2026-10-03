@@ -844,8 +844,8 @@ const PROV = {
 // 支持每日签到的产品（ZCode / mirasim / 妙手 额度靠套餐或滚动窗口发放，不做签到）
 const CHECKIN_PRODUCTS = new Set(['qoder', 'workbuddy', 'trae', 'minimax']);
 const CLIENT_LABEL = { qoder: 'Qoder', workbuddy: 'WorkBuddy', zcode: 'ZCode', mirasim: 'mirasim', catpaw: '妙手', trae: 'Trae', minimax: 'MiniMax' };
-// 额度单位为 Credits/时长而非「积分」口径的产品（不计入剩余积分合计）
-const CREDIT_VIEWS = new Set(['zcode', 'mirasim', 'catpaw']);
+// 额度单位为 Credits/时长/算力币而非「积分」口径的产品（不计入剩余积分合计）
+const CREDIT_VIEWS = new Set(['zcode', 'mirasim', 'catpaw', 'minimax']);
 const provOf = (p) => PROV[p] || { prod: 'qoder', prodLabel: p, region: '', cls: '' };
 const provBadges = (p, regionOnly, flavor) => {
   const v = provOf(p);
@@ -970,7 +970,8 @@ function initTheme() {
 function statusOf(a) {
   if (!CHECKIN_PRODUCTS.has(a.product)) return { cls: '', text: '', msg: '' };  // ZCode 无每日领取，不显示徽标
   const intl = a.provider === 'workbuddy-intl';
-  const today = state.status && state.status.today;
+  const byProd = (state.status && state.status.todayByProduct) || {};
+  const today = byProd[a.product] || (state.status && state.status.today);
   const done = state.status && state.status.todayDone && state.status.todayDone[a.id] === today;
   const r = a.lastResult;
   const fresh = r && r.at && state.status && (Date.now() - new Date(r.at).getTime() < 26 * 3600e3);
@@ -1154,7 +1155,14 @@ function cardHtml(a) {
     + '</div>';
 }
 
-const isDone = (a) => Boolean(state.status && state.status.todayDone && state.status.todayDone[a.id] === state.status.today);
+const isDone = (a) => {
+  if (!state.status || !state.status.todayDone) return false;
+  const doneDay = state.status.todayDone[a.id];
+  if (!doneDay) return false;
+  const byProd = state.status.todayByProduct || {};
+  const expectedDay = byProd[a.product] || state.status.today;
+  return doneDay === expectedDay;
+};
 const ofProduct = (prod) => state.accounts.filter((a) => a.product === prod);
 const currentUidOf = (prod) => state.status && (prod === 'workbuddy' ? state.status.workbuddyCurrentUid : prod === 'zcode' ? state.status.zcodeCurrentUid : prod === 'catpaw' ? state.status.catpawCurrentUid : prod === 'trae' ? state.status.traeCurrentUid : null);
 /** 接口使用中判定：体验包接口最近一次补全用的账号（lastAccount 记的是 name || uid || id） */
@@ -1244,10 +1252,16 @@ function renderProd() {
     $('s-done').textContent = acc.filter(isDone).length + ' / ' + acc.length;
   }
   const c = creditSum(acc);
-  $('s-credits-label').textContent = CREDIT_VIEWS.has(prod) ? '有效套餐' : '剩余积分';
-  $('s-credits').textContent = CREDIT_VIEWS.has(prod)
-    ? acc.filter((a) => { const q = state.quotas[a.id]; return q && !q.error && !q.empty; }).length + ' / ' + acc.length
-    : c.loading ? '…' : (c.known ? fmtNum(c.sum) : '-');
+  if (prod === 'minimax') {
+    const pts = acc.reduce((s, a) => s + (Number(state.quotas[a.id]?.remaining) || 0), 0);
+    $('s-credits-label').textContent = '剩余算力币';
+    $('s-credits').textContent = fmtNum(pts);
+  } else {
+    $('s-credits-label').textContent = CREDIT_VIEWS.has(prod) ? '有效套餐' : '剩余积分';
+    $('s-credits').textContent = CREDIT_VIEWS.has(prod)
+      ? acc.filter((a) => { const q = state.quotas[a.id]; return q && !q.error && !q.empty; }).length + ' / ' + acc.length
+      : c.loading ? '…' : (c.known ? fmtNum(c.sum) : '-');
+  }
   const hasRegions = !CREDIT_VIEWS.has(prod) && prod !== 'trae' && prod !== 'minimax';   // Trae / MiniMax 不分国际 / 国内版
   $('region').style.display = hasRegions ? '' : 'none';
   $('region-div').style.display = hasRegions ? '' : 'none';
@@ -1356,11 +1370,19 @@ function renderDash() {
           + (cnList.length && intlList.length ? ' · ' : '')
           + (intlList.length ? intlList.filter(isDone).length + ' / ' + intlList.length + ' 国际' : '')
           + '</span>';
+      } else if (p.id === 'minimax') {
+        const planned = list.filter((a) => { const q = state.quotas[a.id]; return q && !q.error && !q.empty; }).length;
+        const pts = list.reduce((s, a) => s + (Number(state.quotas[a.id]?.remaining) || 0), 0);
+        rows = '<span class="lbl">今日领取</span><span class="val">' + d + ' / ' + list.length + '</span>'
+          + '<span style="grid-column:1 / -1">' + meter(d, list.length) + '</span>'
+          + '<span class="lbl">剩余算力币</span><span class="val">' + fmtNum(pts) + ' 算力币</span>';
       } else {
         rows = '<span class="lbl">今日领取</span><span class="val">' + d + ' / ' + list.length + '</span>';
       }
-      rows += '<span style="grid-column:1 / -1">' + meter(d, list.length) + '</span>'
-        + '<span class="lbl">剩余积分</span><span class="val">' + (c.known ? fmtNum(c.sum) : '-') + '</span>';
+      if (p.id !== 'minimax') {
+        rows += '<span style="grid-column:1 / -1">' + meter(d, list.length) + '</span>'
+          + '<span class="lbl">剩余积分</span><span class="val">' + (c.known ? fmtNum(c.sum) : '-') + '</span>';
+      }
     } else if (p.id === 'mirasim') {
       const planned = list.filter((a) => { const q = state.quotas[a.id]; return q && !q.error && !q.empty; }).length;
       rows = '<span class="lbl">额度体系</span><span class="val dim">5h / 7d 滚动窗口</span>'

@@ -30,12 +30,23 @@ export function minimaxConfigPath() {
   return path.join(minimaxHome(), 'config.yaml');
 }
 
+export function minimaxUidCachePath() {
+  const authDir = path.dirname(minimaxAuthPath());
+  return path.join(authDir, 'uid-cache.json');
+}
+
 function readJson(file) {
   try {
     return JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch {
     return null;
   }
+}
+
+function writeJson(file, data) {
+  const dir = path.dirname(file);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
 }
 
 /**
@@ -92,7 +103,9 @@ export async function liveToAccount() {
   const authData = readJson(authFile);
   if (!authData?.records) return null;
 
-  const record = Object.values(authData.records).find((r) => r?.accessToken);
+  const recordKey = Object.keys(authData.records).find((k) => authData.records[k]?.accessToken);
+  if (!recordKey) return null;
+  const record = authData.records[recordKey];
   if (!record || !record.accessToken) return null;
 
   let profile = null;
@@ -102,7 +115,18 @@ export async function liveToAccount() {
     // profile 失败不影响返回基础账号信息
   }
 
-  const uid = profile?.userId || record.subject || record.accountId || null;
+  // auth.json 记录没有稳定 uid 字段，token 又高频轮换：
+  // 把 profile 解析出的 uid 按 authRecordKey 缓存，供 currentMiniMaxUid 离线比对。
+  const cached = readJson(minimaxUidCachePath()) || {};
+  const uid = profile?.userId || record.subject || record.accountId || cached[recordKey] || null;
+  if (profile?.userId && cached[recordKey] !== profile.userId) {
+    cached[recordKey] = profile.userId;
+    try {
+      writeJson(minimaxUidCachePath(), cached);
+    } catch {
+      // 缓存写失败不影响本次返回
+    }
+  }
   const name = profile?.name || (uid ? `MiniMax_${String(uid).slice(-6)}` : 'MiniMax Code');
 
   return {
@@ -115,7 +139,7 @@ export async function liveToAccount() {
     email: profile?.email || null,
     source: 'local-app',
     meta: {
-      authRecordKey: Object.keys(authData.records)[0],
+      authRecordKey: recordKey,
       clientId: record.clientId,
       scopes: record.scopes,
       capturedAt: new Date().toISOString(),
@@ -124,12 +148,39 @@ export async function liveToAccount() {
 }
 
 /**
- * 获取当前登录的 UID
+ * 获取当前登录的 UID。
+ * 优先用 record 自带字段；没有则按 authRecordKey 命中 uid 缓存（token 会轮换，uid 不会）。
  */
 export function currentMiniMaxUid() {
   const authFile = minimaxAuthPath();
   const authData = readJson(authFile);
   if (!authData?.records) return null;
+  const recordKey = Object.keys(authData.records).find((k) => authData.records[k]?.accessToken);
+  if (!recordKey) return null;
+  const record = authData.records[recordKey];
+  const own = record?.subject || record?.accountId;
+  if (own) return String(own);
+  const cached = readJson(minimaxUidCachePath());
+  return cached?.[recordKey] || null;
+}
+
+/**
+ * 获取当前登录记录的稳定 key（token 轮换时保持不变，可跨账号库匹配）
+ */
+export function currentMiniMaxRecordKey() {
+  const authFile = minimaxAuthPath();
+  const authData = readJson(authFile);
+  if (!authData?.records) return null;
+  return Object.keys(authData.records).find((k) => authData.records[k]?.accessToken) || null;
+}
+
+/**
+ * 获取当前登录的 Token（用于比对当前登录账号）
+ */
+export function currentMiniMaxToken() {
+  const authFile = minimaxAuthPath();
+  const authData = readJson(authFile);
+  if (!authData?.records) return null;
   const record = Object.values(authData.records).find((r) => r?.accessToken);
-  return record?.subject || record?.accountId || null;
+  return record?.accessToken || null;
 }
