@@ -55,4 +55,19 @@ test('端口被占用时仍能自动顺延到下一个可用端口', async () =>
   }
 });
 
+test('ZCode 网关数据面路由：规范路径 /gateway/zcode/v1/messages 与旧别名都命中（405 而非 404）', async () => {
+  const { server, port } = await startDaemon(0, '127.0.0.1');
+  try {
+    // GET 落到 handleGateway 会因非 POST 返回 405；未命中路由则是 404
+    for (const p of ['/gateway/zcode/v1/messages', '/gateway/v1/messages', '/v1/messages']) {
+      const res = await fetch(`http://127.0.0.1:${port}${p}`);
+      assert.equal(res.status, 405, `${p} 应命中 ZCode 网关（405），实得 ${res.status}`);
+    }
+    const miss = await fetch(`http://127.0.0.1:${port}/gateway/unknown/v1/messages`);
+    assert.equal(miss.status, 404, '未注册路径仍应 404');
+  } finally {
+    server.close();
+  }
+});
+
 test.after(() => closeArchiveStream());

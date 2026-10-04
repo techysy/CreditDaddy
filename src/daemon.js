@@ -957,9 +957,15 @@ export async function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
         return json(res, 403, { error: denied });
       }
       // ZCode 免费额度网关（数据面，先于面板路由；仅本机回路，见 zcodeGateway.js）。
-      // /v1/messages 别名与 zcode-api 端点路径同形——10router 的 zcode-free 供应商
+      // 规范路径带品牌段 /gateway/zcode/v1/messages，与 minimax/trae 网关命名一致，也是
+      // gatewayStatus() 展示的 endpoint。/gateway/v1/messages 与 /v1/messages 为旧别名，
+      // 保留向后兼容：/v1/messages 与 zcode-api 端点同形，10router 的 zcode-free 供应商
       // 只需换 host:port 即可在 CreditDaddy 网关与 zcode-api 之间切换。
-      if (url.pathname === '/gateway/v1/messages' || url.pathname === '/v1/messages') {
+      if (
+        url.pathname === '/gateway/zcode/v1/messages'
+        || url.pathname === '/gateway/v1/messages'
+        || url.pathname === '/v1/messages'
+      ) {
         return await zcodeGateway.handleGateway(req, res);
       }
       // MiniMax Code 本地 Anthropic 兼容网关
