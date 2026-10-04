@@ -225,7 +225,8 @@ export async function checkinTrae(account, ctx = {}) {
 
   // 签到应得额度：status 接口里通常预告 credits / extra_credits（如 100 积分），
   // claim 接口有时只返回 { code: 0, message: "success" } 而不包含 credits 字段，作为 fallback 避免 +0
-  const expectedCredits = Number(findField(r.body, 'credits') ?? findField(r.body, 'extra_credits')) || 100;
+  const TRAE_DEFAULT_DAILY_CREDITS = 100;
+  const expectedCredits = Number(findField(r.body, 'credits') ?? findField(r.body, 'extra_credits')) || TRAE_DEFAULT_DAILY_CREDITS;
 
   const c = await post(CLAIM_URL, account);
   if (c.code !== 0) {

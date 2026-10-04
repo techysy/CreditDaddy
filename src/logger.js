@@ -105,7 +105,7 @@ export const logger = {
 export function getLogs(limit = 100, tag = null) {
   // tag=null 是面板「运行日志」：网关调用日志（*-GW）刷屏快、口径不同，
   // 只在自己的标签页里展示，不混进运行日志；显式传 tag 的查询不受影响。
-  const lines = tag ? ring.filter((l) => l.tag === tag) : ring.filter((l) => !l.tag.endsWith('-GW'));
+  const lines = tag ? ring.filter((l) => l.tag === tag) : ring.filter((l) => !(l.tag || '').endsWith('-GW'));
   return lines.slice(-limit);
 }
 
