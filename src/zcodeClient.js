@@ -363,7 +363,11 @@ async function bigmodelHeaders(token) {
 async function getJson(url, headers) {
   const res = await fetchJsonRace(url, { headers, timeoutMs: FETCH_TIMEOUT_MS });
   const text = await res.text();
-  try { return JSON.parse(text); } catch { return { code: res.status, msg: text.slice(0, 120) }; }
+  try { return JSON.parse(text); } catch {
+    // 解析失败（含 HTTP 200 + 空 body，服务端偶发对无效 token 就是这样）绝不能伪装成 code:200，
+    // 否则 businessOk 会放行并让额度链提前返回“无套餐”，短路后面的 balance 尝试
+    return { code: res.ok ? -1 : res.status, msg: (text || `empty response (HTTP ${res.status})`).slice(0, 120) };
+  }
 }
 
 const businessOk = (v) => {
@@ -538,6 +542,12 @@ export function normalizePlans(previewResp) {
   return out;
 }
 
+/** “当前用户不存在coding plan / 没有资格”属于无套餐的业务口径，不是查询失败（同 zcode-switch is_no_plan_message） */
+function isNoPlanMessage(msg) {
+  const m = String(msg || '');
+  return m.includes('不存在coding plan') || m.includes('没有资格') || /no.*coding.*plan/i.test(m);
+}
+
 /**
  * 额度查询：先试 BigModel Coding Plan（quota/limit），再试 Z.ai / Start Plan（billing/balance）。
  * 都没有有效套餐时返回 { empty: true }（不是错误：很多账号只用免费额度）。
@@ -546,28 +556,35 @@ export async function fetchZcodeQuota(account) {
   const tokens = candidateTokens(account);
   if (!tokens.length) throw new Error('账号快照里没有可用 token，请在 ZCode 登录后重新导入');
   let lastErr = null;
+  let sawNoPlan = false;
   let authFails = 0;
   for (const t of tokens) {
     try {
       const limit = await getJson(QUOTA_LIMIT_URL, await bigmodelHeaders(t));
       if (businessOk(limit)) {
         const sub = await getJson(SUBSCRIPTION_URL, await bigmodelHeaders(t)).catch(() => null);
-        return { ...normalizeQuotaLimit(limit, sub), source: 'bigmodel' };
+        const ov = normalizeQuotaLimit(limit, sub);
+        // BigModel 侧“有效响应但零额度项”不代表账号没额度（Start Plan 账号走 balance 有额度），
+        // 不能提前返回 empty，必须继续把 balance 链路试完——与 zcode-switch 每 token 双端点连查一致
+        if (!ov.empty) return { ...ov, source: 'bigmodel' };
       }
       if (limit?.code === 401) authFails++;
+      else if (isNoPlanMessage(limit?.msg)) sawNoPlan = true;
       else lastErr = limit?.msg || lastErr;
     } catch (e) { lastErr = e.message; }
   }
   for (const t of billingTokens(account)) {
     try {
       const bal = await getJson(`${BILLING_BALANCE_URL}?app_version=${await zcodeAppVersion()}`, await zaiHeaders(t, ensureVirtualDeviceMid(account)));
+      // balance 是账号级总余额端点，有效答复（含“确无套餐”）即可采信；
+      // 与 bigmodel 侧不同——那里“有效但零额度项”不代表账号没额度，必须继续往下试
       if (businessOk(bal)) return { ...normalizeBalance(bal), source: 'zcode.z.ai' };
       if (bal?.code === 401) authFails++;
     } catch (e) { lastErr = e.message; }
   }
   if (authFails && authFails >= tokens.length) throw new Error('鉴权失败，登录可能已过期，请在 ZCode 重新登录后重新导入');
-  // “当前用户不存在coding plan”之类属于无套餐，按空额度返回
-  if (!lastErr || /不存在|no.*plan/i.test(lastErr)) {
+  // 无套餐口径：显式的“不存在coding plan”或整条链没有任何错误
+  if (!lastErr || sawNoPlan) {
     return { total: 0, used: 0, remaining: 0, unit: '', plan: null, parts: [], empty: true, exceeded: false };
   }
   throw new Error(`额度查询失败：${lastErr}`);
