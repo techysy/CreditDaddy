@@ -59,6 +59,7 @@ import { liveToAccount as catpawLiveAccount, switchTo as catpawSwitchTo, current
 import { liveToAccount as traeLiveAccount, detectTrae, switchTo as traeSwitchTo, snapshotLive as traeSnapshotLive } from './traeLocal.js';
 import { liveToAccount as minimaxLiveAccount, detectMiniMax, currentMiniMaxUid, currentMiniMaxToken, currentMiniMaxRecordKey } from './minimaxLocal.js';
 import * as minimaxGateway from './minimaxGateway.js';
+import * as traeGateway from './traeGateway.js';
 import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl, autoClaimEnabled, autoClaimUntil, setAutoClaimEnabled, claimIntervalMin, setClaimIntervalMin, claimWindowMin, setClaimWindowMin } from './zcodeClient.js';
 import { exportAccounts, parseImport, TransferError } from './transfer.js';
 import { syncAccountsTo10r } from './tenrouterAccounts.js';
@@ -407,6 +408,29 @@ async function handleApi(req, res, url) {
       logger.info('DAEMON', `MiniMax 网关局域网：${lanNow ? '开' : '关（仅本机）'}${allowText ? `，白名单：${allowText}` : ''}`);
     }
     return json(res, 200, await minimaxGateway.gatewayStatus());
+  }
+  // Trae 本地网关控制
+  if (p === '/api/trae-gateway' && method === 'GET') {
+    return json(res, 200, await traeGateway.gatewayStatus());
+  }
+  if (p === '/api/trae-gateway' && method === 'PUT') {
+    const body = await readBody(req).catch(() => ({}));
+    if (body?.enabled !== undefined) await traeGateway.setGatewayEnabled(body.enabled === true);
+    if (body?.lan !== undefined || body?.allow !== undefined) {
+      const patch = {};
+      if (body?.lan !== undefined) patch.traeGatewayLan = body.lan === true;
+      if (body?.allow !== undefined) {
+        if (!Array.isArray(body.allow)) return json(res, 400, { error: 'allow 需为字符串数组' });
+        const cleaned = [...new Set(body.allow.map((x) => String(x || '').trim()).filter(Boolean))];
+        if (cleaned.some((x) => /[^\w.*:-]/.test(x))) return json(res, 400, { error: '白名单条目只能是 IP / 主机名（支持 192.168.31.* 通配）' });
+        patch.traeGatewayAllow = cleaned;
+      }
+      await (await import('./store.js')).saveSettings(patch);
+      const lanNow = patch.traeGatewayLan ?? (await (await import('./store.js')).loadSettings()).traeGatewayLan === true;
+      const allowText = patch.traeGatewayAllow ? patch.traeGatewayAllow.join(', ') : '';
+      logger.info('DAEMON', `Trae 网关局域网：${lanNow ? '开' : '关（仅本机）'}${allowText ? `，白名单：${allowText}` : ''}`);
+    }
+    return json(res, 200, await traeGateway.gatewayStatus());
   }
   if (p === '/api/zcode/net' && method === 'GET') {
     const u = proxyUrl();
@@ -941,6 +965,10 @@ export async function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
       // MiniMax Code 本地 Anthropic 兼容网关
       if (url.pathname === '/gateway/minimax/v1/messages') {
         return await minimaxGateway.handleGateway(req, res);
+      }
+      // Trae SOLO 本地 Anthropic 兼容网关
+      if (url.pathname === '/gateway/trae/v1/messages') {
+        return await traeGateway.handleGateway(req, res);
       }
       if (url.pathname.startsWith('/api/')) {
         return await handleApi(req, res, url);

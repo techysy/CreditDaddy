@@ -416,6 +416,7 @@
             <button class="btn" id="zt-open" style="display:none"></button>
           </span>
           <span id="t-actions" style="display:none">
+            <button class="btn" id="tt-gw"></button>
             <button class="btn" id="tt-open" style="display:none"></button>
           </span>
           <span id="m-actions" style="display:none">
@@ -444,6 +445,7 @@
         <button data-log-tab="run" class="active">运行日志</button>
         <button data-log-tab="zcode">ZCode 网关</button>
         <button data-log-tab="minimax">MiniMax 网关</button>
+        <button data-log-tab="trae">Trae 网关</button>
       </div>
       <button class="btn" id="btn-logs">展开</button>
     </div>
@@ -671,6 +673,24 @@
   </div>
 </div>
 
+<!-- Trae 本地接口 -->
+<div class="mask" id="m-tgw">
+  <div class="modal sm">
+    <div class="modal-title"><span>Trae 本地接口</span><button class="close" data-close>✕</button></div>
+    <div class="hint" id="tgw-url" style="margin-bottom:10px"></div>
+    <div class="field">
+      <label class="check"><input type="checkbox" id="tgw-on"> 启用本地接口（/gateway/trae/v1/messages）</label>
+    </div>
+    <div class="field" id="tgw-lan-fields">
+      <label class="check"><input type="checkbox" id="tgw-lan"> 对局域网开放（需全局局域网已开启）</label>
+      <label>IP 白名单（每行一个，支持 192.168.31.* 通配）</label>
+      <textarea class="input" id="tgw-allow" rows="4" placeholder="192.168.31.101"></textarea>
+    </div>
+    <div class="hint">开启后，Trae SOLO 积分与模型能力（Doubao-Seed / GLM-5.1 / Kimi-K2.6 / DeepSeek-V4 等 12 款模型）变成本机的一个原生 Anthropic Messages 补全接口——在 10Router 或 Claude Code 等工具中建一个 anthropic-compatible 节点指向本机 <code>/gateway/trae/v1/messages</code> 即可调用。支持多账号自动加权轮转、429 限流自动冷却 5 分钟、流式增量与完整思考过程（thinking_delta）。白名单内的机器<b>免密直连</b>；本机回环（127.0.0.1）始终放行。</div>
+    <div class="modal-actions"><button class="btn" data-close>取消</button><button class="btn primary" id="tgw-ok">保存</button></div>
+  </div>
+</div>
+
 <input type="file" id="file-input" accept=".json,application/json" style="display:none">
 <div id="toast"></div>
 
@@ -853,7 +873,7 @@ const CLIENT_LABEL = { qoder: 'Qoder', workbuddy: 'WorkBuddy', zcode: 'ZCode', m
 // 额度单位为 Credits/时长而非「积分」口径的产品（不计入剩余积分合计）
 const CREDIT_VIEWS = new Set(['zcode', 'mirasim', 'catpaw']);
 // 网关调用日志：tag → 所属产品页（无网关的产品不展示日志卡）
-const GW_LOG_TAG = { zcode: 'ZCODE-GW', minimax: 'MINIMAX-GW' };
+const GW_LOG_TAG = { zcode: 'ZCODE-GW', minimax: 'MINIMAX-GW', trae: 'TRAE-GW' };
 const provOf = (p) => PROV[p] || { prod: 'qoder', prodLabel: p, region: '', cls: '' };
 const provBadges = (p, regionOnly, flavor) => {
   const v = provOf(p);
@@ -1142,6 +1162,7 @@ function cardHtml(a) {
     + (isCurrent ? '<span class="pill cur" title="' + esc(CLIENT_LABEL[a.product] || '') + ' 客户端当前登录的账号">客户端当前</span>' : '')
     + (a.product === 'zcode' && isGatewayCurrent(a) ? '<span class="pill gw" title="体验包接口最近一次补全用的账号（多账号时按轮换自动选择，与客户端登录无关）">接口使用中</span>' : '')
     + (a.product === 'minimax' && isMiniMaxGatewayCurrent(a) ? '<span class="pill gw" title="本地接口最近一次补全用的账号（多账号时按轮换自动选择，与客户端登录无关）">接口使用中</span>' : '')
+    + (a.product === 'trae' && isTraeGatewayCurrent(a) ? '<span class="pill gw" title="本地接口最近一次补全用的账号（多账号时按轮换自动选择，与客户端登录无关）">接口使用中</span>' : '')
     + (a.isPat ? '<span class="badge">PAT</span>' : '')
     + (a.verified === false ? '<span class="pill fail">token 无效</span>' : '')
     + (st.text ? '<span class="pill ' + st.cls + '" title="' + esc(a.lastResult ? fmtTime(a.lastResult.at) + ' ' + (a.lastResult.message || a.lastResult.status) : '') + '">' + esc(st.text) + '</span>' : '')
@@ -1181,6 +1202,11 @@ function isGatewayCurrent(a) {
 /** MiniMax 本地接口使用中判定 */
 function isMiniMaxGatewayCurrent(a) {
   const last = state.mGatewayStats && state.mGatewayStats.lastAccount;
+  return Boolean(last) && (a.name === last || a.uid === last || a.id === last);
+}
+/** Trae 本地接口使用中判定 */
+function isTraeGatewayCurrent(a) {
+  const last = state.tGatewayStats && state.tGatewayStats.lastAccount;
   return Boolean(last) && (a.name === last || a.uid === last || a.id === last);
 }
 
@@ -1295,6 +1321,9 @@ function renderProd() {
   }
   $('t-actions').style.display = prod === 'trae' ? 'contents' : 'none';
   if (prod === 'trae') {
+    const gwOn = state.tGateway === true;
+    $('tt-gw').innerHTML = dot(gwOn) + '接口' + (gwOn && state.tGatewayLan === true ? '·局域网' : '');
+    $('tt-gw').title = 'Trae 本地接口：开关、局域网开放与 IP 白名单';
     const tc = (state.status && state.status.traeClient) || {};
     const canOpen = tc.installed && window.creditdaddy && typeof window.creditdaddy.openTraeClient === 'function';
     $('tt-open').style.display = canOpen ? '' : 'none';
@@ -1600,6 +1629,21 @@ document.addEventListener('click', async (e) => {
     } catch (err) { toast(String(err && err.message || err), false); }
     return;
   }
+  if (e.target.closest('#tt-gw')) {
+    // Trae 本地接口弹窗：开关 + 局域网 + 白名单设置
+    $('tgw-on').checked = state.tGateway === true;
+    $('tgw-lan').checked = state.tGatewayLan === true;
+    const allow = Array.isArray(state.tGatewayAllow) ? state.tGatewayAllow : [];
+    $('tgw-allow').value = (allow.length ? allow : (state.tGatewaySuggest ? [state.tGatewaySuggest] : [])).join('\n');
+    const st = state.tGatewayStats;
+    $('tgw-url').innerHTML = '接口地址 <code>POST http://127.0.0.1:' + location.port + '/gateway/trae/v1/messages</code>（局域网开放时把 127.0.0.1 换成本机 IP）'
+      + (st && st.lastCallAt
+        ? '<br>最近调用 ' + esc(String(st.lastCallAt).slice(11, 19)) + ' · 共 ' + st.calls + ' 次' + (st.lastAccount ? ' · 最后用号 ' + esc(st.lastAccount) : '')
+        : '<br>尚未有调用');
+    syncTgwLanFields();
+    openModal('m-tgw');
+    return;
+  }
   if (e.target.closest('#mt-gw')) {
     // MiniMax 本地接口弹窗：开关 + 局域网 + 白名单设置
     $('mgw-on').checked = state.mGateway === true;
@@ -1682,6 +1726,18 @@ async function loadMGateway() {
     state.mGatewaySuggest = d.suggestAllow || '';
     state.mGatewayStats = d.stats || null;
     if (state.view === 'minimax') { renderStatus(); render(); }
+    applyLogTabs();   // 网关开关变化影响日志标签显隐
+  } catch (e) {}
+}
+async function loadTGateway() {
+  try {
+    const d = await api('/api/trae-gateway');
+    state.tGateway = d.enabled === true;
+    state.tGatewayLan = d.lan === true;
+    state.tGatewayAllow = d.allow || [];
+    state.tGatewaySuggest = d.suggestAllow || '';
+    state.tGatewayStats = d.stats || null;
+    if (state.view === 'trae') { renderStatus(); render(); }
     applyLogTabs();   // 网关开关变化影响日志标签显隐
   } catch (e) {}
 }
@@ -2212,6 +2268,7 @@ function applyLogTabs() {
     let show = true;
     if (t === 'zcode') show = Boolean(state.zGateway);
     if (t === 'minimax') show = Boolean(state.mGateway);
+    if (t === 'trae') show = Boolean(state.tGateway);
     b.style.display = show ? '' : 'none';
     b.classList.toggle('active', t === state.logTab);
   });
@@ -2662,6 +2719,27 @@ $('mgw-ok').addEventListener('click', async () => {
     renderStatus(); render();
     closeModal('m-mgw');
     toast('MiniMax 接口：' + (r.enabled ? '已开启' : '已关闭')
+      + (r.enabled && r.lan ? '，局域网开放' + (r.allow && r.allow.length ? '，白名单 ' + r.allow.join('、') : '') : ''));
+  } catch (err) { toast(err.message, false); }
+});
+
+// Trae 本地接口：开关 + 局域网开放 + 免密 IP 白名单一次保存
+function syncTgwLanFields() {
+  const off = !$('tgw-on').checked;
+  $('tgw-lan-fields').querySelectorAll('input, textarea').forEach((el) => { el.disabled = off; });
+  $('tgw-lan-fields').style.opacity = off ? '.45' : '';
+}
+$('tgw-on').addEventListener('change', syncTgwLanFields);
+$('tgw-ok').addEventListener('click', async () => {
+  const allow = $('tgw-allow').value.split('\n').map((x) => x.trim()).filter(Boolean);
+  try {
+    const r = await api('/api/trae-gateway', { method: 'PUT', json: { enabled: $('tgw-on').checked, lan: $('tgw-lan').checked, allow } });
+    state.tGateway = r.enabled === true;
+    state.tGatewayLan = r.lan === true;
+    state.tGatewayAllow = r.allow || [];
+    renderStatus(); render();
+    closeModal('m-tgw');
+    toast('Trae 接口：' + (r.enabled ? '已开启' : '已关闭')
       + (r.enabled && r.lan ? '，局域网开放' + (r.allow && r.allow.length ? '，白名单 ' + r.allow.join('、') : '') : ''));
   } catch (err) { toast(err.message, false); }
 });
@@ -3220,6 +3298,7 @@ function applyView() {
   $('view-10r').classList.toggle('active', state.view === 'tenrouter');
   if (state.view === 'tenrouter') loadZGateway();
   if (state.view === 'minimax') loadMGateway();
+  if (state.view === 'trae') loadTGateway();
   if (state.view === 'tenrouter' && tr.config && tr.config.configured && !tr.quotas && !tr.loading) loadTrQuotas();
   followLogTab();
   applyLogTabs();
@@ -3300,6 +3379,7 @@ applyView();
     loadZNet();
     loadZGateway();
     loadMGateway();
+    loadTGateway();
     loadTrConfig().then(() => loadTrQuotas());
     setInterval(() => loadTrQuotas(), 5 * 60 * 1000);
     // 账号余额（ZCode 剩余 token 等）自动刷新：可见时每 2 分钟一轮；从托盘/后台切回时若超过 1 分钟没刷过立即补一轮
@@ -3309,7 +3389,7 @@ applyView();
     });
     loadLogs();
     setInterval(loadLogs, 10000);
-    setInterval(async () => { await loadStatus(); await loadZNet(); await loadZGateway(); await loadMGateway(); render(); }, 30000);
+    setInterval(async () => { await loadStatus(); await loadZNet(); await loadZGateway(); await loadMGateway(); await loadTGateway(); render(); }, 30000);
   }
   // 先直接请求（本机模式无需密码）；需要密码时 api() 会弹框并重试
   api('/api/status').then(start).catch((e) => toast(e.code === 'PANEL_KEY'
