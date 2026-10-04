@@ -25,6 +25,14 @@ export const SIGNIN_STATUS_URL = `${MINIMAX_AGENT_BASE}/minimax-cloud/api/v1/sig
 export const SIGNIN_CLAIM_URL = `${MINIMAX_AGENT_BASE}/minimax-cloud/api/v1/signin/claim?timezone_offset=28800&is_desktop=1&client=desktop`;
 export const TOKEN_REFRESH_URL = `${MINIMAX_ACCOUNT_BASE}/oauth2/token`;
 
+/** 时间戳宽容转换（口径同 traeClient.iso）：≤1e11 视为秒，否则视为毫秒；0/无效 → null */
+function isoMs(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const d = new Date(n < 1e11 ? n * 1000 : n);
+  return Number.isFinite(d.getTime()) && d.getUTCFullYear() < 9000 ? d.toISOString() : null;
+}
+
 function authHeaders(token) {
   const t = token?.startsWith('Bearer ') ? token : `Bearer ${String(token || '').trim()}`;
   return {
@@ -250,7 +258,8 @@ export function normalizeMiniMaxQuota(data) {
     // 顶层不设 unit：面板 creditSum 用「有 unit 即异单位」来排除合计，
     // MiniMax 与 Qoder / Trae 同为「积分」口径，必须计入剩余积分合计。
     plan: data.plan_name || (data.is_pro_builder ? 'Pro' : '免费版'),
-    planExpiresAt: data.expires_at ? new Date(data.expires_at * 1000).toISOString() : null,
+    // expires_at 是毫秒时间戳：再乘 1000 会显示成 58729 年（实测免费版返回 0，按无到期处理）
+    planExpiresAt: isoMs(data.expires_at),
     parts,
     empty: total <= 0,
   };
