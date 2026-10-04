@@ -4,7 +4,7 @@
 
 import { loadAccounts, loadState, withAccounts, withState } from './store.js';
 import { productImpl } from './providers.js';
-import { productOf } from './constants.js';
+import { productOf, PROVIDER_LABEL } from './constants.js';
 import { startUsageSyncScheduler } from './tenrouter.js';
 import { refreshContext } from './accounts.js';
 import { zcodeAutoClaim } from './zcodeAutoClaim.js';
@@ -237,7 +237,8 @@ async function runTickInner(opts) {
   let deviceClaim = state?.deviceClaim?.day === today ? state.deviceClaim : null;
 
   for (const account of accounts) {
-    const label = account.name || account.id;
+    const pTag = `[${PROVIDER_LABEL[account.provider] || account.provider}]`;
+    const label = `${pTag} ${account.name || account.id}`;
     // 「今日已领」按各产品自己的业务日界比对：Qoder 10 点翻日，其余 0 点翻日
     const todayFor = dayKey(Date.now(), account.provider);
     try {
