@@ -643,7 +643,7 @@
     <div class="modal-title"><span>ZCode 体验包接口</span><button class="close" data-close>✕</button></div>
     <div class="hint" id="zgw-url" style="margin-bottom:10px"></div>
     <div class="field">
-      <label class="check"><input type="checkbox" id="zgw-on"> 启用体验包接口（/gateway/v1/messages）</label>
+      <label class="check"><input type="checkbox" id="zgw-on"> 启用体验包接口（/gateway/zcode/v1/messages）</label>
     </div>
     <div class="field" id="zgw-lan-fields">
       <label class="check"><input type="checkbox" id="zgw-lan"> 对局域网开放（重启后绑定 0.0.0.0）</label>
@@ -1675,7 +1675,7 @@ document.addEventListener('click', async (e) => {
     const allow = Array.isArray(state.zGatewayAllow) ? state.zGatewayAllow : [];
     $('zgw-allow').value = (allow.length ? allow : (state.zGatewaySuggest ? [state.zGatewaySuggest] : [])).join('\n');
     const st = state.zGatewayStats;
-    $('zgw-url').innerHTML = '接口地址 <code>POST http://127.0.0.1:' + location.port + '/gateway/v1/messages</code>（局域网开放时把 127.0.0.1 换成本机 IP）'
+    $('zgw-url').innerHTML = '接口地址 <code>POST http://127.0.0.1:' + location.port + '/gateway/zcode/v1/messages</code>（局域网开放时把 127.0.0.1 换成本机 IP）'
       + (st && st.lastCallAt
         ? '<br>最近调用 ' + esc(String(st.lastCallAt).slice(11, 19)) + ' · 共 ' + st.calls + ' 次' + (st.lastAccount ? ' · 最后用号 ' + esc(st.lastAccount) : '')
         : '<br>尚未有调用');
