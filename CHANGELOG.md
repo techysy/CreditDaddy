@@ -4,6 +4,36 @@
 
 ---
 
+## [1.3.1] (2026-10-05)
+
+### ✨ 新功能
+
+- **Trae SOLO 本地 Anthropic 兼容网关**：`POST /gateway/trae/v1/messages`（上游为 Trae SOLO 的 OpenAI 兼容补全接口），10Router 建 anthropic-compatible 节点指向即可把 Trae 当普通供应商调度。多账号轮换、额度不足标记、面板开关与局域网白名单机制与 MiniMax 网关同款；`test/trae-gateway.test.js` 覆盖转发/轮换/错误分类。
+- **ZCode 网关数据面路径统一为带品牌段** `/gateway/zcode/v1/messages`：与此前 `gatewayStatus()` 展示、注释、错误提示一致（旧路径 `/gateway/v1/messages`、`/v1/messages` 保留为别名向后兼容——后者与 zcode-api 端点同形，10Router 的 zcode-free 供应商换 host:port 即可切换）。按面板提示填 endpoint 不再 404。
+
+### 🐛 修复
+
+- **ZCode：BigModel 登录态账号额度显示「无有效套餐（仅免费额度）」**（如 techysy）：上游 `quota/limit` 对部分 oauth token 偶发返回 **HTTP 200 + 空 body**，`getJson` 把非 JSON 响应兜底成 `{code:200}` 被 `businessOk` 判真，零额度项提前返回 empty，**短路了本可查到 1 亿 Token 的 `billing/balance`**。现在：非 JSON 响应合成 `code:-1` 永不放行；quota/limit「有效但零额度项」继续把 balance 链试完（对齐 zcode-switch 每 token 双端点连查）；无套餐判定改用显式 `sawNoPlan` 标志（「不存在coding plan / 没有资格」口径），不再靠错误措辞正则。
+- **Trae 签到显示 +0 Credits**：claim 响应不返 credits 字段时，用 status 预告值兜底，兜底默认值提为具名常量 `TRAE_DEFAULT_DAILY_CREDITS`。
+- **MiniMax 套餐到期显示 58729 年**：`get_membership_info` 的 `expires_at` 混发秒/毫秒两种口径，按量级自适应解析（`<1e12` 视为秒），并补边界测试。
+- **accounts.json 数据保护**：覆盖写前先落 `.bak` 备份，写坏时至少可回滚。
+- **面板日志卡防御**：无 tag 的日志行（历史数据/异常写入）不再让 `getLogs` 过滤时 TypeError 崩溃。
+
+### ⚡ 性能
+
+- **ZCode 网关不再「卡十分钟」**：补全上游此前只有一个 600s 整墙钟，TCP/TLS 黑洞（被墙、代理失效）时请求吊满才失败换路。`fetchJsonRace` 新增两段式超时——拿到响应头前限时 15s 快速失败换下一条路，响应头到达即解除连接段限时、流式 body 仍可合法跑满墙钟；`handleGateway` 把每请求两次 settings 磁盘读合并为一次，客户端断连经 AbortController 级联取消上游请求。
+
+### 🔧 日志
+
+- 每日签到日志带产品线标签（如 `[Qoder 国内版]`），汇总行不再分不清是哪个产品。
+- 运行日志默认排除网关 `*-GW` 流量标签，网关高频调用不再淹没面板运行日志（网关日志仍在各自标签下查看）。
+
+### 🧪 测试
+
+- 全仓 188 → 202 例。新增：`test/zcode-quota.test.js` 额度链 5 例（精确复刻 techysy token 矩阵：500 无套餐/401/空 body 不得短路、零额度项续查、真无套餐、balance 空 body 收敛、鉴权全灭报错）、`test/zcode-net.test.js` 两段式超时 3 例（连接黑洞快速换路、响应头后 body 慢流不误杀、不传 connectMs 旧行为）、`test/daemon-listen.test.js` 网关路由 1 例（三个路径命中、未注册路径 404）、Trae 网关 4 例、MiniMax 到期边界 1 例。
+
+---
+
 ## [1.3.0] (2026-10-03)
 
 ### ✨ 新功能
