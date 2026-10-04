@@ -98,7 +98,16 @@ export async function loadAccounts() {
 
 export async function saveAccounts(accounts) {
   await ensureDir();
-  await atomicWrite(ACCOUNTS_FILE(), JSON.stringify(accounts, null, 2));
+  const file = ACCOUNTS_FILE();
+  const bak = file + '.bak';
+  try {
+    // 只有当已有账号文件存在且非空时才建立/更新 .bak 备份
+    const existing = await fs.readFile(file, 'utf8').catch(() => null);
+    if (existing && existing.trim().length > 2) {
+      await atomicWrite(bak, existing);
+    }
+  } catch {}
+  await atomicWrite(file, JSON.stringify(accounts, null, 2));
 }
 
 // 进程内串行队列：所有「读-改-写」都经由 withAccounts，避免并发请求互相覆盖
