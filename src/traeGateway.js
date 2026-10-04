@@ -435,7 +435,7 @@ export async function handleGateway(req, res) {
     }
 
     stats.lastAccount = label;
-    logger.info('TRAE-GW', `${label} 连接成功，开始流式输出 (${requestedModel})`);
+    logger.debug('TRAE-GW', `${label} 连接成功，开始流式输出 (${requestedModel})`);
 
     // 成功建立流，按 isStream 分发
     if (isStream) {
