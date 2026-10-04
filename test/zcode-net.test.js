@@ -134,6 +134,62 @@ test('fetchJsonRace：代理优先时代理先行，代理失败回退直连', a
   } finally { restore(); }
 });
 
+test('fetchJsonRace：connectMs 两段式超时——连接段挂死快速失败换下一条路', async () => {
+  process.env.HTTPS_PROXY = 'http://127.0.0.1:9';
+  const log = [];
+  const realFetch = globalThis.fetch;
+  // 直连黑洞：永不返回响应头，直到 signal abort。
+  // 挂一个 ref'd 定时器保活事件循环——AbortSignal.timeout 的定时器是 unref 的，
+  // 真实 fetch 靠 socket 句柄保活，mock 没有句柄，不补的话事件循环会提前排空。
+  globalThis.fetch = async (url, init) => {
+    log.push('direct');
+    await new Promise((_, rej) => {
+      const keepAlive = setInterval(() => {}, 1000);
+      init.signal.addEventListener('abort', () => { clearInterval(keepAlive); rej(new Error('aborted')); }, { once: true });
+    });
+    throw new Error('unreachable');
+  };
+  zc._setViaProxyForTests(async () => { log.push('proxy'); return new Response('{"code":0}'); });
+  try {
+    const t0 = Date.now();
+    const res = await zc.fetchJsonRace('https://zcode.z.ai/api/v1/x', { connectMs: 100, timeoutMs: 5000 });
+    assert.equal(res.status, 200);
+    assert.ok(Date.now() - t0 < 2000, `应在 connectMs(100ms) 附近失败换路，而不是吊满 timeoutMs：${Date.now() - t0}ms`);
+    assert.deepEqual(log, ['direct', 'proxy'], '直连连接段超时后应走代理兜底');
+  } finally { globalThis.fetch = realFetch; zc._setViaProxyForTests(null); }
+});
+
+test('fetchJsonRace：connectMs 只限连接段——响应头到达后 body 可以慢慢流', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    // 响应头立即返回，body 在 300ms 后才吐完（远超 connectMs=50）——
+    // 若连接段限时没有在响应头到达时解除，这个流会被 connectSignal abort 掐断
+    const stream = new ReadableStream({
+      start(c) { setTimeout(() => { c.enqueue(Buffer.from('{"code":0}')); c.close(); }, 300); },
+    });
+    return { ok: true, status: 200, headers: new Headers({ 'content-type': 'application/json' }), body: stream, signal: init.signal };
+  };
+  try {
+    const res = await zc.fetchJsonRace('https://zcode.z.ai/api/v1/x', { connectMs: 50, timeoutMs: 5000 });
+    assert.equal(res.status, 200, '响应头到达即算连接成功');
+    // 真正消费流：300ms 后才结束，期间 connectSignal 已触发但不应影响 body
+    const chunks = [];
+    for await (const chunk of res.body) chunks.push(chunk);
+    assert.equal(Buffer.concat(chunks).toString('utf8'), '{"code":0}', 'body 应在 connectMs 之后仍完整流出');
+  } finally { globalThis.fetch = realFetch; }
+});
+
+test('fetchJsonRace：不传 connectMs 时退回单段 timeoutMs（旧行为）', async () => {
+  const realFetch = globalThis.fetch;
+  let capturedSignal = null;
+  globalThis.fetch = async (url, init) => { capturedSignal = init.signal; return new Response('{"code":0}'); };
+  try {
+    await zc.fetchJsonRace('https://zcode.z.ai/api/v1/x', { timeoutMs: 3000 });
+    assert.ok(capturedSignal, '应挂上超时 signal');
+    assert.equal(capturedSignal.aborted, false);
+  } finally { globalThis.fetch = realFetch; }
+});
+
 test('fetchJsonRace：NO_PROXY 命中与 loopback 不走代理；都失败时抛出最后错误', async () => {
   process.env.HTTPS_PROXY = 'http://127.0.0.1:9';
   process.env.NO_PROXY = 'zcode.z.ai';

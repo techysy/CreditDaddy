@@ -259,19 +259,60 @@ async function fetchViaProxy(url, { method = 'GET', headers = {}, body = null, t
 let viaProxyImpl = null;
 export function _setViaProxyForTests(fn) { viaProxyImpl = fn || null; }
 
-export async function fetchJsonRace(url, { method = 'GET', headers = {}, body = null, timeoutMs = 15000, signal = null } = {}) {
+/**
+ * 组合多个 AbortSignal 成一个：任一源触发即 abort。
+ * 与 AbortSignal.any 的区别——这里返回 { signal, releaseConnect }，releaseConnect()
+ * 可摘掉 connectSignal 的转发监听：两段式超时里，响应头到达后连接段限时就该失效，
+ * 但整墙钟（wallSignal）和外部取消（external）要继续管住流式 body。
+ */
+function combineSignals({ wallSignal, connectSignal, external }) {
+  const ctrl = new AbortController();
+  const onWall = () => ctrl.abort(wallSignal.reason);
+  const onConnect = () => ctrl.abort(connectSignal.reason);
+  const onExternal = () => ctrl.abort(external.reason);
+  if (wallSignal.aborted) ctrl.abort(wallSignal.reason);
+  else wallSignal.addEventListener('abort', onWall, { once: true });
+  if (connectSignal && !ctrl.signal.aborted) {
+    if (connectSignal.aborted) ctrl.abort(connectSignal.reason);
+    else connectSignal.addEventListener('abort', onConnect, { once: true });
+  }
+  if (external && !ctrl.signal.aborted) {
+    if (external.aborted) ctrl.abort(external.reason);
+    else external.addEventListener('abort', onExternal, { once: true });
+  }
+  // 连接段成功后调用：只摘掉 connectSignal 的转发，墙钟与外部取消继续管住 body 流
+  const releaseConnect = () => { connectSignal?.removeEventListener('abort', onConnect); };
+  return { signal: ctrl.signal, releaseConnect };
+}
+
+/**
+ * 直连 / 代理兜底的 fetch。可选 connectMs 启用两段式超时：
+ *   - 拿到响应头前（DNS/TCP/TLS/首字节）限时 connectMs——上游黑洞挂死时几秒内
+ *     就失败换下一条路，而不是吊满整个 timeoutMs（网关补全场景尤其重要）；
+ *   - 拿到响应头后解除连接段限时，只保留 timeoutMs 整墙钟——流式补全可能合法地
+ *     跑几分钟，不能因为「连接快、生成慢」被误杀。
+ * 不传 connectMs 时退回单段 timeoutMs（旧行为，所有既有调用方不受影响）。
+ */
+export async function fetchJsonRace(url, { method = 'GET', headers = {}, body = null, timeoutMs = 15000, connectMs = null, signal = null } = {}) {
   const useProxy = Boolean(effectiveProxy()) && !proxyBypass(url);
+  const twoPhase = Number.isFinite(connectMs) && connectMs > 0 && connectMs < timeoutMs;
   // 超时信号必须每次尝试各建一个：共用一个的话，代理优先模式下第一条路吃完 timeoutMs，
   // 兜底那条就对着已触发的 signal 发请求，必定瞬间失败——「代理优先」就此形同虚设
   const makeAttempt = () => {
-    const timeoutSignal = AbortSignal.timeout(timeoutMs);
-    const abortSignal = signal ? AbortSignal.any([timeoutSignal, signal]) : timeoutSignal;
+    const wallSignal = AbortSignal.timeout(timeoutMs);
+    const connectSignal = twoPhase ? AbortSignal.timeout(connectMs) : null;
+    const { signal: abortSignal, releaseConnect } = combineSignals({ wallSignal, connectSignal, external: signal });
     const base = { method, headers: { ...headers }, ...(body != null ? { body: typeof body === 'string' ? body : JSON.stringify(body) } : {}), signal: abortSignal };
     return {
-      direct: () => fetch(url, base),
-      viaProxy: () => (viaProxyImpl
-        ? viaProxyImpl(url, { method, headers, body, timeoutMs, signal: abortSignal })
-        : fetchViaProxy(url, { method, headers, body, timeoutMs, signal: abortSignal })),
+      // 响应头到达 = 连接段成功：摘掉 connectSignal 转发，此后只有墙钟/外部取消能中断流
+      direct: async () => { const r = await fetch(url, base); releaseConnect(); return r; },
+      viaProxy: async () => {
+        const r = viaProxyImpl
+          ? await viaProxyImpl(url, { method, headers, body, timeoutMs, signal: abortSignal })
+          : await fetchViaProxy(url, { method, headers, body, timeoutMs, signal: abortSignal });
+        releaseConnect();
+        return r;
+      },
     };
   };
   const order = useProxy ? (proxyFirst() ? ['viaProxy', 'direct'] : ['direct', 'viaProxy']) : ['direct'];

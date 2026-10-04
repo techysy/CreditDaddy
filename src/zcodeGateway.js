@@ -44,7 +44,11 @@ const PLAN_MESSAGES_URL = 'https://zcode.z.ai/api/v1/zcode-plan/anthropic/v1/mes
 const CAPTCHA_CACHE_TTL_MS = 30_000;
 const ACCOUNT_COOLING_MS = 5 * 60_000;
 const MAX_ATTEMPTS = 6;
+// 上游补全墙钟上限（响应头到齐后 body 仍可流式跑这么久）
 const UPSTREAM_TIMEOUT_MS = 600_000;
+// 连接段（DNS/TCP/TLS/首字节）限时：上游黑洞挂死时几秒内换下一条路 / 代理兜底，
+// 而不是吊满 10 分钟——这是「网关很慢 / 卡住」体感的主要来源
+const UPSTREAM_CONNECT_MS = 15_000;
 
 // ── 开关（持久化在 settings.zcodeGateway） ──
 
@@ -379,7 +383,9 @@ export async function handleGateway(req, res) {
     res.writeHead(405, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ error: 'POST /gateway/zcode/v1/messages（Anthropic /v1/messages 形态）' }));
   }
-  if (!(await gatewayEnabled())) {
+  // settings 一次读齐：开关 + 局域网鉴权共用，省掉一次 settings.json 磁盘读（热路径每请求都走）
+  const settings = await loadSettings();
+  if (settings.zcodeGateway !== true) {
     res.writeHead(503, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ error: 'ZCode 免费额度网关未开启（面板 → ZCode → 网关开关）' }));
   }
@@ -389,7 +395,6 @@ export async function handleGateway(req, res) {
   // 鉴权：本机回环免密；开局域网后仅白名单内 IP 免密直连（如 10Router 所在机器——zcode-free 本就是免授权供应商）
   const remote = (req.socket && req.socket.remoteAddress) || '';
   if (!isLoopbackRemote(remote)) {
-    const settings = await loadSettings();
     if (settings.zcodeGatewayLan !== true) {
       res.writeHead(403, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: '网关未允许局域网访问（面板 → ZCode → 接口设置）' }));
@@ -418,6 +423,11 @@ export async function handleGateway(req, res) {
   stats.calls += 1;
 
   const attempted = [];
+  // 客户端断开 → 取消当前上游请求。整个重试循环共用一个 controller/listener：
+  // 放在循环里每轮 new + req.on('close') 会在同一 req 上累积最多 MAX_ATTEMPTS 个监听器
+  // （MaxListenersExceededWarning + 泄漏）。
+  const clientAbort = new AbortController();
+  req.once('close', () => { if (!res.writableEnded) clientAbort.abort(); });
   // 首发不带验证码（客户端真实流量多数直过）；上游 3007/403 时求解并在此后的
   // 尝试上挂新 token（zcode-api 同策略）。provider 为 null（NAS/CLI）时首过路径依然可用。
   let captcha = null;
@@ -434,8 +444,6 @@ export async function handleGateway(req, res) {
     }
 
     let upstream;
-    const controller = new AbortController();
-    req.on('close', () => controller.abort());
     try {
       // 请求面完全镜像 ZCode 客户端真实流量（R1 捕获）：全套 identity 头 + 客户端
       // 系统提示词/提醒块/metadata 形状。验证码不预挂——服务端未风控时直过；
@@ -449,10 +457,11 @@ export async function handleGateway(req, res) {
         headers,
         body: built.body,
         timeoutMs: UPSTREAM_TIMEOUT_MS,
-        signal: controller.signal,
+        connectMs: UPSTREAM_CONNECT_MS,
+        signal: clientAbort.signal,
       });
     } catch (e) {
-      if (controller.signal.aborted) return; // 客户端先断了
+      if (clientAbort.signal.aborted) return; // 客户端先断了
       attempted.push({ account: label, ok: false, error: e.message });
       continue;
     }
