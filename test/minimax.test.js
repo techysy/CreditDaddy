@@ -97,6 +97,23 @@ test('normalizeMiniMaxQuota: 正确解析并区分 free、purchased 与总计', 
   assert.equal(q.parts[1].recurring, false);
 });
 
+test('normalizeMiniMaxQuota: planExpiresAt 宽容解析，修 58729 年回归', () => {
+  const base = { op_credit_summary: { total_remaining_amount: 100 }, plan_name: 'Pro' };
+  const target = new Date('2027-03-15T08:00:00Z').getTime();
+
+  // 实测 expires_at 是毫秒：直接按毫秒解析
+  assert.equal(client.normalizeMiniMaxQuota({ ...base, expires_at: target }).planExpiresAt, new Date(target).toISOString());
+  // 宽容口径：≤1e11 视为秒（同一时刻的秒值应得到同一 ISO）
+  assert.equal(client.normalizeMiniMaxQuota({ ...base, expires_at: target / 1000 }).planExpiresAt, new Date(target).toISOString());
+  // 免费套餐实测返回 0 → 无到期，而不是 1970
+  assert.equal(client.normalizeMiniMaxQuota({ ...base, expires_at: 0 }).planExpiresAt, null);
+  // 老 bug 的产物（毫秒又乘 1000，年份 >9000）必须归 null 而不是显示 58729 年
+  assert.equal(client.normalizeMiniMaxQuota({ ...base, expires_at: target * 1000 }).planExpiresAt, null);
+  // 字段缺失 / 负数同样按无到期处理
+  assert.equal(client.normalizeMiniMaxQuota(base).planExpiresAt, null);
+  assert.equal(client.normalizeMiniMaxQuota({ ...base, expires_at: -1 }).planExpiresAt, null);
+});
+
 test('minimaxLocal: 本机凭据探测与读取', async () => {
   const authDir = path.join(process.env.MINIMAX_HOME, 'auth', 'prod', 'cn', 'mcode-public');
   fs.mkdirSync(authDir, { recursive: true });
