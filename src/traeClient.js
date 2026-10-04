@@ -223,6 +223,10 @@ export async function checkinTrae(account, ctx = {}) {
     return { ...base, status: 'already', message: '今天已签到', uid };
   }
 
+  // 签到应得额度：status 接口里通常预告 credits / extra_credits（如 100 积分），
+  // claim 接口有时只返回 { code: 0, message: "success" } 而不包含 credits 字段，作为 fallback 避免 +0
+  const expectedCredits = Number(findField(r.body, 'credits') ?? findField(r.body, 'extra_credits')) || 100;
+
   const c = await post(CLAIM_URL, account);
   if (c.code !== 0) {
     ctx.log?.(`Trae 领取失败：${c.message || `code ${c.code}`}`);
@@ -233,7 +237,7 @@ export async function checkinTrae(account, ctx = {}) {
       uid,
     };
   }
-  const claimed = Number(findField(c.body, 'credits')) || 0;
+  const claimed = Number(findField(c.body, 'credits')) || expectedCredits;
   return { ...base, status: 'checked-in', claimedAmount: claimed, message: claimed ? `签到成功，+${claimed} 积分` : '签到成功', uid };
 }
 
