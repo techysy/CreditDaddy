@@ -293,6 +293,21 @@ async function waitPortFree(port, host = DEFAULT_HOST, timeoutMs = STOP_TIMEOUT_
 }
 
 /**
+ * 等进程真正从进程表里消失。
+ * SIGTERM 只是投递信号，handler 跑完 + 内核回收之间还有几十毫秒到几秒的窗口——
+ * 端口先释放、pid 后回收是常态。不等它就报 stopped:true，调用方紧接着的
+ * isAlive(pid) 仍会读到 true，误判「停不干净」。
+ */
+async function waitPidDead(pid, timeoutMs = STOP_TIMEOUT_MS) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!isAlive(pid)) return true;
+    await new Promise((r) => setTimeout(r, READY_INTERVAL_MS));
+  }
+  return false;
+}
+
+/**
  * 停掉后台实例。
  * 没在跑也正常返回（幂等）——脚本里 `stop` 后紧接 `start` 不该因为「本来就没跑」而中断。
  */
@@ -307,7 +322,11 @@ export async function stopDaemon() {
 
   await killPid(rec.pid);
   const free = await waitPortFree(rec.port, rec.host);
+  // 端口释放不等于进程退出：SIGTERM 只是投递，handler 收尾 + 内核回收还有窗口。
+  // 必须等到 pid 真的没了再报 stopped，否则调用方紧接着 isAlive(pid) 仍读到 true。
+  const dead = await waitPidDead(rec.pid);
   await clearRuntime();
   if (!free) logger.warn('BG', `端口 ${rec.port} 迟迟没有释放，进程可能仍在收尾`);
-  return { stopped: true, rec, portFree: free };
+  if (!dead) logger.warn('BG', `进程 ${rec.pid} 在 ${Math.round(STOP_TIMEOUT_MS / 1000)}s 内没有退出干净`);
+  return { stopped: true, rec, portFree: free, pidDead: dead };
 }
