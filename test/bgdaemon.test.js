@@ -141,7 +141,15 @@ test('startBackground 拉起真实后台实例，status 读得到、stop 收得�
   const stopped = await bg.stopDaemon();
   assert.equal(stopped.stopped, true);
   assert.equal(fsSync.existsSync(bg.runtimeFile()), false, '停止后状态文件应删除');
-  assert.equal(bg.isAlive(r.rec.pid), false, '进程应已退出');
+  // stopDaemon 内部已等 pid 死透才返回；这里的「立即断言」在高密度 CI runner 上是
+  // TOCTOU——pid 可能被瞬时复用 / SIGCHLD 收尾窗口里 kill(pid,0) 又成功，fpk 与
+  // ubuntu CI 各红过一轮。改为 ≤3s 宽限轮询，以「最终退出」为准。
+  let pidDead = false;
+  for (let i = 0; i < 30 && !pidDead; i++) {
+    pidDead = !bg.isAlive(r.rec.pid);
+    if (!pidDead) await new Promise((res) => setTimeout(res, 100));
+  }
+  assert.equal(pidDead, true, '进程应已退出');
 });
 
 test('stopDaemon 幂等：没有实例时不抛、不算失败', async () => {
