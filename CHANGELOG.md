@@ -18,7 +18,8 @@
 
 ### 🌐 网关健壮性与多产品线对齐
 
-- **ZCode 网关纯净透传（issue #15 / #16）**：`buildPlanRequest` 不再把抓包快照里的 7.6k 字符官方 system 提示词与 `<system-reminder>` 日期块强制注入到转发请求——上游 405/3012 风控校验的是请求头（`User-Agent: ZCode/*`、`X-ZCode-*`）与 `metadata.user_id` 结构，并不依赖 system 内容；强制注入会与外部 Agent 框架（Hermes / OpenHands 等）自带的系统指令冲突，弱模型下诱发指令复读与工具调用死循环。现在调用方传入的 `system` 原样透传，`metadata.user_id` 仍按客户端形状每次生成新 `session_id`。同时 `zcodePlanShape.json` 已清除抓包来源的第三方用户环境快照（真实用户名/工作目录/模型名），仅保留 metadata 形状模板，不再随每次请求向 `zcode.z.ai` 外发无关用户的本机路径。
+- **ZCode 网关 plan 形状修复（issue #15 / #16）**：恢复镜像本机客户端真实流量的请求形状——`buildPlanRequest` 重新注入 system 提示词数组、首条 user 消息前的 `<system-reminder>` 日期块与 `metadata.user_id` 会话形状。实测证明这正是上游 405/3012 风控的通过票：1.3.2 首版的「纯净透传」（不注入 system）会让所有账号的补全请求被 `验证码被拒 ([code:3012])` 全量拒绝，恢复注入后全天稳定 `补全成功 (200)`（见 #15 更正评论）。同时 `zcodePlanShape.json` 保留注入所需的形状模板并完成脱敏：抓包来源的真实用户路径（`C:\Users\<user>\<workspace>`）与会话 id 替换为占位符，日期块运行时动态生成为当天——隐私清理与风控通过兼得（见 #16 更正评论）。
+- **网关日志轻重缓急分级**：`流式转发中断 / 流式（非流式）读取中断`（客户端主动断开，属正常收尾）由 warn 降为 debug；`验证码被拒`、`验证码重解失败`、`JWT 失效拉黑` 由 info/debug 升为 warn——此前真正严重的风控/凭据事件是最不起眼的灰色，无害的流中断反而顶着告警色，轻重倒挂。新增 `summarizeAttempts`：「全部 N 次尝试失败」现在附带归因明细（如 `网络错误×4`、`验证码被拒×3、网络错误×3`），不必再靠「有没有伴随 3012」反推；MiniMax / Trae 网关全失败此前完全静默，现同样补上明细。面板日志卡新增 `✗ / ⚠ / ·` 级别图标与「全部 / 只看提醒」过滤器。
 - **桌面端局域网绑定修复**：桌面端启动检测由单一 `zcodeGatewayLan` 拓展为三网关统一判定（ZCode / MiniMax / Trae 任一开启即绑定 `0.0.0.0`），修复此前仅开启 MiniMax 或 Trae 局域网时桌面端仍绑定 `127.0.0.1` 导致外部连不上的问题。
 - **防止中断监听器内存泄漏**：MiniMax 与 Trae 网关重试循环中移除循环内 `req.on('close')`，改为循环外单例 `clientAbort` 与 `req.once('close')` 级联取消，彻底杜绝 `MaxListenersExceededWarning`。
 - **连接段两段式超时保护**：MiniMax 与 Trae 网关统一接入 `UPSTREAM_CONNECT_MS = 15_000` 两段式超时，上游遭遇 DNS/TLS 网络黑洞时 15 秒快速失败并切换下一个账号，避免死挂 10 分钟。
