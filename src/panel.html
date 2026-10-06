@@ -118,6 +118,8 @@
   .badge.intl { color: #3b82f6; background: rgba(59,130,246,.1); }
   .badge.cn { color: #d97706; background: rgba(245,158,11,.12); }
   .badge.prod { font-weight: 600; }
+  .badge.web { font-weight: 600; cursor: help; }
+  .badge.web-warn { color: var(--warn); background: var(--warn-soft); }
   .badge.prod.qoder { color: #6d28d9; background: rgba(124,58,237,.1); }
   .badge.prod.workbuddy { color: #0f766e; background: rgba(20,184,166,.12); }
   html[data-theme="dark"] .badge.prod.qoder { color: #b8a4ff; }
@@ -995,8 +997,20 @@ function applyTheme(t) {
 function initTheme() {
   let t = null;
   try { t = localStorage.getItem('qd_theme'); } catch (e) {}
-  if (!t) t = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  const mq = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null;
+  if (!t) t = mq && mq.matches ? 'dark' : 'light';
   applyTheme(t);
+  // 自动跟随系统：用户没手动切过（localStorage 无值）时，系统换深色/浅色实时响应，
+  // 不用刷新页面；手动切过则尊重用户选择，不再跟系统跑。
+  const onSysTheme = (e) => {
+    let saved = null;
+    try { saved = localStorage.getItem('qd_theme'); } catch (err) {}
+    if (!saved) applyTheme(e.matches ? 'dark' : 'light');
+  };
+  if (mq) {
+    if (mq.addEventListener) mq.addEventListener('change', onSysTheme);
+    else if (mq.addListener) mq.addListener(onSysTheme);   // 旧 Safari
+  }
   $('btn-theme').onclick = () => {
     const n = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
     applyTheme(n);
@@ -1175,6 +1189,7 @@ function cardHtml(a) {
     + (a.product === 'minimax' && isMiniMaxGatewayCurrent(a) ? '<span class="pill gw" title="本地接口最近一次补全用的账号（多账号时按轮换自动选择，与客户端登录无关）">接口使用中</span>' : '')
     + (a.product === 'trae' && isTraeGatewayCurrent(a) ? '<span class="pill gw" title="本地接口最近一次补全用的账号（多账号时按轮换自动选择，与客户端登录无关）">接口使用中</span>' : '')
     + (a.isPat ? '<span class="badge">PAT</span>' : '')
+    + qoderWebBadge(a)
     + (a.verified === false ? '<span class="pill fail">token 无效</span>' : '')
     + (st.text ? '<span class="pill ' + st.cls + '" title="' + esc(a.lastResult ? fmtTime(a.lastResult.at) + ' ' + (a.lastResult.message || a.lastResult.status) : '') + '">' + esc(st.text) + '</span>' : '')
     + '</div><div class="ops">'
@@ -2988,6 +3003,20 @@ async function addToken() {
     await loadAccounts();
   } catch (e) { toast(e.message, false); }
   b.disabled = false;
+}
+
+// Qoder 卡片徽章：网页会话（Cookie）缺失或超 7 天时点名提醒——
+// 10Router 的「套餐内 Credits」逐资源包明细依赖它（同 qoderWebSessionNote 口径）。
+// 正常状态不出徽章，只在需要「浏览器登录」补 cookie 时出橙色警示，避免噪音。
+function qoderWebBadge(a) {
+  if (!String(a.provider || '').startsWith('qoder')) return '';
+  const at = a.qoderWebCapturedAt;
+  if (at && Date.now() - new Date(at).getTime() <= 7 * 86400000) return '';
+  const stale = Boolean(at);
+  const tip = stale
+    ? '网页会话已超过 7 天（' + fmtTime(at).slice(0, 10) + ' 抓取），可能已过期：导出到 10Router 后「套餐内 Credits」可能缺失，用「浏览器登录」重新登录一次 Qoder 即可补上'
+    : '缺少 Qoder 网页会话（Cookie）：导出到 10Router 后「套餐内 Credits」可能缺失，用「浏览器登录」登录一次 Qoder 即可自动抓取';
+  return '<span class="badge web web-warn" title="' + esc(tip) + '">' + (stale ? '网页会话过期' : '缺网页会话') + '</span>';
 }
 
 // 导出弹窗里的网页会话提示（10Router issue #44）：
