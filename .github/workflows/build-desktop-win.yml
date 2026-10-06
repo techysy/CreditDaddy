@@ -26,13 +26,33 @@ jobs:
           if [ -z "$NOTES" ]; then
             NOTES="CreditDaddy ${GITHUB_REF_NAME}: Qoder / WorkBuddy / ZCode 多账号管理与每日积分自动签到."
           fi
-          # 写入多行输出。正文前补 `## vX.Y.Z` 标题，对齐 v1.2.0 起的 release note 格式；
-          # 主题行 `> 本版主题:…` 写在 CHANGELOG 对应版本段落开头，随提取自动带上。
+          # 写入多行输出。对齐 v1.2.0 起的 release note 完整架构：
+          #   `## vX.Y.Z` 标题 + 主题行（写在 CHANGELOG 段落开头，随提取带上）+
+          #   CHANGELOG 正文 + 安装渠道表 + 校验和说明 + Full Changelog 对比链接
+          git fetch --tags --force origin 2>/dev/null || true
+          PREV_TAG=$(git tag --sort=-v:refname | grep -vx "${GITHUB_REF_NAME}" | head -1 || true)
           {
             echo "notes<<EOF"
             echo "## ${GITHUB_REF_NAME}"
             echo
             echo "$NOTES"
+            echo
+            echo "完整开发明细见 CHANGELOG.md。"
+            echo
+            echo "## 📦 安装"
+            echo
+            echo "| 渠道 | 说明 |"
+            echo "| --- | --- |"
+            echo "| fnOS / NAS | \`creditdaddy-${VERSION}-x86.fpk\` / \`-arm.fpk\`(新标签页)、\`creditdaddy-window-${VERSION}-*.fpk\`(桌面多窗口),在飞牛应用中心安装 |"
+            echo "| Windows | \`CreditDaddy-Setup-${VERSION}.exe\`(推荐,支持应用内检查更新)/ \`CreditDaddy-Portable-${VERSION}.exe\`(免安装) |"
+            echo "| macOS | \`mac-CreditDaddy-${VERSION}-arm64.dmg\`(Apple 芯片)/ \`mac-CreditDaddy-${VERSION}.dmg\`(Intel),未公证,首次右键打开 |"
+            echo "| npm CLI | \`npm i -g creditdaddy@${VERSION}\` |"
+            echo
+            echo "校验和见 SHA256SUMS-desktop.txt / SHA256SUMS-fpk.txt / SHA256SUMS-mac.txt。"
+            if [ -n "$PREV_TAG" ]; then
+              echo
+              echo "Full Changelog: https://github.com/$GITHUB_REPOSITORY/compare/${PREV_TAG}...${GITHUB_REF_NAME}"
+            fi
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
