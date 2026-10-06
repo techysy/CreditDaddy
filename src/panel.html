@@ -186,6 +186,13 @@
   .pcard.open .fold-body { display: block; }
   .logs { margin-top: 8px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; line-height: 1.65; max-height: 240px; overflow-y: auto; background: var(--tertiary); border-radius: 9px; padding: 8px 10px; }
   .logs .info { color: var(--text-2); } .logs .warn { color: var(--warn); } .logs .error { color: var(--err); } .logs .debug { color: var(--text-3); }
+  .logs .lvl-ico { margin-right: 5px; font-weight: 700; }
+  .logs .warn .lvl-ico { color: var(--warn); }
+  .logs .error .lvl-ico { color: var(--err); }
+  .log-filter { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--hover); }
+  .log-filter button { border: none; background: transparent; color: var(--text-2); font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 7px; cursor: pointer; }
+  .log-filter button.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  html[data-theme="dark"] .log-filter button.active { background: rgba(255,255,255,.1); }
   .collapsed .logs { display: none; }
 
   /* modal */
@@ -452,6 +459,10 @@
         <button data-log-tab="zcode">ZCode 网关</button>
         <button data-log-tab="minimax">MiniMax 网关</button>
         <button data-log-tab="trae">Trae 网关</button>
+      </div>
+      <div class="log-filter" id="log-filter">
+        <button data-log-level="all" class="active">全部</button>
+        <button data-log-level="warn">只看提醒</button>
       </div>
       <button class="btn" id="btn-logs">展开</button>
     </div>
@@ -733,7 +744,7 @@ const I = {
 };
 
 const $ = (id) => document.getElementById(id);
-const state = { accounts: [], quotas: {}, status: null, busy: {}, view: 'dash', region: '', addProduct: '', logTab: 'run' };
+const state = { accounts: [], quotas: {}, status: null, busy: {}, view: 'dash', region: '', addProduct: '', logTab: 'run', logLevel: 'all' };
 const VIEWS = ['dash', 'qoder', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'tenrouter'];
 // 10Router 集成：config 来自 /api/tenrouter，quotas 来自 /api/tenrouter/quotas
 const tr = { config: null, quotas: null, error: null, loading: false, syncing: false };
@@ -2298,6 +2309,9 @@ function applyLogTabs() {
     b.style.display = show ? '' : 'none';
     b.classList.toggle('active', t === state.logTab);
   });
+  document.querySelectorAll('#log-filter button').forEach((b) => {
+    b.classList.toggle('active', b.dataset.logLevel === state.logLevel);
+  });
 }
 async function loadCurrentLogs() {
   const el = $('logs');
@@ -2311,11 +2325,15 @@ async function loadCurrentLogs() {
       const data = await api('/api/logs?tag=' + encodeURIComponent(GW_LOG_TAG[state.logTab]));
       logs = data.logs || [];
     }
+    if (state.logLevel !== 'all') {
+      logs = logs.filter((l) => l.level === 'warn' || l.level === 'error');
+    }
     const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
     const withTag = state.logTab === 'run';
+    const ico = (lvl) => lvl === 'error' ? '✗' : lvl === 'warn' ? '⚠' : lvl === 'info' ? '·' : '';
     el.innerHTML = logs.length
-      ? logs.map((l) => '<div class="' + esc(l.level) + '">[' + esc(l.at) + '] ' + (withTag ? esc(l.tag) + ' · ' : '') + esc(l.msg) + '</div>').join('')
-      : '（暂无）';
+      ? logs.map((l) => '<div class="' + esc(l.level) + '">[' + esc(l.at) + '] <span class="lvl-ico">' + ico(l.level) + '</span>' + (withTag ? esc(l.tag) + ' · ' : '') + esc(l.msg) + '</div>').join('')
+      : (state.logLevel === 'all' ? '（暂无）' : '（暂无警告或错误）');
     if (atBottom) el.scrollTop = el.scrollHeight;
   } catch (e) {}
 }
@@ -3474,6 +3492,14 @@ $('log-tabs').addEventListener('click', (e) => {
   if (!b) return;
   state.logTab = b.dataset.logTab;
   logTabView = state.view;   // 手动切换后，本视图内不再被 10s 轮询重置
+  applyLogTabs();
+  loadCurrentLogs();
+  $('logs').scrollTop = $('logs').scrollHeight;
+});
+$('log-filter').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-log-level]');
+  if (!b) return;
+  state.logLevel = b.dataset.logLevel;
   applyLogTabs();
   loadCurrentLogs();
   $('logs').scrollTop = $('logs').scrollHeight;

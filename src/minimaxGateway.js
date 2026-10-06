@@ -17,7 +17,7 @@ import { loadAccounts, loadSettings, saveSettings } from './store.js';
 import { refreshMiniMaxToken, fetchMiniMaxQuota, MINIMAX_MESSAGES_URL } from './minimaxClient.js';
 import { refreshContext } from './accounts.js';
 import { gatewayHostSuggestion } from './tenrouter.js';
-import { logger } from './logger.js';
+import { logger, summarizeAttempts } from './logger.js';
 
 const ACCOUNT_COOLING_MS = 5 * 60_000;
 const MAX_ATTEMPTS = 5;
@@ -346,7 +346,8 @@ export async function handleGateway(req, res) {
             }
           }
         } catch (e) {
-          logger.warn('MINIMAX-GW', `流式转发中断：${e.message}`);
+          // 客户端主动断开（点停止/换一句）属正常收尾，不是故障
+          logger.debug('MINIMAX-GW', `流式转发中断：${e.message}`);
         }
         res.end();
       } else {
@@ -375,6 +376,8 @@ export async function handleGateway(req, res) {
   }
 
   // 全部重试失败
+  const failedDetail = summarizeAttempts(attempted);
+  logger.warn('MINIMAX-GW', `全部 ${attempted.length} 次尝试失败${failedDetail ? '：' + failedDetail : ''}（下一请求自动重试）`);
   res.writeHead(502, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({
     error: '所有 MiniMax 账号均调用失败',

@@ -109,6 +109,30 @@ export const logger = {
   debug: (tag, msg) => log('debug', tag, msg),
 };
 
+/**
+ * 把各账号的失败结论压缩成「失败类型×次数」摘要，写进“全部失败”日志——
+ * 网络抖动 / 验证码 / 额度 / 限流 / 拉黑 一眼可辨，不用再靠“有没有伴随 3012”去反推。
+ * 三处网关共用同一口径；未知错误归入「上游错误」。
+ */
+export function summarizeAttempts(attempted) {
+  if (!Array.isArray(attempted) || !attempted.length) return '';
+  const buckets = new Map();
+  for (const a of attempted) {
+    const err = String(a && a.error ? a.error : '未知错误');
+    let key;
+    if (a && a.captcha) key = '验证码被拒';
+    else if (/验证码/.test(err)) key = '验证码被拒';
+    else if (/拉黑|凭据失效|JWT|Token 彻底失效|401/.test(err)) key = '账号拉黑';
+    else if (/额度耗尽|额度不足|已打标/.test(err)) key = '额度耗尽';
+    else if (/额度/.test(err)) key = '额度瞬时拒绝';
+    else if (/429|限流/.test(err)) key = '429 限流';
+    else if (/超时|timeout|timed out|连接|ECONN|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|terminated|aborted|fetch failed|网络|建立事件流失败/.test(err)) key = '网络错误';
+    else key = '上游错误';
+    buckets.set(key, (buckets.get(key) || 0) + 1);
+  }
+  return [...buckets.entries()].map(([k, n]) => `${k}×${n}`).join('、');
+}
+
 export function getLogs(limit = 100, tag = null) {
   // tag=null 是面板「运行日志」：网关调用日志（*-GW）刷屏快、口径不同，
   // 只在自己的标签页里展示，不混进运行日志；显式传 tag 的查询不受影响。

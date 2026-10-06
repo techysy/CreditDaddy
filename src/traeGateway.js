@@ -16,7 +16,7 @@ import { fetchJsonRace } from './zcodeClient.js';
 import { loadAccounts, loadSettings, saveSettings } from './store.js';
 import { fetchTraeQuota } from './traeClient.js';
 import { gatewayHostSuggestion } from './tenrouter.js';
-import { logger } from './logger.js';
+import { logger, summarizeAttempts } from './logger.js';
 
 const TRAE_SOLO_BASE = 'https://solo.trae.cn/api/remote/v1';
 const ACCOUNT_COOLING_MS = 5 * 60_000;
@@ -549,7 +549,8 @@ export async function handleGateway(req, res) {
           }
         }
       } catch (err) {
-        logger.warn('TRAE-GW', `流式读取中断: ${err.message}`);
+        // 客户端主动断开（点停止/换一句）属正常收尾，不是故障
+        logger.debug('TRAE-GW', `流式读取中断: ${err.message}`);
       } finally {
         if (thinkingOpen) {
           sendSse('content_block_stop', { type: 'content_block_stop', index: thinkingIndex });
@@ -611,7 +612,8 @@ export async function handleGateway(req, res) {
           }
         }
       } catch (err) {
-        logger.warn('TRAE-GW', `非流式读取中断: ${err.message}`);
+        // 客户端主动断开（点停止/换一句）属正常收尾，不是故障
+        logger.debug('TRAE-GW', `非流式读取中断: ${err.message}`);
       } finally {
         cleanupSession();
       }
@@ -643,6 +645,8 @@ export async function handleGateway(req, res) {
   }
 
   // 全部重试失败
+  const failedDetail = summarizeAttempts(attempted);
+  logger.warn('TRAE-GW', `全部 ${attempted.length} 次尝试失败${failedDetail ? '：' + failedDetail : ''}（下一请求自动重试）`);
   res.writeHead(502, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({
     error: '所有 Trae 账号均调用失败',

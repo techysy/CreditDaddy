@@ -39,7 +39,7 @@ export function getZcodeCompletionProvider() { return completionProvider; }
 import { loadAccounts, loadSettings, saveSettings, loadState, withState } from './store.js';
 import crypto from 'node:crypto';
 import os from 'node:os';
-import { logger } from './logger.js';
+import { logger, summarizeAttempts } from './logger.js';
 
 const PLAN_MESSAGES_URL = 'https://zcode.z.ai/api/v1/zcode-plan/anthropic/v1/messages';
 const CAPTCHA_CACHE_TTL_MS = 30_000;
@@ -487,7 +487,7 @@ export async function handleGateway(req, res) {
           if (isAuthError(200, text)) {
             markDead(account);
             attempted.push({ account: label, ok: false, error: 'JWT 已失效，账号拉黑' });
-            logger.info('ZCODE-GW', `${label} JWT 失效（200 业务码）`);
+            logger.warn('ZCODE-GW', `${label} JWT 失效（200 业务码）`);
             continue;
           }
           if (isExhausted(200, text)) {
@@ -542,7 +542,8 @@ export async function handleGateway(req, res) {
           }
         }
       } catch (e) {
-        logger.warn('ZCODE-GW', `流式转发中断：${e.message}`);
+        // 客户端主动断开（点停止/换一句）就会在这里结束——属正常收尾，不是故障，降为 debug
+        logger.debug('ZCODE-GW', `流式转发中断：${e.message}`);
       }
       res.end();
       return true;
@@ -553,9 +554,9 @@ export async function handleGateway(req, res) {
     if (isCaptchaError(upstream.status, text)) {
       invalidateCaptcha();
       attempted.push({ account: label, ok: false, error: `验证码被拒（${upstream.status}）`, captcha: true });
-      logger.info('ZCODE-GW', `${label} 验证码被拒 (${formatUpstreamError(upstream.status, text)})`);
+      logger.warn('ZCODE-GW', `${label} 验证码被拒 (${formatUpstreamError(upstream.status, text)})`);
       try { captcha = await ensureCaptcha(true); } catch (e) {
-        logger.info('ZCODE-GW', `验证码重解失败：${e.message}`);
+        logger.warn('ZCODE-GW', `验证码重解失败：${e.message}`);
         captcha = null;
       }
       continue;
@@ -586,7 +587,8 @@ export async function handleGateway(req, res) {
     return true;
   }
 
-  logger.warn('ZCODE-GW', `全部 ${attempted.length} 次尝试失败`);
+  const failedDetail = summarizeAttempts(attempted);
+  logger.warn('ZCODE-GW', `全部 ${attempted.length} 次尝试失败${failedDetail ? '：' + failedDetail : ''}（下一请求自动重试）`);
   res.writeHead(502, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ error: 'ZCode 网关：所有账号尝试均失败', attempts: attempted }));
   return true;
