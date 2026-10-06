@@ -149,9 +149,28 @@
 # 全局安装（npm）
 npm i -g creditdaddy
 
-# 启动后台守护进程（默认访问 http://127.0.0.1:47860）
+# 后台启动（关掉终端也继续跑，默认 http://127.0.0.1:47860）
+creditdaddy start
+
+# 或者前台跑（Ctrl+C 停止，调试用）
 creditdaddy daemon
 ```
+
+**后台运行**（CLI 用户用这个，不需要一直开着终端）：
+
+```bash
+creditdaddy start      # 后台启动；已在运行则直接报出地址，不会起第二个
+creditdaddy status     # 查看运行状态（未运行时退出码 1，便于脚本判断）
+creditdaddy stop       # 停止（没在跑也算成功）
+creditdaddy restart    # 重启
+```
+
+`start` 会把实例拉到独立进程组，终端窗口关掉、SSH 断开都不影响每日自动签到。运行信息记在
+`<数据目录>/daemon.json`，日志在 `<数据目录>/logs/background.log`（按日归档的运行日志另在
+`daemon-<日期>.log`）。`start` / `stop` 都是幂等的，脚本里可以放心串着写。
+
+> 想要**托盘图标**和**开机自启**请用方式一的桌面版；CLI 这条路只做后台守护，不装任何原生依赖。
+> 也可以把 `creditdaddy start` 挂到系统服务 / 任务计划程序上实现开机自启。
 
 **CLI 常用命令**：
 

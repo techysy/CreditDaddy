@@ -8,6 +8,8 @@
  *   creditdaddy remove <id>     删除账号
  *   creditdaddy export/import   导出/导入账号
  *   creditdaddy logs            查看领取状态（state.json）
+ *   creditdaddy start/stop      后台运行（关掉终端不影响每日签到）
+ *   creditdaddy status          查看后台运行状态
  *   creditdaddy help            显示帮助
  */
 
@@ -16,6 +18,7 @@ import { logger } from '../src/logger.js';
 
 const args = process.argv.slice(2);
 const cmd = args[0] || 'daemon';
+const DEFAULT_BG_PORT = 47860;   // 与 src/daemon.js 的 DEFAULT_PORT 一致
 
 const HELP = `CreditDaddy — Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae 多账号管理 + 每日积分自动领取
 
@@ -31,6 +34,10 @@ const HELP = `CreditDaddy — Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Tra
   creditdaddy import <file.json> [--password 口令]        导入 CreditDaddy / 10router 导出文件
   creditdaddy scan                                       导入本机 Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae 客户端已登录的账号
   creditdaddy umid [install|remove]                      Qoder 设备身份组件（Linux / fnOS 国际版领取用）
+  creditdaddy start [--port 47860] [--host 127.0.0.1]    后台启动（关掉终端也继续跑）
+  creditdaddy stop                                       停止后台实例
+  creditdaddy status                                     查看后台运行状态
+  creditdaddy restart                                    重启后台实例
   creditdaddy logs                                       查看领取状态
   creditdaddy help                                       显示本帮助`;
 
@@ -39,15 +46,137 @@ function flag(name) {
   return i >= 0 ? args[i + 1] : undefined;
 }
 
+/** 面板访问地址（只监听回环时用 127.0.0.1，0.0.0.0 不能当访问地址用） */
+function panelUrl(host, port) {
+  const h = host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host;
+  return `http://${h}:${port}`;
+}
+
+/** 把运行时长说成人话（status 用） */
+function humanUptime(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return '未知';
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return '不到 1 分钟';
+  if (min < 60) return `${min} 分钟`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} 小时 ${min % 60} 分`;
+  return `${Math.floor(h / 24)} 天 ${h % 24} 小时`;
+}
+
+/**
+ * 优雅退出。之前 src/ 里一个 process.on 都没有，Ctrl+C 是 Node 默认的硬杀：
+ * 状态文件留在原地（下次 start 会当成「已在运行」）、当天的日志既不落盘也不归档。
+ */
+function installShutdown({ server, background }) {
+  let closing = false;
+  const shutdown = async (signal) => {
+    if (closing) return;
+    closing = true;
+    try { logger.info('CLI', `收到 ${signal}，正在退出…`); } catch {}
+    try { (await import('../src/checkin.js')).stopScheduler(); } catch {}
+    try { await server?.close(); } catch {}
+    if (background) {
+      // 只删自己写的状态文件：并发跑着第二个实例时别把它的状态抹掉
+      try { const { clearRuntime } = await import('../src/bgdaemon.js'); await clearRuntime(process.pid); } catch {}
+    }
+    // 等归档流真的 close（gzip 完成）再退，否则今天的日志丢了
+    try { await (await import('../src/logger.js')).closeArchiveStream(); } catch {}
+    process.exit(0);
+  };
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  // 关掉终端会发 SIGHUP。后台实例（stdout 不是 TTY）本来就该在终端消失后活着，
+  // 照着这个忽略；前台则当作用户要收摊。
+  process.on('SIGHUP', () => { if (process.stdout.isTTY) shutdown('SIGHUP'); });
+}
+
 async function main() {
   switch (cmd) {
     case 'daemon': {
       const port = Number(flag('--port')) || Number(process.env.PORT) || undefined;
       const host = flag('--host') || process.env.HOST || undefined;
-      await startDaemon(port, host);
+      const { server, port: boundPort } = await startDaemon(port, host);
+      // 端口被占时 daemon 会自动 +1 重试，真正在听的是 boundPort；
+      // 后台模式要把它记进状态文件，start/status 打印的必须是这个值
+      const background = process.env.CREDITDADDY_BG === '1';
+      if (background) {
+        const { APP_VERSION } = await import('../src/constants.js');
+        const { writeRuntime } = await import('../src/bgdaemon.js');
+        await writeRuntime({
+          pid: process.pid,
+          port: boundPort,
+          host: host || '127.0.0.1',
+          startedAt: new Date().toISOString(),
+          version: APP_VERSION,
+        });
+        logger.info('CLI', '已在后台运行');
+      }
       const { startScheduler } = await import('../src/checkin.js');
       startScheduler();
-      logger.info('CLI', '按 Ctrl+C 停止');
+      installShutdown({ server, background });
+      logger.info('CLI', background ? '按 creditdaddy stop 停止' : '按 Ctrl+C 停止');
+      break;
+    }
+    case 'start': {
+      const { startBackground, backgroundLogFile } = await import('../src/bgdaemon.js');
+      const { APP_VERSION } = await import('../src/constants.js');
+      const port = Number(flag('--port')) || Number(process.env.PORT) || DEFAULT_BG_PORT;
+      const host = flag('--host') || '127.0.0.1';
+      console.log('正在后台启动 CreditDaddy…');
+      const r = await startBackground({ port, host });
+      if (r.error) { console.error('✗', r.error); process.exit(1); }
+      const rec = r.rec;
+      console.log(r.already ? '✓ 已在运行' : '✓ 已启动');
+      console.log('  面板：', panelUrl(rec.host, rec.port));
+      console.log('  进程：pid', rec.pid, '· 端口', rec.port, '· 版本', rec.version || APP_VERSION);
+      console.log('  日志：', backgroundLogFile());
+      console.log('  停止：creditdaddy stop');
+      break;
+    }
+    case 'stop': {
+      const { stopDaemon } = await import('../src/bgdaemon.js');
+      const r = await stopDaemon();
+      // 没在跑也算成功：脚本里 stop 之后紧接 start 不该因为「本来就没跑」而中断
+      if (!r.stopped) {
+        console.log(r.stale ? '· 清理了残留状态（进程已不在）' : '· 未在运行');
+        break;
+      }
+      console.log('✓ 已停止（pid ' + r.rec.pid + '）');
+      break;
+    }
+    case 'status': {
+      const { statusRuntime } = await import('../src/bgdaemon.js');
+      const s = await statusRuntime();
+      if (!s.running) {
+        console.log('· 未在运行');
+        if (s.reason === 'no-state') {
+          console.log('  启动：creditdaddy start');
+        } else if (s.pidAlive) {
+          // 进程在但端口不应答：多半卡在 listen 之前，或状态文件指向了旧实例
+          console.log('  进程 pid ' + s.pid + ' 还在，但面板没有应答；建议 creditdaddy stop 后重启');
+        }
+        process.exit(1);
+      }
+      const startedMs = s.startedAt ? Date.now() - Date.parse(s.startedAt) : NaN;
+      console.log('✓ 运行中');
+      console.log('  面板：', panelUrl(s.host, s.port));
+      console.log('  进程：pid', s.pid, '· 端口', s.port, '· 版本', s.probe?.version || s.version || '未知');
+      console.log('  已运行：', humanUptime(startedMs));
+      if (s.probe?.needsKey) console.log('  账号数：需面板密码（creditdaddy 设过访问密码）');
+      else if (s.probe?.accountsCount != null) console.log('  账号数：', s.probe.accountsCount);
+      if (s.probe?.nextTickAt) console.log('  下次签到：', new Date(s.probe.nextTickAt).toLocaleString());
+      break;
+    }
+    case 'restart': {
+      const { stopDaemon, startBackground, backgroundLogFile } = await import('../src/bgdaemon.js');
+      await stopDaemon();
+      const port = Number(flag('--port')) || Number(process.env.PORT) || DEFAULT_BG_PORT;
+      const host = flag('--host') || '127.0.0.1';
+      const r = await startBackground({ port, host });
+      if (r.error) { console.error('✗', r.error); process.exit(1); }
+      console.log('✓ 已重启');
+      console.log('  面板：', panelUrl(r.rec.host, r.rec.port));
+      console.log('  日志：', backgroundLogFile());
       break;
     }
     case 'add': {

@@ -110,6 +110,21 @@ test('Qoder 网页会话随导出进 providerSpecificData，回导入恢复进 m
   assert.equal(transfer.buildExportPayload([noSession]).accounts[0].providerSpecificData.creditDaddyWebSession, undefined);
 });
 
+test('publicAccount：qoderWebCapturedAt 只回会话时间戳，绝不回 Cookie（10Router issue #44）', () => {
+  const withSession = store.normalizeAccountInput({ provider: 'qoder', token: 'jt-tok', uid: 'u-1' });
+  withSession.meta = { qoderWebSession: { cookie: 'session=abc; x=1', capturedAt: '2026-09-30T11:47:56.904Z' } };
+  const pub = store.publicAccount(withSession);
+  assert.equal(pub.qoderWebCapturedAt, '2026-09-30T11:47:56.904Z');
+  assert.ok(!JSON.stringify(pub).includes('session=abc'), '脱敏视图不得泄露网页 Cookie');
+
+  const noSession = store.normalizeAccountInput({ provider: 'qoder-cn', token: 'jt-tok2', uid: 'u-2' });
+  assert.equal(store.publicAccount(noSession).qoderWebCapturedAt, null, '有账号无会话 → null（面板据此提示缺失）');
+
+  const other = store.normalizeAccountInput({ provider: 'workbuddy', token: 'jt-tok3' });
+  other.meta = { qoderWebSession: { cookie: 'x', capturedAt: 't' } };
+  assert.equal(store.publicAccount(other).qoderWebCapturedAt, null, '非 qoder 产品恒为 null');
+});
+
 test('加密导出往返（10router-oauth-secure-v1）', () => {
   const a = store.normalizeAccountInput({ provider: 'qoder-cn', token: 'dt-secret-token-xyz', refreshToken: 'rt' });
   const blob = JSON.parse(JSON.stringify(transfer.exportAccounts([a], { password: 'pass1234' })));

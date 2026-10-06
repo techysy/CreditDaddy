@@ -21,8 +21,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// ZCode 客户端 plan 请求形状（从本机客户端真实流量捕获的载荷模板：系统提示词数组 +
-// currentDate 提醒块 + metadata 会话形状）。网关请求镜像此形状——这就是 405 风控的通过票。
+// ZCode 客户端 plan 请求形状（仅 metadata.user_id 用于风控校验，不再注入 PLAN_SHAPE.system/reminderText）
+// 上游主要校验 UA/headers/metadata 结构，不依赖 system 内容。纯净透传避免与外部 Agent 指令冲突。
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 let PLAN_SHAPE = null;
 try { PLAN_SHAPE = JSON.parse(readFileSync(path.join(__dirname, 'zcodePlanShape.json'), 'utf8')); } catch {}
@@ -304,28 +304,9 @@ function buildPlanRequest(rawBody, { token, userId }) {
   let bodyObj;
   try { bodyObj = JSON.parse(rawBody); } catch { bodyObj = null; }
   if (!bodyObj || typeof bodyObj !== 'object') bodyObj = { model: 'glm-5.3-flash', messages: [] };
-  // 客户端形状：system = ZCode 系统提示词数组；首条 user 消息前插 currentDate 提醒块；
-  // metadata.user_id = 会话形状字符串
-  if (PLAN_SHAPE) {
-    bodyObj.system = PLAN_SHAPE.system;
-    const msgs = Array.isArray(bodyObj.messages) ? bodyObj.messages : [];
-    const reminderText = PLAN_SHAPE.reminderText
-      ? PLAN_SHAPE.reminderText.replace(/Today's date is [^.]+\./, `Today's date is ${new Date().toISOString().slice(0, 10)}.`)
-      : null;
-    if (reminderText) {
-      const first = msgs[0];
-      const firstIsUser = first?.role === 'user';
-      const already = firstIsUser && typeof first.content === 'string' && first.content.includes('<system-reminder>');
-      if (!already) {
-        const block = { type: 'text', text: reminderText };
-        if (firstIsUser && Array.isArray(first.content)) first.content = [block, ...first.content];
-        else if (firstIsUser) first.content = [block, { type: 'text', text: String(first.content ?? '') }];
-        else msgs.unshift({ role: 'user', content: [block, { type: 'text', text: '.' }] });
-      }
-      bodyObj.messages = msgs;
-    }
-    bodyObj.metadata = { user_id: JSON.stringify({ account_uuid: '', session_id: 'ses_' + crypto.randomUUID().slice(0, 16) }) };
-  }
+  // 纯净透传优先：不强制注入 PLAN_SHAPE.system/reminderText，避免与外部 Agent（如 Hermes/OpenHands）冲突
+  // 仅保留 metadata.user_id 形状用于风控校验（ZCode 上游主要校验 UA/headers/metadata，不依赖 PLAN_SHAPE.system 内容）
+  bodyObj.metadata = { user_id: JSON.stringify({ account_uuid: '', session_id: 'ses_' + crypto.randomUUID().slice(0, 16) }) };
   const headers = {
     'Content-Type': 'application/json',
     Accept: '*/*',

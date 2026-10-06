@@ -405,7 +405,7 @@ async function handleApi(req, res, url) {
       await (await import('./store.js')).saveSettings(patch);
       const lanNow = patch.minimaxGatewayLan ?? (await (await import('./store.js')).loadSettings()).minimaxGatewayLan === true;
       const allowText = patch.minimaxGatewayAllow ? patch.minimaxGatewayAllow.join(', ') : '';
-      logger.info('DAEMON', `MiniMax 网关局域网：${lanNow ? '开' : '关（仅本机）'}${allowText ? `，白名单：${allowText}` : ''}`);
+      logger.info('DAEMON', `MiniMax 网关局域网：${lanNow ? '开' : '关（仅本机）'}${allowText ? `，白名单：${allowText}` : ''}（绑定改动重启后生效）`);
     }
     return json(res, 200, await minimaxGateway.gatewayStatus());
   }
@@ -428,7 +428,7 @@ async function handleApi(req, res, url) {
       await (await import('./store.js')).saveSettings(patch);
       const lanNow = patch.traeGatewayLan ?? (await (await import('./store.js')).loadSettings()).traeGatewayLan === true;
       const allowText = patch.traeGatewayAllow ? patch.traeGatewayAllow.join(', ') : '';
-      logger.info('DAEMON', `Trae 网关局域网：${lanNow ? '开' : '关（仅本机）'}${allowText ? `，白名单：${allowText}` : ''}`);
+      logger.info('DAEMON', `Trae 网关局域网：${lanNow ? '开' : '关（仅本机）'}${allowText ? `，白名单：${allowText}` : ''}（绑定改动重启后生效）`);
     }
     return json(res, 200, await traeGateway.gatewayStatus());
   }
@@ -937,8 +937,36 @@ async function handleApi(req, res, url) {
     return json(res, 200, { added: r.added, updated: r.updated, skipped, source: parsed.source });
   }
 
+  // 重启服务（桌面客户端或 CLI）
+  if (p === '/api/system/restart' && method === 'POST') {
+    json(res, 200, { ok: true, message: '正在重启服务…' });
+    setTimeout(async () => {
+      try {
+        if (restartHandler) {
+          await restartHandler();
+          return;
+        }
+        // Node CLI 环境兜底重启：派生自身并退出当前进程
+        const { spawn } = await import('node:child_process');
+        spawn(process.execPath, process.argv.slice(1), {
+          detached: true,
+          stdio: 'inherit',
+          env: process.env,
+        }).unref();
+        process.exit(0);
+      } catch (err) {
+        logger.error('DAEMON', `自动重启失败: ${err?.message || err}`);
+      }
+    }, 400);
+    return;
+  }
+
   return json(res, 404, { error: '未知接口' });
 }
+
+let restartHandler = null;
+/** 设置外部重启处理器（桌面版 Electron 注入 app.relaunch / app.exit） */
+export function setRestartHandler(fn) { restartHandler = typeof fn === 'function' ? fn : null; }
 
 /** 当前生效的面板访问密码（同进程宿主——桌面壳——调用本机 API 时带上 x-qd-key 头） */
 export function getPanelKey() { return PANEL_KEY; }

@@ -209,6 +209,12 @@ export function publicAccount(a) {
     phone: maskPhone(meta.phone),
     domain: meta.domain || null,
     flavor: a.provider === 'zcode' ? zcodeFlavor(meta) : null,
+    // Qoder 网页会话新鲜度（10Router issue #44）：只回时间戳、绝不回 Cookie。
+    // 10Router 的「套餐内 Credits」明细依赖导出的这份会话；面板据此在
+    // 导出/同步缺会话或明显过期的 Qoder 账号时给出提示。
+    qoderWebCapturedAt: String(a.provider).startsWith('qoder')
+      ? (meta.qoderWebSession?.capturedAt || null)
+      : null,
     canSwitch: Boolean(meta.session?.account || meta.credentials || meta.qoderAuth || a.provider === 'catpaw' || a.provider === 'trae'),
     verified: a.verified ?? null,
     createdAt: a.createdAt,

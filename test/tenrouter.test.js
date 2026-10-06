@@ -365,6 +365,90 @@ test('账号同步：OAuth 通道登录换会话，transfer 分组推送完整�
   } finally { m.restore(); }
 });
 
+test('账号同步：apikey 通道 qoder 新建连接挂上网页会话；缺会话的进摘要提醒（issue #44）', async () => {
+  const m = mockFetch(() => ({ status: 201, body: { connection: { id: 'x' } } }));
+  try {
+    const r = await ta.syncAccountsTo10r({
+      endpoint: 'http://127.0.0.1:20127', key: 'sk-x',
+      accounts: [
+        { id: '1', provider: 'qoder', token: 't1', name: '有会话', uid: 'u-1',
+          meta: { qoderWebSession: { cookie: 'session=live', capturedAt: '2026-10-01T00:00:00.000Z' } } },
+        { id: '2', provider: 'qoder-cn', token: 't2', name: '没会话', uid: 'u-2' },
+      ],
+    });
+    assert.equal(r.channel, 'apikey');
+    assert.deepEqual(r.results.map((x) => [x.provider, x.imported]), [['qoder', 1], ['qoder-cn', 1]]);
+
+    const b1 = m.calls.find((c) => JSON.parse(c.init.body).name === '有会话');
+    const psd1 = JSON.parse(b1.init.body).providerSpecificData;
+    assert.equal(psd1.userId, 'u-1');
+    assert.equal(psd1.creditDaddyWebSession.cookie, 'session=live');
+    assert.equal(psd1.creditDaddyWebSession.capturedAt, '2026-10-01T00:00:00.000Z');
+    assert.equal(psd1.creditDaddyWebSession.userId, 'u-1');
+
+    const b2 = m.calls.find((c) => JSON.parse(c.init.body).name === '没会话');
+    assert.equal(JSON.parse(b2.init.body).providerSpecificData, undefined, '无会话时不发送 providerSpecificData');
+
+    // apikey 通道拿不到逐账号探测结果，本地缺会话的账号必须在摘要里点名
+    assert.match(r.summary, /未带网页会话 1/);
+    assert.match(r.summary, /没会话/);
+    assert.ok(!/有会话，/.test(r.summary), '有会话的账号不被点名');
+  } finally { m.restore(); }
+});
+
+test('账号同步：OAuth 通道回显 10Router 的会话探测失败清单（issue #44）', async () => {
+  const m = mockFetch((url) => {
+    if (String(url).endsWith('/api/auth/login')) {
+      return { status: 200, body: { success: true }, headers: { 'set-cookie': 'auth_token=tk; Path=/' } };
+    }
+    if (String(url).endsWith('/api/auth/logout')) return { status: 200, body: { success: true } };
+    return {
+      status: 200,
+      body: {
+        imported: 2, updated: 0, skipped: 0, failed: 0,
+        webSessions: { checked: 2, ok: 1, failed: 1, failures: [{ id: 'c2', name: '旧登录', reason: 'HTTP 401' }] },
+      },
+    };
+  });
+  try {
+    const r = await ta.syncAccountsTo10r({
+      endpoint: 'http://127.0.0.1:20127', adminPassword: 'pw',
+      accounts: [
+        { id: '1', provider: 'qoder', token: 't1', name: '新登录', uid: 'u-1', meta: { qoderWebSession: { cookie: 'a', capturedAt: '2026-10-01T00:00:00.000Z' } } },
+        { id: '2', provider: 'qoder', token: 't2', name: '旧登录', uid: 'u-2', meta: { qoderWebSession: { cookie: 'b', capturedAt: '2026-08-01T00:00:00.000Z' } } },
+      ],
+    });
+    assert.equal(r.channel, 'oauth');
+    assert.deepEqual(r.results[0].webSessions.failures, [{ id: 'c2', name: '旧登录', reason: 'HTTP 401' }]);
+    assert.match(r.summary, /网页会话已失效 1/);
+    assert.match(r.summary, /旧登录/);
+    assert.ok(!r.summary.includes('未带网页会话'), '两组都带会话 → 不重复报缺失');
+  } finally { m.restore(); }
+});
+
+test('账号同步：旧版 10Router 无探测结果时，缺会话仍按本地信息提醒（issue #44）', async () => {
+  const m = mockFetch((url) => {
+    if (String(url).endsWith('/api/auth/login')) {
+      return { status: 200, body: { success: true }, headers: { 'set-cookie': 'auth_token=tk; Path=/' } };
+    }
+    if (String(url).endsWith('/api/auth/logout')) return { status: 200, body: { success: true } };
+    return { status: 200, body: { imported: 2, updated: 0, skipped: 0, failed: 0 } };   // 无 webSessions 字段
+  });
+  try {
+    const r = await ta.syncAccountsTo10r({
+      endpoint: 'http://127.0.0.1:20127', adminPassword: 'pw',
+      accounts: [
+        { id: '1', provider: 'qoder', token: 't1', name: 'A', uid: 'u-1' },
+        { id: '2', provider: 'qoder', token: 't2', name: 'B', uid: 'u-2' },
+        { id: '3', provider: 'workbuddy', token: 't3', name: 'W' },
+      ],
+    });
+    assert.equal(r.results[0].webSessions, null);
+    assert.match(r.summary, /未带网页会话 2（A、B/);
+    assert.ok(!r.summary.includes('W'), '非 qoder 账号不参与会话提醒');
+  } finally { m.restore(); }
+});
+
 test('配置版本迁移：旧来源快照自动并入新增来源，显式保存后以保存值为准', async () => {
   const f = path.join(process.env.CREDITDADDY_HOME, 'tenrouter.json');
   const orig = JSON.parse(fs.readFileSync(f, 'utf8'));

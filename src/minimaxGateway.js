@@ -22,6 +22,7 @@ import { logger } from './logger.js';
 const ACCOUNT_COOLING_MS = 5 * 60_000;
 const MAX_ATTEMPTS = 5;
 const UPSTREAM_TIMEOUT_MS = 600_000;
+const UPSTREAM_CONNECT_MS = 15_000;
 
 // ── 开关（持久化在 settings.minimaxGateway） ──
 
@@ -212,7 +213,8 @@ export async function handleGateway(req, res) {
     res.writeHead(405, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ error: 'POST /gateway/minimax/v1/messages（Anthropic /v1/messages 形态）' }));
   }
-  if (!(await gatewayEnabled())) {
+  const settings = await loadSettings();
+  if (settings.minimaxGateway !== true) {
     res.writeHead(503, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ error: 'MiniMax 本地网关未开启（面板 → MiniMax → 接口设置）' }));
   }
@@ -220,7 +222,6 @@ export async function handleGateway(req, res) {
   // 局域网访问控制
   const remote = (req.socket && req.socket.remoteAddress) || '';
   if (!isLoopbackRemote(remote)) {
-    const settings = await loadSettings();
     if (settings.minimaxGatewayLan !== true) {
       res.writeHead(403, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: 'MiniMax 网关未允许局域网访问（面板 → MiniMax → 接口设置）' }));
@@ -251,14 +252,15 @@ export async function handleGateway(req, res) {
   stats.calls += 1;
 
   const attempted = [];
+  const clientAbort = new AbortController();
+  req.once('close', () => { if (!res.writableEnded) clientAbort.abort(); });
+
   for (let i = 0; i < Math.min(MAX_ATTEMPTS, queue.length); i++) {
     const account = queue[i];
     if (isDead(account) || (cooling.get(account.id) || 0) > Date.now()) continue;
     const label = account.name || account.uid || account.id;
 
     let upstream;
-    const controller = new AbortController();
-    req.on('close', () => controller.abort());
 
     let activeToken = account.token;
     const sendUpstream = async (tok) => {
@@ -273,7 +275,8 @@ export async function handleGateway(req, res) {
         headers,
         body: rawBody,
         timeoutMs: UPSTREAM_TIMEOUT_MS,
-        signal: controller.signal,
+        connectMs: UPSTREAM_CONNECT_MS,
+        signal: clientAbort.signal,
       });
     };
 
@@ -314,7 +317,7 @@ export async function handleGateway(req, res) {
         }
       }
     } catch (e) {
-      if (controller.signal.aborted) return;
+      if (clientAbort.signal.aborted) return;
       attempted.push({ account: label, ok: false, error: e.message });
       continue;
     }

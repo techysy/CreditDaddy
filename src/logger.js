@@ -51,14 +51,21 @@ function ts() {
     + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
 }
 
-/** 把一份已关闭的日志 gzip 成 .log.gz（此时流已 flush、fd 已释放，可安全同步读），并按保留期清理过期归档 */
+/**
+ * 把一份已关闭的日志 gzip 成 .log.gz（此时流已 flush、fd 已释放，可安全同步读），并按保留期清理过期归档。
+ *
+ * ⚠️ 压缩后**截断**原文件而不是删除它：同一天的文件可能被另一个实例（前台 daemon /
+ * 桌面版）以 O_APPEND 持有同一个 fd。删掉原文件后，POSIX 上它的后续写入会落进一个
+ * 已无链接的 inode —— 别的实例还在正常跑，日志却静默消失。截断成 0 字节后 O_APPEND
+ * 会从 0 重新追加，同一个 inode、同一批数据，谁都不会丢。
+ */
 function gzipAndCleanup(file) {
   try {
     if (fsSync.existsSync(file)) {
       const raw = fsSync.readFileSync(file);
       if (raw.length) {
         fsSync.writeFileSync(file + '.gz', zlib.gzipSync(raw));
-        fsSync.unlinkSync(file);
+        fsSync.truncateSync(file, 0);
       }
     }
   } catch {}
@@ -109,15 +116,27 @@ export function getLogs(limit = 100, tag = null) {
   return lines.slice(-limit);
 }
 
-/** 测试收尾 / 进程退出用：关闭当前归档流，落盘后 gzip 归档并清理过期文件 */
+/**
+ * 测试收尾 / 进程退出用：关闭当前归档流，落盘后 gzip 归档并清理过期文件。
+ *
+ * 返回 Promise，等流真正 close（gzip 已完成）才 resolve —— 优雅退出路径紧接着就要
+ * process.exit()，不等的话回调根本没机会跑，今天的日志既不落盘也不归档。
+ * 调用方不 await（测试里就是）也完全兼容，只是没人等它。
+ */
 export function closeArchiveStream() {
-  if (archiveStream) {
-    const prev = archiveStream;
-    const prevFile = path.join(archiveDir, `daemon-${archiveDay}.log`);
-    archiveStream = null;
-    prev.on('error', () => {});
-    prev.on('close', () => gzipAndCleanup(prevFile));
-    prev.end();
-  }
+  if (!archiveStream) return Promise.resolve();
+  const prev = archiveStream;
+  const prevFile = path.join(archiveDir, `daemon-${archiveDay}.log`);
+  archiveStream = null;
   archiveDay = null;
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = () => { if (!settled) { settled = true; resolve(); } };
+    prev.on('error', done);
+    prev.on('close', () => { gzipAndCleanup(prevFile); done(); });
+    // 兜底：万一 close 事件不来（fd 被外部占住），不让退出流程永远挂在这里
+    const timer = setTimeout(done, 2000);
+    timer.unref?.();
+    prev.end(done);
+  });
 }

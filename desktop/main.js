@@ -48,6 +48,12 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(boot);
 }
 
+function restartApp() {
+  quitting = true;
+  app.relaunch();
+  app.exit(0);
+}
+
 async function boot() {
   app.setAppUserModelId('cn.techysy.creditdaddy');
   Menu.setApplicationMenu(null);
@@ -65,12 +71,16 @@ async function boot() {
     // （Chromium 自带的 sec-fetch-*/Origin 头反而成为风控指纹），zcodePlanCompletion 保留备用
     const store = await load('src/store.js');
     const constants = await load('src/constants.js');
-    // 局域网网关：设置开启后绑定 0.0.0.0（面板访问密码开启时才建议，/gateway 数据面有自己的密钥）
+    // 局域网网关：设置开启后绑定 0.0.0.0（面板访问密码开启时才建议，/gateway/* 数据面有自己的密钥）
     const bootSettings = await store.loadSettings();
-    const bindHost = bootSettings.zcodeGatewayLan === true ? '0.0.0.0' : '127.0.0.1';
+    const anyLan = bootSettings.zcodeGatewayLan === true
+      || bootSettings.minimaxGatewayLan === true
+      || bootSettings.traeGatewayLan === true;
+    const bindHost = anyLan ? '0.0.0.0' : '127.0.0.1';
     const r = await daemon.startDaemon(PORT, bindHost);
     boundPort = r.port;
     daemonMod = daemon;   // 保留模块引用：面板里改/关访问密码后，托盘领取实时读到新值（getPanelKey）
+    daemon.setRestartHandler(() => restartApp());
     daemonInfo = { version: constants.APP_VERSION, dataDir: store.dataDir(), homepage: constants.PROJECT_URL || DEFAULT_HOMEPAGE };
     checkin.startScheduler();
   } catch (err) {
@@ -1000,6 +1010,7 @@ function attachShellContextMenu(target) {
 }
 
 function registerAuthWindowIpc() {
+  ipcMain.handle('app-restart', () => { restartApp(); return { ok: true }; });
   // 检查更新：面板弹窗（状态查询 / 触发检查 / 主按钮动作 / 打开 Releases）
   ipcMain.handle('update-state', () => updateUiState());
   ipcMain.handle('update-check', async () => { await checkUpdateInteractiveUi(); return updateUiState(); });
@@ -1204,6 +1215,7 @@ function refreshTrayMenu() {
     ...(autoUpdater
       ? [{ label: trayUpdateLabel(), click: () => { openUpdateUi(); } }]
       : []),
+    { label: '重启 CreditDaddy', click: () => restartApp() },
     { label: '退出 CreditDaddy', click: () => { quitting = true; app.quit(); } },
   ]));
 }

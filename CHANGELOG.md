@@ -4,6 +4,35 @@
 
 ---
 
+## [1.3.2] (2026-10-06)
+
+### ✨ 新功能
+
+- **立即重启能力（托盘菜单、网关配置与面板维护）**：
+  - **托盘菜单**：右键菜单新增「重启 CreditDaddy」，无需退出后重新翻找可执行程序。
+  - **网关配置修改后立即生效**：修改 ZCode / MiniMax / Trae 体验包与本地网关的「对局域网开放」绑定设置后，自动弹窗提示「是否立即重启」，点击后无缝重启并自动刷新重连，无需用户手动重启。
+  - **面板设置快捷入口**：右上角「面板设置」弹窗内增加「服务维护 - 重启 CreditDaddy」按钮。
+  - **核心支持与系统接口**：新增 `POST /api/system/restart` 接口并对接桌面端 IPC（`app.relaunch()`），CLI 环境支持自动派生重启。
+- **CLI 后台运行**：`creditdaddy start` 把守护进程拉进独立进程组，**关掉终端 / 断开 SSH 后每日自动签到照常跑**，此前只有「前台跑」一种形态。配套 `stop` / `status` / `restart`，`start` 与 `stop` 均幂等（脚本里可放心串写），`status` 未运行时退出码 1 便于脚本判断。运行信息记在 `<数据目录>/daemon.json`（含**实际监听端口**——端口被占时 daemon 会自动 +1 重试），日志在 `<数据目录>/logs/background.log`。仍是零依赖纯标准库：托盘图标与开机自启归桌面版，CLI 不引入任何原生模块。
+- **10Router 导出 Qoder 网页会话检查（issue #44）**：导出 Qoder 账号时，前置点名提示网页会话缺失或已超过 7 天过期的账号，引导重新浏览器登录后再导出，避免导入 10Router 后套餐内积分凭空消失。
+
+### 🌐 网关健壮性与多产品线对齐
+
+- **桌面端局域网绑定修复**：桌面端启动检测由单一 `zcodeGatewayLan` 拓展为三网关统一判定（ZCode / MiniMax / Trae 任一开启即绑定 `0.0.0.0`），修复此前仅开启 MiniMax 或 Trae 局域网时桌面端仍绑定 `127.0.0.1` 导致外部连不上的问题。
+- **防止中断监听器内存泄漏**：MiniMax 与 Trae 网关重试循环中移除循环内 `req.on('close')`，改为循环外单例 `clientAbort` 与 `req.once('close')` 级联取消，彻底杜绝 `MaxListenersExceededWarning`。
+- **连接段两段式超时保护**：MiniMax 与 Trae 网关统一接入 `UPSTREAM_CONNECT_MS = 15_000` 两段式超时，上游遭遇 DNS/TLS 网络黑洞时 15 秒快速失败并切换下一个账号，避免死挂 10 分钟。
+- **热路径磁盘读合并**：MiniMax 与 Trae 网关入口合并配置读取，省掉一次每请求高频磁盘 I/O。
+- **面板指引与弹窗文案完全对齐**：ZCode 弹窗统一指向规范的 `<code>/gateway/zcode/v1/messages</code>`，MiniMax / Trae 弹窗复选框与保存 Toast 统一为「重启后绑定 0.0.0.0 / 绑定改动重启后生效」。
+
+### 🐛 修复与体验优化
+
+- **夜间模式（Dark Theme）输入框文字发黑修复**：根节点增加 `color-scheme: dark` 声明；补齐 `textarea` 的字体与颜色继承；为 `.input` 显式指定 `color: var(--text)` 并增加 `.input::placeholder` 规则，彻底解决夜间模式下 IP 白名单框等输入控件文字与占位符发黑看不清的问题。
+- **多实例并存时日志静默丢失**：`gzipAndCleanup` 压缩当天日志后会 unlink 原文件，而同目录可能还有另一个实例（前台 daemon / 桌面版）以 O_APPEND 持有同一个 fd——POSIX 上它的后续写入会落进已无链接的 inode。改为压缩后**截断**原文件，同一个 inode 从 0 继续追加。同时 `closeArchiveStream()` 改为返回 Promise 并等流真正 close 才 resolve，优雅退出流程不再在 gzip 落盘前就 `process.exit()`。
+- **优雅退出**（此前 `src/` 里没有任何 `process.on`，Ctrl+C 是硬杀）：现在 SIGINT / SIGTERM 会停掉签到定时器、关闭 HTTP server、清理自己写的状态文件并等日志归档完成再退出；非交互式（后台）实例忽略 SIGHUP，终端消失不算「收摊」。
+- **端口占用探测**：`start` 前的端口预检改用 bind 探测。此前发 HTTP 请求探活，端口被非 HTTP 程序（数据库等）占着时对方不回话，请求超时后误报「端口空闲」，子进程便悄悄漂到下一个端口，用户摸不着面板到底在哪；现在能正确识别 EADDRINUSE 并直接报错、不留状态文件。
+
+---
+
 ## [1.3.1] (2026-10-05)
 
 ### ✨ 新功能

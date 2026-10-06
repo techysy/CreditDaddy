@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld('creditdaddy', {
   openTraeClient: () => ipcRenderer.invoke('open-trae-client'),
   /** 打开本机 MiniMax Code 客户端 @returns {Promise<{ok: boolean, error?: string}>} */
   openMiniMaxClient: () => ipcRenderer.invoke('open-minimax-client'),
+  /** 重启 CreditDaddy 应用 @returns {Promise<{ok: boolean, error?: string}>} */
+  restartApp: () => ipcRenderer.invoke('app-restart'),
   /** 检查更新（面板内弹窗）：状态查询 / 触发检查 / 主按钮动作 / 打开 Releases / 状态推送 */
   update: {
     state: () => ipcRenderer.invoke('update-state'),

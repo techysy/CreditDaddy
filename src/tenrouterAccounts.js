@@ -92,6 +92,9 @@ async function syncViaTransfer({ endpoint, cookie, groups }) {
     results.push({
       provider: target, count: list.length, status: (d.failed || 0) ? 'partial' : 'ok',
       imported: d.imported || 0, updated: d.updated || 0, skipped: d.skipped || 0, failed: d.failed || 0,
+      // 10Router issue #44：导入端会探测刚同步过去的网页会话是否仍可用，
+      // 失败清单直接回显到本端摘要（见 syncAccountsTo10r 的 sessionWarns）。
+      webSessions: d.webSessions || null,
     });
   }
   return results;
@@ -103,9 +106,15 @@ async function syncViaProviders({ endpoint, key, groups }) {
   for (const [target, list] of groups) {
     const row = { provider: target, count: list.length, status: 'ok', imported: 0, skipped: 0, failed: 0 };
     for (const a of list) {
-      const r = await trFetch(`${endpoint}/api/providers`, {
-        key, method: 'POST', body: { provider: target, apiKey: a.token, name: connName(a) },
-      });
+      // issue #44：qoder 的 apikey 连接同样按 providerSpecificData 读网页会话
+      // （usage 侧 getQoderUsage 不区分 authType），所以新建连接时把会话一并
+      // 挂上；已存在的同名连接此接口不更新（409），缺失由同步摘要点名提醒。
+      const web = a.meta?.qoderWebSession?.cookie && String(a.provider).startsWith('qoder')
+        ? { creditDaddyWebSession: { cookie: a.meta.qoderWebSession.cookie, capturedAt: a.meta.qoderWebSession.capturedAt || null, userId: a.uid || null } }
+        : null;
+      const body = { provider: target, apiKey: a.token, name: connName(a) };
+      if (web) body.providerSpecificData = { userId: a.uid || null, ...web };
+      const r = await trFetch(`${endpoint}/api/providers`, { key, method: 'POST', body });
       if (r.status === 201 || r.status === 200) row.imported++;
       else if (r.status === 409) row.skipped++;
       else { row.failed++; row.error = r.data?.error || `HTTP ${r.status}`; }
@@ -163,6 +172,25 @@ export async function syncAccountsTo10r({ endpoint, key, adminPassword, accounts
   if (sum('skipped')) parts.push(`已存在 ${sum('skipped')}`);
   if (sum('failed')) parts.push(`失败 ${sum('failed')}`);
   if (unmapped.size) parts.push('跳过 ' + [...unmapped].map(([p, n]) => `${p} ×${n}`).join('、'));
+  // issue #44：Qoder 网页会话决定 10Router 端「套餐内 Credits」能不能显示。
+  // OAuth 通道：10Router 导入时已逐账号探测，失效清单原样带回（deadNames）；
+  // 两条通道都要点名本地就没有会话的账号（apikey 通道 webSessions 恒为
+  // null，条件自动适用；OAuth 通道里已被探测过的组不重复报）。
+  const deadNames = [];
+  for (const r of results) {
+    for (const f of r.webSessions?.failures || []) deadNames.push(f.name);
+  }
+  const sessionless = [];
+  for (const [target, list] of groups) {
+    if (!String(target).startsWith('qoder')) continue;
+    for (const a of list) {
+      if (results.find((r) => r.provider === target)?.webSessions == null && !a.meta?.qoderWebSession?.cookie) {
+        sessionless.push(connName(a));
+      }
+    }
+  }
+  if (sessionless.length) parts.push(`未带网页会话 ${sessionless.length}（${sessionless.join('、')}，在 CreditDaddy 重新浏览器登录 Qoder 后再同步可补齐逐资源包明细）`);
+  if (deadNames.length) parts.push(`网页会话已失效 ${deadNames.length}（${deadNames.join('、')}，重新登录 Qoder 网页后再次同步）`);
   const summary = (channel === 'oauth' ? '账号同步完成（OAuth 通道）：' : '账号同步完成（apikey 通道，token 过期后需重新同步）：')
     + (parts.join('，') || '无变化')
     + (failed.length ? `；${failed.map((r) => r.provider + '：' + (r.error || r.status)).join('；')}` : '');
