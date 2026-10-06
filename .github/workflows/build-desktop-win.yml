@@ -26,9 +26,12 @@ jobs:
           if [ -z "$NOTES" ]; then
             NOTES="CreditDaddy ${GITHUB_REF_NAME}: Qoder / WorkBuddy / ZCode 多账号管理与每日积分自动签到."
           fi
-          # 写入多行输出
+          # 写入多行输出。正文前补 `## vX.Y.Z` 标题，对齐 v1.2.0 起的 release note 格式；
+          # 主题行 `> 本版主题:…` 写在 CHANGELOG 对应版本段落开头，随提取自动带上。
           {
             echo "notes<<EOF"
+            echo "## ${GITHUB_REF_NAME}"
+            echo
             echo "$NOTES"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
