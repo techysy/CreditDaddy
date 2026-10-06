@@ -18,6 +18,7 @@
 
 ### 🌐 网关健壮性与多产品线对齐
 
+- **ZCode 网关纯净透传（issue #15 / #16）**：`buildPlanRequest` 不再把抓包快照里的 7.6k 字符官方 system 提示词与 `<system-reminder>` 日期块强制注入到转发请求——上游 405/3012 风控校验的是请求头（`User-Agent: ZCode/*`、`X-ZCode-*`）与 `metadata.user_id` 结构，并不依赖 system 内容；强制注入会与外部 Agent 框架（Hermes / OpenHands 等）自带的系统指令冲突，弱模型下诱发指令复读与工具调用死循环。现在调用方传入的 `system` 原样透传，`metadata.user_id` 仍按客户端形状每次生成新 `session_id`。同时 `zcodePlanShape.json` 已清除抓包来源的第三方用户环境快照（真实用户名/工作目录/模型名），仅保留 metadata 形状模板，不再随每次请求向 `zcode.z.ai` 外发无关用户的本机路径。
 - **桌面端局域网绑定修复**：桌面端启动检测由单一 `zcodeGatewayLan` 拓展为三网关统一判定（ZCode / MiniMax / Trae 任一开启即绑定 `0.0.0.0`），修复此前仅开启 MiniMax 或 Trae 局域网时桌面端仍绑定 `127.0.0.1` 导致外部连不上的问题。
 - **防止中断监听器内存泄漏**：MiniMax 与 Trae 网关重试循环中移除循环内 `req.on('close')`，改为循环外单例 `clientAbort` 与 `req.once('close')` 级联取消，彻底杜绝 `MaxListenersExceededWarning`。
 - **连接段两段式超时保护**：MiniMax 与 Trae 网关统一接入 `UPSTREAM_CONNECT_MS = 15_000` 两段式超时，上游遭遇 DNS/TLS 网络黑洞时 15 秒快速失败并切换下一个账号，避免死挂 10 分钟。
@@ -30,6 +31,9 @@
 - **多实例并存时日志静默丢失**：`gzipAndCleanup` 压缩当天日志后会 unlink 原文件，而同目录可能还有另一个实例（前台 daemon / 桌面版）以 O_APPEND 持有同一个 fd——POSIX 上它的后续写入会落进已无链接的 inode。改为压缩后**截断**原文件，同一个 inode 从 0 继续追加。同时 `closeArchiveStream()` 改为返回 Promise 并等流真正 close 才 resolve，优雅退出流程不再在 gzip 落盘前就 `process.exit()`。
 - **优雅退出**（此前 `src/` 里没有任何 `process.on`，Ctrl+C 是硬杀）：现在 SIGINT / SIGTERM 会停掉签到定时器、关闭 HTTP server、清理自己写的状态文件并等日志归档完成再退出；非交互式（后台）实例忽略 SIGHUP，终端消失不算「收摊」。
 - **端口占用探测**：`start` 前的端口预检改用 bind 探测。此前发 HTTP 请求探活，端口被非 HTTP 程序（数据库等）占着时对方不回话，请求超时后误报「端口空闲」，子进程便悄悄漂到下一个端口，用户摸不着面板到底在哪；现在能正确识别 EADDRINUSE 并直接报错、不留状态文件。
+- **主题实时跟随系统深色模式**：此前只在首次打开时读一次 `prefers-color-scheme`，系统换深色/浅色页面不响应；现在无手动选择时监听 `matchMedia('prefers-color-scheme')` change 实时切换（不用刷新页面），用户手动切过则尊重其选择不再跟跑。
+- **Qoder 卡片徽章提示**：账号为 Qoder 且网页会话（Cookie）缺失或超 7 天时，卡片出橙色警告徽章「缺网页会话 / 网页会话过期」（tooltip 说明：导出到 10Router 后「套餐内 Credits」逐资源包明细可能缺失，用「浏览器登录」重登一次即可补上）。判定口径与导出弹窗检查一致。
+- **bgdaemon.stopDaemon 竞态修复**：此前只等端口释放就报 stopped，Linux runner 上端口先于 pid 回收完成导致测试断言 `isAlive(pid)` 仍读到 true。新增 `waitPidDead` 轮询直到进程从进程表消失才返回，8s 超时记 warn 日志但不阻塞流程（不 SIGKILL）。
 
 ---
 
