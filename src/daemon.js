@@ -61,7 +61,7 @@ import { liveToAccount as minimaxLiveAccount, detectMiniMax, currentMiniMaxUid, 
 import * as minimaxGateway from './minimaxGateway.js';
 import * as traeGateway from './traeGateway.js';
 import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl, autoClaimEnabled, autoClaimUntil, setAutoClaimEnabled, claimIntervalMin, setClaimIntervalMin, claimWindowMin, setClaimWindowMin } from './zcodeClient.js';
-import { exportAccounts, parseImport, TransferError } from './transfer.js';
+import { exportAccounts, buildExportPayload, parseImport, TransferError } from './transfer.js';
 import { syncAccountsTo10r } from './tenrouterAccounts.js';
 import { runCheckinTick, getSchedulerInfo, dayKey, enableZcodeAutoClaimWindow, refreshZcodeScheduler, pollZcodeNow } from './checkin.js';
 import { detectQoderApps, readQoderAppAccounts, riskIdentityAvailable, riskIdentitySource, switchTo as qoderSwitchTo, qoderRunning, terminateQoder } from './qoderApp.js';
@@ -861,7 +861,14 @@ async function handleApi(req, res, url) {
       mmLiveUid = accounts.find((a) => a.provider === 'minimax' && a.token === mmToken)?.uid;
     }
     if (!mmLiveUid && mmRecKey) {
-      mmLiveUid = accounts.find((a) => a.provider === 'minimax' && a.meta?.authRecordKey === mmRecKey)?.uid;
+      // record-key 匹配可能命中多个（历史脏数据里本机导入与浏览器登录挂过同一个 key），
+      // 此时用 uid 缓存的当前值收敛，避免随机取到「不是客户端当前登录」的那个账号。
+      const byRec = accounts.filter((a) => a.provider === 'minimax' && a.meta?.authRecordKey === mmRecKey);
+      if (byRec.length === 1) mmLiveUid = byRec[0].uid;
+      else if (byRec.length > 1) {
+        const mmCachedUid = currentMiniMaxUid();
+        mmLiveUid = byRec.find((a) => a.uid === mmCachedUid)?.uid || null;
+      }
     }
     if (!mmLiveUid) mmLiveUid = currentMiniMaxUid();
     const traeDet = detectTrae();
@@ -918,11 +925,23 @@ async function handleApi(req, res, url) {
     const provider = PROVIDERS.includes(body?.provider) ? body.provider : undefined;
     const product = PRODUCT_IDS.includes(body?.product) ? body.product : undefined;
     const password = typeof body?.password === 'string' ? body.password : '';
-    if (password.length < 4) return json(res, 400, { error: '导出必须设置加密口令（至少 4 位）', code: 'PASSWORD_REQUIRED' });
+    // 日志只记范围与条数——口令、token 一概不落
+    const scope = provider ? (PROVIDER_LABEL[provider] || provider) : (product ? `${product}（全部版本）` : '全部账号');
+    if (password.length < 4) {
+      logger.warn('DAEMON', `导出被拒（${scope}）：未设置加密口令`);
+      return json(res, 400, { error: '导出必须设置加密口令（至少 4 位）', code: 'PASSWORD_REQUIRED' });
+    }
     try {
-      return json(res, 200, exportAccounts(await loadAccounts(), { password, provider, product }));
+      const accounts = await loadAccounts();
+      const blob = exportAccounts(accounts, { password, provider, product });
+      // 信封是密文、不带条数，用同参数重算一遍过滤结果记进日志
+      logger.info('DAEMON', `导出账号（${scope}）：${buildExportPayload(accounts, { provider, product }).accounts.length} 个（密文口令导出）`);
+      return json(res, 200, blob);
     } catch (e) {
-      if (e instanceof TransferError) return json(res, 400, { error: e.message, code: e.code });
+      if (e instanceof TransferError) {
+        logger.warn('DAEMON', `导出失败（${scope}）：${e.code}`);
+        return json(res, 400, { error: e.message, code: e.code });
+      }
       throw e;
     }
   }
@@ -936,7 +955,10 @@ async function handleApi(req, res, url) {
     try {
       parsed = parseImport(data, { password: body?.password });
     } catch (e) {
-      if (e instanceof TransferError) return json(res, 400, { error: e.message, code: e.code });
+      if (e instanceof TransferError) {
+        logger.warn('DAEMON', `导入失败：${e.code}（${e.message}）`);
+        return json(res, 400, { error: e.message, code: e.code });
+      }
       throw e;
     }
     const r = await importAccounts(parsed.accounts);
