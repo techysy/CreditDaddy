@@ -6,6 +6,15 @@
 
 ## [Unreleased]
 
+### 🐛 修复
+
+- **MiniMax 本机导入与浏览器登录共用凭据链、互相作废**：`meta.authRecordKey` 既是「绑定本机客户端凭据链」的开关（刷新前对齐 + 刷新后回写 `auth.json`），又会因账号合并的浅合并被嫁接给别的账号，导致两条各自独立的**一次性 refreshToken 链**抢同一条链刷新，双双 `invalid_grant`。
+  - **本机导入不再绑定链**：`liveToAccount` 不再写 `authRecordKey`（本机导入只是「此刻读到的一份快照」，不该把账号永久绑到会轮换的客户端链上），只保留 `clientId` / `scopes` 来源标记。
+  - **对齐按 uid 校验归属**：`alignMiniMaxFromLocal` 重读 `auth.json` 的 record 后，若 uid 与账号不符则跳过对齐并写明原因，不再拿别人的链去刷新。
+  - **按来源回收脏 key**：账号合并时只有 `local-app` 才保留 `authRecordKey`，浏览器登录 / 设备登录刷新一律清掉，从源头堵住「同一 uid 先本机导入、后浏览器登录」与「给设备登录账号凭空挂链」两种脏数据。
+  - *历史脏数据安全兜底*：uid 校验已能拦住交叉刷新；把相关账号在面板「本机导入」重导一次即可让 `authRecordKey` 彻底消失。
+- **MiniMax「客户端当前」登出后不消失**：`currentMiniMaxUid()` 在 `auth.json` 的 records 为空（客户端未登录 / 已登出）时仍回落到 uid 缓存，把上次登录的 uid 一直返回。现在**records 为空一律返回 null**，缓存只在 record 仍存在且自身缺少 `subject` / `accountId` 时启用；写入缓存时顺手丢弃已不存在的 record（防陈旧、防膨胀）。`/api/status` 的 record-key 匹配命中多个（历史脏数据）时也用 uid 缓存收敛，不再随机取到不是客户端当前的账号。
+
 ### 📖 文档
 
 - **README 明确 npm CLI 是全平台安装方式（#17）**：下载表新增「全平台（安装包）· `npm i -g creditdaddy`」一行并在顶部加 npm 徽章；「方式三」改写为全平台通用指引，补 Node.js 在 Linux 的安装说明（官方预编译包 / NodeSource / 发行版仓库 / `nodejs_v24`）、`npx` 免安装试跑、**Linux 各功能可用性对照表**（Qoder 国际版 UMID 组件、客户端切号仅 Windows、妙手仅 Windows、用量同步需 Node 22.5+）、systemd user service 后台常驻与开机自启示例。说明发行包只区分 CPU 架构（x64 / arm64）不区分发行版。
