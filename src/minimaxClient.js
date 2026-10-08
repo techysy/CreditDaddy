@@ -85,8 +85,10 @@ export async function refreshMiniMaxToken(refreshToken) {
 /**
  * 带自动刷新 401 重试的高阶调用。
  *
- * 刷新前若该账号来自本机导入（meta.authRecordKey），先从 ~/.minimax auth.json 重读该 record 的
- * 最新 refreshToken——本机客户端会独立轮换刷新，账号库快照可能已被服务端作废（invalid_grant）。
+ * 刷新前若该账号带有 meta.authRecordKey（绑定本机客户端凭据链，仅本机导入账号会有），
+ * 先从 ~/.minimax auth.json 重读该 record 的最新 refreshToken——本机客户端会独立轮换刷新，
+ * 账号库快照可能已被服务端作废（invalid_grant）。对齐时会校验 uid 归属，链不算本账号的则跳过
+ * （见 minimaxLocal.alignMiniMaxFromLocal）。
  * 刷新成功后经 ctx.onRefresh 回写账号库，并尝试安全回写 auth.json（见 minimaxLocal.writeMiniMaxAuth）。
  */
 export async function withMiniMaxAuth(account, fn, ctx = {}) {

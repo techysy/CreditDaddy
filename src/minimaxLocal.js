@@ -50,6 +50,44 @@ function writeJson(file, data) {
 }
 
 /**
+ * recordKey → uid 的小缓存。
+ *
+ * 为什么需要：auth.json 的 record 只有 accessToken / refreshToken / clientId 这些，
+ * 稳定 uid 只能靠 profile 接口拿；profile 偶发失败时（离线 / 接口抖动），
+ * 「客户端当前是哪个账号」就没法判断了，缓存一份兜底。
+ *
+ * 注意：缓存**只对 auth.json 里仍然存在的 record 生效**（见 currentMiniMaxUid）。
+ * 客户端登出后 records 为空，此时若还回落到缓存，面板会把某个账号一直标成
+ * 「客户端当前」——这正是「客户端明明没登录却显示已登录」的来源，所以读的时候必须
+ * 与当前 record 集合求交集，不能无条件回落。
+ */
+function readUidCache() {
+  return readJson(minimaxUidCachePath()) || {};
+}
+
+/** 写入 uid 缓存，并顺手丢掉 auth.json 里已经不存在的 record（防止缓存无限膨胀 / 陈旧） */
+function writeUidCache(recordKey, uid) {
+  if (!recordKey || !uid) return;
+  try {
+    const cache = readUidCache();
+    if (cache[recordKey] === String(uid)) return;
+    cache[recordKey] = String(uid);
+    const live = liveRecordKeys();
+    if (live) for (const k of Object.keys(cache)) if (!live.has(k)) delete cache[k];
+    writeJson(minimaxUidCachePath(), cache);
+  } catch {
+    // 缓存写失败不影响调用方
+  }
+}
+
+/** auth.json 里当前仍有 accessToken 的 recordKey 集合；读不到（文件缺失/损坏）返回 null */
+function liveRecordKeys() {
+  const authData = readJson(minimaxAuthPath());
+  if (!authData?.records) return null;
+  return new Set(Object.keys(authData.records).filter((k) => authData.records[k]?.accessToken));
+}
+
+/**
  * 寻找 MiniMax Code.exe 安装路径
  */
 export function minimaxExePath() {
@@ -115,18 +153,10 @@ export async function liveToAccount() {
     // profile 失败不影响返回基础账号信息
   }
 
-  // auth.json 记录没有稳定 uid 字段，token 又高频轮换：
-  // 把 profile 解析出的 uid 按 authRecordKey 缓存，供 currentMiniMaxUid 离线比对。
-  const cached = readJson(minimaxUidCachePath()) || {};
-  const uid = profile?.userId || record.subject || record.accountId || cached[recordKey] || null;
-  if (profile?.userId && cached[recordKey] !== profile.userId) {
-    cached[recordKey] = profile.userId;
-    try {
-      writeJson(minimaxUidCachePath(), cached);
-    } catch {
-      // 缓存写失败不影响本次返回
-    }
-  }
+  // auth.json 的记录没有稳定 uid 字段，token 又高频轮换，profile 偶发失败时无处可查 ——
+  // 用 recordKey 把 uid 记住，供 currentMiniMaxUid 离线比对（见 minimaxUidCachePath 注释）。
+  const uid = profile?.userId || record.subject || record.accountId || readUidCache()[recordKey] || null;
+  if (uid) writeUidCache(recordKey, uid);
   const name = profile?.name || (uid ? `MiniMax_${String(uid).slice(-6)}` : 'MiniMax Code');
 
   return {
@@ -139,7 +169,10 @@ export async function liveToAccount() {
     email: profile?.email || null,
     source: 'local-app',
     meta: {
-      authRecordKey: recordKey,
+      // 不写 authRecordKey：它是「这条账号绑定本机客户端凭据链」的开关，一旦挂上，
+      // 该账号刷新前就会去 auth.json 重读 refreshToken（可能会被别的账号的链顶掉）、
+      // 刷新后还会回写 auth.json。本机导入/浏览器登录混用时曾因此让两个账号共用同一条链
+      // 互相作废，故这里只留来源标记，链的绑定交给 alignMiniMaxFromLocal 按 uid 判断。
       clientId: record.clientId,
       scopes: record.scopes,
       capturedAt: new Date().toISOString(),
@@ -149,7 +182,11 @@ export async function liveToAccount() {
 
 /**
  * 获取当前登录的 UID。
- * 优先用 record 自带字段；没有则按 authRecordKey 命中 uid 缓存（token 会轮换，uid 不会）。
+ * 优先用 record 自带字段；没有则按 recordKey 命中 uid 缓存（token 会轮换，uid 不会）。
+ *
+ * records 为空（客户端从未登录 / 已登出）时一律返回 null——绝不回落到缓存。
+ * 回落的代价是：客户端登出后 uid 缓存还留着，面板会继续把那个旧账号标成
+ * 「客户端当前」，看起来像登出没生效。
  */
 export function currentMiniMaxUid() {
   const authFile = minimaxAuthPath();
@@ -160,8 +197,7 @@ export function currentMiniMaxUid() {
   const record = authData.records[recordKey];
   const own = record?.subject || record?.accountId;
   if (own) return String(own);
-  const cached = readJson(minimaxUidCachePath());
-  return cached?.[recordKey] || null;
+  return readUidCache()[recordKey] || null;
 }
 
 /**
@@ -209,8 +245,17 @@ export function alignMiniMaxFromLocal(account, log) {
   const key = account?.meta?.authRecordKey;
   if (!key) return false;
   try {
+    // 归属校验：本机客户端同一时刻只登录一个账号，auth.json 里那条 record 属于**它**，
+    // 不一定属于调用方这个账号。若两个账号（如「本机导入」与「浏览器登录」）因为历史原因
+    // 挂了同一个 authRecordKey，不校验就会拿别人的链去刷新——两个账号共用一次性 refreshToken，
+    // 必然互相作废（invalid_grant）。uid 对不上就认定不是本账号的链，直接跳过对齐。
     const rec = readMiniMaxRecord(key);
     if (!rec?.refreshToken || rec.refreshToken === account.refreshToken) return false;
+    const recUid = rec.subject || rec.accountId || readUidCache()[key] || null;
+    if (recUid && account.uid && String(recUid) !== String(account.uid)) {
+      log?.('本机客户端当前登录的是另一个 MiniMax 账号，跳过凭据对齐（避免两条链互相作废）');
+      return false;
+    }
     account.refreshToken = rec.refreshToken;
     if (rec.accessToken) account.token = rec.accessToken;
     if (rec.expiresAtMs) account.expiresAt = new Date(rec.expiresAtMs).toISOString();

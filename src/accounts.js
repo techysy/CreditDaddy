@@ -67,6 +67,16 @@ function refreshExisting(existing, incoming) {
     existing.meta = { ...(existing.meta || {}), ...incomingMeta };
     changed = true;
   }
+  // MiniMax：meta.authRecordKey 是「绑定本机客户端凭据链」的开关（刷新前对齐 + 刷新后回写
+  // auth.json）。它只该待在「这条链真正的主人」身上。若同一个 uid 先被本机导入（带 key）、
+  // 又被浏览器登录（不带 key）刷新，浅合并会把链留在账号上；反过来则会给设备登录账号凭空
+  // 挂上客户端的链——两种都会让两条链共用一次性 refreshToken 互相作废。
+  // 这里按来源回收：只有本机导入（source: 'local-app'）才保留，其余来源清掉。
+  if (existing.provider === 'minimax' && existing.meta?.authRecordKey && incoming.source !== 'local-app') {
+    delete existing.meta.authRecordKey;
+    if (!Object.keys(existing.meta).length) delete existing.meta;
+    changed = true;
+  }
   if (changed) existing.updatedAt = new Date().toISOString();
   return changed;
 }
