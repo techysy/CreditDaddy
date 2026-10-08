@@ -4,6 +4,13 @@
 
 ---
 
+## [Unreleased]
+
+### 📖 文档
+
+- **README 明确 npm CLI 是全平台安装方式（#17）**：下载表新增「全平台（安装包）· `npm i -g creditdaddy`」一行并在顶部加 npm 徽章；「方式三」改写为全平台通用指引，补 Node.js 在 Linux 的安装说明（官方预编译包 / NodeSource / 发行版仓库 / `nodejs_v24`）、`npx` 免安装试跑、**Linux 各功能可用性对照表**（Qoder 国际版 UMID 组件、客户端切号仅 Windows、妙手仅 Windows、用量同步需 Node 22.5+）、systemd user service 后台常驻与开机自启示例。说明发行包只区分 CPU 架构（x64 / arm64）不区分发行版。
+- **产品线补充平台边界**：Qoder 段标注 npm 全局安装的 UMID 安装路径；妙手段标注桌面客户端仅 Windows（非 Windows 平台自动隐藏对应入口，其余 6 条产品线不受影响）。
+
 ## [1.3.3] (2026-10-08)
 
 本版主题:**Qoder 国际版网页会话收割竞态修复 + 主界面聚合下拉菜单与面板设置分页签重构**。无破坏性变更,可直接升级。

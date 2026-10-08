@@ -11,6 +11,7 @@
 [![Downloads](https://img.shields.io/github/downloads/techysy/CreditDaddy/total?label=%E4%B8%8B%E8%BD%BD&color=16a34a)](https://github.com/techysy/CreditDaddy/releases)
 [![npm](https://img.shields.io/npm/v/creditdaddy?label=npm&color=cb3837)](https://www.npmjs.com/package/creditdaddy)
 [![Platform](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20fnOS-6b7280)](#下载)
+[![Platform](https://img.shields.io/badge/%E5%85%A8%E5%B9%B3%E5%8F%B0%20%E5%AE%89%E8%A3%85-npm%20i%20--g%20creditdaddy-cb3837?logo=npm&logoColor=white)](#下载)
 [![Node](https://img.shields.io/badge/Node.js-%E2%89%A5%2020-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License](https://img.shields.io/github/license/techysy/CreditDaddy?label=%E8%AE%B8%E5%8F%AF&color=f59e0b)](LICENSE)
 
@@ -32,6 +33,7 @@
 
 | 平台 | 文件 | 说明 |
 | --- | --- | --- |
+| 全平台（安装包） | `npm i -g creditdaddy` | **任意平台**（Windows / macOS / Linux，x64 与 arm64 皆可），一行命令装成 `creditdaddy` 命令；也支持 `npx creditdaddy` 免安装试跑，详见[方式三](#方式三nodejs-cli--守护进程) |
 | Windows | `CreditDaddy-Setup-<版本>.exe` | 安装版（推荐） |
 | Windows | `CreditDaddy-Portable-<版本>.exe` | 便携版，免安装，双击运行 |
 | macOS（Apple Silicon） | `mac-CreditDaddy-<版本>-arm64.dmg` | M1 及以后的芯片 |
@@ -102,6 +104,7 @@
 - **国际版领取与设备风控**：Qoder 国际版服务端严格校验设备风控身份（`Cosy-MachineToken / Cosy-MachineCode / Cosy-MachineType`）。
 - **设备组件依赖**：风控凭据由本机已安装的 Qoder 客户端组件生成（每 50 分钟刷新）。每台设备每日限领一个国际版账号，列表靠前账号优先领取。
 - **Linux / fnOS 设备组件安装**：无客户端环境下，面板提供一键安装「设备身份组件」（或执行 `creditdaddy umid install`），自动从官方 `@qoder-ai/qodercli` 中提取 Linux x64 / arm64 UMID 核心组件。国内版不受风控限制，全部账号可正常签到。
+  > npm 全局安装的 Linux 用户同样适用：`sudo npm i -g creditdaddy && creditdaddy umid install`（组件落在数据目录 `qoder-umid/`，首次运行自动创建）。
 
 ### mirasim（原生 AI 编程开发环境）
 - **账号来源**：读取 `~/.mirasim/setting.json`，本地通过 `secret.key` 派生密钥解密 `mrs1:` AES-256-GCM 凭据，敏感 Token 绝不出机。
@@ -113,6 +116,7 @@
 - **额度与版本**：走桌面网关 `https://catx.nocode.cn/api/gateway/*`（纯 token 鉴权，`X-Auth-Token` 头）——`auth/current-user` 用户信息、`credit/balance` 可用 Credits 与当前套餐版本（体验版 / 专业版，含到期与下次刷新时间）。网页端 `credit.catpaw.meituan.com` 接口只认浏览器 Cookie，daemon 不使用。
 - **无签到、无对外续期**：按套餐发放 Credits，无每日签到活动；凭据由妙手客户端登录轮转，失效（401）时在客户端重新登录后再本机导入即可。
 - **客户端切号**：妙手启动时读凭据恢复登录（无热加载），切换 = 重写加密凭据 + 重启客户端；客户端运行中默认拒绝切换，强制切换自动退出并重新拉起妙手。
+- **仅 Windows**：妙手桌面客户端本身只有 Windows 版（凭据密钥派生自注册表 `MachineGuid`、进程名为 `妙手.exe`），因此本机导入 / 切号在 Linux / NAS 上不可用——该产品线在非 Windows 平台自动隐藏对应入口，其余 6 条产品线不受影响。
 
 ### Trae（字节 TRAE SOLO / Trae CN）
 - **账号来源**：解本机客户端 `<userData>/User/globalStorage/storage.json` 的 `iCubeAuthInfo://icube.cloudide`（Trae 自研「tc」信封：pepper 为随安装包分发的公开常量表，SHA512 两轮派生 + AES-128-CBC + SHA512 完整性前缀），纯 `node:crypto` 实现，不引入依赖、不需要 SQLite。敏感 Token 绝不出机。
@@ -141,19 +145,67 @@
 2. 在 fnOS 应用中心选择「手动安装」，安装过程中设置访问密码。
 3. 安装完成后通过桌面的窗口图标即可进入管理面板。
 
-### 方式三：Node.js CLI / 守护进程
+### 方式三：Node.js CLI / 守护进程 —— 全平台通用（含 Linux / NAS / 服务器）
+
+> **Linux 用户看这里**：这是本项目**全平台通吃**的安装方式，x64 / arm64 都能装，发行包只区分 CPU 架构、**不区分发行版**。
+> Linux 上暂时没有像 Windows / macOS 那样的图形安装包，但用这条命令装出来的就是**同一套完整程序**：
+> 本地守护进程 + 完整 Web 管理面板（浏览器里用，和桌面版界面一模一样）+ 全部产品线能力。
+> 桌面端只是额外套了一层 Electron 托盘壳，核心功能没有少。
 
 要求 **Node.js ≥ 20**（纯标准库实现，零外部 npm 运行时依赖）：
 
 ```bash
-# 全局安装（npm）
+# 全局安装（任意平台：Windows / macOS / Linux，x64 / arm64）
 npm i -g creditdaddy
+# 或者免安装直接跑一次
+npx creditdaddy start
 
 # 后台启动（关掉终端也继续跑，默认 http://127.0.0.1:47860）
 creditdaddy start
 
 # 或者前台跑（Ctrl+C 停止，调试用）
 creditdaddy daemon
+```
+
+装完在浏览器打开 `http://127.0.0.1:47860` 就是管理面板。
+
+**Linux 怎么装 Node.js**：Node 官方为 `linux-x64` / `linux-arm64` 都提供预编译压缩包（[nodejs.org/download](https://nodejs.org/en/download)，**不需要编译、不挑发行版**），Debian / Ubuntu 也可用 [NodeSource](https://github.com/nodesource/distributions) 或发行版自带仓库；NAS / 容器里可用 `nodejs_v24` 这类社区应用包（fnOS 的 fpk 就是内置这一套）。已经能跑 `node -v` 就可以直接跳到 `npm i -g`。
+
+> **关于 npm 的“平台”**：npm 包本身只是 JS 代码，是全平台通用的——`npm i -g creditdaddy` 在任何装了 Node ≥ 20 的系统上装的都是同一份包。所谓“平台差异”只在**可选的原生组件**上：本项目核心零依赖，只有两个平台相关能力（见下方表格），缺失时对应功能自动降级、不影响其余 6 条产品线。
+
+**Linux 上各功能可用性**：
+
+| 能力 | Linux / NAS | 说明 |
+| --- | --- | --- |
+| 登录授权 / 签到 / 额度 / 面板 / 导出导入 / 10Router | ✅ 全可用 | 不依赖任何本机客户端，纯标准库 |
+| Qoder **国际版**签到 | ✅ 可用（装 UMID 组件） | 执行 `creditdaddy umid install`，自动从官方 `@qoder-ai/qodercli` 提取 **Linux x64 / arm64** 设备身份组件；不装则国际版无法领取（国内版不受限） |
+| Qoder **国内版**签到 | ✅ 全可用 | 不走设备风控 |
+| **本机导入**（读本机客户端登录） | ✅ 各产品线都有 Linux 路径 | Qoder `~/.config/Qoder`、WorkBuddy `~/.local/share/CodeBuddyExtension/…`、ZCode `~/.zcode`、mirasim `~/.mirasim`、MiniMax `~/.minimax`；Trae 读其用户数据目录 |
+| **客户端一键切号** | ⚠️ 仅 Windows 完整 | 「结束客户端进程 → 写回凭据 → 重新拉起」这套是 Windows 实现（`taskkill`）；Linux 适合用面板的**浏览器登录**加账号，或手动切号。不影响签到本身 |
+| **妙手（CatPaw）本机导入 / 切号** | ❌ 仅 Windows | 妙手客户端只有 Windows 版：凭据解密密钥派生自注册表 `MachineGuid`，客户端进程名也是 `妙手.exe` |
+| **用量同步**（ZCode / OpenCode / mirasim / MiMo 的 SQLite） | ✅ 可用，需 Node 22.5+ | 用内置 `node:sqlite` 读本地库；mirasim 走 ndjson 文件无需 SQLite |
+| 开机自启 / 图形托盘 | ⚠️ 自建 | CLI 只做后台守护；Linux 可用 systemd user service 挂 `creditdaddy start` 实现开机自启 |
+
+**Linux 后台常驻（systemd user service，可选）**：
+
+```bash
+mkdir -p ~/.config/systemd/user
+cat > ~/.config/systemd/user/creditdaddy.service <<'EOF'
+[Unit]
+Description=CreditDaddy daemon
+After=network-online.target
+
+[Service]
+ExecStart=%h/.npm-global/bin/creditdaddy daemon
+# 上面的路径换成 `command -v creditdaddy` 的输出；nvm 用户可写 node 直启：
+#   ExecStart=/usr/bin/node %h/.npm-global/lib/node_modules/creditdaddy/bin/creditdaddy.js daemon
+Restart=always
+
+[Install]
+WantedBy=default.target
+EOF
+systemctl --user daemon-reload && systemctl --user enable --now creditdaddy
+systemctl --user status creditdaddy      # 用完 Ctrl+C 退出，不会停服务
 ```
 
 **后台运行**（CLI 用户用这个，不需要一直开着终端）：
@@ -169,8 +221,8 @@ creditdaddy restart    # 重启
 `<数据目录>/daemon.json`，日志在 `<数据目录>/logs/background.log`（按日归档的运行日志另在
 `daemon-<日期>.log`）。`start` / `stop` 都是幂等的，脚本里可以放心串着写。
 
-> 想要**托盘图标**和**开机自启**请用方式一的桌面版；CLI 这条路只做后台守护，不装任何原生依赖。
-> 也可以把 `creditdaddy start` 挂到系统服务 / 任务计划程序上实现开机自启。
+> 想要**托盘图标**和**开机自启**请用方式一的桌面版（Windows / macOS）；CLI 这条路只做后台守护，不装任何原生依赖，
+> Linux / NAS 上它就是主力形态（开机自启用上面的 systemd user service，或 Windows 的任务计划程序）。
 
 **CLI 常用命令**：
 
