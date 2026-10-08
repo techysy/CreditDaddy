@@ -593,6 +593,8 @@ async function handleApi(req, res, url) {
         return json(res, e.traeRunning ? 409 : 400, { error: e.message, code: e.traeRunning ? 'TRAE_RUNNING' : undefined });
       }
     }
+    // MiniMax 不做切换：客户端凭据只有一条路径派生的活动记录，且 refreshToken 轮换式一次性，
+    // CreditDaddy 与客户端共用必然互抢（invalid_grant），切号能力已按用户决定移除。
     if (!target.provider.startsWith('workbuddy')) return json(res, 400, { error: '只有 WorkBuddy / ZCode / mirasim / 妙手 / Trae 账号支持切换' });
     // 先把客户端当前会话的最新 token 收回账号库，避免被覆盖后丢失
     const cur = readWorkbuddySessions().accounts.find((a) => a.current);
@@ -632,10 +634,16 @@ async function handleApi(req, res, url) {
     const body = await readBody(req).catch(() => ({}));
     const cookie = String(body?.cookie || '').trim();
     const kind = body?.kind === 'qoder-cn' ? 'qoder-cn' : 'qoder';
-    if (!cookie || cookie.length > 16384) return json(res, 400, { error: '缺少 cookie' });
+    // 诊断：登录窗关闭时两个域都会上报；收到 0 条 Cookie 说明窗口内根本没建立该域的网站会话
+    const count = body?.diag?.cookieCount;
+    logger.info('DAEMON', `Qoder 网页会话收割（${kind}）：${typeof count === 'number' ? count + ' 条 Cookie' : '已上报'}`);
+    if (!cookie || cookie.length > 16384) return json(res, 200, { ok: true, bound: 0, empty: true });
     const { probeWebSession } = await import('./qoderClient.js');
     const probe = await probeWebSession(kind, cookie);
-    if (!probe?.user_id) return json(res, 400, { error: '网页会话无效（探测接口未通过）' });
+    if (!probe?.user_id) {
+      logger.warn('DAEMON', `${kind === 'qoder-cn' ? 'Qoder 国内版' : 'Qoder 国际版'}网页会话探测未通过（接口不认这份 Cookie），已丢弃`);
+      return json(res, 400, { error: '网页会话无效（探测接口未通过）' });
+    }
     const now = new Date().toISOString();
     const bound = await withAccounts((list) => {
       const hits = list.filter((a) => a.provider === kind && a.uid === probe.user_id);
@@ -971,8 +979,22 @@ export function setRestartHandler(fn) { restartHandler = typeof fn === 'function
 /** 当前生效的面板访问密码（同进程宿主——桌面壳——调用本机 API 时带上 x-qd-key 头） */
 export function getPanelKey() { return PANEL_KEY; }
 
+/** 出口代理地址（面板「ZCode 网络出口」里存的，环境变量不算——登录窗显式设置用） */
+export function getLoginProxyUrl() { return proxyUrl() || null; }
+
 export async function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
   await initPanelKey();
+  // 一次性清理：1.3.3 曾短暂支持 minimax-intl（MiniMax 国际版），实测其 API 侧对国内出口
+  // 全链路 401（区域识别无法绕过），双版本策略已撤回——存量国际版账号移除，避免签到 /
+  // 额度轮询对未知 provider 反复报错。仅在真的命中存量时落盘。
+  {
+    const list = await loadAccounts();
+    const dead = list.filter((a) => a.provider === 'minimax-intl');
+    if (dead.length) {
+      await withAccounts((l) => { l.splice(0, l.length, ...l.filter((a) => a.provider !== 'minimax-intl')); });
+      logger.info('DAEMON', `已移除 ${dead.length} 个 MiniMax 国际版账号（该渠道已下线，额度接口对国内网络不可用）`);
+    }
+  }
   let panelHtml = '';
   fs.readFile(PANEL_FILE, 'utf8').then((h) => { panelHtml = h; }).catch(() => {});
 

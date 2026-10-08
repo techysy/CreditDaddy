@@ -1,0 +1,94 @@
+name: 🐞 Bug 反馈
+description: 签到失败、额度显示异常、网关报错、面板 / 桌面端异常行为 —— 有明确异常行为的问题
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ⚠️ **先确认不是这几类**，能省一轮来回：
+
+        - **macOS 打不开**（提示无法验证开发者）→ 属于未签名，按 [下载说明](https://github.com/techysy/CreditDaddy#下载) 里的「右键 → 打开」或 `xattr -cr` 处理即可，不用提 issue。
+        - **签到返回 401 / 403 / 风控 / 账号被拉黑** → 多半是该产品线账号本身的额度、登录态或上游风控问题，不是 CreditDaddy bug。请带上**完整报错文本**（面板日志页可复制），有明确映射错误再提。
+        - **MiniMax 与本机客户端互抢登录态** → 已知限制：MiniMax 凭据是轮换式一次性的，不支持多端登录，属设计行为。
+        - **fnOS 装完要求密码** → 飞牛部署自动启用密码保护，属预期，「应用设置」中可重置。
+
+  - type: input
+    id: version
+    attributes:
+      label: CreditDaddy 版本
+      description: 面板标题栏 / 顶栏左下角 / `creditdaddy --version` 均可。**如果还没以当前版本复现，请先升级到最新 Release 再确认一次**（很多问题在后面的版本已修）。
+      placeholder: 1.3.3
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: 安装 / 运行方式
+      description: 各渠道的排查路径完全不同，必须选一个。
+      options:
+        - Windows 桌面版（安装版）
+        - Windows 桌面版（便携版）
+        - macOS 桌面版（dmg）
+        - 飞牛 fnOS 应用包（fpk）
+        - npm 全局安装（creditdaddy）
+        - 源码 / CLI 前台运行
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 运行平台
+      options:
+        - Windows
+        - macOS（Apple Silicon）
+        - macOS（Intel）
+        - Linux（x86_64）
+        - Linux（ARM64）
+        - 飞牛 fnOS
+    validations:
+      required: true
+
+  - type: textarea
+    id: symptom
+    attributes:
+      label: 现象与复现步骤
+      description: 尽量具体 —— 做了什么操作、期望什么、实际得到什么（含完整报错文本）。
+      placeholder: |
+        1. 打开 xxx 页面 / 点击 xxx 按钮
+        2. 使用 xxx 产品线、xxx 账号（可脱敏，说明国内/国际版即可）
+        3. 期望 …，实际 …
+    validations:
+      required: true
+
+  - type: input
+    id: product-line
+    attributes:
+      label: 涉及的产品线 / 组件（可选）
+      description: 只与某产品线相关时才填。多个用逗号分隔。
+      placeholder: 例如 Qoder 国际版 / WorkBuddy / ZCode / mirasim / 妙手 / Trae / MiniMax / 本地网关 / 10Router 集成
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志与报错
+      description: |
+        面板「日志」页的相关条目，或终端输出（`<数据目录>/logs/`）。长文本请用代码块折叠。
+        **务必先脱敏**：不要贴 access/refresh token、Cookie、面板密码、API Key 原文。
+      render: shell
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: prechecked
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已搜索过现有 issue，确认没有重复报告
+          required: true
+        - label: 我已尝试用**最新 Release** 复现，或已说明为何无法升级
+          required: true

@@ -293,7 +293,7 @@ function combineSignals({ wallSignal, connectSignal, external }) {
  *     跑几分钟，不能因为「连接快、生成慢」被误杀。
  * 不传 connectMs 时退回单段 timeoutMs（旧行为，所有既有调用方不受影响）。
  */
-export async function fetchJsonRace(url, { method = 'GET', headers = {}, body = null, timeoutMs = 15000, connectMs = null, signal = null } = {}) {
+export async function fetchJsonRace(url, { method = 'GET', headers = {}, body = null, timeoutMs = 15000, connectMs = null, signal = null, preferProxy = false } = {}) {
   const useProxy = Boolean(effectiveProxy()) && !proxyBypass(url);
   const twoPhase = Number.isFinite(connectMs) && connectMs > 0 && connectMs < timeoutMs;
   // 超时信号必须每次尝试各建一个：共用一个的话，代理优先模式下第一条路吃完 timeoutMs，
@@ -315,7 +315,11 @@ export async function fetchJsonRace(url, { method = 'GET', headers = {}, body = 
       },
     };
   };
-  const order = useProxy ? (proxyFirst() ? ['viaProxy', 'direct'] : ['direct', 'viaProxy']) : ['direct'];
+  // preferProxy：该域名按 IP 识别地区（如 qoder.com 国际版），配置了代理就该优先走代理、
+  // 直连只作兜底——直连「成功返回 403 风控页」也算成功响应，走默认顺序永远不会轮到代理
+  const order = useProxy
+    ? (preferProxy || proxyFirst() ? ['viaProxy', 'direct'] : ['direct', 'viaProxy'])
+    : ['direct'];
   let lastErr = null;
   for (const which of order) {
     const attempts = makeAttempt();

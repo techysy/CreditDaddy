@@ -27,6 +27,8 @@ let quitting = false;
 let boundPort = PORT;
 let daemonMod = null;
 let hideHintShown = false;
+let mainHiddenToTray = false;   // 主窗是否被用户主动收进托盘（区分于子窗关闭的级联隐藏）
+let childClosingAt = 0;         // 最近一次登录子窗 close 的时间戳：主窗 close 落在其后 1.5s 内视为级联而非用户点 X
 let lastSummary = '';
 const DEFAULT_HOMEPAGE = 'https://github.com/techysy/CreditDaddy';
 let daemonInfo = { version: app.getVersion(), dataDir: '', homepage: DEFAULT_HOMEPAGE };
@@ -108,7 +110,11 @@ function setupAutoUpdate() {
   if (autoUpdater) {
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
-    autoUpdater.on('update-available', (info) => { updateState.available = info.version; refreshTrayMenu(); pushUpdateUi({ phase: 'available', version: info.version, via: 'updater' }); });
+    autoUpdater.on('update-available', (info) => {
+      // 电子更新器自己会挡降级，但挡不住「registry 与本地相同」的边缘态；双保险再比一次
+      if (!isNewerVersion(info.version, app.getVersion())) return;
+      updateState.available = info.version; refreshTrayMenu(); pushUpdateUi({ phase: 'available', version: info.version, via: 'updater' });
+    });
     autoUpdater.on('update-not-available', () => { updateState.available = null; refreshTrayMenu(); });
     autoUpdater.on('update-downloaded', (info) => {
       updateState.downloaded = info.version;
@@ -270,7 +276,9 @@ async function checkUpdateInteractiveUi() {
     const result = await autoUpdater.checkForUpdates();
     const v = result && result.updateInfo && result.updateInfo.version;
     if (updateState.downloaded) pushUpdateUi({ phase: 'downloaded', version: updateState.downloaded, via: 'updater' });
-    else if (v && v !== app.getVersion()) pushUpdateUi({ phase: 'available', version: v, via: 'updater' });
+    // 必须「严格更新」才算新版本：checkForUpdates 的 updateInfo 只是 registry 上现有的版本，
+    // 本地版本比它新（如未发布的本地构建 1.3.3 vs 已发布 1.3.2）时 !== 会误报「发现新版本」
+    else if (v && isNewerVersion(v, app.getVersion())) pushUpdateUi({ phase: 'available', version: v, via: 'updater' });
     else pushUpdateUi({ phase: 'latest' });
   } catch {
     try {
@@ -461,9 +469,15 @@ function zcodePlanCompletion({ captchaCfg, jwt, rawBody, headers = {} }) {
  * 隐私（无痕）登录窗口：每次用一个全新的内存态 session 分区（不带 persist: 前缀 = 不落盘），
  * 与系统浏览器及其它登录会话完全隔离；关闭时清空该 session 的存储。用于网页 OAuth / 选账号登录。
  */
-function openIncognitoWindow(url) {
+async function openIncognitoWindow(url) {
   const partition = 'incognito-' + crypto.randomUUID();
   const ses = session.fromPartition(partition);   // 无 persist: 前缀 → 内存态，进程退出即消失
+  // 国际版按 IP 识别地区（qoder.com）：配置了出口代理时登录窗显式走它；
+  // 未配置则保持默认（Electron 窗口本来就跟随系统代理，不覆盖）
+  if (/\/\/qoder\.com(\/|$)/.test(url)) {
+    const proxy = daemonMod && typeof daemonMod.getLoginProxyUrl === 'function' ? daemonMod.getLoginProxyUrl() : null;
+    if (proxy) await ses.setProxy({ proxyRules: proxy, proxyBypassRules: '<local>' }).catch(() => {});
+  }
   const authWin = new BrowserWindow({
     width: 480,
     height: 720,
@@ -473,6 +487,28 @@ function openIncognitoWindow(url) {
     parent: win || undefined,
     webPreferences: { session: ses, preload: CONTAINER_PRELOAD, contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
+  // 开窗时主窗是否可见：子窗（含站点自弹窗）关闭若把主窗连带最小化/隐藏，closed 后恢复。
+  // mainHiddenToTray：用户主动收进托盘时不恢复（那是有意为之，不是级联 bug）。
+  const parentWasVisible = Boolean(win && !win.isDestroyed() && win.isVisible());
+  const guardMainAfterClose = (w) => {
+    w.on('close', () => {
+      childClosingAt = Date.now();
+      w._mainVisibleBefore = Boolean(win && !win.isDestroyed() && win.isVisible() && !win.isMinimized());
+    });
+    w.on('closed', () => {
+      if (!parentWasVisible || mainHiddenToTray || !win || win.isDestroyed()) return;
+      // 子窗关闭前主窗本来就不可见（用户自己最小化/收托盘）→ 不越权恢复
+      if (w._mainVisibleBefore === false) return;
+      const restoreMain = () => {
+        try {
+          if (win.isMinimized()) win.restore();
+          if (!win.isVisible()) win.show();
+        } catch { /* ignore */ }
+      };
+      restoreMain();
+      setTimeout(restoreMain, 300);   // 连带隐藏可能稍晚于 closed 事件到达
+    });
+  };
   authWin.setMenuBarVisibility(false);
   attachContainerCapture(authWin.webContents);
   attachShellContextMenu(authWin);
@@ -486,32 +522,38 @@ function openIncognitoWindow(url) {
   authWin.webContents.on('did-create-window', (child) => {
     attachContainerCapture(child.webContents);
     attachShellContextMenu(child);
+    guardMainAfterClose(child);   // 站点自弹窗（如授权完成页）同样可能触发级联
   });
+  guardMainAfterClose(authWin);
   authWin.on('closed', () => {
     // 清空前抢救 Qoder 网页会话 Cookie（httpOnly，页面脚本拿不到，只有 session API 能读）：
     // 逐资源包用量明细接口只认这个会话。daemon 端会探测归属 uid 后再绑定到对应账号。
-    harvestQoderWebSession(ses).catch(() => {});
-    ses.clearStorageData().catch(() => {});
+    // 必须先等收割完成再清存储——两者并发的话 clearStorageData 会抢先抹掉 Cookie，
+    // 收割永远是空的（国际版「缺网页会话」长期修不好的根因）。
+    harvestQoderWebSession(ses)
+      .catch(() => {})
+      .finally(() => { ses.clearStorageData().catch(() => {}); });
   });
   authWin.loadURL(url);
   return authWin;
 }
 
-/** 读取本次登录窗口隐私会话里的 qoder 网页 Cookie，交给 daemon 按 uid 归户 */
+/** 读取本次登录窗口隐私会话里的 qoder 网页 Cookie，交给 daemon 按 uid 归户。
+ *  两个域都上报（含 Cookie 数量的诊断信息）——daemon 会把「收割到 0 条」也记进运行日志，
+ *  否则收割失败完全静默，「缺网页会话」查不到原因。 */
 async function harvestQoderWebSession(ses) {
   const targets = [
     { kind: 'qoder-cn', url: 'https://qoder.cn' },
     { kind: 'qoder', url: 'https://qoder.com' },
   ];
+  const panelKey = daemonMod && typeof daemonMod.getPanelKey === 'function' ? daemonMod.getPanelKey() : '';
   for (const t of targets) {
     const cookies = await ses.cookies.get({ url: t.url }).catch(() => []);
-    if (!cookies || !cookies.length) continue;
-    const cookie = cookies.map((c) => c.name + '=' + c.value).join('; ');
-    const panelKey = daemonMod && typeof daemonMod.getPanelKey === 'function' ? daemonMod.getPanelKey() : '';
+    const cookie = (cookies || []).map((c) => c.name + '=' + c.value).join('; ');
     await fetch('http://127.0.0.1:' + boundPort + '/api/auth/qoder-web-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(panelKey ? { 'x-qd-key': panelKey } : {}) },
-      body: JSON.stringify({ kind: t.kind, cookie }),
+      body: JSON.stringify({ kind: t.kind, cookie, diag: { cookieCount: (cookies || []).length } }),
     }).catch(() => {});
   }
 }
@@ -1011,16 +1053,36 @@ function attachShellContextMenu(target) {
 
 function registerAuthWindowIpc() {
   ipcMain.handle('app-restart', () => { restartApp(); return { ok: true }; });
+  // 简要更新日志：解析随包分发的 CHANGELOG.md，面板弹小窗展示（每个版本 = 主题行 + 板块标题）
+  ipcMain.handle('changelog-brief', () => {
+    try {
+      const md = fs.readFileSync(path.join(serverRoot, 'CHANGELOG.md'), 'utf8');
+      const sections = [];
+      for (const raw of String(md).split('\n')) {
+        const h = /^##\s*\[([^\]]+)\](?:\s*\(([^)]+)\))?/.exec(raw.trim());
+        if (h) { sections.push({ version: h[1].replace(/^v/i, ''), date: h[2] || '', theme: '', topics: [] }); continue; }
+        const s = sections[sections.length - 1];
+        if (!s) continue;
+        const line = raw.trim();
+        if (!s.theme && line.startsWith('本版主题:')) s.theme = line.slice(5).trim();
+        else if (line.startsWith('### ')) s.topics.push(line.slice(4).trim());
+      }
+      return { ok: true, sections: sections.slice(0, 6) };
+    } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+  });
   // 检查更新：面板弹窗（状态查询 / 触发检查 / 主按钮动作 / 打开 Releases）
   ipcMain.handle('update-state', () => updateUiState());
   ipcMain.handle('update-check', async () => { await checkUpdateInteractiveUi(); return updateUiState(); });
   ipcMain.handle('update-install', async () => { await updateUiPrimary(); return updateUiState(); });
   ipcMain.handle('update-open-releases', () => { try { shell.openExternal((daemonInfo.homepage || DEFAULT_HOMEPAGE) + '/releases'); } catch {} });
-  ipcMain.handle('open-auth-window', (_e, url) => {
+  // 打开外部 URL（捐赠按钮用）
+  ipcMain.handle('shell-open-external', (_, url) => { try { shell.openExternal(url); } catch {} });
+  // 唤起小窗显示更新日志摘要（任何入口统一走 openChangelogBrief；IPC 只注册一次）
+  ipcMain.handle('open-changelog-brief', () => openChangelogBrief());  ipcMain.handle('open-auth-window', async (_e, url) => {
     if (typeof url !== 'string' || !url.toLowerCase().startsWith('https://')) {
       return { ok: false, error: '只允许打开 https 链接' };
     }
-    try { openIncognitoWindow(url); return { ok: true }; }
+    try { await openIncognitoWindow(url); return { ok: true }; }
     catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
   });
   // ZCode 页「打开客户端」：优先本机安装路径，退到 zcode:// 协议
@@ -1130,7 +1192,23 @@ function createWindow() {
   });
   win.on('close', (e) => {
     if (quitting) return;
+    // Windows 已知坑（electron#26031/#12142）：关闭带 owner 的登录子窗（尤其最大化过的）
+    // 可能连带向主窗发出 close——此刻主窗的「关到托盘」会被误触发，面板凭空消失。
+    // 子窗刚关（1.5s 内）收到的主窗 close 一律按级联处理：放行销毁流程之外的一切，
+    // 不隐藏主窗，并在事件循环里恢复可见性。
+    if (Date.now() - childClosingAt < 1500) {
+      e.preventDefault();
+      setTimeout(() => {
+        try {
+          if (!win || win.isDestroyed()) return;
+          if (win.isMinimized()) win.restore();
+          if (!win.isVisible()) win.show();
+        } catch { /* ignore */ }
+      }, 0);
+      return;
+    }
     e.preventDefault();
+    mainHiddenToTray = true;   // 用户主动收进托盘：登录子窗关闭后不要把面板又弹回来
     win.hide();
     if (!hideHintShown) {
       hideHintShown = true;
@@ -1141,10 +1219,17 @@ function createWindow() {
 }
 
 function showWin() {
+  mainHiddenToTray = false;
   if (!win) { createWindow(); return; }
   if (win.isMinimized()) win.restore();
   win.show();
   win.focus();
+}
+
+// 唤起面板并弹出更新日志摘要小窗（托盘菜单与 IPC 共用；勿在回调里再 ipcMain.handle）
+function openChangelogBrief() {
+  showWin();
+  try { if (win && !win.isDestroyed()) win.webContents.send('changelog:open'); } catch { /* ignore */ }
 }
 
 function notify(title, body) {
@@ -1215,6 +1300,7 @@ function refreshTrayMenu() {
     ...(autoUpdater
       ? [{ label: trayUpdateLabel(), click: () => { openUpdateUi(); } }]
       : []),
+    { label: '更新日志…', click: () => openChangelogBrief() },
     { label: '重启 CreditDaddy', click: () => restartApp() },
     { label: '退出 CreditDaddy', click: () => { quitting = true; app.quit(); } },
   ]));

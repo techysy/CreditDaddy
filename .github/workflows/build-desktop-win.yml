@@ -83,7 +83,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p desktop/server
-          cp -r bin src package.json README.md desktop/server/
+          cp -r bin src package.json README.md CHANGELOG.md desktop/server/
 
       - name: Install desktop dependencies
         run: npm install --no-audit --no-fund
@@ -135,7 +135,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p desktop/server
-          cp -r bin src package.json README.md desktop/server/
+          cp -r bin src package.json README.md CHANGELOG.md desktop/server/
           ls desktop/server/
 
       - name: Install desktop dependencies

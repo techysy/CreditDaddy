@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld('creditdaddy', {
   openMiniMaxClient: () => ipcRenderer.invoke('open-minimax-client'),
   /** 重启 CreditDaddy 应用 @returns {Promise<{ok: boolean, error?: string}>} */
   restartApp: () => ipcRenderer.invoke('app-restart'),
+  /** 简要更新日志（解析随包 CHANGELOG.md 的最近几个版本） */
+  changelogBrief: () => ipcRenderer.invoke('changelog-brief'),
   /** 检查更新（面板内弹窗）：状态查询 / 触发检查 / 主按钮动作 / 打开 Releases / 状态推送 */
   update: {
     state: () => ipcRenderer.invoke('update-state'),
@@ -30,5 +32,9 @@ contextBridge.exposeInMainWorld('creditdaddy', {
     openReleases: () => ipcRenderer.invoke('update-open-releases'),
     onState: (cb) => { const l = (_e, s) => cb(s); ipcRenderer.on('update:state', l); return () => ipcRenderer.removeListener('update:state', l); },
     onOpen: (cb) => { const l = () => cb(); ipcRenderer.on('update:open', l); return () => ipcRenderer.removeListener('update:open', l); },
+    onChangelogOpen: (cb) => { const l = () => cb(); ipcRenderer.on('changelog:open', l); return () => ipcRenderer.removeListener('changelog:open', l); },
   },
+  /** 打开外部 URL（捐赠按钮） */
+  shellOpen: (url) => ipcRenderer.invoke('shell-open-external', url),
+  openChangelogBrief: () => ipcRenderer.invoke('open-changelog-brief'),
 });

@@ -15,6 +15,7 @@ import {
   buildQoderHeaders, buildExchangeHeaders, FETCH_TIMEOUT_MS, webBase,
 } from './constants.js';
 import { getRiskIdentity, clientVersion, machineOs, machineHostname, machineId } from './qoderApp.js';
+import { fetchJsonRace } from './zcodeClient.js';
 import { logger } from './logger.js';
 
 export function apiBase(provider) {
@@ -23,6 +24,17 @@ export function apiBase(provider) {
 
 async function req(url, options = {}) {
   return fetch(url, { ...options, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+}
+
+/**
+ * 网页会话链路（探测归属 / 逐资源包用量）专用：国际版接口按 IP 识别地区，国内直连
+ * qoder.com 会被拦——登录窗有系统代理能登录成功，daemon 拿到 Cookie 后直连探测却失败，
+ * Cookie 被当无效丢弃，徽章「缺网页会话」常驻。配置了出口代理时国际版优先走代理
+ * （直连兜底），国内版保持直连不动。
+ */
+async function webReq(provider, url, options = {}) {
+  if (provider === 'qoder-cn') return req(url, options);
+  return fetchJsonRace(url, { ...options, timeoutMs: options.timeoutMs ?? FETCH_TIMEOUT_MS, preferProxy: true });
 }
 
 /** PAT (pt-...) 兑换短期 job token (jt-...)。普通 JSON POST，无需 COSY 签名。 */
@@ -91,7 +103,7 @@ function webHeaders(cookie, provider) {
 
 /** 用原始 Cookie 探测网页会话属于哪个 Qoder 用户（登录窗口抓来的 Cookie 按 uid 归到账号上） */
 export async function probeWebSession(provider, cookie) {
-  const res = await req(`${webBase(provider)}${WEB_USAGE_PATH}`, { headers: webHeaders(cookie, provider) });
+  const res = await webReq(provider, `${webBase(provider)}${WEB_USAGE_PATH}`, { headers: webHeaders(cookie, provider) });
   if (!res.ok) return null;
   const data = await res.json().catch(() => null);
   return data?.user_id ? data : null;
@@ -108,7 +120,7 @@ export async function probeWebSession(provider, cookie) {
 export async function fetchUsageDetail(account) {
   const cookie = String(account.meta?.qoderWebSession?.cookie || '').trim();
   if (!cookie) return null;
-  const res = await req(`${webBase(account.provider)}${WEB_USAGE_PATH}`, { headers: webHeaders(cookie, account.provider) });
+  const res = await webReq(account.provider, `${webBase(account.provider)}${WEB_USAGE_PATH}`, { headers: webHeaders(cookie, account.provider) });
   if (res.status === 401 || res.status === 403) {
     const err = new Error(`网页会话已失效 (HTTP ${res.status})`);
     err.auth = true;

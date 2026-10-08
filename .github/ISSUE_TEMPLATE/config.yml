@@ -1,0 +1,23 @@
+# 拦截「空白 issue」入口 —— 强制走模板。
+#
+# 本仓库问题高度依赖复现信息（版本、安装渠道、产品线、平台）：
+# 桌面版 / fnOS fpk / npm CLI 三套产物、七条产品线的协议彼此无关，
+# 没有这些信息基本无法定位。裸标题来件直接关掉。
+blank_issues_enabled: false
+
+contact_links:
+  - name: 📦 下载与安装说明（桌面版 / fnOS / npm CLI）
+    url: https://github.com/techysy/CreditDaddy#下载
+    about: Windows / macOS / Linux / 飞牛 fnOS fpk 的产物清单与安装步骤，含 macOS 未签名应用的打开方式与 fnOS 密码重置入口。
+
+  - name: 🧭 产品线说明（Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae / MiniMax）
+    url: https://github.com/techysy/CreditDaddy#产品线说明
+    about: 各产品线的账号来源、签到限制与设备风控说明 —— 很多「签到失败」其实属于产品线的固有限制，先看这里能省一轮来回。
+
+  - name: 🚀 10Router 集成问题
+    url: https://github.com/techysy/10router/issues/new/choose
+    about: 额度总览不显示、计价异常等请先区分是 CreditDaddy 侧还是 10Router 侧 —— 10Router 界面 / 计价逻辑的问题请提到它的仓库。
+
+  - name: 💬 交流群（飞书）
+    url: https://github.com/techysy/CreditDaddy#-交流群
+    about: 使用体验交流、快速答疑，README 里有入群二维码。

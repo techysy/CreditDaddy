@@ -1,0 +1,57 @@
+name: ✨ 功能建议
+description: 新增产品线 / 能力，或改进现有行为
+title: "[功能] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢建议。为了能判断「该不该做、怎么做」，请把**要解决的问题**写清楚 —— 比「加一个 X 平台」更有用的信息是「我在什么场景下，因为缺 X 而做不成什么」。
+
+        几点背景，先说在前面：
+
+        - **新增产品线**（签到 / 额度 / 切号）依赖对目标客户端协议与凭据存储的逆向摸底，成本差异很大；能提供该客户端的抓包样本或本机凭据文件结构说明，会显著提高落地速度。
+        - **凭据一律不出机**是本仓库的底线：任何「把 token 同步到云端 / 第三方服务」类建议不会被采纳。
+        - **大改动建议先开 issue 讨论**再提 PR，避免方向不一致导致返工。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你想解决的问题
+      description: 描述使用场景与当前的痛点。这一项比「解决方案」更重要。
+      placeholder: |
+        我在 … 场景下需要 …，
+        目前因为 … 做不到，只能 …（临时绕法）。
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 你期望的方案
+      description: 有具体设想就写（接口形态、配置项、UI 位置等）；没有也可以留空。
+    validations:
+      required: false
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: 建议类别
+      options:
+        - 新增产品线 / 账号渠道
+        - 签到 / 额度 / 网关能力
+        - 10Router 集成 / 用量同步
+        - 面板 / 桌面端 UI
+        - 安装、部署与打包（含 fnOS / 桌面版）
+        - 文档
+        - 其他
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: prechecked
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已搜索过现有 issue，确认没有重复建议
+          required: true

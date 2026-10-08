@@ -45,6 +45,14 @@
   .title { font-family: "Avenir Next", Avenir, "Segoe UI Variable Display", "Segoe UI", sans-serif; font-size: 17px; font-weight: 750; letter-spacing: -.5px; line-height: 1.15; }
   .ver { color: var(--text-3); font-size: 11px; line-height: 1.3; font-variant-numeric: tabular-nums; }
   .head-right { display: flex; align-items: center; gap: 10px; color: var(--text-3); font-size: 12px; }
+  /* 右上角聚合菜单：锚定在按钮下方右对齐的下拉（不是居中弹窗） */
+  .hmenu { position: relative; display: inline-flex; }
+  .hmenu-pop { position: absolute; right: 0; top: calc(100% + 8px); z-index: 60; min-width: 190px; background: var(--surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 6px; box-shadow: var(--shadow); display: none; }
+  .hmenu-pop.show { display: block; }
+  .hmenu-item { display: flex; align-items: center; gap: 9px; width: 100%; padding: 9px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); font-size: 13px; font-weight: 600; cursor: pointer; text-align: left; font-family: inherit; }
+  .hmenu-item:hover { background: var(--hover); color: var(--text); }
+  .hmenu-item svg { width: 15px; height: 15px; flex-shrink: 0; }
+  .hmenu-sep { height: 1px; background: var(--border-subtle); margin: 5px 8px; }
   /* 面板设置（右上角齿轮 → 弹窗）：访问密码 + 组件显隐与排序 + 账号卡片排序 */
   .comp-menu { display: flex; flex-direction: column; gap: 8px; }
   .comp-menu-title { font-size: 11px; color: var(--text-3); margin: 10px 0 4px; padding-top: 8px; border-top: 1px dashed var(--border-subtle); }
@@ -65,6 +73,13 @@
   .comp-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
   .comp-row.off .check { opacity: .45; }
   .comp-ops { display: inline-flex; gap: 2px; flex: none; }
+  /* 横向组件 chips：一行放下全部产品，不再一条一行占半屏 */
+  .comp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .comp-chip { display: inline-flex; align-items: center; gap: 0; padding: 3px 4px 3px 10px; border-radius: 999px; background: var(--hover); font-size: 12px; font-weight: 600; color: var(--text); }
+  .comp-chip.off { opacity: .45; }
+  .comp-chip.off .check { text-decoration: line-through; }
+  .comp-chip .sort-name { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .comp-chip .icon-btn.mini { width: 20px; height: 20px; }
   .icon-btn.mini { width: 20px; height: 20px; border-radius: 6px; font-size: 11px; line-height: 1; padding: 0; }
   .icon-btn.mini svg { width: 12px; height: 12px; }
   .sort-sec { border-top: 1px dashed var(--border-subtle); padding-top: 6px; font-size: 12px; }
@@ -200,6 +215,7 @@
   .mask.show { display: flex; }
   .modal { width: 560px; max-width: 100%; max-height: 90vh; overflow-y: auto; background: var(--surface); border-radius: 14px; padding: 16px 18px; box-shadow: var(--shadow); }
   .modal.sm { width: 360px; }
+  .changelog-sec + .changelog-sec { border-top: 1px dashed var(--border-subtle); margin-top: 10px; padding-top: 10px; }
   .modal-title { display: flex; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 700; margin-bottom: 12px; }
   .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
   .close { border: none; background: none; color: var(--text-3); font-size: 16px; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
@@ -367,6 +383,19 @@
       <button class="icon-btn" id="btn-comp" title="面板设置：访问密码、组件显隐与排序、账号卡片排序"></button>
       <a class="icon-btn" id="btn-home" href="https://github.com/techysy/CreditDaddy" target="_blank" rel="noopener" title="项目主页（GitHub）"></a>
       <button class="icon-btn" id="btn-theme" title="切换亮色 / 暗色"></button>
+      <!-- 聚合菜单（最右侧）：检查更新 / 更新日志 / 主题 / 重启 / 捐赠，下拉紧贴按钮（图标由 JS 注入，Lucide 描边同款） -->
+      <div class="hmenu">
+        <button class="icon-btn" id="btn-header-menu" title="更多操作"></button>
+        <div class="hmenu-pop" id="hmenu-pop">
+          <button class="hmenu-item" id="hm-update" style="display:none">检查更新</button>
+          <button class="hmenu-item" id="changelog-brief-btn">更新日志</button>
+          <button class="hmenu-item" id="theme-mode-btn">主题：跟随系统</button>
+          <div class="hmenu-sep"></div>
+          <button class="hmenu-item" id="hm-restart">重启 CreditDaddy</button>
+          <button class="hmenu-item" id="feedback-btn">建议反馈</button>
+          <button class="hmenu-item" id="donate-btn">捐赠支持</button>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -424,7 +453,6 @@
           <button class="btn primary" id="btn-checkin"></button>
           <span id="z-actions" style="display:none">
             <button class="btn" id="zt-ac"></button>
-            <button class="btn" id="zt-net"></button>
             <button class="btn" id="zt-gw"></button>
             <button class="btn" id="zt-open" style="display:none"></button>
           </span>
@@ -460,11 +488,13 @@
         <button data-log-tab="minimax">MiniMax 网关</button>
         <button data-log-tab="trae">Trae 网关</button>
       </div>
-      <div class="log-filter" id="log-filter">
-        <button data-log-level="all" class="active">全部</button>
-        <button data-log-level="warn">只看提醒</button>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="log-filter" id="log-filter">
+          <button data-log-level="all" class="active">全部</button>
+          <button data-log-level="warn">只看提醒</button>
+        </div>
+        <button class="btn" id="btn-logs">展开</button>
       </div>
-      <button class="btn" id="btn-logs">展开</button>
     </div>
     <div class="logs" id="logs">（暂无）</div>
   </section>
@@ -548,17 +578,41 @@
 <div class="mask" id="m-settings">
   <div class="modal">
     <div class="modal-title"><span>面板设置</span><button class="close" data-close>✕</button></div>
-    <div class="comp-menu" id="comp-menu"></div>
-    <div class="field" id="upd-entry" style="display:none;margin-top:12px">
-      <label>版本与更新</label>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="dim" id="upd-ver"></span><button class="btn" id="btn-update">检查更新</button></div>
+    <div class="tabs" id="set-tabs">
+      <button class="tab active" data-set-tab="general">通用</button>
+      <button class="tab" data-set-tab="net">网络</button>
+      <button class="tab" data-set-tab="comp">组件与排序</button>
     </div>
-    <div class="field" style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--border-subtle)">
-      <label>服务维护</label>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <button class="btn" id="btn-restart-app">重启 CreditDaddy</button>
+
+    <div class="pane active" data-set-pane="general">
+      <div class="field" id="upd-entry" style="display:none">
+        <label>版本与更新</label>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="dim" id="upd-ver"></span><button class="btn" id="btn-update">检查更新</button><button class="btn" id="btn-changelog" title="GitHub Releases 上的完整版本变更">更新日志</button></div>
+      </div>
+      <div class="field" style="margin-top:12px">
+        <label>服务维护</label>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn" id="btn-restart-app">重启 CreditDaddy</button>
+        </div>
       </div>
     </div>
+
+    <div class="pane" data-set-pane="net">
+      <div class="field">
+        <label>网络出口（全局）</label>
+        <label class="check"><input type="radio" name="znet-order" id="znet-direct"> 直连优先（代理兜底）</label>
+        <label class="check"><input type="radio" name="znet-order" id="znet-proxy"> 代理优先（直连兜底）</label>
+        <label style="margin-top:6px">出口代理（http://host:port，支持口令 http://user:pass@host:port）</label>
+        <input class="input" id="znet-url" placeholder="http://192.168.31.101:7890">
+        <div class="hint">作用于所有出网请求：ZCode 上游、Qoder 国际版登录与凭据探测（按 IP 识别地区，国内直连会被拦）等。留空 = 清除代理，退回 HTTPS_PROXY 环境变量。</div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button class="btn primary" id="znet-ok">保存出口</button><span class="hint" id="znet-state"></span></div>
+      </div>
+    </div>
+
+    <div class="pane" data-set-pane="comp">
+      <div class="comp-menu" id="comp-menu"></div>
+    </div>
+
     <div class="modal-actions"><button class="btn" data-close>关闭</button></div>
   </div>
 </div>
@@ -569,6 +623,15 @@
     <div class="modal-title"><span>检查更新</span><button class="close" data-close>✕</button></div>
     <div id="upd-body"></div>
     <div class="modal-actions" id="upd-actions"></div>
+  </div>
+</div>
+
+<!-- 更新日志（简要版）：解析随包 CHANGELOG.md，主题行 + 板块标题 -->
+<div class="mask" id="m-changelog">
+  <div class="modal sm">
+    <div class="modal-title"><span>更新日志</span><button class="close" data-close>✕</button></div>
+    <div id="changelog-body" style="max-height:56vh;overflow-y:auto"></div>
+    <div class="modal-actions"><button class="btn" id="btn-changelog-full">GitHub 完整日志</button><button class="btn primary" data-close>关闭</button></div>
   </div>
 </div>
 
@@ -640,24 +703,6 @@
     </div>
     <div class="hint">开启后按此周期检查活动资格并自动领取（首次检查在开启 2 分钟后开始）。活动包由服务端在每日 0 点左右刷新放出——若运行时段没有覆盖 0 点，会错过当次领取，建议把运行时长设为 0，或让时段跨过 0 点。需要验证码时无法自动通过，卡片上会提示手动领取。</div>
     <div class="modal-actions"><button class="btn" id="zac-off" style="display:none">停用</button><button class="btn" data-close>取消</button><button class="btn primary" id="zac-ok">保存并启用</button></div>
-  </div>
-</div>
-
-<!-- ZCode 网络出口 -->
-<div class="mask" id="m-znet">
-  <div class="modal sm">
-    <div class="modal-title"><span>ZCode 网络出口</span><button class="close" data-close>✕</button></div>
-    <div class="field">
-      <label>上游接口访问顺序（失败 / 被拦时自动回退另一条）</label>
-      <label class="check"><input type="radio" name="znet-order" id="znet-direct"> 直连优先（代理兜底）</label>
-      <label class="check"><input type="radio" name="znet-order" id="znet-proxy"> 代理优先（直连兜底）</label>
-    </div>
-    <div class="field">
-      <label>出口代理（http://host:port，支持口令 http://user:pass@host:port）</label>
-      <input class="input" id="znet-url" placeholder="http://192.168.31.101:7890">
-    </div>
-    <div class="hint">留空 = 清除已保存的代理，退回 HTTPS_PROXY 环境变量；取消 = 不改动。当前代理只显示脱敏后的地址。</div>
-    <div class="modal-actions"><button class="btn" data-close>取消</button><button class="btn primary" id="znet-ok">保存</button></div>
   </div>
 </div>
 
@@ -741,6 +786,12 @@ const I = {
   chevDown: svg('<path d="M6 9l6 6 6-6"/>'),
   chevRight: svg('<path d="M9 18l6-6-6-6"/>'),
   check: svg('<path d="M20 6L9 17l-5-5"/>'),
+  grid: svg('<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>'),
+  book: svg('<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>'),
+  power: svg('<path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/>'),
+  monitor: svg('<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>'),
+  msg: svg('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'),
+  heart: svg('<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>'),
 };
 
 const $ = (id) => document.getElementById(id);
@@ -1022,10 +1073,95 @@ function initTheme() {
     if (mq.addEventListener) mq.addEventListener('change', onSysTheme);
     else if (mq.addListener) mq.addListener(onSysTheme);   // 旧 Safari
   }
+  // 右上角菜单按钮：打开聚合操作弹窗（openModal/遮罩点击/ESC/✕ 由通用弹窗机制处理）
+  $('btn-header-menu').innerHTML = I.grid;
+  const hmenuPop = $('hmenu-pop');
+  const closeHmenu = () => hmenuPop.classList.remove('show');
+  $('btn-header-menu').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const willOpen = !hmenuPop.classList.contains('show');
+    if (willOpen) renderThemeMode();   // 头部主题按钮可能已切换过，打开时同步文案
+    hmenuPop.classList.toggle('show', willOpen);
+  });
+  // 点菜单外任意处 / ESC 收起下拉
+  document.addEventListener('click', (e) => { if (!e.target.closest('.hmenu')) closeHmenu(); });
+  window.addEventListener('scroll', closeHmenu, true);
+  // 菜单项图标：与头部按钮同款 Lucide 描边（静态文字前插图标）
+  const withIcon = (id, icon) => { const b = $(id); if (b) b.innerHTML = icon + b.textContent; };
+  withIcon('hm-update', I.refresh);
+  withIcon('changelog-brief-btn', I.book);
+  withIcon('hm-restart', I.power);
+  withIcon('feedback-btn', I.msg);
+  withIcon('donate-btn', I.heart);
+  // 检查更新仅桌面版有意义（网页面板无 updater），非桌面版隐藏该项。
+  // 注意：updBridge 是后面才声明的 const，这里不能引用（TDZ），直接查 creditdaddy 桥。
+  if (!(window.creditdaddy && window.creditdaddy.update)) $('hm-update').style.display = 'none';
+  $('hm-update').onclick = () => { closeHmenu(); openUpdateModal(true); };
+  $('hm-restart').onclick = async () => {
+    closeHmenu();
+    const ok = await uiConfirm('确定要重启 CreditDaddy 服务吗？正在进行的任务可能会中断。', '重启服务', '重启');
+    if (ok) restartCreditDaddy();
+  };
+  $('changelog-brief-btn').onclick = () => { closeHmenu(); openChangelogModal(); };
+  // 主题：单条菜单项点击循环 跟随系统 → 亮色 → 暗色（占一行，不再三选铺满菜单）。
+  // 「跟随系统」= 清掉手动选择，matchMedia 实时跟跑；手动选过亮/暗则固定不再跟系统
+  // （与 initTheme 里 onSysTheme 判定同一存储键 qd_theme）。菜单保持展开，连点可观感循环。
+  const THEME_MODES = [
+    ['auto', '跟随系统', I.monitor],
+    ['light', '亮色', I.sun],
+    ['dark', '暗色', I.moon],
+  ];
+  function currentThemeMode() {
+    try { const t = localStorage.getItem('qd_theme'); return t === 'light' || t === 'dark' ? t : 'auto'; } catch (e) { return 'auto'; }
+  }
+  function themeModeIndex() {
+    const m = currentThemeMode();
+    const i = THEME_MODES.findIndex((x) => x[0] === m);
+    return i === -1 ? 0 : i;
+  }
+  function applyThemeMode(mode) {
+    try {
+      if (mode === 'auto') localStorage.removeItem('qd_theme');
+      else localStorage.setItem('qd_theme', mode);
+    } catch (e) {}
+    const sysDark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+    applyTheme(mode === 'auto' ? (sysDark ? 'dark' : 'light') : mode);
+    renderThemeMode();
+  }
+  function renderThemeMode() {
+    const b = $('theme-mode-btn');
+    if (!b) return;
+    const cur = THEME_MODES[themeModeIndex()];
+    b.innerHTML = cur[2] + '主题：' + cur[1];
+    b.title = '点击循环：跟随系统 → 亮色 → 暗色';
+  }
+  renderThemeMode();
+  $('theme-mode-btn').onclick = () => {
+    const next = THEME_MODES[(themeModeIndex() + 1) % THEME_MODES.length][0];
+    applyThemeMode(next);
+  };
+
+  // 建议反馈：直达 GitHub issue 模板选择页（🐞 Bug 反馈 / ✨ 功能建议 / 🔒 安全问题，
+  // 表单已含版本 / 安装渠道 / 平台字段，与 10Router 仓库同一套结构）
+  $('feedback-btn').onclick = () => {
+    closeHmenu();
+    const url = 'https://github.com/techysy/CreditDaddy/issues/new/choose';
+    if (window.creditdaddy && typeof window.creditdaddy.shellOpen === 'function')
+      window.creditdaddy.shellOpen(url);
+    else window.open(url, '_blank');
+  };
+
+  // 捐赠（桌面版走 IPC 桥；网页直接开浏览器）
+  $('donate-btn').onclick = () => {
+    closeHmenu();
+    if (window.creditdaddy && typeof window.creditdaddy.shellOpen === 'function')
+      window.creditdaddy.shellOpen('https://github.com/sponsors/techysy');
+    else window.open('https://github.com/sponsors/techysy', '_blank');
+  };
+
+  // 头部主题按钮：亮/暗快速二切（等价菜单里切到亮色/暗色），同步菜单文案
   $('btn-theme').onclick = () => {
-    const n = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-    applyTheme(n);
-    try { localStorage.setItem('qd_theme', n); } catch (e) {}
+    applyThemeMode(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
   };
 }
 
@@ -1298,7 +1434,7 @@ const EMPTY_TIP = {
   mirasim: '还没有 mirasim 账号。<br>点「添加账号」可读取本机 mirasim 客户端当前登录的账号（本地解密，token 不出本机）。',
   catpaw: '还没有妙手账号。<br>点「添加账号」可读取本机妙手（美团 CatPaw）客户端当前登录的账号（本地解密凭据，token 不出本机）。',
   trae: '还没有 Trae 账号。<br>点「添加账号 → 本机导入」可读取本机 Trae 客户端当前登录的账号（本地解密 storage.json 凭据，token 不出本机）。多个账号需先在 Trae 里分别登录并逐个导入。',
-  minimax: '还没有 MiniMax 账号。<br>点「添加账号 → 本机导入」可读取本机 MiniMax Code 客户端当前登录的账号，或粘贴 Bearer Token 添加。',
+  minimax: '还没有 MiniMax 账号。<br>点「添加账号 → 本机导入」可读取本机 MiniMax Code 客户端当前登录的账号，或用浏览器登录 / 粘贴 Bearer Token 添加。',
 };
 
 function renderProd() {
@@ -1344,8 +1480,6 @@ function renderProd() {
     const gwOn = state.zGateway === true;
     $('zt-ac').innerHTML = dot(acOn) + '自动领取';
     $('zt-ac').title = acOn ? '自动领取运行中——点我调整轮询周期 / 运行时长' : '自动领取已关闭——点我设置轮询周期与运行时长并开启';
-    $('zt-net').innerHTML = '出口：<b style="font-weight:700;color:var(--text)">' + (state.zProxyFirst === true ? '代理优先' : '直连优先') + '</b>';
-    $('zt-net').title = '网络出口：直连 / 代理顺序与代理地址';
     $('zt-gw').innerHTML = dot(gwOn) + '接口' + (gwOn && state.zGatewayLan === true ? '·局域网' : '');
     $('zt-gw').title = '体验包接口：开关、局域网开放与 IP 白名单';
     const zc = (state.status && state.status.zcodeClient) || {};
@@ -1658,14 +1792,6 @@ document.addEventListener('click', async (e) => {
     } catch (err) { toast(String(err && err.message || err), false); }
     return;
   }
-  if (e.target.closest('#mt-open')) {
-    try {
-      const r = await window.creditdaddy.openMiniMaxClient();
-      if (r && r.ok) toast('已启动 MiniMax Code 客户端');
-      else toast((r && r.error) || '无法打开 MiniMax Code 客户端', false);
-    } catch (err) { toast(String(err && err.message || err), false); }
-    return;
-  }
   if (e.target.closest('#tt-gw')) {
     // Trae 本地接口弹窗：开关 + 局域网 + 白名单设置
     $('tgw-on').checked = state.tGateway === true;
@@ -1679,6 +1805,14 @@ document.addEventListener('click', async (e) => {
         : '<br>尚未有调用');
     syncTgwLanFields();
     openModal('m-tgw');
+    return;
+  }
+  if (e.target.closest('#mt-open')) {
+    try {
+      const r = await window.creditdaddy.openMiniMaxClient();
+      if (r && r.ok) toast('已启动 MiniMax Code 客户端');
+      else toast((r && r.error) || '无法打开 MiniMax Code 客户端', false);
+    } catch (err) { toast(String(err && err.message || err), false); }
     return;
   }
   if (e.target.closest('#mt-gw')) {
@@ -1718,14 +1852,6 @@ document.addEventListener('click', async (e) => {
         : '<br>尚未有调用');
     syncZgwLanFields();
     openModal('m-zgw');
-    return;
-  }
-  if (e.target.closest('#zt-net')) {
-    // 出口弹窗：顺序 + 代理地址一起保存；代理只回填到 placeholder（脱敏），留空即清除
-    (state.zProxyFirst === true ? $('znet-proxy') : $('znet-direct')).checked = true;
-    $('znet-url').value = '';
-    $('znet-url').placeholder = state.zProxyUrl || (state.zHasEnvProxy ? '跟随环境变量 HTTPS_PROXY' : 'http://192.168.31.101:7890');
-    openModal('m-znet');
     return;
   }
 });
@@ -1822,9 +1948,10 @@ function trRow(q) {
 
 function lineVal(q) {
   const pct = quotaPct(q);
-  // 百分比口径（限时限额额度）：一律显示 %，节约空间；积分类保持实际数字
-  const pctScale = q.percentScale || Number.isFinite(q.remainingPercentage);
-  const txt = (pctScale || !(q.total > 0))
+  // 数值优先：有 total 就显示「剩 x / y」——remainingPercentage 是上游四舍五入的
+  // 粗略值（3.99/4 → 100%），只在没有绝对量时才退回百分比口径；
+  // percentScale（Antigravity 这类限时窗口平等关系）保持百分比。
+  const txt = (q.percentScale || !(q.total > 0))
     ? '剩 ' + (pct !== null ? fmtNum(pct) + '%' : fmtNum(quotaRemaining(q)))
     : '剩 ' + fmtNum(quotaRemaining(q)) + ' / ' + fmtNum(q.total || 0) + (q.unit ? ' ' + q.unit : '');
   return '<span>' + esc(txt) + '</span> ' + relResetHtml(q);
@@ -1970,7 +2097,9 @@ function trVendorCardHtml(g) {
       if (!q || isAgg(q) || isDetail(q)) continue;
       if (!rowMap.has(q.name)) rowMap.set(q.name, { name: q.name, total: 0, rem: 0, anyTotal: false, pctScale: false, resetAt: null, pcts: [], unit: '' });
       const w = rowMap.get(q.name);
-      const isPctRow = q.percentScale || Number.isFinite(q.remainingPercentage);
+      // 有绝对量（total>0）就不算百分比行：remainingPercentage 是上游四舍五入值，
+      // 拿它当口径会把 3.99/4 显示成「剩 100%」，与 10Router 自己的 3.99/4 对不齐
+      const isPctRow = q.percentScale || !(q.total > 0);
       if (isPctRow) w.pctScale = true;
       const pct = quotaPct(q);
       if (pct !== null) w.pcts.push(pct);
@@ -2753,6 +2882,34 @@ if (updBridge) {
   updBridge.onOpen(() => openUpdateModal(true));
 }
 $('btn-update').onclick = () => openUpdateModal(true);
+// 更新日志小窗：桌面版读随包 CHANGELOG.md 的简要摘要；网页面板直接开 GitHub Releases
+function openFullChangelog() {
+  if (updBridge && typeof updBridge.openReleases === 'function') updBridge.openReleases();
+  else window.open('https://github.com/techysy/CreditDaddy/releases', '_blank', 'noopener');
+}
+function openChangelogModal() {
+  const openReleases = openFullChangelog;
+  if (!(window.creditdaddy && typeof window.creditdaddy.changelogBrief === 'function')) { openReleases(); return; }
+  window.creditdaddy.changelogBrief().then((r) => {
+    const box = $('changelog-body');
+    const strip = (s) => esc(String(s || '').replace(/\*\*/g, ''));
+    box.innerHTML = (r && r.ok && r.sections && r.sections.length)
+      ? r.sections.map((s) => '<div class="changelog-sec">'
+          + '<div style="font-weight:700;margin:0 0 4px">v' + esc(s.version)
+          + (s.date ? ' <span class="dim" style="font-weight:400;font-size:11px">' + esc(s.date) + '</span>' : '') + '</div>'
+          + (s.theme ? '<div class="hint">' + strip(s.theme) + '</div>' : '')
+          + (s.topics && s.topics.length ? '<div class="hint" style="margin-top:4px">' + s.topics.map(strip).join(' · ') + '</div>' : '')
+          + '</div>').join('')
+      : '<div class="hint">暂无本地更新日志，请到 GitHub Releases 查看。</div>';
+    openModal('m-changelog');
+  }).catch(openReleases);
+}
+$('btn-changelog').onclick = openChangelogModal;
+$('btn-changelog-full').onclick = openFullChangelog;
+// 托盘菜单触发（IPC）
+if (updBridge && typeof updBridge.onChangelogOpen === 'function') {
+  updBridge.onChangelogOpen(openChangelogModal);
+}
 
 // ZCode 自动领取计划：保存（按新配置启用）/ 停用
 $('zac-ok').addEventListener('click', async () => {
@@ -2845,22 +3002,30 @@ $('tgw-ok').addEventListener('click', async () => {
   } catch (err) { toast(err.message, false); }
 });
 
-// ZCode 网络出口：顺序 + 代理地址保存
+// 网络出口（全局，面板设置里）：顺序 + 代理地址保存；代理只回填到 placeholder（脱敏），留空即清除
 $('znet-ok').addEventListener('click', async () => {
   try {
     const body = { proxyFirst: $('znet-proxy').checked, proxyUrl: $('znet-url').value.trim() };
     const r = await api('/api/zcode/net', { method: 'PUT', json: body });
+    state.zProxyFirst = r.proxyFirst === true;
     await loadZNet();
-    renderStatus(); render();
-    closeModal('m-znet');
-    toast('ZCode 出口：' + (r.proxyFirst ? '代理优先（直连兜底）' : '直连优先（代理兜底）') + (body.proxyUrl === '' ? '，代理已清除' : ''));
+    $('znet-url').value = '';
+    $('znet-url').placeholder = state.zProxyUrl || (state.zHasEnvProxy ? '跟随环境变量 HTTPS_PROXY' : 'http://192.168.31.101:7890');
+    $('znet-state').textContent = '已保存：' + (state.zProxyFirst === true ? '代理优先' : '直连优先')
+      + (state.zProxyUrl ? ' · 代理 ' + state.zProxyUrl : '');
+    toast('网络出口：' + (r.proxyFirst ? '代理优先（直连兜底）' : '直连优先（代理兜底）') + (body.proxyUrl === '' ? '，代理已清除' : '，代理已保存'));
   } catch (err) { toast(err.message, false); }
 });
 document.querySelectorAll('.mask').forEach((m) => {
   m.addEventListener('mousedown', (e) => { if (e.target === m) closeModal(m.id); });
   m.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => closeModal(m.id)));
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.querySelectorAll('.mask.show').forEach((m) => closeModal(m.id)); });
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  const pop = document.getElementById('hmenu-pop');
+  if (pop && pop.classList.contains('show')) { pop.classList.remove('show'); return; }   // ESC 先收下拉
+  document.querySelectorAll('.mask.show').forEach((m) => closeModal(m.id));
+});
 document.querySelectorAll('#m-add .tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 function switchTab(name) {
   document.querySelectorAll('#m-add .tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
@@ -3031,9 +3196,10 @@ function qoderWebBadge(a) {
   const at = a.qoderWebCapturedAt;
   if (at && Date.now() - new Date(at).getTime() <= 7 * 86400000) return '';
   const stale = Boolean(at);
+  const proxyHint = a.provider === 'qoder' ? '（国际版按 IP 识别地区：需先在「面板设置 → 网络出口」配置出口代理）' : '';
   const tip = stale
-    ? '网页会话已超过 7 天（' + fmtTime(at).slice(0, 10) + ' 抓取），可能已过期：导出到 10Router 后「套餐内 Credits」可能缺失，用「浏览器登录」重新登录一次 Qoder 即可补上'
-    : '缺少 Qoder 网页会话（Cookie）：导出到 10Router 后「套餐内 Credits」可能缺失，用「浏览器登录」登录一次 Qoder 即可自动抓取';
+    ? '网页会话已超过 7 天（' + fmtTime(at).slice(0, 10) + ' 抓取），可能已过期：导出到 10Router 后「套餐内 Credits」可能缺失，用「浏览器登录」重新登录一次 Qoder 即可补上' + proxyHint
+    : '缺少 Qoder 网页会话（Cookie）：导出到 10Router 后「套餐内 Credits」可能缺失，用「浏览器登录」登录一次 Qoder 即可自动抓取' + proxyHint;
   return '<span class="badge web web-warn" title="' + esc(tip) + '">' + (stale ? '网页会话过期' : '缺网页会话') + '</span>';
 }
 
@@ -3287,31 +3453,30 @@ async function doSecAction(action) {
   }
 }
 function renderCompMenu() {
-  const compRows = state.compOrder.map((id) => {
+  // 组件顺序横向 chips：一行放下全部产品，勾选 = 显隐，箭头 = 前后移（顺序与标签栏同步）
+  const compChips = state.compOrder.map((id) => {
     const c = COMPONENTS.find((x) => x.id === id);
     if (!c) return '';
     const vis = compVisible(id);
-    return '<div class="comp-row' + (vis ? '' : ' off') + '">'
-      + '<label class="check"><input type="checkbox" data-comp="' + id + '"' + (vis ? ' checked' : '') + '>' + esc(c.label) + '</label>'
-      + '<span class="comp-ops">'
-      + '<button class="icon-btn mini" data-move="up" data-comp="' + id + '" title="上移（仪表盘与标签栏同步）">' + I.chevUp + '</button>'
-      + '<button class="icon-btn mini" data-move="down" data-comp="' + id + '" title="下移（仪表盘与标签栏同步）">' + I.chevDown + '</button>'
-      + '</span></div>';
+    return '<span class="comp-chip' + (vis ? '' : ' off') + '">'
+      + '<label class="check" title="勾选 = 显示该产品页"><input type="checkbox" data-comp="' + id + '"' + (vis ? ' checked' : '') + '>' + esc(c.label) + '</label>'
+      + '<button class="icon-btn mini" data-move="up" data-comp="' + id + '" title="前移（仪表盘与标签栏同步）">' + I.chevUp + '</button>'
+      + '<button class="icon-btn mini" data-move="down" data-comp="' + id + '" title="后移（仪表盘与标签栏同步）">' + I.chevDown + '</button>'
+      + '</span>';
   }).join('');
   const sortSections = PRODUCTS.filter((p) => compVisible(p.id) && ofProduct(p.id).length).map((p) => {
     const manual = state.cardOrder[p.id];
-    const rows = sortedAccounts(p.id, ofProduct(p.id)).map((a) => '<div class="sort-row" data-aid="' + esc(a.id) + '">'
-      + '<span class="sort-name" title="' + esc(a.name || a.email || a.uid || a.id) + '">' + esc(a.name || a.email || ('#' + a.id.slice(0, 6))) + '</span>'
-      + '<span class="comp-ops">'
-      + '<button class="icon-btn mini" data-acc-move="up" data-prod="' + p.id + '" data-aid="' + esc(a.id) + '" title="上移">' + I.chevUp + '</button>'
-      + '<button class="icon-btn mini" data-acc-move="down" data-prod="' + p.id + '" data-aid="' + esc(a.id) + '" title="下移">' + I.chevDown + '</button>'
-      + '</span></div>').join('');
+    const rows = sortedAccounts(p.id, ofProduct(p.id)).map((a) => '<span class="comp-chip" title="' + esc(a.name || a.email || a.uid || a.id) + '">'
+      + '<span class="sort-name">' + esc(a.name || a.email || ('#' + a.id.slice(0, 6))) + '</span>'
+      + '<button class="icon-btn mini" data-acc-move="up" data-prod="' + p.id + '" data-aid="' + esc(a.id) + '" title="前移">' + I.chevUp + '</button>'
+      + '<button class="icon-btn mini" data-acc-move="down" data-prod="' + p.id + '" data-aid="' + esc(a.id) + '" title="后移">' + I.chevDown + '</button>'
+      + '</span>').join('');
     return '<details class="sort-sec"' + (manual && manual.length ? ' open' : '') + '><summary>' + esc(p.label)
       + (manual && manual.length ? ' <span class="badge">手动排序</span>' : '')
       + '<span class="dim" style="font-size:11px">' + ofProduct(p.id).length + '</span></summary>'
-      + '<div class="sort-hint">默认按剩余积分从多到少；拖拽卡片或用上下按钮固定顺序。</div>'
-      + rows
-      + (manual && manual.length ? '<button class="btn" data-acc-reset="' + p.id + '" style="margin-top:6px;width:100%">恢复默认排序</button>' : '')
+      + '<div class="sort-hint">默认按剩余积分从多到少；拖拽卡片或用箭头固定顺序。</div>'
+      + '<div class="comp-chips">' + rows + '</div>'
+      + (manual && manual.length ? '<button class="btn" data-acc-reset="' + p.id + '" style="margin-top:6px">恢复默认排序</button>' : '')
       + '</details>';
   }).join('');
   $('comp-menu').innerHTML =
@@ -3321,7 +3486,7 @@ function renderCompMenu() {
     + '<div class="row">' + renderSecActions() + '</div>'
     + '<div class="comp-menu-title">自动签到</div>'
     + '<div class="hint">' + autoCheckinHint() + '</div>'
-    + '<div class="comp-menu-title">组件顺序（仪表盘与标签栏同步）</div>' + compRows
+    + '<div class="comp-menu-title">组件顺序（仪表盘与标签栏同步）</div>' + '<div class="comp-chips">' + compChips + '</div>'
     + '<div class="comp-menu-title">账号卡片排序</div>'
     + (sortSections || '<div class="sort-hint">暂无账号</div>');
 }
@@ -3350,11 +3515,27 @@ function moveAccountId(prod, aid, dir) {
   saveCardOrder();
 }
 // 右上角齿轮 → 面板设置弹窗（访问密码 + 组件显隐/排序 + 账号卡片排序）
+// 面板设置分页签：通用 / 网络 / 组件与排序（内容越来越长的解法——分 pane 而不是一条流水账）
+$('set-tabs').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-set-tab]');
+  if (!b) return;
+  document.querySelectorAll('#set-tabs .tab').forEach((x) => x.classList.toggle('active', x === b));
+  document.querySelectorAll('#m-settings .pane[data-set-pane]').forEach((p) => p.classList.toggle('active', p.dataset.setPane === b.dataset.setTab));
+});
 $('btn-comp').addEventListener('click', async () => {
   renderCompMenu();
   openModal('m-settings');
+  // 每次打开都回到「通用」页签
+  document.querySelectorAll('#set-tabs .tab').forEach((x) => x.classList.toggle('active', x.dataset.setTab === 'general'));
+  document.querySelectorAll('#m-settings .pane[data-set-pane]').forEach((p) => p.classList.toggle('active', p.dataset.setPane === 'general'));
   await loadSettings();
   renderCompMenu();
+  // 网络出口（全局）：预填当前顺序与脱敏代理地址
+  await loadZNet();
+  (state.zProxyFirst === true ? $('znet-proxy') : $('znet-direct')).checked = true;
+  $('znet-url').value = '';
+  $('znet-url').placeholder = state.zProxyUrl || (state.zHasEnvProxy ? '跟随环境变量 HTTPS_PROXY' : 'http://192.168.31.101:7890');
+  $('znet-state').textContent = '';
   // 桌面版才有检查更新入口（走 preload 桥到主进程的更新状态机）
   if (updBridge) {
     $('upd-entry').style.display = '';
@@ -3476,7 +3657,7 @@ $('region').addEventListener('click', (e) => {
   renderStatus();
 });
 $('f-provider').addEventListener('change', () => {
-  $('f-token').placeholder = $('f-provider').value === 'minimax'
+  $('f-token').placeholder = $('f-provider').value.startsWith('minimax')
     ? 'MiniMax OAuth Bearer Token（mmoat_…）'
     : $('f-provider').value.startsWith('workbuddy')
     ? 'WorkBuddy / CodeBuddy 登录 token（eyJ…，可在 CodeBuddyExtension 的 auth/*.info 中找到）'
