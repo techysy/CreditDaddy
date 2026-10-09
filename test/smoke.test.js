@@ -158,6 +158,44 @@ test('导入 10router 迁移文件：只取 qoder 账号、丢弃合成邮箱', 
   assert.equal(store.normalizeAccountInput(r.accounts[0]).expiresAt, new Date(1790000000 * 1000).toISOString());
 });
 
+test('导入 workbuddy-switch 导出的明文备份文件：自动推断 provider 并还原 session 结构', () => {
+  const sample = [
+    {
+      domain: 'www.workbuddy.cn',
+      uid: 'u-1',
+      nickname: '测试用户1',
+      access_token: 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1LTEiLCJpc3MiOiJodHRwczovL3d3dy53b3JrYnVkZHkuY24vYXV0aCJ9.dummy',
+      refresh_token: 'rt-1',
+      expiresAt: 1793943730000,
+      auth_raw: {
+        account: { uid: 'u-1', nickname: '测试用户1' },
+        auth: { accessToken: 'token-inner', refreshToken: 'rt-1', domain: 'www.workbuddy.cn' }
+      }
+    },
+    {
+      domain: 'www.codebuddy.ai',
+      uid: 'u-intl',
+      nickname: 'IntlUser',
+      access_token: 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1LWludGwiLCJpc3MiOiJodHRwczovL3d3dy5jb2RlYnVkZHkuYWkvYXV0aCJ9.dummy',
+      refresh_token: 'rt-2',
+      expiresAt: 1793943730000,
+    }
+  ];
+  const r = transfer.parseImport(sample);
+  assert.equal(r.source, 'wb-switch');
+  assert.equal(r.accounts.length, 2);
+  assert.equal(r.skipped, 0);
+  assert.equal(r.accounts[0].provider, 'workbuddy');
+  assert.equal(r.accounts[0].name, '测试用户1');
+  assert.equal(r.accounts[0].uid, 'u-1');
+  assert.equal(r.accounts[0].refreshToken, 'rt-1');
+  assert.ok(r.accounts[0].meta?.session?.account);
+  assert.equal(r.accounts[1].provider, 'workbuddy-intl');
+  assert.equal(r.accounts[1].name, 'IntlUser');
+  assert.equal(r.accounts[1].uid, 'u-intl');
+  assert.ok(r.accounts[1].meta?.session?.account);
+});
+
 test('同一 uid 的新 token 视为续期而不是新增', async () => {
   await store.saveAccounts([]);
   await importAccounts([{ provider: 'qoder', token: 'dt-old', uid: 'same-user', name: '原名' }]);

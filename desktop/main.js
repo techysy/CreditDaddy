@@ -484,7 +484,10 @@ async function openIncognitoWindow(url) {
     title: '登录（隐私窗口）',
     icon: iconPath(),
     autoHideMenuBar: true,
-    parent: win || undefined,
+    // 故意不设 parent：Windows 的 owner 级联（electron#26031/#12142）会在子窗销毁时连带
+    // 向主窗发 close/隐藏——带 owner 且经过站点弹窗（Google OAuth 等）的登录流程里，级联
+    // 可能晚于收割（两次 POST + 探测）才到达，1.5s 时间窗兜不住，主窗凭空消失。
+    // 10Router 同款做法：授权窗一律独立顶层、不设 owner，从根上消灭级联。
     webPreferences: { session: ses, preload: CONTAINER_PRELOAD, contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   // 开窗时主窗是否可见：子窗（含站点自弹窗）关闭若把主窗连带最小化/隐藏，closed 后恢复。
@@ -1053,22 +1056,49 @@ function attachShellContextMenu(target) {
 
 function registerAuthWindowIpc() {
   ipcMain.handle('app-restart', () => { restartApp(); return { ok: true }; });
-  // 简要更新日志：解析随包分发的 CHANGELOG.md，面板弹小窗展示（每个版本 = 主题行 + 板块标题）
-  ipcMain.handle('changelog-brief', () => {
-    try {
-      const md = fs.readFileSync(path.join(serverRoot, 'CHANGELOG.md'), 'utf8');
-      const sections = [];
-      for (const raw of String(md).split('\n')) {
-        const h = /^##\s*\[([^\]]+)\](?:\s*\(([^)]+)\))?/.exec(raw.trim());
-        if (h) { sections.push({ version: h[1].replace(/^v/i, ''), date: h[2] || '', theme: '', topics: [] }); continue; }
-        const s = sections[sections.length - 1];
-        if (!s) continue;
+  // 简要更新日志：优先在线拉 GitHub Releases（列表 API 的 body 即发布时从 CHANGELOG 提取的
+  // 本版段落，主题行 + 板块标题俱在）——线上改文案免重装立刻可见；抓取失败（离线 / API
+  // 限流）回落解析随包 CHANGELOG.md，小窗永不空白。面板展示口径不变（每个版本 = 主题行 + 板块标题）。
+  ipcMain.handle('changelog-brief', async () => {
+    const parseBody = (tag, body, publishedAt) => {
+      // release body 的提取段不含 CHANGELOG 标题行里的日期（awk 从标题下一行起收），日期取 API published_at
+      const sec = { version: String(tag).replace(/^v/i, ''), date: String(publishedAt || '').slice(0, 10), theme: '', topics: [] };
+      for (const raw of String(body).split('\n')) {
         const line = raw.trim();
-        if (!s.theme && line.startsWith('本版主题:')) s.theme = line.slice(5).trim();
-        else if (line.startsWith('### ')) s.topics.push(line.slice(4).trim());
+        if (!sec.theme && line.startsWith('>')) sec.theme = line.replace(/^>+\s?/, '');
+        else if (line.startsWith('### ')) sec.topics.push(line.slice(4).trim());
       }
-      return { ok: true, sections: sections.slice(0, 6) };
-    } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+      return sec;
+    };
+    try {
+      const m = /^https?:\/\/github\.com\/([^/]+)\/([^/#?]+)/.exec(daemonInfo.homepage || DEFAULT_HOMEPAGE);
+      if (!m) throw new Error('无法从项目主页识别 GitHub 仓库');
+      const repo = `${m[1]}/${m[2].replace(/\.git$/, '')}`;
+      const res = await net.fetch(`https://api.github.com/repos/${repo}/releases?per_page=6`, {
+        headers: { Accept: 'application/vnd.github+json' },
+        signal: AbortSignal.timeout(10_000),   // 在线失败快速回落本地文件，面板点「更新日志」不长时间空转
+      });
+      if (!res.ok) throw new Error(`GitHub API 返回 HTTP ${res.status}`);
+      const rels = await res.json();
+      if (!Array.isArray(rels) || !rels.length) throw new Error('Releases 列表为空');
+      return { ok: true, online: true, sections: rels.slice(0, 6).map((r) => parseBody(r.tag_name, r.body || '', r.published_at)) };
+    } catch {
+      // 回落：解析随包 CHANGELOG.md（打包时快照）
+      try {
+        const md = fs.readFileSync(path.join(serverRoot, 'CHANGELOG.md'), 'utf8');
+        const sections = [];
+        for (const raw of String(md).split('\n')) {
+          const h = /^##\s*\[([^\]]+)\](?:\s*\(([^)]+)\))?/.exec(raw.trim());
+          if (h) { sections.push({ version: h[1].replace(/^v/i, ''), date: h[2] || '', theme: '', topics: [] }); continue; }
+          const s = sections[sections.length - 1];
+          if (!s) continue;
+          const line = raw.trim();
+          if (!s.theme && line.startsWith('本版主题:')) s.theme = line.slice(5).trim();
+          else if (line.startsWith('### ')) s.topics.push(line.slice(4).trim());
+        }
+        return { ok: true, sections: sections.slice(0, 6) };
+      } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+    }
   });
   // 检查更新：面板弹窗（状态查询 / 触发检查 / 主按钮动作 / 打开 Releases）
   ipcMain.handle('update-state', () => updateUiState());

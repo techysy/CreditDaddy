@@ -17,6 +17,7 @@ import { loadAccounts, loadSettings, saveSettings } from './store.js';
 import { fetchTraeQuota } from './traeClient.js';
 import { gatewayHostSuggestion } from './tenrouter.js';
 import { logger, summarizeAttempts } from './logger.js';
+import { t } from './i18n.js';
 
 const TRAE_SOLO_BASE = 'https://solo.trae.cn/api/remote/v1';
 const ACCOUNT_COOLING_MS = 5 * 60_000;
@@ -73,7 +74,7 @@ function isDead(account) {
   if (fp === credFingerprint(account)) return true;
   dead.delete(account.id);
   cooling.delete(account.id);
-  logger.info('TRAE-GW', `${account.name || account.uid || account.id} 凭据已更新，解除拉黑`);
+  logger.info('TRAE-GW', '{label} 凭据已更新,解除拉黑', { label: account.name || account.uid || account.id });
   return false;
 }
 
@@ -362,7 +363,7 @@ export async function handleGateway(req, res) {
               const cur = list.find((a) => a.id === account.id);
               if (cur) cur.token = token;
             });
-            logger.info('TRAE-GW', `${label} 凭据已对齐本地客户端，重试会话创建…`);
+        logger.info('TRAE-GW', '{label} 凭据已对齐本地客户端,重试会话创建...', { label });
             sessionRes = await fetchJsonRace(`${TRAE_SOLO_BASE}/chat_sessions`, {
               method: 'POST',
               headers: makeHeaders(token),
@@ -383,14 +384,14 @@ export async function handleGateway(req, res) {
     if (sessionRes.status === 401) {
       markDead(account);
       attempted.push({ account: label, ok: false, error: 'Token 彻底失效 (401)，拉黑' });
-      logger.info('TRAE-GW', `${label} 凭据失效，拉黑`);
+      logger.info('TRAE-GW', '{label} 凭据失效,拉黑', { label });
       continue;
     }
 
     if (sessionRes.status === 429) {
       markCooling(account.id, ACCOUNT_COOLING_MS);
       attempted.push({ account: label, ok: false, error: '429 限流，冷却 5 分钟' });
-      logger.info('TRAE-GW', `${label} 429 限流，冷却 5 分钟`);
+      logger.info('TRAE-GW', '{label} 429 限流,冷却 5 分钟', { label });
       continue;
     }
 
@@ -438,7 +439,7 @@ export async function handleGateway(req, res) {
     }
 
     stats.lastAccount = label;
-    logger.debug('TRAE-GW', `${label} 连接成功，开始流式输出 (${requestedModel})`);
+      logger.debug('TRAE-GW', '{label} 连接成功,开始流式输出 ({model})', { label, model: requestedModel });
 
     // 成功建立流，按 isStream 分发
     if (isStream) {
@@ -550,7 +551,7 @@ export async function handleGateway(req, res) {
         }
       } catch (err) {
         // 客户端主动断开（点停止/换一句）属正常收尾，不是故障
-        logger.debug('TRAE-GW', `流式读取中断: ${err.message}`);
+      logger.debug('TRAE-GW', '流式读取中断:{err}', { err: err.message });
       } finally {
         if (thinkingOpen) {
           sendSse('content_block_stop', { type: 'content_block_stop', index: thinkingIndex });
@@ -613,7 +614,7 @@ export async function handleGateway(req, res) {
         }
       } catch (err) {
         // 客户端主动断开（点停止/换一句）属正常收尾，不是故障
-        logger.debug('TRAE-GW', `非流式读取中断: ${err.message}`);
+      logger.debug('TRAE-GW', '非流式读取中断:{err}', { err: err.message });
       } finally {
         cleanupSession();
       }
@@ -646,7 +647,7 @@ export async function handleGateway(req, res) {
 
   // 全部重试失败
   const failedDetail = summarizeAttempts(attempted);
-  logger.warn('TRAE-GW', `全部 ${attempted.length} 次尝试失败${failedDetail ? '：' + failedDetail : ''}（下一请求自动重试）`);
+  logger.warn('TRAE-GW', '全部 {n} 次尝试失败{detail}(下一请求自动重试)', { n: attempted.length, detail: failedDetail ? ':' + failedDetail : '' });
   res.writeHead(502, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({
     error: '所有 Trae 账号均调用失败',

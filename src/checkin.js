@@ -15,6 +15,7 @@ import {
   warmZcodeAppVersion,
 } from './zcodeClient.js';
 import { logger } from './logger.js';
+import { t as tr } from './i18n.js';
 
 const TICK_MS = 2 * 60 * 60 * 1000;
 const TICK_JITTER_MS = 10 * 60 * 1000;
@@ -104,7 +105,7 @@ function scheduleZcodeNextTick(delay = zcodeMsUntilNextTick()) {
   zcodeTimerHandle = setTimeout(() => {
     zcodeTimerHandle = null;
     zcodeNextTickAt = null;
-    runZcodeTick().catch((err) => logger.error('ZCODE-CLAIM', `资格轮询失败：${err?.message || err}`))
+    runZcodeTick().catch((err) => logger.error('ZCODE-CLAIM', '资格轮询失败:{err}', { err: err?.message || err }))
       .finally(() => scheduleZcodeNextTick());
   }, delay);
   zcodeTimerHandle.unref?.();
@@ -131,7 +132,7 @@ function syncZcodeScheduler(startFresh = false) {
       zcodeExpiryTimerHandle = null;
       setAutoClaimEnabled(false);
       clearZcodeTimers();
-      logger.info('ZCODE-CLAIM', '自动领取时段已结束，自动领取已关闭');
+      logger.info('ZCODE-CLAIM', '自动领取时段已结束,自动领取已关闭', {});
     }, Math.max(0, expiresAt - Date.now()));
     zcodeExpiryTimerHandle.unref?.();
   } else if (!expiresAt && zcodeExpiryTimerHandle) {
@@ -168,7 +169,7 @@ function runZcodeTick(accountIds, { force = false } = {}) {
             if (current) current.lastResult = lastResult;
           });
         } catch (err) {
-          logger.warn('ZCODE-CLAIM', `${label} 自动领取异常：${err?.message || err}`);
+          logger.warn('ZCODE-CLAIM', '{label} 自动领取异常:{err}', { label, err: err?.message || err });
         }
       }
       zcodeLastTick = {
@@ -247,7 +248,7 @@ async function runTickInner(opts) {
         continue;
       }
 
-      const ctx = refreshContext(account, (message) => logger.info('CHECKIN', `${label}：${message}`));
+      const ctx = refreshContext(account, (message) => logger.info('CHECKIN', '{label}:{msg}', { label, msg: message }));
       let outcome = await productImpl(account.provider).checkin(account, ctx);
       outcome = { accountId: account.id, account: label, provider: account.provider, ...outcome };
       if (account.provider === 'qoder' && outcome.risk) {
@@ -270,23 +271,23 @@ async function runTickInner(opts) {
       if (outcome.status === 'checked-in') {
         memo[account.id] = todayFor;
         account.lastCheckin = new Date().toISOString();
-        logger.info('CHECKIN', `${label} 领取成功 +${outcome.claimedAmount} Credits`);
+        logger.info('CHECKIN', '{label} 领取成功 +{amount} Credits', { label, amount: outcome.claimedAmount });
       } else if (outcome.status === 'already') {
         memo[account.id] = todayFor;
         account.lastCheckin = account.lastCheckin || new Date().toISOString();
-        logger.info('CHECKIN', `${label}：${outcome.message || '今日已领'}`);
+        logger.info('CHECKIN', '{label}:{msg}', { label, msg: outcome.message || '今日已领' });
       } else if (outcome.status === 'limited') {
         memo[account.id] = todayFor;
-        logger.info('CHECKIN', `${label}：${outcome.message}`);
+        logger.info('CHECKIN', '{label}:{msg}', { label, msg: outcome.message });
       } else if (outcome.status === 'no-activity') {
-        logger.debug('CHECKIN', `${label}：${outcome.message || '当前无可领取的活动'}`);
+        logger.debug('CHECKIN', '{label}:{msg}', { label, msg: outcome.message || '当前无可领取的活动' });
       } else {
-        logger.warn('CHECKIN', `${label} 领取失败：${outcome.error || outcome.status}`);
+        logger.warn('CHECKIN', '{label} 领取失败:{err}', { label, err: outcome.error || outcome.status });
       }
     } catch (err) {
       results.push({ accountId: account.id, account: label, provider: account.provider, status: 'failed', error: err?.message || String(err) });
       account.lastResult = { status: 'failed', message: err?.message || String(err), amount: 0, at: new Date().toISOString() };
-      logger.error('CHECKIN', `${label} 异常：${err?.message || err}`);
+      logger.error('CHECKIN', '{label} 异常:{err}', { label, err: err?.message || err });
     }
   }
 
@@ -322,7 +323,11 @@ async function runTickInner(opts) {
   const summary = `签到汇总：成功 ${claimed.length}（+${totalCredits} Credits）、已领 ${already}`
     + (limited.length ? `、本机限领 ${limited.length}` : '')
     + `、无活动 ${none.length}、失败 ${failed.length}`;
-  logger.info('CHECKIN', summary);
+  // 日志走 key+args（按界面语言实时重渲染）；summary 原文继续供面板/状态展示
+  logger.info('CHECKIN', limited.length
+    ? '签到汇总：成功 {ok}（+{credits} Credits）、已领 {al}、本机限领 {limited}、无活动 {none}、失败 {fail}'
+    : '签到汇总：成功 {ok}（+{credits} Credits）、已领 {al}、无活动 {none}、失败 {fail}',
+    { ok: claimed.length, credits: totalCredits, al: already, limited: limited.length, none: none.length, fail: failed.length });
   lastTick = { at: new Date().toISOString(), summary };
   return { results, summary };
 }
@@ -339,19 +344,19 @@ export function startScheduler() {
       try {
         await runCheckinTick({ skipIfCheckedToday: true, includeZcode: false });
       } catch (err) {
-        logger.error('CHECKIN', `定时轮失败：${err?.message || err}`);
+        logger.error('CHECKIN', '定时轮失败:{err}', { err: err?.message || err });
       } finally {
         scheduleNext();
       }
     }, delay);
     timerHandle.unref?.();
-    logger.info('CHECKIN', `定时签到已启动，下次执行约 ${Math.round(delay / 60000)} 分钟后`);
+    logger.info('CHECKIN', '定时签到已启动,下次执行约 {min} 分钟后', { min: Math.round(delay / 60000) });
   };
   scheduleNext();
   syncZcodeScheduler();
   setTimeout(() => {
     runCheckinTick({ skipIfCheckedToday: true, includeZcode: false }).catch((err) =>
-      logger.error('CHECKIN', `引导轮失败：${err?.message || err}`));
+      logger.error('CHECKIN', '引导轮失败:{err}', { err: err?.message || err }));
   }, 15000).unref?.();
 }
 

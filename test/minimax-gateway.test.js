@@ -1,5 +1,5 @@
 /**
- * minimaxGateway — 拉黑与复活：凭据指纹黑名单、刷新成功自动复活、重新授权自动复活、开关清理。
+ * minimaxGateway — 粘性主力选型、拉黑与复活：凭据指纹黑名单、刷新成功自动复活、重新授权自动复活、开关清理。
  * 回归场景：设备码重新授权后面板显示「凭据有效」，但进程内旧黑名单仍把账号挡在
  * 轮转队列外，网关 503「凭据已失效」，且开关重开也无效（1.3.0 用户报告）。
  * fetch 全部注入，无网络；每个用例前重置全部模块态。
@@ -105,19 +105,17 @@ const lastCompletionAccount = (tokenOf) => {
   return tokenOf(tok) || null;
 };
 
-test('加权轮询：剩余积分多的账号分到更多请求', async () => {
+test('粘性主力：积分接近不换号，差距超过阈值才切换', async () => {
   await resetState();
-  await seedAccount('rich', { name: '多积分', token: 'tok-rich' });
-  await seedAccount('poor', { name: '少积分', token: 'tok-poor' });
-  // 两个账号额度不同：rich 9000 / poor 1000 → 期望 9:1
-  let quotaCalls = 0;
+  await seedAccount('a1', { name: '一号', token: 'tok-a1' });
+  await seedAccount('a2', { name: '二号', token: 'tok-a2' });
+  const quota = { 'tok-a1': 2000, 'tok-a2': 2000 };
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (url, init = {}) => {
     const u = String(url);
     if (u.includes('/commerce/get_membership_info')) {
       const auth = (init.headers && init.headers.Authorization) || '';
-      const remaining = auth.includes('tok-rich') ? 9000 : 1000;
-      quotaCalls += 1;
+      const remaining = quota[auth.replace(/^Bearer /, '')] ?? 0;
       return {
         ok: true, status: 200, headers: { get: () => 'application/json' }, text: async () => '',
         json: async () => ({ base_resp: { status_code: 0 }, op_credit_summary: { total_remaining_amount: remaining, free_remaining_amount: remaining, purchased_remaining_amount: 0 } }),
@@ -127,19 +125,36 @@ test('加权轮询：剩余积分多的账号分到更多请求', async () => {
     return realFetch(url, init);
   };
 
-  const tokenOf = (tok) => (tok === 'tok-rich' ? '多积分' : tok === 'tok-poor' ? '少积分' : null);
-  const counts = { '多积分': 0, '少积分': 0 };
-  const N = 20;
-  for (let i = 0; i < N; i++) {
+  const tokenOf = (tok) => (tok === 'tok-a1' ? '一号' : tok === 'tok-a2' ? '二号' : null);
+  const fire = async () => {
     upstreamQueue.push(msgOk());
     const res = captureRes();
     await gw.handleGateway(fakeReq('POST', '{}'), res);
-    const who = lastCompletionAccount(tokenOf);
-    counts[who] = (counts[who] || 0) + 1;
-  }
-  // 权重 9:1，20 次里 rich 应明显多于 poor（容差宽一点，只验证趋势）
-  assert.ok(counts['多积分'] > counts['少积分'], `期望多积分更多请求，实际 ${JSON.stringify(counts)}`);
-  assert.equal(quotaCalls, 2, '每个账号的额度只应查询一次（进程内缓存）');
+    assert.equal(res.status, 200, res.body);
+    return lastCompletionAccount(tokenOf);
+  };
+
+  // 积分相同：首号（按种入顺序）成为主力，连续 6 个请求不再换号
+  const first = await fire();
+  assert.equal(first, '一号');
+  for (let i = 0; i < 5; i++) {
+    assert.equal(await fire(), '一号', '积分接近时主力应保持不变');
+  };
+
+  // 二号积分大幅领先（5000 vs 2000，差 3000 > 500 阈值）→ 切换主力
+  quota['tok-a2'] = 5000;
+  gw.__expireWeightsForTests();
+  assert.equal(await fire(), '二号', '差距超过阈值应切换主力');
+
+  // 一号追近（5400 vs 5000，差 400 < 540 阈值）→ 不换
+  quota['tok-a1'] = 5400;
+  gw.__expireWeightsForTests();
+  assert.equal(await fire(), '二号', '差距未超过阈值应保持粘性');
+
+  // 一号大幅反超（6500 vs 5000，差 1500 > 650 阈值）→ 切换
+  quota['tok-a1'] = 6500;
+  gw.__expireWeightsForTests();
+  assert.equal(await fire(), '一号', '大幅反超应切换主力');
 });
 
 test('401 且刷新失败 → 拉黑；下一请求 503「凭据已失效」', async () => {

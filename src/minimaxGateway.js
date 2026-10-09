@@ -5,7 +5,7 @@
  * （上游为标准 Anthropic Messages 协议：https://agent.minimax.cn/mavis/api/v1/llm/v1/messages）
  *
  * 架构特性：
- * 1. 账号多路轮换（provider=minimax）：自动在有效账号间轮询
+ * 1. 多账号粘性主力（provider=minimax）：按剩余积分选主力并保持，出错/限流/凭据失效自动切下一个
  * 2. 自动刷新与重试：401 凭据失效时自动走 OAuth refresh 换取新 token 并重试，彻底失效才拉黑
  * 3. 429 限流保护：429 限流自动冷却 5 分钟
  * 4. 局域网访问控制：继承相同的白名单与回环检查机制
@@ -18,6 +18,7 @@ import { refreshMiniMaxToken, fetchMiniMaxQuota, MINIMAX_MESSAGES_URL } from './
 import { refreshContext } from './accounts.js';
 import { gatewayHostSuggestion } from './tenrouter.js';
 import { logger, summarizeAttempts } from './logger.js';
+import { t } from './i18n.js';
 
 const ACCOUNT_COOLING_MS = 5 * 60_000;
 const MAX_ATTEMPTS = 5;
@@ -45,7 +46,8 @@ export async function setGatewayEnabled(v) {
 
 const cooling = new Map();  // accountId → 冷却截止(ms)
 const dead = new Map();     // accountId → 拉黑时的凭据指纹（指纹变化 = 已重新授权/刷新，自动复活）
-const weights = new Map();  // accountId → 上次查到的剩余积分（0 时按保底权重轮询，保持可用性）
+const weights = new Map();  // accountId → { w: 剩余积分权重, at: 查询时刻 }(查询失败时保留旧快照)
+const WEIGHT_TTL_MS = 10 * 60_000;  // 权重超过该时长重新查询额度,让用量变化能反映到分流上
 
 export const stats = {
   lastCallAt: null,
@@ -80,43 +82,50 @@ function isDead(account) {
   if (fp === credFingerprint(account)) return true;
   dead.delete(account.id);
   cooling.delete(account.id);
-  logger.info('MINIMAX-GW', `${account.name || account.uid || account.id} 凭据已更新，解除拉黑`);
+  logger.info('MINIMAX-GW', '{label} 凭据已更新,解除拉黑', { label: account.name || account.uid || account.id });
   return false;
 }
+
+/** 测试专用：仅让权重快照过期（保留粘性/拉黑状态），用于模拟额度变化 */
+export function __expireWeightsForTests() { weights.clear(); }
 
 /** 测试专用：清空进程内状态 */
 export function __resetForTests() {
   cooling.clear();
   dead.clear();
   weights.clear();
-  swrr.clear();
+  stickyId = null;
   stats.lastCallAt = null;
   stats.calls = 0;
   stats.lastAccount = null;
 }
 
-/** 账号权重：剩余积分（上次快照，避免每个请求都打额度接口）。查不到用保底权重。 */
+/** 账号权重:剩余积分(带 TTL 的快照,避免每个请求都打额度接口)。查询失败时保留上次快照权重。 */
 async function accountWeight(a) {
-  if (!weights.has(a.id)) {
-    try {
-      const q = await fetchMiniMaxQuota(a, refreshContext(a, (m) => logger.info('MINIMAX-GW', `${a.name || a.uid || a.id} ${m}`)));
-      const remaining = Number(q?.remaining) || 0;
-      weights.set(a.id, Math.max(MIN_WEIGHT, remaining));
-    } catch {
-      weights.set(a.id, MIN_WEIGHT);
-    }
+  const hit = weights.get(a.id);
+  if (hit && Date.now() - hit.at < WEIGHT_TTL_MS) return hit.w;
+  let w = hit?.w ?? MIN_WEIGHT;
+  try {
+    const q = await fetchMiniMaxQuota(a, refreshContext(a, (m) => logger.info("MINIMAX-GW", t('{label} {msg}', { label: a.name || a.uid || a.id, msg: m }))));
+    w = Math.max(MIN_WEIGHT, Number(q?.remaining) || 0);
+  } catch {
+    // 额度查询失败时保留上次快照权重：一次网络抖动不该把主力账号踢成保底权重、引发主力来回切换
   }
-  return weights.get(a.id);
+  weights.set(a.id, { w, at: Date.now() });
+  return w;
 }
 
-// SWRR 状态：accountId → 当前有效权重（每次调度累加，被选中的减去总权重）
-const swrr = new Map();
-function ensureSwrr(id) { if (!swrr.has(id)) swrr.set(id, 0); }
+// ── 粘性主力选型 ──
+// 上次的主力账号仍健康时继续用它：两个账号积分接近时若逐请求轮换，会在两账号间
+// 交替刷屏（「一主一备」困扰的来源，用户期望「出错/积分拉开差距才换」）；
+// 仅当另一账号剩余积分明显更多，或主力被拉黑/冷却，才主动换主力。
+let stickyId = null;
+const STICKY_MARGIN_RATIO = 0.1; // 积分领先超过 10% 才换
+const STICKY_MARGIN_ABS = 50;    // 且绝对差超过 50 积分
 
 /**
- * 可参与轮转的 MiniMax 账号队列，按剩余积分加权排序（SWRR）。
- * 返回 [账号, ...]：首个为本次该分到的账号；MAX_ATTEMPTS 只取队列头部用于重试，
- * 所以这里直接把权重最高的放最前，其余按有效权重降序兜底。
+ * 可用账号队列：队首 = 本次主力账号，其余按剩余积分降序作重试兜底。
+ * 拉黑/冷却在挂载时剔除；扭转主力粘性见上方说明。
  */
 async function rotationQueue() {
   const all = (await loadAccounts()).filter((a) => a.provider === 'minimax');
@@ -126,24 +135,23 @@ async function rotationQueue() {
     if (isDead(a)) continue;
     if ((cooling.get(a.id) || 0) > now) continue;
     if (!a.token) continue;
-    ensureSwrr(a.id);
-    const w = await accountWeight(a);
-    swrr.set(a.id, (swrr.get(a.id) || 0) + w);
-    ready.push({ account: a, weight: w });
+    ready.push({ account: a, weight: await accountWeight(a) });
   }
   if (!ready.length) return [];
 
-  // 有效权重最大者中签（SWRR 的「选出 current 最大」步）
-  let pick = ready[0];
-  for (const it of ready) if ((swrr.get(it.account.id) || 0) > (swrr.get(pick.account.id) || 0)) pick = it;
-  const total = ready.reduce((s, it) => s + it.weight, 0);
-  swrr.set(pick.account.id, (swrr.get(pick.account.id) || 0) - total);
-
-  // 队首 = 本次中签账号；其余按剩余积分降序（重试兜底顺序）
-  const rest = ready.filter((it) => it.account.id !== pick.account.id)
-    .sort((x, y) => y.weight - x.weight)
-    .map((it) => it.account);
-  return [pick.account, ...rest];
+  ready.sort((x, y) => y.weight - x.weight);
+  let head = ready[0];
+  const sticky = stickyId ? ready.find((it) => it.account.id === stickyId) : null;
+  if (sticky && sticky.account.id !== head.account.id) {
+    const margin = Math.max(STICKY_MARGIN_ABS, head.weight * STICKY_MARGIN_RATIO);
+    if (head.weight - sticky.weight < margin) head = sticky;
+  }
+  if (stickyId && stickyId !== head.account.id) {
+    const from = all.find((a) => a.id === stickyId);
+    logger.info('MINIMAX-GW', '主力账号 {from} → {to}（剩余积分领先）', { from: from?.name || from?.uid || stickyId, to: head.account.name || head.account.uid || head.account.id });
+  }
+  stickyId = head.account.id;
+  return [head.account, ...ready.filter((it) => it.account.id !== head.account.id).map((it) => it.account)];
 }
 
 async function unavailableReason() {
@@ -284,12 +292,12 @@ export async function handleGateway(req, res) {
       upstream = await sendUpstream(activeToken);
       // 如果 401 且账号有 refreshToken，尝试就地刷新一次并重试
       if (upstream.status === 401 && account.refreshToken) {
-        logger.info('MINIMAX-GW', `${label} 收到 401，尝试刷新凭据…`);
+        logger.info('MINIMAX-GW', '{label} 收到 401,尝试刷新凭据...', { label });
         try {
           // 本机导入账号：刷新前对齐 ~/.minimax auth.json 里客户端最新的 refreshToken，避免 invalid_grant
           try {
             const { alignMiniMaxFromLocal } = await import('./minimaxLocal.js');
-            if (alignMiniMaxFromLocal(account, (m) => logger.info('MINIMAX-GW', `${label} ${m}`))) {
+            if (alignMiniMaxFromLocal(account, (m) => logger.info('MINIMAX-GW', '{label} {msg}', { label, msg: m }))) {
               activeToken = account.token;
             }
           } catch {}
@@ -313,7 +321,7 @@ export async function handleGateway(req, res) {
           cooling.delete(account.id);
           upstream = await sendUpstream(activeToken);
         } catch (refErr) {
-          logger.warn('MINIMAX-GW', `${label} 凭据刷新失败: ${refErr.message}`);
+          logger.warn('MINIMAX-GW', '{label} 凭据刷新失败: {err}', { label, err: refErr.message });
         }
       }
     } catch (e) {
@@ -324,7 +332,11 @@ export async function handleGateway(req, res) {
 
     if (upstream.ok) {
       stats.lastAccount = label;
-      logger.info('MINIMAX-GW', `${label} 补全成功 (${upstream.status})`);
+      logger.info('MINIMAX-GW', '{label} 补全成功 ({status})', { label, status: upstream.status });
+      try {
+        const meta = JSON.parse(rawBody);
+        logger.debug('MINIMAX-GW', '请求详情：model={model} stream={stream} ua={ua}', { model: meta?.model || '-', stream: meta?.stream ? 'y' : 'n', ua: req.headers?.['user-agent'] || '-' });
+      } catch {}
 
       // 透传头（SSE / JSON）
       const forwardHeaders = {
@@ -347,7 +359,7 @@ export async function handleGateway(req, res) {
           }
         } catch (e) {
           // 客户端主动断开（点停止/换一句）属正常收尾，不是故障
-          logger.debug('MINIMAX-GW', `流式转发中断：${e.message}`);
+          logger.debug('MINIMAX-GW', '流式转发中断:{err}', { err: e.message });
         }
         res.end();
       } else {
@@ -362,13 +374,13 @@ export async function handleGateway(req, res) {
     if (upstream.status === 401) {
       markDead(account);
       attempted.push({ account: label, ok: false, error: 'Token 彻底失效 (401)，拉黑' });
-      logger.info('MINIMAX-GW', `${label} 凭据失效，拉黑`);
+      logger.info('MINIMAX-GW', '{label} 凭据失效,拉黑', { label });
       continue;
     }
     if (upstream.status === 429) {
       markCooling(account.id, ACCOUNT_COOLING_MS);
       attempted.push({ account: label, ok: false, error: '429 限流，冷却 5 分钟' });
-      logger.info('MINIMAX-GW', `${label} 429 限流，冷却 5 分钟`);
+      logger.info('MINIMAX-GW', '{label} 429 限流,冷却 5 分钟', { label });
       continue;
     }
 
@@ -377,7 +389,7 @@ export async function handleGateway(req, res) {
 
   // 全部重试失败
   const failedDetail = summarizeAttempts(attempted);
-  logger.warn('MINIMAX-GW', `全部 ${attempted.length} 次尝试失败${failedDetail ? '：' + failedDetail : ''}（下一请求自动重试）`);
+  logger.warn('MINIMAX-GW', '全部 {n} 次尝试失败{detail}(下一请求自动重试)', { n: attempted.length, detail: failedDetail ? ':' + failedDetail : '' });
   res.writeHead(502, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({
     error: '所有 MiniMax 账号均调用失败',

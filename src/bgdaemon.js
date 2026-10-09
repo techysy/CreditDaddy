@@ -24,6 +24,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dataDir } from './store.js';
 import { logger } from './logger.js';
+import { t } from './i18n.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI_ENTRY = path.join(__dirname, '..', 'bin', 'creditdaddy.js');
@@ -65,7 +66,7 @@ export async function writeRuntime(rec) {
     await fs.writeFile(file, JSON.stringify(rec, null, 2), { mode: 0o600 });
     return true;
   } catch (e) {
-    logger.warn('BG', `写状态文件失败：${e?.message || e}`);
+        logger.warn('BG', '写状态文件失败:{err}', { err: e?.message || e });
     return false;
   }
 }
@@ -326,7 +327,7 @@ export async function stopDaemon() {
   // 必须等到 pid 真的没了再报 stopped，否则调用方紧接着 isAlive(pid) 仍读到 true。
   const dead = await waitPidDead(rec.pid);
   await clearRuntime();
-  if (!free) logger.warn('BG', `端口 ${rec.port} 迟迟没有释放，进程可能仍在收尾`);
-  if (!dead) logger.warn('BG', `进程 ${rec.pid} 在 ${Math.round(STOP_TIMEOUT_MS / 1000)}s 内没有退出干净`);
+  if (!free) logger.warn('BG', '端口 {port} 迟迟没有释放,进程可能仍在收尾', { port: rec.port });
+  if (!dead) logger.warn('BG', '进程 {pid} 在 {sec}s 内没有退出干净', { pid: rec.pid, sec: Math.round(STOP_TIMEOUT_MS / 1000) });
   return { stopped: true, rec, portFree: free, pidDead: dead };
 }

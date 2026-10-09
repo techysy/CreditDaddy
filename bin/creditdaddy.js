@@ -72,7 +72,7 @@ function installShutdown({ server, background }) {
   const shutdown = async (signal) => {
     if (closing) return;
     closing = true;
-    try { logger.info('CLI', `收到 ${signal}，正在退出…`); } catch {}
+    try { logger.info('CLI', '收到 {signal},正在退出...', { signal }); } catch {}
     try { (await import('../src/checkin.js')).stopScheduler(); } catch {}
     try { await server?.close(); } catch {}
     if (background) {
@@ -109,12 +109,12 @@ async function main() {
           startedAt: new Date().toISOString(),
           version: APP_VERSION,
         });
-        logger.info('CLI', '已在后台运行');
+        logger.info('CLI', '已在后台运行', {});
       }
       const { startScheduler } = await import('../src/checkin.js');
       startScheduler();
       installShutdown({ server, background });
-      logger.info('CLI', background ? '按 creditdaddy stop 停止' : '按 Ctrl+C 停止');
+      logger.info('CLI', background ? '按 creditdaddy stop 停止' : '按 Ctrl+C 停止', {});
       break;
     }
     case 'start': {
@@ -233,20 +233,27 @@ async function main() {
     }
     case 'export': {
       const { loadAccounts } = await import('../src/store.js');
-      const { exportAccounts, TransferError } = await import('../src/transfer.js');
+      const { exportAccounts, buildExportPayload, TransferError } = await import('../src/transfer.js');
       const out = args[1] && !args[1].startsWith('--') ? args[1] : 'creditdaddy-secure-backup.json';
       const password = flag('--password');
       if (!password) { console.error('导出账号必须设置加密口令：creditdaddy export [file.json] --password 口令（至少 4 位）'); process.exit(1); }
       const provider = args.includes('--cn') ? 'qoder-cn' : args.includes('--intl') ? 'qoder' : undefined;
       const { writeFileSync } = await import('node:fs');
-      let blob;
+      let blob, count;
       try {
-        blob = exportAccounts(await loadAccounts(), { password, provider });
+        const accounts = await loadAccounts();
+        blob = exportAccounts(accounts, { password, provider });
+        count = buildExportPayload(accounts, { provider }).accounts.length;
       } catch (e) {
+        // 只 warn 后自然退出（exitCode），不 process.exit——硬退会吞掉归档流里还没落盘的那行
+        logger.warn('CLI', '导出失败:{err}', { err: e instanceof TransferError ? e.code : e.message });
         console.error(e instanceof TransferError ? `导出失败：${e.message}` : e.message);
-        process.exit(1);
+        process.exitCode = 1;
+        break;
       }
       writeFileSync(out, JSON.stringify(blob, null, 2), { mode: 0o600 });
+      // 与 daemon /api/export 同口径落审计日志（写盘成功后才记）；只记范围与条数，不记口令/token
+      logger.info('CLI', '导出账号({scope}):{count} 个 → {out}', { scope: provider ? provider : '全部账号', count, out });
       console.log('✓ 已导出加密文件（10router 可直接导入）：', out);
       break;
     }
@@ -255,9 +262,22 @@ async function main() {
       if (!file) { console.error('用法: creditdaddy import <file.json>'); process.exit(1); }
       const { readFileSync } = await import('node:fs');
       const { importAccounts } = await import('../src/accounts.js');
-      const { parseImport } = await import('../src/transfer.js');
-      const parsed = parseImport(JSON.parse(readFileSync(file, 'utf8')), { password: flag('--password') });
+      const { parseImport, TransferError } = await import('../src/transfer.js');
+      let parsed;
+      try {
+        parsed = parseImport(JSON.parse(readFileSync(file, 'utf8')), { password: flag('--password') });
+      } catch (e) {
+        if (e instanceof TransferError) {
+          // 同上：warn 后自然退出，硬退 process.exit 会丢这行审计日志
+          logger.warn('CLI', '导入失败({file}):{code}', { file, code: e.code });
+          console.error(`导入失败：${e.message}`);
+          process.exitCode = 1;
+          break;
+        }
+        throw e;
+      }
       const r = await importAccounts(parsed.accounts);
+      logger.info('CLI', '导入完成({source}):新增 {added},续期 {updated},跳过 {skipped}', { source: parsed.source, added: r.added, updated: r.updated, skipped: r.skipped + parsed.skipped });
       console.log(`✓ 导入完成（来源 ${parsed.source}）：新增 ${r.added}，续期 ${r.updated}，跳过 ${r.skipped + parsed.skipped}`);
       break;
     }

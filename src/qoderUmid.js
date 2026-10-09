@@ -18,6 +18,7 @@ import zlib from 'node:zlib';
 import { execFile } from 'node:child_process';
 import { dataDir } from './store.js';
 import { logger } from './logger.js';
+import { t } from './i18n.js';
 
 const PKG = '@qoder-ai/qodercli';
 const REGISTRIES = ['https://registry.npmmirror.com', 'https://registry.npmjs.org'];
@@ -154,7 +155,7 @@ async function doInstall() {
         throw new Error(`镜像版本（${meta.version}）与 npmjs（${authority.version}）不一致`);
       }
       const expected = authority && authority.version === meta.version ? authority.integrity : integrity;
-      logger.info('UMID', `下载 ${PKG}@${meta.version}（${registry}）`);
+            logger.info('UMID', '下载 {pkg}@{version}({registry})', { pkg: PKG, version: meta.version, registry });
       const tgz = await fetchBuf(tarball);
       if (!checkIntegrity(tgz, expected)) throw new Error('下载内容与 npm integrity 不一致');
       const bundle = tarEntry(zlib.gunzipSync(tgz), BUNDLE_ENTRY);
@@ -173,11 +174,11 @@ async function doInstall() {
         installedAt: new Date().toISOString(),
       };
       fs.writeFileSync(manifestPath(), JSON.stringify(manifest, null, 2), { mode: 0o600 });
-      logger.info('UMID', `设备身份组件已安装：qodercli ${meta.version} / ${process.arch}`);
+            logger.info('UMID', '设备身份组件已安装:qodercli {version} / {arch}', { version: meta.version, arch: process.arch });
       return { ...manifest, path: binPath() };
     } catch (e) {
       errors.push(`${registry}：${e.message}`);
-      logger.warn('UMID', `从 ${registry} 安装失败：${e.message}`);
+            logger.warn('UMID', '从 {registry} 安装失败:{err}', { registry, err: e.message });
     }
   }
   throw new Error('设备身份组件安装失败 —— ' + errors.join('；'));

@@ -17,6 +17,7 @@ import {
 import { getRiskIdentity, clientVersion, machineOs, machineHostname, machineId } from './qoderApp.js';
 import { fetchJsonRace } from './zcodeClient.js';
 import { logger } from './logger.js';
+import { t } from './i18n.js';
 
 export function apiBase(provider) {
   return provider === 'qoder-cn' ? CN_OPENAPI_BASE : OPENAPI_BASE;
@@ -203,7 +204,7 @@ export async function checkinOne(account) {
 
     // 2) 带客户端身份 + 设备风控身份重新拉取（国际版只有这样才会出现每日积分活动）
     const { headers, risk, riskError } = await buildCampaignHeaders(account, token, uid);
-    if (riskError) logger.debug('CHECKIN', `${label}：${riskError}`);
+    if (riskError) logger.debug('CHECKIN', '{label}:{err}', { label, err: riskError });
     const { campaigns, uid: uid2 } = (risk || !first) ? await getCampaigns(apiBase(account.provider), headers) : first;
     uid = uid2 || uid;
 

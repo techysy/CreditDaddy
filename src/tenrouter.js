@@ -13,6 +13,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { dataDir } from './store.js';
 import { logger } from './logger.js';
+import { t } from './i18n.js';
 import { SOURCES, SOURCE_LABEL, collectSource, selectSince, detectSources } from './usageSync.js';
 
 const FILE = () => path.join(dataDir(), 'tenrouter.json');
@@ -252,7 +253,12 @@ async function doSync({ dryRun, trigger }) {
       : `同步完成：新增 ${imported} 行，跳过 ${skippedDup} 行重复`;
   if (!dryRun) {
     await withConfig((cc) => { cc.lastSync = { at: new Date().toISOString(), trigger, summary, results }; });
-    (failed.length ? logger.warn : logger.info).call(logger, '10R', summary);
+    // 日志走 key+args（按界面语言实时重渲染）；summary 原文继续供面板展示
+    const logTpl = failed.length
+      ? '同步完成：新增 {imported} 行，跳过 {skipped} 行重复，{failed} 个来源失败（{detail}）'
+      : '同步完成：新增 {imported} 行，跳过 {skipped} 行重复';
+    (failed.length ? logger.warn : logger.info).call(logger, '10R', logTpl,
+      { imported, skipped: skippedDup, failed: failed.length, detail: failed.map((r) => r.label + '：' + r.error).join('；') });
   }
   return { summary, results };
 }
@@ -263,7 +269,7 @@ export function startUsageSyncScheduler() {
   const tick = () => {
     const c = loadConfig();
     if (!isConfigured(c) || !c.sync.enabled) return;
-    runUsageSync({ trigger: 'auto' }).catch((e) => logger.warn('10R', '自动同步失败：' + e.message));
+        runUsageSync({ trigger: 'auto' }).catch((e) => logger.warn('10R', '自动同步失败:{err}', { err: e.message }));
   };
   setTimeout(tick, 60_000).unref?.();   // 启动 1 分钟后先跑一轮
   timer = setInterval(tick, SYNC_INTERVAL_MS);

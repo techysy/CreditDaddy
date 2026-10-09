@@ -1,6 +1,6 @@
 {
   "name": "creditdaddy",
-  "version": "1.3.3",
+  "version": "1.4.0",
   "description": "CreditDaddy — Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae / MiniMax 多账号本地管理与每日积分自动签到助手",
   "homepage": "https://github.com/techysy/CreditDaddy",
   "repository": {
@@ -25,5 +25,8 @@
     "test": "node --test",
     "release-check": "bash scripts/release-check.sh"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "opencc-js": "1.4.2"
+  }
 }

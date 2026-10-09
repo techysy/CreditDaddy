@@ -12,6 +12,7 @@
  */
 
 import { logger } from './logger.js';
+import { t } from './i18n.js';
 import { fetchClaimPlans, claimPlan, fetchCaptchaConfig } from './zcodeClient.js';
 
 // 桌面版（Electron 主进程）注册的隐藏窗口验证码实现；NAS / CLI 为 null（走「需手动领取」分支）
@@ -32,7 +33,7 @@ export async function zcodeAutoClaim(account) {
   try {
     plans = (await fetchClaimPlans(account)).plans;
   } catch (e) {
-    logger.debug('ZCODE-CLAIM', `${label} 活动查询失败：${e.message}`);
+        logger.debug('ZCODE-CLAIM', '{label} 活动查询失败:{err}', { label, err: e.message });
     return null;
   }
   if (!plans.length) return null;
@@ -48,17 +49,17 @@ export async function zcodeAutoClaim(account) {
       const r = await claimPlan(account, plan.planId, {});
       claims.push({ plan: planName, via: 'direct', ok: true });
       anySuccess = true;
-      logger.info('ZCODE-CLAIM', `${label} 已领取「${planName}」（免验证码）${grantsText(plan) ? '：' + grantsText(plan) : ''}`);
+            logger.info('ZCODE-CLAIM', '{label} 已领取「{plan}」(免验证码){grants}', { label, plan: planName, grants: grantsText(plan) ? ':' + grantsText(plan) : '' });
       continue;
     } catch (e) {
       if (e.code === 1003) {
         claims.push({ plan: planName, ok: true, already: true });
-        logger.info('ZCODE-CLAIM', `${label}「${planName}」已领取过`);
+                logger.info('ZCODE-CLAIM', '{label}「{plan}」已领取过', { label, plan: planName });
         continue;
       }
       if (e.code !== 3007 && e.code !== 3001) {
         claims.push({ plan: planName, ok: false, message: e.message });
-        logger.warn('ZCODE-CLAIM', `${label} 领取「${planName}」失败：${e.message}`);
+                logger.warn('ZCODE-CLAIM', '{label} 领取「{plan}」失败:{err}', { label, plan: planName, err: e.message });
         continue;
       }
     }
@@ -66,7 +67,7 @@ export async function zcodeAutoClaim(account) {
     if (!captchaProvider) {
       needManual = true;
       claims.push({ plan: planName, ok: false, needManual: true });
-      logger.info('ZCODE-CLAIM', `${label}「${planName}」需要验证码，本环境无法自动通过，请在面板手动领取`);
+            logger.info('ZCODE-CLAIM', '{label}「{plan}」需要验证码,本环境无法自动通过,请在面板手动领取', { label, plan: planName });
       continue;
     }
     try {
@@ -76,11 +77,11 @@ export async function zcodeAutoClaim(account) {
       await claimPlan(account, plan.planId, { captchaParam, region });
       claims.push({ plan: planName, via: 'captcha', ok: true });
       anySuccess = true;
-      logger.info('ZCODE-CLAIM', `${label} 已领取「${planName}」（静默验证码）${grantsText(plan) ? '：' + grantsText(plan) : ''}`);
+            logger.info('ZCODE-CLAIM', '{label} 已领取「{plan}」(静默验证码){grants}', { label, plan: planName, grants: grantsText(plan) ? ':' + grantsText(plan) : '' });
     } catch (e2) {
       needManual = true;
       claims.push({ plan: planName, ok: false, needManual: true, message: e2.message });
-      logger.warn('ZCODE-CLAIM', `${label}「${planName}」验证码未完成：${e2.message}（可在面板手动领取）`);
+            logger.warn('ZCODE-CLAIM', '{label}「{plan}」验证码未完成:{err}(可在面板手动领取)', { label, plan: planName, err: e2.message });
     }
   }
 

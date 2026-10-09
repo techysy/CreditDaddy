@@ -14,6 +14,7 @@
 
 import crypto from 'node:crypto';
 import { PROVIDERS, productOf } from './constants.js';
+import { inspectToken } from './workbuddyClient.js';
 
 export const TRANSFER_FORMAT = '10router-oauth-secure-v1';
 export const EXPORT_FORMAT = 'creditdaddy-accounts';
@@ -155,9 +156,17 @@ export function parseImport(data, { password } = {}) {
   const accounts = [];
   let skipped = 0;
   for (const item of list) {
-    // 显式标注了其他提供商（如 10router 的 cursor 账号）→ 跳过；未标注才用文件级 provider
-    const provider = item?.provider ? toProvider(item.provider) : fallbackProvider;
-    const token = item?.accessToken || item?.access_token || item?.token || item?.apiKey;
+    // 兼容 workbuddy-switch 导出的明文备份文件（没有 provider 字段，但有 domain / auth_raw / 顶层 access_token）
+    const token = item?.accessToken || item?.access_token || item?.token || item?.apiKey || item?.auth_raw?.accessToken || item?.auth_raw?.auth?.accessToken;
+    let provider = item?.provider ? toProvider(item.provider) : fallbackProvider;
+    let isWbSwitch = false;
+    if (!provider && typeof token === 'string' && token.trim()) {
+      const inspected = inspectToken(token);
+      if (inspected.provider) {
+        provider = inspected.provider;
+        isWbSwitch = true;
+      }
+    }
     if (!provider || typeof token !== 'string' || !token.trim()) { skipped++; continue; }
     const psd = item.providerSpecificData || {};
     const email = typeof item.email === 'string' && item.email.includes('@') && !/^qoder(-cn)?-user-/.test(item.email) ? item.email : null;
@@ -167,15 +176,44 @@ export function parseImport(data, { password } = {}) {
       ? { cookie: psd.creditDaddyWebSession.cookie, capturedAt: psd.creditDaddyWebSession.capturedAt || null } : null;
     const meta = { ...(item.meta && typeof item.meta === 'object' ? item.meta : {}) };
     if (webSession && !meta.qoderWebSession) meta.qoderWebSession = webSession;
+
+    // 对 workbuddy-switch 导出还原 session 结构，使之支持在 CreditDaddy 面板一键切换
+    if (isWbSwitch) {
+      if (source === 'creditdaddy') source = 'wb-switch';
+      if (item.domain && !meta.domain) meta.domain = item.domain;
+      if (item.enterpriseId && !meta.enterpriseId) meta.enterpriseId = item.enterpriseId;
+      if (item.refreshExpiresAt && !meta.refreshExpiresAt) {
+        meta.refreshExpiresAt = Number.isFinite(item.refreshExpiresAt) ? new Date(item.refreshExpiresAt).toISOString() : String(item.refreshExpiresAt);
+      }
+      if (!meta.session) {
+        const accountObj = item.auth_raw?.account || item.profile_raw || {
+          uid: item.uid || null,
+          nickname: item.nickname || item.name || null,
+          phoneNumber: item.phoneNumber || item.phone || null,
+          enterpriseId: item.enterpriseId || null,
+          type: 'personal',
+        };
+        const authObj = item.auth_raw?.auth || (item.auth_raw && item.auth_raw.accessToken ? item.auth_raw : { domain: item.domain });
+        meta.session = {
+          account: accountObj,
+          auth: authObj,
+          accounts: Array.isArray(item.auth_raw?.accounts) ? item.auth_raw.accounts : [],
+          ...(Array.isArray(item.auth_raw?.allAccounts) ? { allAccounts: item.auth_raw.allAccounts } : {}),
+        };
+      }
+    }
+
+    const expiresAt = item.expiresAt ?? (item.expiresIn ? Date.now() + Number(item.expiresIn) * 1000 : null);
+
     accounts.push({
       provider,
       token,
       name: item.name || item.nickname || email || null,
       email,
       uid: item.uid || psd.userId || null,
-      refreshToken: item.refreshToken || item.refresh_token || null,
-      expiresAt: item.expiresAt ?? (item.expiresIn ? Date.now() + Number(item.expiresIn) * 1000 : null),
-      source: source === '10router' ? '10router' : 'import',
+      refreshToken: item.refreshToken || item.refresh_token || item.auth_raw?.refreshToken || item.auth_raw?.auth?.refreshToken || null,
+      expiresAt,
+      source: isWbSwitch ? 'wb-switch' : (source === '10router' ? '10router' : 'import'),
       ...(Object.keys(meta).length ? { meta } : {}),
     });
   }

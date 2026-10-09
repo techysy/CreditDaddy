@@ -40,6 +40,7 @@ import { loadAccounts, loadSettings, saveSettings, loadState, withState } from '
 import crypto from 'node:crypto';
 import os from 'node:os';
 import { logger, summarizeAttempts } from './logger.js';
+import { t } from './i18n.js';
 
 const PLAN_MESSAGES_URL = 'https://zcode.z.ai/api/v1/zcode-plan/anthropic/v1/messages';
 const CAPTCHA_CACHE_TTL_MS = 30_000;
@@ -108,7 +109,7 @@ function isDead(account) {
   if (fp === credFingerprint(account)) return true;
   dead.delete(account.id);
   cooling.delete(account.id);
-  logger.info('ZCODE-GW', `${account.name || account.uid || account.id} 凭据已更新，解除拉黑`);
+  logger.info('ZCODE-GW', '{label} 凭据已更新,解除拉黑', { label: account.name || account.uid || account.id });
   return false;
 }
 
@@ -487,7 +488,7 @@ export async function handleGateway(req, res) {
           if (isAuthError(200, text)) {
             markDead(account);
             attempted.push({ account: label, ok: false, error: 'JWT 已失效，账号拉黑' });
-            logger.warn('ZCODE-GW', `${label} JWT 失效（200 业务码）`);
+            logger.warn('ZCODE-GW', '{label} JWT 失效(200 业务码)', { label });
             continue;
           }
           if (isExhausted(200, text)) {
@@ -509,20 +510,20 @@ export async function handleGateway(req, res) {
             }
             continue;
           }
-          logger.warn('ZCODE-GW', `${label} 上游 200 业务错误：${formatUpstreamError(200, text)} (${text.slice(0, 80)})`);
+          logger.warn('ZCODE-GW', '{label} 上游 200 业务错误:{err} ({snippet})', { label, err: formatUpstreamError(200, text), snippet: text.slice(0, 80) });
           res.writeHead(502, { 'Content-Type': 'application/json' });
           res.end(text);
           return true;
         }
         // 真 Message（非流式）——原样转发
-        logger.debug('ZCODE-GW', `${label} 补全成功 (${upstream.status})`);
+        logger.debug('ZCODE-GW', '{label} 补全成功 ({status})', { label, status: upstream.status });
         stats.lastAccount = label;
         cooling.delete(account.id);
         res.writeHead(upstream.status, { 'Content-Type': ct || 'application/json', 'Cache-Control': 'no-cache' });
         res.end(text);
         return true;
       }
-      logger.debug('ZCODE-GW', `${label} 补全成功 (${upstream.status})`);
+      logger.debug('ZCODE-GW', '{label} 补全成功 ({status})', { label, status: upstream.status });
       stats.lastAccount = label;
       cooling.delete(account.id);
       // 注意：undici 已自动解压上游 gzip——body 是明文，绝不能再带 content-encoding 头
@@ -543,7 +544,7 @@ export async function handleGateway(req, res) {
         }
       } catch (e) {
         // 客户端主动断开（点停止/换一句）就会在这里结束——属正常收尾，不是故障，降为 debug
-        logger.debug('ZCODE-GW', `流式转发中断：${e.message}`);
+        logger.debug('ZCODE-GW', '流式转发中断:{err}', { err: e.message });
       }
       res.end();
       return true;
@@ -554,9 +555,9 @@ export async function handleGateway(req, res) {
     if (isCaptchaError(upstream.status, text)) {
       invalidateCaptcha();
       attempted.push({ account: label, ok: false, error: `验证码被拒（${upstream.status}）`, captcha: true });
-      logger.warn('ZCODE-GW', `${label} 验证码被拒 (${formatUpstreamError(upstream.status, text)})`);
+      logger.warn('ZCODE-GW', '{label} 验证码被拒 ({err})', { label, err: formatUpstreamError(upstream.status, text) });
       try { captcha = await ensureCaptcha(true); } catch (e) {
-        logger.warn('ZCODE-GW', `验证码重解失败：${e.message}`);
+        logger.warn('ZCODE-GW', '验证码重解失败:{err}', { err: e.message });
         captcha = null;
       }
       continue;
@@ -564,31 +565,31 @@ export async function handleGateway(req, res) {
     if (isAuthError(upstream.status, text)) {
       markDead(account);
       attempted.push({ account: label, ok: false, error: 'JWT 已失效，账号拉黑（重新登录后再导入）' });
-      logger.debug('ZCODE-GW', `${label} JWT 失效，拉黑`);
+      logger.debug('ZCODE-GW', '{label} JWT 失效,拉黑', { label });
       continue;
     }
     if (isExhausted(upstream.status, text)) {
       markCooling(account.id, 30 * 60_000);
       attempted.push({ account: label, ok: false, error: '额度不足/无资源包' });
-      logger.debug('ZCODE-GW', `${label} 额度不足 (${upstream.status})`);
+      logger.debug('ZCODE-GW', '{label} 额度不足 ({status})', { label, status: upstream.status });
       continue;
     }
     if (upstream.status === 429) {
       markCooling(account.id);
       attempted.push({ account: label, ok: false, error: '429 限流，冷却 5 分钟' });
-      logger.debug('ZCODE-GW', `${label} 429 限流，冷却 5 分钟`);
+      logger.debug('ZCODE-GW', '{label} 429 限流,冷却 5 分钟', { label });
       continue;
     }
     // 其他错误：友好化展示 + 原样透传给客户端
     const errorSummary = formatUpstreamError(upstream.status, text);
-    logger.warn('ZCODE-GW', `${label} 上游错误 ${upstream.status} — ${errorSummary}`);
+    logger.warn('ZCODE-GW', '{label} 上游错误 {status} — {summary}', { label, status: upstream.status, summary: errorSummary });
     res.writeHead(upstream.status, { 'Content-Type': 'application/json' });
     res.end(text);
     return true;
   }
 
   const failedDetail = summarizeAttempts(attempted);
-  logger.warn('ZCODE-GW', `全部 ${attempted.length} 次尝试失败${failedDetail ? '：' + failedDetail : ''}（下一请求自动重试）`);
+  logger.warn('ZCODE-GW', '全部 {n} 次尝试失败{detail}(下一请求自动重试)', { n: attempted.length, detail: failedDetail ? ':' + failedDetail : '' });
   res.writeHead(502, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ error: 'ZCode 网关：所有账号尝试均失败', attempts: attempted }));
   return true;

@@ -8,6 +8,7 @@ import fsSync from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import zlib from 'node:zlib';
+import { t } from './i18n.js';
 
 const ARCHIVE_RETENTION_DAYS = 7;   // .log.gz 归档保留天数，更早的自动清理
 
@@ -93,8 +94,9 @@ function cleanupArchive() {
   } catch {}
 }
 
-export function log(level, tag, msg) {
-  const line = { at: ts(), level, tag, msg: String(msg) };
+export function log(level, tag, msg, args) {
+  const rendered = t(String(msg), args);
+  const line = { at: ts(), level, tag, msg: rendered, key: args ? String(msg) : null, args: args || null };
   ring.push(line);
   if (ring.length > RING_SIZE) ring.shift();
   archiveLine(line);
@@ -103,10 +105,10 @@ export function log(level, tag, msg) {
 }
 
 export const logger = {
-  info: (tag, msg) => log('info', tag, msg),
-  warn: (tag, msg) => log('warn', tag, msg),
-  error: (tag, msg) => log('error', tag, msg),
-  debug: (tag, msg) => log('debug', tag, msg),
+  info: (tag, msg, args) => log('info', tag, msg, args),
+  warn: (tag, msg, args) => log('warn', tag, msg, args),
+  error: (tag, msg, args) => log('error', tag, msg, args),
+  debug: (tag, msg, args) => log('debug', tag, msg, args),
 };
 
 /**
@@ -133,11 +135,20 @@ export function summarizeAttempts(attempted) {
   return [...buckets.entries()].map(([k, n]) => `${k}×${n}`).join('、');
 }
 
+function localizeArgs(args) {
+  if (!args) return args;
+  const loc = {};
+  for (const [k, v] of Object.entries(args)) loc[k] = typeof v === 'string' ? t(v, args) : v;
+  const out = {};
+  for (const [k, v] of Object.entries(args)) out[k] = typeof v === 'string' ? t(v, loc) : v;
+  return out;
+}
+
 export function getLogs(limit = 100, tag = null) {
   // tag=null 是面板「运行日志」：网关调用日志（*-GW）刷屏快、口径不同，
   // 只在自己的标签页里展示，不混进运行日志；显式传 tag 的查询不受影响。
   const lines = tag ? ring.filter((l) => l.tag === tag) : ring.filter((l) => !(l.tag || '').endsWith('-GW'));
-  return lines.slice(-limit);
+  return lines.slice(-limit).map((l) => (l.key ? { ...l, msg: t(l.key, localizeArgs(l.args)) } : l));
 }
 
 /**

@@ -25,6 +25,7 @@ import {
 import { publicAccount } from './store.js';
 import { addAccount } from './accounts.js';
 import { logger } from './logger.js';
+import { t } from './i18n.js';
 import { startWorkbuddyLogin, pollWorkbuddyLogin } from './workbuddyAuth.js';
 import { startZcodeLogin, pollZcodeLogin } from './zcodeAuth.js';
 import { startMiniMaxLogin, pollMiniMaxLogin } from './minimaxAuth.js';
@@ -151,7 +152,7 @@ export async function startDeviceFlow(kind) {
     intervalMs: r.intervalMs, nextPollAt: 0,
     done: false, busy: false,
   });
-  logger.info('DEVICE', '发起浏览器登录（' + labelOf(kind) + '）');
+    logger.info('DEVICE', '发起浏览器登录({kind})', { kind: labelOf(kind) });
   return {
     sessionId,
     url: r.url,
@@ -185,7 +186,7 @@ export async function pollDeviceFlow(sessionId) {
     result = await FLOWS[session.kind].poll(session.data);
   } catch (err) {
     sessions.delete(sessionId);
-    logger.warn('DEVICE', labelOf(session.kind) + ' 登录失败：' + err.message);
+        logger.warn('DEVICE', '{kind} 登录失败:{err}', { kind: labelOf(session.kind), err: err.message });
     return { status: 'failed', error: err.message };
   } finally {
     session.busy = false;
@@ -202,7 +203,7 @@ export async function pollDeviceFlow(sessionId) {
   session.done = true;
   const { account, duplicate } = added;
   logger.info('DEVICE', duplicate
-    ? labelOf(session.kind) + ' 登录成功：账号已存在，已更新凭据（' + (account.name || account.id) + '）'
-    : labelOf(session.kind) + ' 登录成功：' + (account.name || account.id));
+    ? t('{kind} 登录成功:账号已存在,已更新凭据({name})', { kind: labelOf(session.kind), name: account.name || account.id })
+    : t('{kind} 登录成功:{name}', { kind: labelOf(session.kind), name: account.name || account.id }));
   return { status: 'ok', account: publicAccount(account), already: duplicate };
 }

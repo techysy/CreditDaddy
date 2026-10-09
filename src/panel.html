@@ -43,16 +43,53 @@
   .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
   .logo { width: 36px; height: 36px; flex-shrink: 0; display: block; }
   .title { font-family: "Avenir Next", Avenir, "Segoe UI Variable Display", "Segoe UI", sans-serif; font-size: 17px; font-weight: 750; letter-spacing: -.5px; line-height: 1.15; }
-  .ver { color: var(--text-3); font-size: 11px; line-height: 1.3; font-variant-numeric: tabular-nums; }
-  .head-right { display: flex; align-items: center; gap: 10px; color: var(--text-3); font-size: 12px; }
-  /* 右上角聚合菜单：锚定在按钮下方右对齐的下拉（不是居中弹窗） */
+  .ver { color: var(--text-3); font-size: 11px; line-height: 1.55; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .head-right { display: flex; align-items: center; gap: 8px; color: var(--text-3); font-size: 12px; }
+  /* 状态胶囊 + 分组分隔线：把「下一次调度」这类只读状态与右侧操作按钮区分开 */
+  .sched-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px 5px 9px; border-radius: 999px; background: var(--tertiary); color: var(--text-3); font-size: 12px; white-space: nowrap; }
+  .sched-chip svg { width: 13px; height: 13px; flex-shrink: 0; opacity: .8; }
+  .sched-chip b { font-weight: 650; color: var(--text-2); font-variant-numeric: tabular-nums; }
+  .sched-chip.busy { background: rgba(var(--accent-rgb), .14); color: var(--accent); }
+  .sched-chip.busy b { color: var(--accent); }
+  .sched-chip:empty { display: none; }
+  .head-sep { width: 1px; height: 18px; background: var(--border); flex: none; }
+  /* 右上角聚合菜单：锚定在按钮下方右对齐的下拉（不是居中弹窗）。
+     宽高固定、内部分区（工作区 / 外观 / 关于）——一眼能分清「设置值」与「一次性动作」。 */
   .hmenu { position: relative; display: inline-flex; }
-  .hmenu-pop { position: absolute; right: 0; top: calc(100% + 8px); z-index: 60; min-width: 190px; background: var(--surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 6px; box-shadow: var(--shadow); display: none; }
+  /* 面板设置弹出层：与聚合菜单同一视觉语言，紧贴按钮右对齐展开，不再是全屏遮罩的居中弹窗 */
+  .head-setpop { position: relative; display: inline-flex; }
+  .setpop { position: absolute; right: 0; top: calc(100% + 10px); z-index: 60; width: min(560px, calc(100vw - 24px)); display: none; }
+  .setpop.show { display: block; }
+  .setpop .modal { width: 100%; max-height: calc(100vh - 120px); border: 1px solid var(--border-subtle); padding: 14px 16px; }
+  .hmenu-pop { position: absolute; right: 0; top: calc(100% + 10px); z-index: 60; width: 252px; background: var(--surface); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 7px; box-shadow: var(--shadow); display: none; }
   .hmenu-pop.show { display: block; }
-  .hmenu-item { display: flex; align-items: center; gap: 9px; width: 100%; padding: 9px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); font-size: 13px; font-weight: 600; cursor: pointer; text-align: left; font-family: inherit; }
+  /* 分区：块级流，不用 flex —— 否则分段控件会被当成 flex 子项压扁（曾出现与下一分区重叠） */
+  .hmenu-group { padding: 3px 0; }
+  .hmenu-group + .hmenu-group { margin-top: 4px; padding-top: 7px; border-top: 1px solid var(--border-subtle); }
+  .hmenu-title { padding: 4px 10px 5px; font-size: 10.5px; font-weight: 700; letter-spacing: .6px; color: var(--text-3); text-transform: uppercase; }
+  .hmenu-item { display: flex; align-items: center; gap: 9px; width: 100%; padding: 7px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); font-size: 13px; font-weight: 600; cursor: pointer; text-align: left; font-family: inherit; text-decoration: none; }
   .hmenu-item:hover { background: var(--hover); color: var(--text); }
   .hmenu-item svg { width: 15px; height: 15px; flex-shrink: 0; }
-  .hmenu-sep { height: 1px; background: var(--border-subtle); margin: 5px 8px; }
+  .hmenu-item.danger { color: var(--err); }
+  .hmenu-item.danger:hover { background: var(--err-soft); color: var(--err); }
+  .hmenu-clip { margin-left: auto; color: var(--text-3); font-size: 11px; font-weight: 600; max-width: 116px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* 外观 / 语言：三态分段控件（跟随系统 / 亮色 / 暗色），当前态高亮 —— 主题只有这一个真相源。
+     inline-flex + 外层留白：分段是块级流里的一个整体，高度由按钮撑开（不能是 flex 子项被压扁）。
+     类名必须是 mode-seg：.seg 已被额度水位条的分段占用（见下方 .bar 段），同名会互相覆盖——
+     分段控件会被压成 5px 绿条，水位条的分段则会各带 12px 横向 margin 而溢出裁切。 */
+  .mode-seg { display: inline-flex; gap: 3px; margin: 2px 6px 4px; padding: 3px; border-radius: 9px; background: var(--tertiary); }
+  /* 语言五档：等宽铺满弹窗宽度，避免中/英/日/韩标签长短不一导致右侧留白 */
+  .lang-seg { display: flex; width: calc(100% - 12px); }
+  .lang-seg .seg-btn { flex: 1 1 0; padding: 6px 0; }
+  .seg-btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 6px 9px; border: 0; border-radius: 7px; background: transparent; color: var(--text-3); font-size: 12px; font-weight: 600; line-height: 1; cursor: pointer; font-family: inherit; white-space: nowrap; }
+  .seg-btn svg { width: 13px; height: 13px; flex-shrink: 0; display: block; }
+  .seg-btn:hover { color: var(--text); }
+  .seg-btn.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+  html[data-theme="dark"] .seg-btn.on { background: var(--active); box-shadow: none; }
+  .hmenu-ver { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px 4px; margin-top: 4px; border-top: 1px solid var(--border-subtle); color: var(--text-3); font-size: 11px; }
+  .hmenu-ver a { color: var(--text-3); text-decoration: none; }
+  .hmenu-ver a:hover { color: var(--text); }
+  @media (max-width: 720px) { .sched-chip { display: none; } .head-sep { display: none; } }
   /* 面板设置（右上角齿轮 → 弹窗）：访问密码 + 组件显隐与排序 + 账号卡片排序 */
   .comp-menu { display: flex; flex-direction: column; gap: 8px; }
   .comp-menu-title { font-size: 11px; color: var(--text-3); margin: 10px 0 4px; padding-top: 8px; border-top: 1px dashed var(--border-subtle); }
@@ -113,6 +150,8 @@
   .btn svg, .icon-btn svg { width: 15px; height: 15px; flex-shrink: 0; }
   .icon-btn { width: 28px; height: 28px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; background: var(--hover); color: var(--text-2); cursor: pointer; transition: all .15s; padding: 0; }
   .icon-btn:hover { background: var(--active); color: var(--text); }
+  .icon-btn:active { transform: scale(.9); }
+  .btn:active, .seg-btn:active, .hmenu-item:active { transform: translateY(1px); }
   .icon-btn.del:hover { background: #ffecec; color: #f53f3f; }
   html[data-theme="dark"] .icon-btn.del:hover { background: rgba(245,63,63,.15); }
   .icon-btn.del.armed { background: #f53f3f; color: #fff; }
@@ -209,6 +248,17 @@
   .log-filter button.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
   html[data-theme="dark"] .log-filter button.active { background: rgba(255,255,255,.1); }
   .collapsed .logs { display: none; }
+
+  /* 首次加载态：HTML 静态可见（无需等 JS/词条），数据首屏后淡出 */
+  #boot-busy { position: fixed; inset: 0; z-index: 95; display: flex; align-items: center; justify-content: center; background: var(--bg); transition: opacity .25s; }
+  #boot-busy.fade { opacity: 0; pointer-events: none; }
+  .lb-card.boot { padding: 18px 26px; font-size: 15px; }
+
+  /* 语言切换加载态：点击分段按钮立即给反馈，落盘 + 整页刷新期间盖住 */
+  #locale-busy { position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; background: var(--mask); }
+  #locale-busy[hidden] { display: none; }
+  .lb-card { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 14px 20px; box-shadow: var(--shadow); font-size: 13px; font-weight: 600; color: var(--text); }
+  .lb-spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--border-subtle); border-top-color: var(--ok); animation: spin .8s linear infinite; }
 
   /* modal */
   .mask { position: fixed; inset: 0; z-index: 50; background: var(--mask); display: none; align-items: center; justify-content: center; padding: 16px; }
@@ -369,43 +419,102 @@
 </style>
 </head>
 <body>
+<!-- 首次加载态：数据首屏后由 boot 隐藏 -->
+<div id="boot-busy"><div class="lb-card boot"><span class="lb-spin"></span><strong>CreditDaddy</strong></div></div>
 <div class="wrap">
   <header class="head">
     <div class="brand">
       <img class="logo" alt="" src="data:image/svg+xml;base64,PHN2ZyBjbGFzcz0iaWNvbiIgdmlld0JveD0iMCAwIDEwMjQgMTAyNCIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDI0IiBoZWlnaHQ9IjEwMjQiPjxwYXRoIGQ9Ik0zNzIuNDggMTM4LjY2NjY2N0ExMjggMTI4IDAgMCAwIDI5OC42NjY2NjcgMTAxLjU0NjY2N2ExMTcuNzYgMTE3Ljc2IDAgMCAwLTYyLjA4IDAgMTAuODggMTAuODggMCAwIDAtNS4xMiAxNi44NTMzMzNsNzEuMjUzMzMzIDkxLjUyLTgxLjI4IDI4LjM3MzMzM2ExMC42NjY2NjcgMTAuNjY2NjY3IDAgMCAwLTIuMzQ2NjY3IDE4Ljk4NjY2NyAyNDIuNTYgMjQyLjU2IDAgMCAwIDY5Ljc2IDMyLjg1MzMzMyAyNzMuNzA2NjY3IDI3My43MDY2NjcgMCAwIDAgNTYuOTYgOC4zMnoiIGZpbGw9IiNGRjhBMTQiPjwvcGF0aD48cGF0aCBkPSJNMjQ1Ljc2IDEzOC4wMjY2NjdhMTMwLjk4NjY2NyAxMzAuOTg2NjY3IDAgMCAxIDUyLjA1MzMzMyAyLjEzMzMzM0ExNDguMDUzMzMzIDE0OC4wNTMzMzMgMCAwIDEgMzY2LjcyIDE3MC42NjY2NjdsNS43Ni0zMi44NTMzMzRBMTI4IDEyOCAwIDAgMCAyOTguNjY2NjY3IDEwMS41NDY2NjdhMTE3Ljk3MzMzMyAxMTcuOTczMzMzIDAgMCAwLTYyLjA4IDAgMTAuODggMTAuODggMCAwIDAtNS4xMiAxNi44NTMzMzN6IiBmaWxsPSIjRkZBQTU0Ij48L3BhdGg+PHBhdGggZD0iTTIzNC42NjY2NjcgOTcwLjY2NjY2N2EyNzcuMzMzMzMzIDMyIDAgMSAwIDU1NC42NjY2NjYgMCAyNzcuMzMzMzMzIDMyIDAgMSAwLTU1NC42NjY2NjYgMFoiIGZpbGw9IiM0NTQxM0MiIG9wYWNpdHk9Ii4xNSI+PC9wYXRoPjxwYXRoIGQ9Ik02MjAuMzczMzMzIDQ2MC41ODY2NjdzMTUxLjA0LTkwLjY2NjY2NyAxODEuMzMzMzM0LTc0LjY2NjY2Ny0xMi41ODY2NjcgMTc0LjI5MzMzMy0xMDYuNjY2NjY3IDIxMy4zMzMzMzMtNzQuNjY2NjY3LTEzOC42NjY2NjctNzQuNjY2NjY3LTEzOC42NjY2NjZ6IiBmaWxsPSIjRkZFNTAwIj48L3BhdGg+PHBhdGggZD0iTTYyMC4zNzMzMzMgNTEzLjkyczE1MS4wNC05MC42NjY2NjcgMTgxLjMzMzMzNC03NC42NjY2NjdhMTQuNzIgMTQuNzIgMCAwIDEgNS4zMzMzMzMgNS45NzMzMzRjNi44MjY2NjctMjkuODY2NjY3IDUuMzMzMzMzLTUzLjU0NjY2Ny01LjMzMzMzMy01OS4zMDY2NjctMzAuMjkzMzMzLTE2LTE4MS4zMzMzMzMgNzQuNjY2NjY3LTE4MS4zMzMzMzQgNzQuNjY2NjY3YTM4Ni45ODY2NjcgMzg2Ljk4NjY2NyAwIDAgMCAwIDYxLjg2NjY2NmMtMC40MjY2NjctNS4zMzMzMzMgMC04LjUzMzMzMyAwLTguNTMzMzMzeiIgZmlsbD0iI0ZGRjQ4QyI+PC9wYXRoPjxwYXRoIGQ9Ik00MDMuNjI2NjY3IDQ2MC41ODY2NjdzLTE1MS4wNC05MC42NjY2NjctMTgxLjMzMzMzNC03NC42NjY2NjcgMTIuMzczMzMzIDE3NC4yOTMzMzMgMTA2LjY2NjY2NyAyMTMuMzMzMzMzIDc0LjY2NjY2Ny0xMzguNjY2NjY3IDc0LjY2NjY2Ny0xMzguNjY2NjY2eiIgZmlsbD0iI0ZGRTUwMCI+PC9wYXRoPjxwYXRoIGQ9Ik0yMjIuMjkzMzMzIDQzOS4yNTMzMzNjMzAuMjkzMzMzLTE2IDE4MS4zMzMzMzMgNzQuNjY2NjY3IDE4MS4zMzMzMzQgNzQuNjY2NjY3djguNTMzMzMzYTM3My41NDY2NjcgMzczLjU0NjY2NyAwIDAgMCAwLTYxLjg2NjY2NnMtMTUxLjA0LTkwLjY2NjY2Ny0xODEuMzMzMzM0LTc0LjY2NjY2N2MtMTAuNjY2NjY3IDUuNzYtMTIuMTYgMjkuNDQtNS4zMzMzMzMgNTkuMzA2NjY3YTEzLjQ0IDEzLjQ0IDAgMCAxIDUuMzMzMzMzLTUuOTczMzM0eiIgZmlsbD0iI0ZGRjQ4QyI+PC9wYXRoPjxwYXRoIGQ9Ik0yODggNjUwLjY2NjY2N2EyNjYuNjY2NjY3IDIyNCA5MCAxIDAgNDQ4IDAgMjY2LjY2NjY2NyAyMjQgOTAgMSAwLTQ0OCAwWiIgZmlsbD0iI0ZGRTUwMCI+PC9wYXRoPjxwYXRoIGQ9Ik02ODAuMTA2NjY3IDQ3NC4yNGEyMjQgMjI0IDAgMCAxLTMzNi4yMTMzMzQgMEEyMTAuNTYgMjEwLjU2IDAgMCAxIDUxMiAzODRhMjEwLjU2IDIxMC41NiAwIDAgMSAxNjguMTA2NjY3IDkwLjI0eiIgZmlsbD0iI0VCQ0IwMCI+PC9wYXRoPjxwYXRoIGQ9Ik01MTIgMjY2LjY2NjY2N20tMjI0IDBhMjI0IDIyNCAwIDEgMCA0NDggMCAyMjQgMjI0IDAgMSAwLTQ0OCAwWiIgZmlsbD0iI0ZGRTUwMCI+PC9wYXRoPjxwYXRoIGQ9Ik01MTIgMTAxLjk3MzMzM2EyMjQuMjEzMzMzIDIyNC4yMTMzMzMgMCAwIDEgMjIxLjg2NjY2NyAxOTQuMzQ2NjY3IDIyNCAyMjQgMCAxIDAtNDQzLjczMzMzNCAwQTIyMy43ODY2NjcgMjIzLjc4NjY2NyAwIDAgMSA1MTIgMTAxLjk3MzMzM3oiIGZpbGw9IiNGRkY0OEMiPjwvcGF0aD48cGF0aCBkPSJNODMzLjQ5MzMzMyA1OTguODI2NjY3bC03MC40IDcwLjRhMTguMzQ2NjY3IDE4LjM0NjY2NyAwIDAgMS0yNS44MTMzMzMgMEw2NDQuMDUzMzMzIDU3NkExOC4zNDY2NjcgMTguMzQ2NjY3IDAgMCAwIDYxOC42NjY2NjcgNTc2bC05My4wMTMzMzQgOTMuMjI2NjY3YTE4Ljc3MzMzMyAxOC43NzMzMzMgMCAwIDEtMjYuMDI2NjY2IDBMNDA1LjMzMzMzMyA1NzZhMTguMTMzMzMzIDE4LjEzMzMzMyAwIDAgMC0yNS44MTMzMzMgMGwtOTMuMjI2NjY3IDkzLjIyNjY2N2ExOC4zNDY2NjcgMTguMzQ2NjY3IDAgMCAxLTI1LjgxMzMzMyAwbC03MC40LTcwLjRhOS4xNzMzMzMgOS4xNzMzMzMgMCAwIDAtMTUuNzg2NjY3IDYuODI2NjY2QzE4OS44NjY2NjcgODQxLjgxMzMzMyAzMzQuOTMzMzMzIDk2MCA1MTIgOTYwczMyMi4xMzMzMzMtMTE4LjE4NjY2NyAzMzcuMjgtMzU0LjM0NjY2N2E5LjE3MzMzMyA5LjE3MzMzMyAwIDAgMC0xNS43ODY2NjctNi44MjY2NjZ6IiBmaWxsPSIjRjBGMEYwIj48L3BhdGg+PHBhdGggZD0iTTE5MC41MDY2NjcgNjY1LjgxMzMzM2w3MC40IDYxLjIyNjY2N2EyMS4zMzMzMzMgMjEuMzMzMzMzIDAgMCAwIDI1LjgxMzMzMyAwbDkzLjIyNjY2Ny04MS4wNjY2NjdhMjEuMzMzMzMzIDIxLjMzMzMzMyAwIDAgMSAyNS44MTMzMzMgMGw5My4yMjY2NjcgODEuMDY2NjY3YTIxLjMzMzMzMyAyMS4zMzMzMzMgMCAwIDAgMjYuMDI2NjY2IDBsOTMuNjUzMzM0LTgxLjA2NjY2N2EyMS4zMzMzMzMgMjEuMzMzMzMzIDAgMCAxIDI2LjAyNjY2NiAwbDkzLjIyNjY2NyA4MS4wNjY2NjdhMjEuMzMzMzMzIDIxLjMzMzMzMyAwIDAgMCAyNS44MTMzMzMgMGw3MC40LTYxLjIyNjY2N2E5LjgxMzMzMyA5LjgxMzMzMyAwIDAgMSA4LjUzMzMzNC0xLjkyIDUzNi4xMDY2NjcgNTM2LjEwNjY2NyAwIDAgMCA3LjI1MzMzMy01OC4yNCA5LjE3MzMzMyA5LjE3MzMzMyAwIDAgMC0xNS43ODY2NjctNi44MjY2NjZsLTcwLjQgNzAuNGExOC4zNDY2NjcgMTguMzQ2NjY3IDAgMCAxLTI1LjgxMzMzMyAwTDY0NC4wNTMzMzMgNTc2QTE4LjM0NjY2NyAxOC4zNDY2NjcgMCAwIDAgNjE4LjY2NjY2NyA1NzZsLTkzLjAxMzMzNCA5My4yMjY2NjdhMTguNzczMzMzIDE4Ljc3MzMzMyAwIDAgMS0yNi4wMjY2NjYgMEw0MDUuMzMzMzMzIDU3NmExOC4xMzMzMzMgMTguMTMzMzMzIDAgMCAwLTI1LjgxMzMzMyAwbC05My4yMjY2NjcgOTMuMjI2NjY3YTE4LjM0NjY2NyAxOC4zNDY2NjcgMCAwIDEtMjUuODEzMzMzIDBsLTcwLjQtNzAuNGE5LjE3MzMzMyA5LjE3MzMzMyAwIDAgMC0xNS43ODY2NjcgNi44MjY2NjYgNTM3LjE3MzMzMyA1MzcuMTczMzMzIDAgMCAwIDcuMDQgNTguMjQgMTAuMDI2NjY3IDEwLjAyNjY2NyAwIDAgMSA5LjE3MzMzNCAxLjkyeiIgZmlsbD0iI0ZGRkZGRiI+PC9wYXRoPjxwYXRoIGQ9Ik00OTguMTMzMzMzIDE4NC41MzMzMzNtLTI5LjAxMzMzMyAwYTI5LjAxMzMzMyAyOS4wMTMzMzMgMCAxIDAgNTguMDI2NjY3IDAgMjkuMDEzMzMzIDI5LjAxMzMzMyAwIDEgMC01OC4wMjY2NjcgMFoiIGZpbGw9IiM0NTQxM0MiPjwvcGF0aD48cGF0aCBkPSJNNTc2IDI5MC45ODY2NjdjMCAxMS43MzMzMzMtMTUuNzg2NjY3IDIxLjMzMzMzMy0zNC45ODY2NjcgMjEuMzMzMzMzcy0zNS4yLTkuNi0zNS4yLTIxLjMzMzMzMyAxNS43ODY2NjctMjEuMzMzMzMzIDM1LjItMjEuMzMzMzM0IDM0Ljk4NjY2NyA5LjYgMzQuOTg2NjY3IDIxLjMzMzMzNHoiIGZpbGw9IiNGRkY0OEMiPjwvcGF0aD48L3N2Zz4=">
       <div>
         <div class="title">CreditDaddy</div>
-        <div class="ver" id="ver">Qoder / WorkBuddy / ZCode 多账号管理 · 每日积分自动领取</div>
+        <div class="ver" id="ver" data-i18n="Qoder / WorkBuddy / ZCode 多账号管理 · 每日积分自动领取">Qoder / WorkBuddy / ZCode 多账号管理 · 每日积分自动领取</div>
       </div>
     </div>
     <div class="head-right">
-      <span id="sched" class="num"></span>
-      <button class="icon-btn" id="btn-comp" title="面板设置：访问密码、组件显隐与排序、账号卡片排序"></button>
-      <a class="icon-btn" id="btn-home" href="https://github.com/techysy/CreditDaddy" target="_blank" rel="noopener" title="项目主页（GitHub）"></a>
-      <button class="icon-btn" id="btn-theme" title="切换亮色 / 暗色"></button>
-      <!-- 聚合菜单（最右侧）：检查更新 / 更新日志 / 主题 / 重启 / 捐赠，下拉紧贴按钮（图标由 JS 注入，Lucide 描边同款） -->
+      <!-- 只读状态：下一次自动领取（领取中变强调色）。窄屏自动隐藏，操作按钮优先 -->
+      <span id="sched" class="sched-chip"></span>
+      <span class="head-sep"></span>
+      <button class="icon-btn" id="btn-theme" title="主题"></button>
+      <div class="head-setpop">
+        <button class="icon-btn" id="btn-comp" title="面板设置：访问密码、组件显隐与排序、账号卡片排序"></button>
+        <!-- 面板设置（右上角齿轮） -->
+        <div class="setpop" id="m-settings">
+          <div class="modal">
+            <div class="modal-title"><span data-i18n="面板设置">面板设置</span><button class="close" data-close>✕</button></div>
+            <div class="tabs" id="set-tabs">
+              <button class="tab" data-set-tab="net" data-i18n="网络">网络</button>
+              <button class="tab active" data-set-tab="comp" data-i18n="组件与排序">组件与排序</button>
+            </div>
+        
+            <div class="pane" data-set-pane="net">
+              <div class="field">
+                <label data-i18n="网络出口（全局）">网络出口（全局）</label>
+                <label class="check"><input type="radio" name="znet-order" id="znet-direct"> 直连优先（代理兜底）</label>
+                <label class="check"><input type="radio" name="znet-order" id="znet-proxy"> 代理优先（直连兜底）</label>
+                <label style="margin-top:6px" data-i18n="出口代理（http://host:port，支持口令 http://user:pass@host:port）">出口代理（http://host:port，支持口令 http://user:pass@host:port）</label>
+                <input class="input" id="znet-url" placeholder="http://192.168.31.101:7890">
+                <div class="hint" data-i18n="作用于所有出网请求：ZCode 上游、Qoder 国际版登录与凭据探测（按 IP 识别地区，国内直连会被拦）等。留空 = 清除代理，退回 HTTPS_PROXY 环境变量。">作用于所有出网请求：ZCode 上游、Qoder 国际版登录与凭据探测（按 IP 识别地区，国内直连会被拦）等。留空 = 清除代理，退回 HTTPS_PROXY 环境变量。</div>
+                <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button class="btn primary" id="znet-ok" data-i18n="保存出口">保存出口</button><span class="hint" id="znet-state"></span></div>
+              </div>
+            </div>
+        
+            <div class="pane active" data-set-pane="comp">
+              <div class="comp-menu" id="comp-menu"></div>
+            </div>
+        
+            <div class="modal-actions"><button class="btn" data-close>关闭</button></div>
+          </div>
+        </div>
+        
+      </div>
+      <!-- 聚合菜单（最右侧）：工作区 / 外观 / 语言 / 关于四分区，下拉紧贴按钮（图标由 JS 注入，Lucide 描边同款）。
+           主题两处入口联动：菜单分段控件（跟随系统/亮色/暗色） + 头部独立按钮一键循环，都经 applyThemeMode 同一存储 -->
       <div class="hmenu">
-        <button class="icon-btn" id="btn-header-menu" title="更多操作"></button>
+        <button class="icon-btn" id="btn-header-menu" title="更多操作：更新、主题、重启、反馈"></button>
         <div class="hmenu-pop" id="hmenu-pop">
-          <button class="hmenu-item" id="hm-update" style="display:none">检查更新</button>
-          <button class="hmenu-item" id="changelog-brief-btn">更新日志</button>
-          <button class="hmenu-item" id="theme-mode-btn">主题：跟随系统</button>
-          <div class="hmenu-sep"></div>
-          <button class="hmenu-item" id="hm-restart">重启 CreditDaddy</button>
-          <button class="hmenu-item" id="feedback-btn">建议反馈</button>
-          <button class="hmenu-item" id="donate-btn">捐赠支持</button>
+          <div class="hmenu-group">
+            <div class="hmenu-title" data-i18n="工作区">工作区</div>
+            <button class="hmenu-item" id="hm-update" style="display:none">检查更新</button>
+            <button class="hmenu-item" id="changelog-brief-btn">更新日志</button>
+          </div>
+          <div class="hmenu-group">
+            <div class="hmenu-title" data-i18n="外观">外观</div>
+            <div class="mode-seg" id="theme-seg">
+              <button class="seg-btn" data-theme-mode="auto" title="跟随系统亮色 / 暗色设置" data-i18n="跟随系统">跟随系统</button>
+              <button class="seg-btn" data-theme-mode="light" title="始终使用亮色" data-i18n="亮色">亮色</button>
+              <button class="seg-btn" data-theme-mode="dark" title="始终使用暗色" data-i18n="暗色">暗色</button>
+            </div>
+          </div>
+          <div class="hmenu-group">
+            <div class="hmenu-title" data-i18n="语言">语言</div>
+            <div class="mode-seg lang-seg" id="locale-seg">
+              <button class="seg-btn" data-locale="zh-CN" title="简体中文">简</button>
+              <button class="seg-btn" data-locale="zh-TW" title="繁體中文">繁</button>
+              <button class="seg-btn" data-locale="en" title="English">EN</button>
+              <button class="seg-btn" data-locale="ja" title="日本語">日</button>
+              <button class="seg-btn" data-locale="ko" title="한국어">한</button>
+            </div>
+          </div>
+          <div class="hmenu-group">
+            <div class="hmenu-title" data-i18n="关于">关于</div>
+            <a class="hmenu-item" id="hm-home" href="https://github.com/techysy/CreditDaddy" target="_blank" rel="noopener" data-i18n="项目主页">项目主页</a>
+            <button class="hmenu-item" id="feedback-btn" data-i18n="建议反馈">建议反馈</button>
+            <button class="hmenu-item" id="donate-btn" data-i18n="捐赠支持">捐赠支持</button>
+            <button class="hmenu-item danger" id="hm-restart" data-i18n="重启 CreditDaddy">重启 CreditDaddy</button>
+          </div>
+          <div class="hmenu-ver"><span id="hmenu-version">CreditDaddy</span><a id="hmenu-channel" href="https://github.com/techysy/CreditDaddy/releases/latest" target="_blank" rel="noopener" hidden>Releases</a></div>
         </div>
       </div>
     </div>
   </header>
 
   <nav class="nav" id="nav">
-    <button data-view="dash" class="active">仪表盘</button>
+    <button data-view="dash" class="active" data-i18n="仪表盘">仪表盘</button>
     <button data-view="qoder">Qoder<span class="cnt" id="cnt-qoder">0</span></button>
     <button data-view="workbuddy">WorkBuddy<span class="cnt" id="cnt-workbuddy">0</span></button>
     <button data-view="zcode">ZCode<span class="cnt" id="cnt-zcode">0</span></button>
     <button data-view="mirasim">mirasim<span class="cnt" id="cnt-mirasim">0</span></button>
-    <button data-view="catpaw">妙手<span class="cnt" id="cnt-catpaw">0</span></button>
+    <button data-view="catpaw"><span data-i18n="妙手">妙手</span><span class="cnt" id="cnt-catpaw">0</span></button>
     <button data-view="trae">Trae<span class="cnt" id="cnt-trae">0</span></button>
     <button data-view="minimax">MiniMax<span class="cnt" id="cnt-minimax">0</span></button>
     <button data-view="tenrouter">10Router<span class="cnt" id="cnt-tenrouter">–</span></button>
@@ -415,7 +524,7 @@
   <section class="view active" id="view-dash">
     <div class="panel dash-panel">
       <div class="toolbar">
-        <div class="summary"><span class="dash-title">总览</span></div>
+        <div class="summary"><span class="dash-title" data-i18n="总览">总览</span></div>
         <div class="actions">
           <button class="btn primary" id="btn-checkin-all"></button>
           <button class="btn" id="btn-add-dash"></button>
@@ -427,8 +536,8 @@
     </div>
     <div class="prods" id="prods"></div>
     <div class="dash-cols">
-      <section class="pcard" data-fold="recent"><div class="pcard-title fold-head"><span>最近记录</span><span class="fold-side"><span class="hint" id="last-tick"></span><span class="fold-ico"></span></span></div><div class="fold-body"><div id="recent"></div></div></section>
-      <section class="pcard" data-fold="attention"><div class="pcard-title fold-head"><span>需要处理</span><span class="fold-side"><span class="hint" id="att-count"></span><span class="fold-ico"></span></span></div><div class="fold-body"><div id="attention"></div></div></section>
+      <section class="pcard" data-fold="recent"><div class="pcard-title fold-head"><span data-i18n="最近记录">最近记录</span><span class="fold-side"><span class="hint" id="last-tick"></span><span class="fold-ico"></span></span></div><div class="fold-body"><div id="recent"></div></div></section>
+      <section class="pcard" data-fold="attention"><div class="pcard-title fold-head"><span data-i18n="需要处理">需要处理</span><span class="fold-side"><span class="hint" id="att-count"></span><span class="fold-ico"></span></span></div><div class="fold-body"><div id="attention"></div></div></section>
     </div>
   </section>
 
@@ -437,16 +546,16 @@
     <div class="panel">
       <div class="toolbar">
         <div class="summary">
-          <div class="stat"><span>账号</span><strong id="s-count">0</strong></div>
+          <div class="stat"><span data-i18n="账号">账号</span><strong id="s-count">0</strong></div>
           <div class="divider"></div>
           <div id="s-done-wrap" style="display:contents">
-            <div class="stat"><span>今日已领</span><strong id="s-done">0</strong></div>
+            <div class="stat"><span data-i18n="今日已领">今日已领</span><strong id="s-done">0</strong></div>
             <div class="divider"></div>
           </div>
-          <div class="stat"><span id="s-credits-label">剩余积分</span><strong id="s-credits">-</strong></div>
+          <div class="stat"><span id="s-credits-label" data-i18n="剩余积分">剩余积分</span><strong id="s-credits">-</strong></div>
           <div class="divider" id="region-div"></div>
           <div class="seg-ctl" id="region">
-            <button data-r="" class="active">全部</button><button data-r="intl">国际版</button><button data-r="cn">国内版</button>
+            <button data-r="" class="active">全部</button><button data-r="intl" data-i18n="国际版">国际版</button><button data-r="cn" data-i18n="国内版">国内版</button>
           </div>
         </div>
         <div class="actions">
@@ -470,64 +579,64 @@
         </div>
       </div>
       <div class="notice" id="notice" style="display:none"></div>
-      <div class="list" id="list"><div class="empty">加载中…</div></div>
+      <div class="list" id="list"><div class="empty" data-i18n="加载中…">加载中…</div></div>
     </div>
   </section>
 
   <!-- 10Router：其他供应商额度 + 用量同步 -->
   <section class="view" id="view-10r">
-    <div class="panel" id="tr-panel"><div class="empty">加载中…</div></div>
+    <div class="panel" id="tr-panel"><div class="empty" data-i18n="加载中…">加载中…</div></div>
   </section>
 
   <!-- 日志卡：运行日志 + 各网关调用日志，卡内标签切换（默认跟随当前页，可手动切） -->
   <section class="pcard collapsed" id="log-card">
     <div class="pcard-title">
       <div class="seg-ctl" id="log-tabs">
-        <button data-log-tab="run" class="active">运行日志</button>
-        <button data-log-tab="zcode">ZCode 网关</button>
-        <button data-log-tab="minimax">MiniMax 网关</button>
-        <button data-log-tab="trae">Trae 网关</button>
+        <button data-log-tab="run" class="active" data-i18n="运行日志">运行日志</button>
+        <button data-log-tab="zcode" data-i18n="ZCode 网关">ZCode 网关</button>
+        <button data-log-tab="minimax" data-i18n="MiniMax 网关">MiniMax 网关</button>
+        <button data-log-tab="trae" data-i18n="Trae 网关">Trae 网关</button>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <div class="log-filter" id="log-filter">
           <button data-log-level="all" class="active">全部</button>
-          <button data-log-level="warn">只看提醒</button>
+          <button data-log-level="warn" data-i18n="只看提醒">只看提醒</button>
         </div>
-        <button class="btn" id="btn-logs">展开</button>
+        <button class="btn" id="btn-logs" data-i18n="展开">展开</button>
       </div>
     </div>
-    <div class="logs" id="logs">（暂无）</div>
+    <div class="logs" id="logs" data-i18n="（暂无）">（暂无）</div>
   </section>
 </div>
 
 <!-- 添加账号 -->
 <div class="mask" id="m-add">
   <div class="modal">
-    <div class="modal-title"><span>添加账号</span><button class="close" data-close>✕</button></div>
+    <div class="modal-title"><span data-i18n="添加账号">添加账号</span><button class="close" data-close>✕</button></div>
     <div class="tabs">
-      <button class="tab active" data-tab="local">本机导入</button>
-      <button class="tab" data-tab="device">浏览器登录</button>
-      <button class="tab" data-tab="token">粘贴 Token</button>
+      <button class="tab active" data-tab="local" data-i18n="本机导入">本机导入</button>
+      <button class="tab" data-tab="device" data-i18n="浏览器登录">浏览器登录</button>
+      <button class="tab" data-tab="token" data-i18n="粘贴 Token">粘贴 Token</button>
     </div>
 
     <div class="pane active" data-pane="local">
       <div class="hint" id="local-hint"></div>
-      <div class="row" style="margin-top:10px"><button class="btn primary" id="btn-scan">重新扫描</button><span class="hint" id="scan-status"></span></div>
-      <div class="box" id="scan-result"><div class="hint">点击「重新扫描」</div></div>
+      <div class="row" style="margin-top:10px"><button class="btn primary" id="btn-scan" data-i18n="重新扫描">重新扫描</button><span class="hint" id="scan-status"></span></div>
+      <div class="box" id="scan-result"><div class="hint" data-i18n="点击「重新扫描」">点击「重新扫描」</div></div>
     </div>
 
     <div class="pane" data-pane="device">
       <div class="hint" id="dev-hint" style="margin-bottom:10px"></div>
       <div class="field">
-        <label>登录到</label>
+        <label data-i18n="登录到">登录到</label>
         <select class="input" id="dev-provider">
           <option value="qoder">Qoder 国际版</option><option value="qoder-cn">Qoder 国内版</option>
-          <option value="workbuddy">WorkBuddy / CodeBuddy 国内版</option><option value="workbuddy-intl">WorkBuddy / CodeBuddy 国际版</option>
-          <option value="zcode-bigmodel">ZCode · BigModel（智谱）</option><option value="zcode-zai">ZCode · Z.ai（国际）</option>
+          <option value="workbuddy" data-i18n="WorkBuddy / CodeBuddy 国内版">WorkBuddy / CodeBuddy 国内版</option><option value="workbuddy-intl" data-i18n="WorkBuddy / CodeBuddy 国际版">WorkBuddy / CodeBuddy 国际版</option>
+          <option value="zcode-bigmodel" data-i18n="ZCode · BigModel（智谱）">ZCode · BigModel（智谱）</option><option value="zcode-zai" data-i18n="ZCode · Z.ai（国际）">ZCode · Z.ai（国际）</option>
           <option value="minimax">MiniMax Code</option>
         </select>
       </div>
-      <div class="row"><button class="btn primary" id="btn-device">生成授权链接</button><button class="btn" id="dev-cancel" style="display:none">取消</button></div>
+      <div class="row"><button class="btn primary" id="btn-device" data-i18n="生成授权链接">生成授权链接</button><button class="btn" id="dev-cancel" style="display:none">取消</button></div>
       <div class="box" id="device-box" style="display:none">
         <div class="hint" id="dev-status"></div>
         <div class="hint" style="margin-top:6px"><a id="dev-link" href="#" target="_blank" rel="noopener"></a></div>
@@ -536,12 +645,12 @@
 
     <div class="pane" data-pane="token">
       <div class="field">
-        <label>版本</label>
-        <select class="input" id="f-provider"><option value="qoder">Qoder 国际版</option><option value="qoder-cn">Qoder 国内版</option><option value="workbuddy">WorkBuddy 国内版</option><option value="workbuddy-intl">WorkBuddy 国际版</option><option value="minimax">MiniMax</option></select>
+        <label data-i18n="版本">版本</label>
+        <select class="input" id="f-provider"><option value="qoder">Qoder 国际版</option><option value="qoder-cn">Qoder 国内版</option><option value="workbuddy" data-i18n="WorkBuddy 国内版">WorkBuddy 国内版</option><option value="workbuddy-intl" data-i18n="WorkBuddy 国际版">WorkBuddy 国际版</option><option value="minimax">MiniMax</option></select>
       </div>
-      <div class="field"><label>备注名（可选）</label><input class="input" id="f-name" placeholder="留空则自动读取昵称"></div>
+      <div class="field"><label data-i18n="备注名（可选）">备注名（可选）</label><input class="input" id="f-name" placeholder="留空则自动读取昵称"></div>
       <div class="field"><label>Token</label><input class="input mono" id="f-token" placeholder="dt-… / jt-… 或 PAT（pt-…，自动兑换）"></div>
-      <div class="modal-actions"><button class="btn primary" id="btn-add-token">添加</button></div>
+      <div class="modal-actions"><button class="btn primary" id="btn-add-token" data-i18n="添加">添加</button></div>
     </div>
   </div>
 </div>
@@ -549,71 +658,28 @@
 <!-- 导出 -->
 <div class="mask" id="m-export">
   <div class="modal sm">
-    <div class="modal-title"><span>导出账号</span><button class="close" data-close>✕</button></div>
+    <div class="modal-title"><span data-i18n="导出账号">导出账号</span><button class="close" data-close>✕</button></div>
     <div class="field">
-      <label>范围</label>
-      <select class="input" id="ex-provider"><option value="">全部账号</option><option value="p:qoder">Qoder（全部）</option><option value="qoder">仅 Qoder 国际版</option><option value="qoder-cn">仅 Qoder 国内版</option><option value="p:workbuddy">WorkBuddy（全部）</option><option value="workbuddy">仅 WorkBuddy 国内版</option><option value="workbuddy-intl">仅 WorkBuddy 国际版</option><option value="zcode">ZCode</option><option value="p:mirasim">mirasim</option><option value="p:catpaw">妙手</option><option value="p:trae">Trae</option><option value="p:minimax">MiniMax</option></select>
+      <label data-i18n="范围">范围</label>
+      <select class="input" id="ex-provider"><option value="" data-i18n="全部账号">全部账号</option><option value="p:qoder" data-i18n="Qoder（全部）">Qoder（全部）</option><option value="qoder" data-i18n="仅 Qoder 国际版">仅 Qoder 国际版</option><option value="qoder-cn" data-i18n="仅 Qoder 国内版">仅 Qoder 国内版</option><option value="p:workbuddy" data-i18n="WorkBuddy（全部）">WorkBuddy（全部）</option><option value="workbuddy" data-i18n="仅 WorkBuddy 国内版">仅 WorkBuddy 国内版</option><option value="workbuddy-intl" data-i18n="仅 WorkBuddy 国际版">仅 WorkBuddy 国际版</option><option value="zcode">ZCode</option><option value="p:mirasim">mirasim</option><option value="p:catpaw" data-i18n="妙手">妙手</option><option value="p:trae">Trae</option><option value="p:minimax">MiniMax</option></select>
     </div>
     <div class="field">
-      <label>加密口令（必填）</label>
+      <label data-i18n="加密口令（必填）">加密口令（必填）</label>
       <input class="input" id="ex-password" type="password" placeholder="至少 4 位" autocomplete="new-password">
     </div>
-    <div class="hint">导出文件一律加密（10router 迁移格式，scrypt + AES-256-GCM），可直接在 10router 对应提供商页导入（WorkBuddy 对应 10router 的 CodeBuddy）。10router 按提供商导入，建议按单个版本导出。<b>口令不会被保存</b>，请牢记——遗失后文件无法解开、无法导入。</div>
+    <div class="hint">导出文件一律加密（10router 迁移格式，scrypt + AES-256-GCM），可直接在 10router 对应提供商页导入（WorkBuddy 对应 10router 的 CodeBuddy）。10router 按提供商导入，建议按单个版本导出。<b data-i18n="口令不会被保存">口令不会被保存</b>，请牢记——遗失后文件无法解开、无法导入。</div>
     <div class="notice" id="ex-session-note" style="display:none"></div>
-    <div class="modal-actions"><button class="btn" data-close>取消</button><button class="btn primary" id="btn-do-export">导出</button></div>
+    <div class="modal-actions"><button class="btn" data-close>取消</button><button class="btn primary" id="btn-do-export" data-i18n="导出">导出</button></div>
   </div>
 </div>
 
 <!-- 口令输入 -->
 <div class="mask" id="m-pass">
   <div class="modal sm">
-    <div class="modal-title"><span>输入口令</span><button class="close" data-close>✕</button></div>
-    <div class="hint" id="pass-hint">该文件已加密，请输入导出时设置的口令。</div>
+    <div class="modal-title"><span data-i18n="输入口令">输入口令</span><button class="close" data-close>✕</button></div>
+    <div class="hint" id="pass-hint" data-i18n="该文件已加密，请输入导出时设置的口令。">该文件已加密，请输入导出时设置的口令。</div>
     <div class="field" style="margin-top:10px"><input class="input" id="pass-input" type="password"></div>
-    <div class="modal-actions"><button class="btn" data-close>取消</button><button class="btn primary" id="btn-pass-ok">导入</button></div>
-  </div>
-</div>
-
-<!-- 面板设置（右上角齿轮） -->
-<div class="mask" id="m-settings">
-  <div class="modal">
-    <div class="modal-title"><span>面板设置</span><button class="close" data-close>✕</button></div>
-    <div class="tabs" id="set-tabs">
-      <button class="tab active" data-set-tab="general">通用</button>
-      <button class="tab" data-set-tab="net">网络</button>
-      <button class="tab" data-set-tab="comp">组件与排序</button>
-    </div>
-
-    <div class="pane active" data-set-pane="general">
-      <div class="field" id="upd-entry" style="display:none">
-        <label>版本与更新</label>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="dim" id="upd-ver"></span><button class="btn" id="btn-update">检查更新</button><button class="btn" id="btn-changelog" title="GitHub Releases 上的完整版本变更">更新日志</button></div>
-      </div>
-      <div class="field" style="margin-top:12px">
-        <label>服务维护</label>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <button class="btn" id="btn-restart-app">重启 CreditDaddy</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="pane" data-set-pane="net">
-      <div class="field">
-        <label>网络出口（全局）</label>
-        <label class="check"><input type="radio" name="znet-order" id="znet-direct"> 直连优先（代理兜底）</label>
-        <label class="check"><input type="radio" name="znet-order" id="znet-proxy"> 代理优先（直连兜底）</label>
-        <label style="margin-top:6px">出口代理（http://host:port，支持口令 http://user:pass@host:port）</label>
-        <input class="input" id="znet-url" placeholder="http://192.168.31.101:7890">
-        <div class="hint">作用于所有出网请求：ZCode 上游、Qoder 国际版登录与凭据探测（按 IP 识别地区，国内直连会被拦）等。留空 = 清除代理，退回 HTTPS_PROXY 环境变量。</div>
-        <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button class="btn primary" id="znet-ok">保存出口</button><span class="hint" id="znet-state"></span></div>
-      </div>
-    </div>
-
-    <div class="pane" data-set-pane="comp">
-      <div class="comp-menu" id="comp-menu"></div>
-    </div>
-
-    <div class="modal-actions"><button class="btn" data-close>关闭</button></div>
+    <div class="modal-actions"><button class="btn" data-close>取消</button><button class="btn primary" id="btn-pass-ok" data-i18n="导入">导入</button></div>
   </div>
 </div>
 
@@ -631,28 +697,28 @@
   <div class="modal sm">
     <div class="modal-title"><span>更新日志</span><button class="close" data-close>✕</button></div>
     <div id="changelog-body" style="max-height:56vh;overflow-y:auto"></div>
-    <div class="modal-actions"><button class="btn" id="btn-changelog-full">GitHub 完整日志</button><button class="btn primary" data-close>关闭</button></div>
+    <div class="modal-actions"><button class="btn" id="btn-changelog-full" data-i18n="GitHub 完整日志">GitHub 完整日志</button><button class="btn primary" data-close>关闭</button></div>
   </div>
 </div>
 
 <!-- 10Router 设置 -->
 <div class="mask" id="m-10r">
   <div class="modal">
-    <div class="modal-title"><span>10Router 连接设置</span><button class="close" data-close>✕</button></div>
-    <div class="hint">填 10Router 的访问地址和仪表盘里创建的<b>虚拟 key（sk-…）</b>。key 只保存在 CreditDaddy 守护进程的数据目录（0600），面板里只显示脱敏值。</div>
-    <div class="field" style="margin-top:12px"><label>10Router 地址</label><input class="input mono" id="tr-endpoint" placeholder="http://127.0.0.1:20128（站点根地址，不要带 /v1）"></div>
-    <div class="field"><label>虚拟 key</label><input class="input mono" id="tr-key" placeholder="sk-…" autocomplete="off"></div>
-    <div class="field"><label>10Router 面板密码（可选）</label><input class="input mono" id="tr-admin-pw" type="password" placeholder="配置后「同步账号」走 OAuth 通道（带 refreshToken 自动续期）；留空保持不变" autocomplete="new-password"></div>
-    <div class="field"><label>账号同步</label>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn" id="tr-sync-accounts">同步账号到 10R</button><span class="hint">把本机 Qoder / WorkBuddy 账号推为 10Router 上游连接；zcode 待反代就绪后支持</span></div>
+    <div class="modal-title"><span data-i18n="10Router 连接设置">10Router 连接设置</span><button class="close" data-close>✕</button></div>
+    <div class="hint">填 10Router 的访问地址和仪表盘里创建的<b data-i18n="虚拟 key（sk-…）">虚拟 key（sk-…）</b>。key 只保存在 CreditDaddy 守护进程的数据目录（0600），面板里只显示脱敏值。</div>
+    <div class="field" style="margin-top:12px"><label data-i18n="10Router 地址">10Router 地址</label><input class="input mono" id="tr-endpoint" placeholder="http://127.0.0.1:20128（站点根地址，不要带 /v1）"></div>
+    <div class="field"><label data-i18n="虚拟 key">虚拟 key</label><input class="input mono" id="tr-key" placeholder="sk-…" autocomplete="off"></div>
+    <div class="field"><label data-i18n="10Router 面板密码（可选）">10Router 面板密码（可选）</label><input class="input mono" id="tr-admin-pw" type="password" placeholder="配置后「同步账号」走 OAuth 通道（带 refreshToken 自动续期）；留空保持不变" autocomplete="new-password"></div>
+    <div class="field"><label data-i18n="账号同步">账号同步</label>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn" id="tr-sync-accounts" data-i18n="同步账号到 10R">同步账号到 10R</button><span class="hint" data-i18n="把本机 Qoder / WorkBuddy 账号推为 10Router 上游连接；zcode 待反代就绪后支持">把本机 Qoder / WorkBuddy 账号推为 10Router 上游连接；zcode 待反代就绪后支持</span></div>
     </div>
-    <div class="field"><label>显示</label>
+    <div class="field"><label data-i18n="显示">显示</label>
       <div><label class="check"><input type="checkbox" id="tr-hide-empty"> 「全部」视图隐藏没有额度 / 余额为 0 的供应商汇总卡</label></div>
     </div>
     <div class="hint" id="tr-test-msg"></div>
     <div class="modal-actions">
-      <button class="btn" id="tr-disconnect" style="margin-right:auto">断开</button>
-      <button class="btn" id="tr-test">测试连接</button>
+      <button class="btn" id="tr-disconnect" style="margin-right:auto" data-i18n="断开">断开</button>
+      <button class="btn" id="tr-test" data-i18n="测试连接">测试连接</button>
       <button class="btn primary" id="tr-save">保存</button>
     </div>
   </div>
@@ -661,20 +727,20 @@
 <!-- 10Router 用量同步 -->
 <div class="mask" id="m-trsync">
   <div class="modal sm">
-    <div class="modal-title"><span>用量同步（同 10router-sync 插件）</span><button class="close" data-close>✕</button></div>
+    <div class="modal-title"><span data-i18n="用量同步（同 10router-sync 插件）">用量同步（同 10router-sync 插件）</span><button class="close" data-close>✕</button></div>
     <div class="field"><label class="check"><input type="checkbox" id="tr-auto"> 每小时自动同步本机用量到 10Router</label></div>
-    <div class="field"><label>同步来源</label><div id="tr-sources"></div></div>
-    <div class="hint">ZCode 只同步官方渠道；经 10Router 中转的 mirasim 调用会跳过，避免重复计数。「10Router 本机」只把实例原生产生的行标记为网关同步。10Router 按行签名去重，重复同步不会产生重复数据。</div>
+    <div class="field"><label data-i18n="同步来源">同步来源</label><div id="tr-sources"></div></div>
+    <div class="hint" data-i18n="ZCode 只同步官方渠道；经 10Router 中转的 mirasim 调用会跳过，避免重复计数。「10Router 本机」只把实例原生产生的行标记为网关同步。10Router 按行签名去重，重复同步不会产生重复数据。">ZCode 只同步官方渠道；经 10Router 中转的 mirasim 调用会跳过，避免重复计数。「10Router 本机」只把实例原生产生的行标记为网关同步。10Router 按行签名去重，重复同步不会产生重复数据。</div>
     <div class="hint" id="tr-sync-status" style="margin-top:8px"></div>
-    <div class="modal-actions"><button class="btn" style="margin-right:auto" id="tr-sync-now">立即同步一次</button><button class="btn" data-close>取消</button><button class="btn primary" id="tr-sync-save">保存</button></div>
+    <div class="modal-actions"><button class="btn" style="margin-right:auto" id="tr-sync-now" data-i18n="立即同步一次">立即同步一次</button><button class="btn" data-close>取消</button><button class="btn primary" id="tr-sync-save">保存</button></div>
   </div>
 </div>
 
 <!-- ZCode 活动领取 -->
 <div class="mask" id="m-claim">
   <div class="modal">
-    <div class="modal-title"><span>活动领取</span><button class="close" data-close>✕</button></div>
-    <div class="hint">从 ZCode 官方活动接口领取（billing/preview → billing/claim）。领取时通常静默通过人机验证；触发风控时会弹出验证码，按提示完成即可。</div>
+    <div class="modal-title"><span data-i18n="活动领取">活动领取</span><button class="close" data-close>✕</button></div>
+    <div class="hint" data-i18n="从 ZCode 官方活动接口领取（billing/preview → billing/claim）。领取时通常静默通过人机验证；触发风控时会弹出验证码，按提示完成即可。">从 ZCode 官方活动接口领取（billing/preview → billing/claim）。领取时通常静默通过人机验证；触发风控时会弹出验证码，按提示完成即可。</div>
     <div id="claim-body" style="margin-top:10px"></div>
   </div>
 </div>
@@ -685,31 +751,31 @@
     <div class="modal-title"><span id="dlg-title"></span><button class="close" data-close>✕</button></div>
     <div class="hint" id="dlg-msg" style="white-space:pre-wrap"></div>
     <div class="field" id="dlg-field" style="margin-top:10px"><input class="input" id="dlg-input"></div>
-    <div class="modal-actions"><button class="btn" data-close>取消</button><button class="btn primary" id="dlg-ok">确定</button></div>
+    <div class="modal-actions"><button class="btn" data-close>取消</button><button class="btn primary" id="dlg-ok" data-i18n="确定">确定</button></div>
   </div>
 </div>
 
 <!-- ZCode 自动领取计划 -->
 <div class="mask" id="m-zac">
   <div class="modal sm">
-    <div class="modal-title"><span>ZCode 自动领取计划</span><button class="close" data-close>✕</button></div>
+    <div class="modal-title"><span data-i18n="ZCode 自动领取计划">ZCode 自动领取计划</span><button class="close" data-close>✕</button></div>
     <div class="field">
-      <label>轮询周期（分钟，1–720）</label>
+      <label data-i18n="轮询周期（分钟，1–720）">轮询周期（分钟，1–720）</label>
       <input class="input" id="zac-interval" type="number" min="1" max="720" step="1">
     </div>
     <div class="field">
-      <label>单次运行时长（分钟，0 = 一直运行直到手动关闭）</label>
+      <label data-i18n="单次运行时长（分钟，0 = 一直运行直到手动关闭）">单次运行时长（分钟，0 = 一直运行直到手动关闭）</label>
       <input class="input" id="zac-window" type="number" min="0" max="1440" step="5">
     </div>
-    <div class="hint">开启后按此周期检查活动资格并自动领取（首次检查在开启 2 分钟后开始）。活动包由服务端在每日 0 点左右刷新放出——若运行时段没有覆盖 0 点，会错过当次领取，建议把运行时长设为 0，或让时段跨过 0 点。需要验证码时无法自动通过，卡片上会提示手动领取。</div>
-    <div class="modal-actions"><button class="btn" id="zac-off" style="display:none">停用</button><button class="btn" data-close>取消</button><button class="btn primary" id="zac-ok">保存并启用</button></div>
+    <div class="hint" data-i18n="开启后按此周期检查活动资格并自动领取（首次检查在开启 2 分钟后开始）。活动包由服务端在每日 0 点左右刷新放出——若运行时段没有覆盖 0 点，会错过当次领取，建议把运行时长设为 0，或让时段跨过 0 点。需要验证码时无法自动通过，卡片上会提示手动领取。">开启后按此周期检查活动资格并自动领取（首次检查在开启 2 分钟后开始）。活动包由服务端在每日 0 点左右刷新放出——若运行时段没有覆盖 0 点，会错过当次领取，建议把运行时长设为 0，或让时段跨过 0 点。需要验证码时无法自动通过，卡片上会提示手动领取。</div>
+    <div class="modal-actions"><button class="btn" id="zac-off" style="display:none" data-i18n="停用">停用</button><button class="btn" data-close>取消</button><button class="btn primary" id="zac-ok" data-i18n="保存并启用">保存并启用</button></div>
   </div>
 </div>
 
 <!-- ZCode 体验包接口 -->
 <div class="mask" id="m-zgw">
   <div class="modal sm">
-    <div class="modal-title"><span>ZCode 体验包接口</span><button class="close" data-close>✕</button></div>
+    <div class="modal-title"><span data-i18n="ZCode 体验包接口">ZCode 体验包接口</span><button class="close" data-close>✕</button></div>
     <div class="hint" id="zgw-url" style="margin-bottom:10px"></div>
     <div class="field">
       <label class="check"><input type="checkbox" id="zgw-on"> 启用体验包接口（/gateway/zcode/v1/messages）</label>
@@ -727,7 +793,7 @@
 <!-- MiniMax 本地接口 -->
 <div class="mask" id="m-mgw">
   <div class="modal sm">
-    <div class="modal-title"><span>MiniMax 本地接口</span><button class="close" data-close>✕</button></div>
+    <div class="modal-title"><span data-i18n="MiniMax 本地接口">MiniMax 本地接口</span><button class="close" data-close>✕</button></div>
     <div class="hint" id="mgw-url" style="margin-bottom:10px"></div>
     <div class="field">
       <label class="check"><input type="checkbox" id="mgw-on"> 启用本地接口（/gateway/minimax/v1/messages）</label>
@@ -745,7 +811,7 @@
 <!-- Trae 本地接口 -->
 <div class="mask" id="m-tgw">
   <div class="modal sm">
-    <div class="modal-title"><span>Trae 本地接口</span><button class="close" data-close>✕</button></div>
+    <div class="modal-title"><span data-i18n="Trae 本地接口">Trae 本地接口</span><button class="close" data-close>✕</button></div>
     <div class="hint" id="tgw-url" style="margin-bottom:10px"></div>
     <div class="field">
       <label class="check"><input type="checkbox" id="tgw-on"> 启用本地接口（/gateway/trae/v1/messages）</label>
@@ -766,6 +832,33 @@
 <script>
 'use strict';
 
+let I18N_DICT = {};
+function T(text, vars) {
+  const s = I18N_DICT[text] ?? text;
+  if (!vars) return s;
+  return s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
+}
+
+// 语言：顶栏菜单的五档分段与面板设置弹窗的下拉共用一个真相源。
+// 切换必须先落盘（settings.locale 由守护进程读取，日志也按它实时重渲染），再刷新页面。
+async function setLocale(locale) {
+  const busy = $('locale-busy');
+  if (busy) busy.hidden = false;
+  try {
+    await api('/api/settings', { method: 'PUT', json: { locale } });
+    location.reload();
+  } catch (e) { if (busy) busy.hidden = true; /* 失败时保留原选项 */ }
+}
+function renderLocale(cur) {
+  if (cur) state.locale = cur;
+  const l = state.locale || 'zh-CN';
+  const seg = $('locale-seg');
+  if (seg) for (const btn of seg.querySelectorAll('[data-locale]')) btn.classList.toggle('on', btn.dataset.locale === l);
+  const sel = $('set-locale');
+  if (sel && sel.value !== l) sel.value = l;
+}
+
+
 // ── 图标（Lucide 风格，currentColor） ──
 const svg = (d) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
 const I = {
@@ -782,6 +875,8 @@ const I = {
   credit: svg('<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>'),
   gift: svg('<rect x="3" y="8" width="18" height="4"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8s1-5 4.5-5a2.5 2.5 0 0 1 0 5"/>'),
   tune: svg('<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/>'),
+  // 齿轮：面板设置（比「推子」更通用地表达“设置”）
+  settings: svg('<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>'),
   chevUp: svg('<path d="M18 15l-6-6-6 6"/>'),
   chevDown: svg('<path d="M6 9l6 6 6-6"/>'),
   chevRight: svg('<path d="M9 18l6-6-6-6"/>'),
@@ -790,12 +885,13 @@ const I = {
   book: svg('<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>'),
   power: svg('<path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/>'),
   monitor: svg('<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>'),
+  clock: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5l3 2"/>'),
   msg: svg('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'),
   heart: svg('<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>'),
 };
 
 const $ = (id) => document.getElementById(id);
-const state = { accounts: [], quotas: {}, status: null, busy: {}, view: 'dash', region: '', addProduct: '', logTab: 'run', logLevel: 'all' };
+const state = { accounts: [], quotas: {}, status: null, busy: {}, view: 'dash', region: '', addProduct: '', logTab: 'run', logLevel: 'all', locale: 'zh-CN' };
 const VIEWS = ['dash', 'qoder', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'tenrouter'];
 // 10Router 集成：config 来自 /api/tenrouter，quotas 来自 /api/tenrouter/quotas
 const tr = { config: null, quotas: null, error: null, loading: false, syncing: false };
@@ -808,7 +904,7 @@ const PRODUCTS = [
   { id: 'trae', label: 'Trae' },
   { id: 'minimax', label: 'MiniMax' },
 ];
-const prodLabel = (id) => (PRODUCTS.find((x) => x.id === id) || { label: id }).label;
+const prodLabel = (id) => T((PRODUCTS.find((x) => x.id === id) || { label: id }).label);
 
 // ── 全局组件开关：不用某个产品 / 10Router 时整块收起（偏好存浏览器本地） ──
 const COMPONENTS = [
@@ -957,8 +1053,8 @@ const provBadges = (p, regionOnly, flavor) => {
       : flavor === 'zai' ? '<span class="badge intl">Z.ai</span>'
       : '<span class="badge cn">BigModel</span>')
     : '';
-  return (regionOnly ? '' : '<span class="badge prod ' + v.prod + '">' + esc(v.prodLabel) + '</span>')
-    + (v.region ? '<span class="badge ' + v.cls + '">' + v.region + '</span>' : '')
+  return (regionOnly ? '' : '<span class="badge prod ' + v.prod + '">' + esc(T(v.prodLabel)) + '</span>')
+    + (v.region ? '<span class="badge ' + v.cls + '">' + T(v.region) + '</span>' : '')
     + zBadge;
 };
 
@@ -1009,11 +1105,11 @@ let keyPrompt = null;
 /** 弹一次密码输入框（并发的请求共用同一个）；返回 true = 已输入 */
 function promptKey(invalid) {
   if (!keyPrompt) {
-    keyPrompt = uiPrompt('输入面板访问密码', '', {
-      type: 'password', okText: '进入',
-      message: (invalid ? '密码不正确，请重新输入。\n' : '')
-        + '面板访问密码在右上角「设置」里管理。\n'
-        + 'fnOS：安装向导设置的密码（忘了可在 fnOS「应用设置」里重设）。\n命令行部署：环境变量 CREDITDADDY_PASSWORD 的值。',
+    keyPrompt = uiPrompt(T('输入面板访问密码'), '', {
+      type: 'password', okText: T('进入'),
+      message: (invalid ? T('密码不正确，请重新输入。\n') : '')
+        + T('面板访问密码在右上角「设置」里管理。\n')
+        + T('fnOS：安装向导设置的密码（忘了可在 fnOS「应用设置」里重设）。\n命令行部署：环境变量 CREDITDADDY_PASSWORD 的值。'),
     }).then((k) => { keyPrompt = null; if (k === null || !k.trim()) return false; setKey(k.trim()); return true; });
   }
   return keyPrompt;
@@ -1048,13 +1144,41 @@ async function loadSettings() {
     const d = await api('/api/settings');
     state.sec = { enabled: Boolean(d.panelKeyEnabled), loaded: true };
     if (!d.panelKeyEnabled) setKey('');   // 关闭后清掉本地缓存的旧密钥
+    if (d.locale) renderLocale(d.locale);
   } catch (e) { /* 401（密码开启但未输入）等状态由 promptKey 流程处理 */ }
 }
 
+
+async function applyDictFromServer() {
+  try {
+    const { dict, locale } = await api('/api/i18n');
+    I18N_DICT = dict || {};
+    renderLocale(locale);   // 语言分段的高亮态以服务端为准（比 /api/settings 更早可用）
+    document.querySelectorAll('[data-i18n]').forEach((el) => {
+      const src = el.getAttribute('data-i18n');
+      if (dict[src]) el.textContent = dict[src];
+    });
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const key = n.nodeValue.trim();
+      if (key && dict[key] && !n.parentElement?.closest('script,style')) n.nodeValue = n.nodeValue.replace(key, dict[key]);
+    }
+    document.querySelectorAll('[title],[placeholder]').forEach((el) => {
+      for (const attr of ['title', 'placeholder']) {
+        const v = el.getAttribute(attr);
+        if (v && dict[v]) el.setAttribute(attr, dict[v]);
+      }
+    });
+  } catch (e) { /* 字典不可用时保留中文原文 */ }
+}
+
+document.getElementById('set-locale')?.addEventListener('change', (ev) => setLocale(ev.target.value));
+
 // ── 主题 ──
+// 应用的是「解析后的」亮/暗；用户选的三态（跟随系统 / 亮色 / 暗色）另存于 qd_theme，
+// 由 renderThemeMode() 反映到菜单里的分段控件（主题只有那一个入口）。
 function applyTheme(t) {
   document.documentElement.dataset.theme = t;
-  $('btn-theme').innerHTML = t === 'dark' ? I.sun : I.moon;
 }
 function initTheme() {
   let t = null;
@@ -1080,16 +1204,21 @@ function initTheme() {
   $('btn-header-menu').addEventListener('click', (e) => {
     e.stopPropagation();
     const willOpen = !hmenuPop.classList.contains('show');
-    if (willOpen) renderThemeMode();   // 头部主题按钮可能已切换过，打开时同步文案
+    if (willOpen) renderThemeMode();   // 打开时同步一次当前主题态（系统可能已变过）
     hmenuPop.classList.toggle('show', willOpen);
   });
   // 点菜单外任意处 / ESC 收起下拉
   document.addEventListener('click', (e) => { if (!e.target.closest('.hmenu')) closeHmenu(); });
+  document.addEventListener('click', (e) => {
+    const st = $('m-settings');
+    if (st && st.classList.contains('show') && !e.target.closest('#m-settings') && !e.target.closest('.head-setpop')) closeModal('m-settings');
+  });
   window.addEventListener('scroll', closeHmenu, true);
   // 菜单项图标：与头部按钮同款 Lucide 描边（静态文字前插图标）
   const withIcon = (id, icon) => { const b = $(id); if (b) b.innerHTML = icon + b.textContent; };
   withIcon('hm-update', I.refresh);
   withIcon('changelog-brief-btn', I.book);
+  withIcon('hm-home', I.github);      // 由头部独立图标收进「关于」分区
   withIcon('hm-restart', I.power);
   withIcon('feedback-btn', I.msg);
   withIcon('donate-btn', I.heart);
@@ -1099,25 +1228,20 @@ function initTheme() {
   $('hm-update').onclick = () => { closeHmenu(); openUpdateModal(true); };
   $('hm-restart').onclick = async () => {
     closeHmenu();
-    const ok = await uiConfirm('确定要重启 CreditDaddy 服务吗？正在进行的任务可能会中断。', '重启服务', '重启');
+    const ok = await uiConfirm(T('确定要重启 CreditDaddy 服务吗？正在进行的任务可能会中断。'), T('重启服务'), T('重启'));
     if (ok) restartCreditDaddy();
   };
   $('changelog-brief-btn').onclick = () => { closeHmenu(); openChangelogModal(); };
-  // 主题：单条菜单项点击循环 跟随系统 → 亮色 → 暗色（占一行，不再三选铺满菜单）。
+  // 主题：菜单里的三态分段控件（跟随系统 / 亮色 / 暗色），当前态高亮。
   // 「跟随系统」= 清掉手动选择，matchMedia 实时跟跑；手动选过亮/暗则固定不再跟系统
-  // （与 initTheme 里 onSysTheme 判定同一存储键 qd_theme）。菜单保持展开，连点可观感循环。
+  // （与 initTheme 里 onSysTheme 判定同一存储键 qd_theme）。菜单保持展开，连点可连续比较观感。
   const THEME_MODES = [
-    ['auto', '跟随系统', I.monitor],
-    ['light', '亮色', I.sun],
-    ['dark', '暗色', I.moon],
+    ['auto', T('跟随系统'), I.monitor],
+    ['light', T('亮色'), I.sun],
+    ['dark', T('暗色'), I.moon],
   ];
   function currentThemeMode() {
     try { const t = localStorage.getItem('qd_theme'); return t === 'light' || t === 'dark' ? t : 'auto'; } catch (e) { return 'auto'; }
-  }
-  function themeModeIndex() {
-    const m = currentThemeMode();
-    const i = THEME_MODES.findIndex((x) => x[0] === m);
-    return i === -1 ? 0 : i;
   }
   function applyThemeMode(mode) {
     try {
@@ -1128,18 +1252,46 @@ function initTheme() {
     applyTheme(mode === 'auto' ? (sysDark ? 'dark' : 'light') : mode);
     renderThemeMode();
   }
+  // 分段控件：注入图标 + 绑定一次点击；renderThemeMode 只切换 .on，不重建节点（保住焦点）
+  // 与菜单项一样，点击不收起菜单——切主题本来就该能连着试。
   function renderThemeMode() {
-    const b = $('theme-mode-btn');
-    if (!b) return;
-    const cur = THEME_MODES[themeModeIndex()];
-    b.innerHTML = cur[2] + '主题：' + cur[1];
-    b.title = '点击循环：跟随系统 → 亮色 → 暗色';
+    const seg = $('theme-seg');
+    if (seg) {
+      const cur = currentThemeMode();
+      for (const btn of seg.querySelectorAll('[data-theme-mode]')) {
+        const mode = btn.dataset.themeMode;
+        if (!btn.dataset.ready) {
+          const def = THEME_MODES.find((m) => m[0] === mode);
+          btn.innerHTML = (def ? def[2] : '') + btn.textContent.trim();
+          btn.dataset.ready = '1';
+        }
+        btn.classList.toggle('on', mode === cur);
+      }
+    }
+    renderThemeButton();   // 所有改主题的通路（头部按钮 / 菜单分段 / 系统主题变化兜底）统一同步图标
   }
+  // 头部独立主题按钮：只做亮↔暗一键反转（每次点击必有视觉反馈）。
+  // 「跟随系统」不进循环——跟随系统与系统主题一致时，点那一档观感=没反应（用户反馈）；
+  // 需要跟随系统走菜单里的三态分段控件。
+  const themeBtn = $('btn-theme');
+  function resolvedTheme() { return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'; }
+  function renderThemeButton() {
+    if (!themeBtn) return;
+    const cur = resolvedTheme();
+    themeBtn.innerHTML = cur === 'dark' ? I.moon : I.sun;
+    themeBtn.title = T('主题：{mode}（点击切换）', { mode: (THEME_MODES.find((m) => m[0] === cur) || THEME_MODES[0])[1] });
+  }
+  themeBtn.addEventListener('click', () => applyThemeMode(resolvedTheme() === 'dark' ? 'light' : 'dark'));
   renderThemeMode();
-  $('theme-mode-btn').onclick = () => {
-    const next = THEME_MODES[(themeModeIndex() + 1) % THEME_MODES.length][0];
-    applyThemeMode(next);
-  };
+  $('theme-seg').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-theme-mode]');
+    if (btn) applyThemeMode(btn.dataset.themeMode);
+  });
+  renderLocale();
+  $('locale-seg').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-locale]');
+    if (btn && btn.dataset.locale !== state.locale) setLocale(btn.dataset.locale);
+  });
 
   // 建议反馈：直达 GitHub issue 模板选择页（🐞 Bug 反馈 / ✨ 功能建议 / 🔒 安全问题，
   // 表单已含版本 / 安装渠道 / 平台字段，与 10Router 仓库同一套结构）
@@ -1158,11 +1310,6 @@ function initTheme() {
       window.creditdaddy.shellOpen('https://github.com/sponsors/techysy');
     else window.open('https://github.com/sponsors/techysy', '_blank');
   };
-
-  // 头部主题按钮：亮/暗快速二切（等价菜单里切到亮色/暗色），同步菜单文案
-  $('btn-theme').onclick = () => {
-    applyThemeMode(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
-  };
 }
 
 // ── 状态 / 渲染 ──
@@ -1175,17 +1322,17 @@ function statusOf(a) {
   const done = state.status && state.status.todayDone && state.status.todayDone[a.id] === today;
   const r = a.lastResult;
   const fresh = r && r.at && state.status && (Date.now() - new Date(r.at).getTime() < 26 * 3600e3);
-  if (r && fresh && r.status === 'limited' && done) return { cls: 'limited', text: '本机已领', msg: r.message };
+  if (r && fresh && r.status === 'limited' && done) return { cls: 'limited', text: T('本机已领'), msg: r.message };
   if (done) {
-    if (intl) return { cls: 'ok', text: '今日活跃', msg: r && r.message ? r.message : '' };
+    if (intl) return { cls: 'ok', text: T('今日活跃'), msg: r && r.message ? r.message : '' };
     const amt = r && r.status === 'checked-in' && fresh && r.amount ? ' +' + fmtNum(r.amount) : '';
-    const streak = r && !intl && r.streakDays ? ' · 连续 ' + r.streakDays + ' 天' : '';
-    return { cls: 'ok', text: '今日已领' + amt + streak, msg: r && r.message && !['checked-in', 'already'].includes(r.status) ? r.message : '' };
+    const streak = r && !intl && r.streakDays ? T(' · 连续 ') + r.streakDays + T(' 天') : '';
+    return { cls: 'ok', text: T('今日已领') + amt + streak, msg: r && r.message && !['checked-in', 'already'].includes(r.status) ? r.message : '' };
   }
-  const failText = intl ? '活跃失败' : '领取失败';
+  const failText = intl ? T('活跃失败') : T('领取失败');
   if (r && fresh && r.status === 'failed') return { cls: 'fail', text: failText, msg: r.message, err: true };
-  if (r && fresh && r.status === 'no-activity') return { cls: 'pending', text: intl ? '待活跃' : '待领取', msg: r.message };
-  return { cls: 'pending', text: intl ? '未活跃' : '未领取', msg: '' };
+  if (r && fresh && r.status === 'no-activity') return { cls: 'pending', text: intl ? T('待活跃') : T('待领取'), msg: r.message };
+  return { cls: 'pending', text: intl ? T('未活跃') : T('未领取'), msg: '' };
 }
 
 function expiryCell(a) {
@@ -1194,11 +1341,11 @@ function expiryCell(a) {
   if (q && q.planExpiresAt) {
     const msPlan = new Date(q.planExpiresAt).getTime() - Date.now();
     const planName = q.plan ? esc(q.plan) + ' ' : '';
-    if (msPlan <= 0) return { label: planName + '已到期', warn: true, title: '套餐已到期' };
+    if (msPlan <= 0) return { label: planName + T('已到期'), warn: true, title: T('套餐已到期') };
     return {
       label: planName + fmtTime(q.planExpiresAt).slice(0, 10),
       warn: msPlan < 3 * 86400e3,
-      title: '套餐有效期至 ' + fmtTime(q.planExpiresAt),
+      title: T('套餐有效期至 ') + fmtTime(q.planExpiresAt),
       isPlan: true,
     };
   }
@@ -1206,17 +1353,17 @@ function expiryCell(a) {
   // 具有 refreshToken 的账号会自动在后台续期，短期 exp 属于正常轮换，不应显示刺眼红字误导用户
   if (a.hasRefreshToken) {
     return {
-      label: '凭据有效 · 自动续期',
+      label: T('凭据有效 · 自动续期'),
       warn: false,
-      title: a.expiresAt ? '本次登录凭据有效期至 ' + fmtTime(a.expiresAt) + '（过期将自动通过 refreshToken 刷新续期，无需手动干预）' : '支持自动刷新续期',
+      title: a.expiresAt ? T('本次登录凭据有效期至 ') + fmtTime(a.expiresAt) + T('（过期将自动通过 refreshToken 刷新续期，无需手动干预）') : T('支持自动刷新续期'),
       isAuto: true,
     };
   }
 
-  if (!a.expiresAt) return { label: a.isPat ? 'PAT 长期有效' : '—', warn: false };
+  if (!a.expiresAt) return { label: a.isPat ? T('PAT 长期有效') : '—', warn: false };
   const ms = new Date(a.expiresAt).getTime() - Date.now();
-  if (ms <= 0) return { label: '已过期', warn: true, title: '登录凭据已过期' };
-  return { label: fmtTime(a.expiresAt), warn: ms < 48 * 3600e3, title: '有效期至 ' + fmtTime(a.expiresAt) };
+  if (ms <= 0) return { label: T('已过期'), warn: true, title: T('登录凭据已过期') };
+  return { label: fmtTime(a.expiresAt), warn: ms < 48 * 3600e3, title: T('有效期至 ') + fmtTime(a.expiresAt) };
 }
 
 // 通用相对重置标签：「3 天 后重置」「45 分钟 后到期」；一小时内标红，悬停看绝对时间
@@ -1225,11 +1372,11 @@ function relReset(q) {
   if (!at) return null;
   const ms = new Date(at).getTime() - Date.now();
   if (!Number.isFinite(ms)) return null;
-  if (ms <= 0) return { text: '即将' + (q.recurring === false ? '到期' : '重置'), soon: true };
+  if (ms <= 0) return { text: T('即将') + (q.recurring === false ? T('到期') : T('重置')), soon: true };
   const m = Math.ceil(ms / 60000);
   const d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), mm = m % 60;
-  const dur = d > 0 ? d + ' 天' + (h ? h + ' 小时' : '') : h > 0 ? h + ' 小时' + (mm ? mm + ' 分' : '') : Math.max(1, mm) + ' 分钟';
-  return { text: dur + ' 后' + (q.recurring === false ? '到期' : '重置'), soon: ms < 3600e3 };
+  const dur = d > 0 ? d + T(' 天') + (h ? h + T(' 小时') : '') : h > 0 ? h + T(' 小时') + (mm ? mm + T(' 分') : '') : Math.max(1, mm) + T(' 分钟');
+  return { text: dur + T(' 后') + (q.recurring === false ? T('到期') : T('重置')), soon: ms < 3600e3 };
 }
 function relResetHtml(q) {
   const r = relReset(q);
@@ -1249,38 +1396,38 @@ function trLine(name, valHtml, title) {
 
 function creditHtml(a) {
   const q = state.quotas[a.id];
-  if (!q) return '<div class="credit-line"><span class="dim">读取积分中…</span></div><div class="bar"></div>';
+  if (!q) return T('<div class="credit-line"><span class="dim">读取积分中…</span></div><div class="bar"></div>');
   if (q.error) return '<div class="credit-line"><span class="dim" title="' + esc(q.error) + '">积分读取失败：' + esc(q.error.slice(0, 40)) + '</span></div><div class="bar"></div>';
-  if (q.empty) return '<div class="credit-line"><span class="dim">无有效套餐（仅免费额度）</span></div><div class="bar"></div>';
+  if (q.empty) return T('<div class="credit-line"><span class="dim">无有效套餐（仅免费额度）</span></div><div class="bar"></div>');
 
   // 妙手：Credits 钱包余额 + 当前版本（体验版 / 专业版），无「总量」口径，不画水位条
   if (a.product === 'catpaw') {
     const planBadge = q.plan ? '<span class="badge">' + esc(q.plan) + '</span>' : '';
-    const expHtml = q.planExpiresAt ? '<span class="dim">' + fmtTime(q.planExpiresAt).slice(0, 10) + ' 到期</span>'
-      : q.nextRefreshAt ? '<span class="dim">' + fmtTime(q.nextRefreshAt).slice(0, 10) + ' 下次刷新</span>' : '';
-    return '<div class="credit-line"><span class="credit"><span class="lbl">可用额度</span><b>' + fmtNum(q.remaining) + '</b>Credits</span>'
+    const expHtml = q.planExpiresAt ? '<span class="dim">' + fmtTime(q.planExpiresAt).slice(0, 10) + T(' 到期</span>')
+      : q.nextRefreshAt ? '<span class="dim">' + fmtTime(q.nextRefreshAt).slice(0, 10) + T(' 下次刷新</span>') : '';
+    return T('<div class="credit-line"><span class="credit"><span class="lbl">可用额度</span><b>') + fmtNum(q.remaining) + '</b>Credits</span>'
       + '<span class="credit dim">' + planBadge + (planBadge && expHtml ? ' · ' : '') + expHtml + '</span></div>';
   }
 
   // 多窗口配额体系（mirasim 等）：每个窗口平等等权，独立一行带分散对齐的名称、数值与三档细水位条
   if (a.product === 'mirasim' && q.parts && q.parts.length) {
     const isExhausted = q.exceeded || (q.remaining <= 0);
-    const planBadge = q.plan ? '<span class="badge">' + esc(q.plan) + ' 套餐</span>' : '';
-    const expLabel = q.planExpiresAt ? '<span class="dim">' + fmtTime(q.planExpiresAt).slice(0, 10) + ' 到期</span>' : '';
+    const planBadge = q.plan ? '<span class="badge">' + esc(q.plan) + T(' 套餐</span>') : '';
+    const expLabel = q.planExpiresAt ? '<span class="dim">' + fmtTime(q.planExpiresAt).slice(0, 10) + T(' 到期</span>') : '';
     // 状态采用温和的徽章，避免整行大红字制造恐慌
     const topStatus = isExhausted
-      ? '<span class="pill pending">' + esc(q.bottleneckLabel || '额度已用尽') + '</span>'
-      : '<span class="lbl">可用额度</span><b>' + fmtNum(q.remaining) + '%</b>';
+      ? '<span class="pill pending">' + esc(q.bottleneckLabel || T('额度已用尽')) + '</span>'
+      : T('<span class="lbl">可用额度</span><b>') + fmtNum(q.remaining) + '%</b>';
 
-    const fmtUnits = (n) => (n >= 10000 ? (n / 10000).toFixed(2) + '万' : fmtNum(Math.round(n)));
+    const fmtUnits = (n) => (n >= 10000 ? (n / 10000).toFixed(2) + T('万') : fmtNum(Math.round(n)));
     const rows = q.parts.map((p) => {
       const pct = p.remainingPercentage ?? (p.total > 0 ? Math.max(0, Math.min(100, (p.remaining / p.total) * 100)) : 0);
       const isZero = pct <= 0;
       const numTxt = p.total > 0 ? fmtUnits(p.remaining) + ' / ' + fmtUnits(p.total) : '';
       // 数值保持中性温和排版，不用鲜红大字恐吓用户
       const pctTxt = isZero
-        ? '<span class="dim">剩 0%</span>'
-        : '<span>剩 ' + fmtNum(pct) + '%</span>';
+        ? T('<span class="dim">剩 0%</span>')
+        : T('<span>剩 ') + fmtNum(pct) + '%</span>';
       const valHtml = pctTxt + (numTxt ? ' <small class="dim">(' + numTxt + ')</small>' : '') + ' ' + relResetHtml(p);
       return trLine(p.name, valHtml) + trMeter(pct);
     }).join('');
@@ -1294,12 +1441,12 @@ function creditHtml(a) {
   if (q.unit) {
     const items = q.parts.map((x) => {
       const base = esc(x.name) + ' ' + fmtNum(x.remaining) + '/' + fmtNum(x.total) + (x.unit ? ' ' + esc(x.unit) : '');
-      if (x.pending && x.startsAt) return base + '（' + fmtTime(x.startsAt).slice(5, 16) + ' 生效）';
-      return base + (x.expiresAt ? '（' + fmtTime(x.expiresAt).slice(5, 16) + (x.recurring ? ' 重置）' : ' 到期）') : '');
+      if (x.pending && x.startsAt) return base + T('（') + fmtTime(x.startsAt).slice(5, 16) + T(' 生效）');
+      return base + (x.expiresAt ? T('（') + fmtTime(x.expiresAt).slice(5, 16) + (x.recurring ? T(' 重置）') : T(' 到期）')) : '');
     }).join(' · ');
     const pct = q.total > 0 ? Math.min(1, q.remaining / q.total) : 0;
     // 满额（100%）不再渲染灰色「已使用」尾段——它只占 0 宽也会造成几像素的灰边
-    return '<div class="credit-line"><span class="credit"><span class="lbl">剩余</span><b>' + fmtNum(q.remaining) + '</b>' + esc(unit) + '</span>'
+    return T('<div class="credit-line"><span class="credit"><span class="lbl">剩余</span><b>') + fmtNum(q.remaining) + '</b>' + esc(unit) + '</span>'
       + '<span class="credit dim" title="' + items + '">' + (q.plan ? esc(q.plan) + ' · ' : '') + items + '</span></div>'
       + '<div class="bar"><span class="seg" style="flex:' + pct.toFixed(4) + ' 1 0"></span>'
       + (pct < 0.9999 ? '<span class="seg used" style="flex:' + (1 - pct).toFixed(4) + ' 1 0"></span>' : '')
@@ -1310,14 +1457,14 @@ function creditHtml(a) {
   if (total > 0) {
     q.parts.filter((x) => x.remaining > 0).forEach((x, i) => {
       bar += '<span class="seg" style="flex:' + (x.remaining / total).toFixed(4) + ' 1 0;--a:' + (x.recurring ? 1 : Math.max(.45, .85 - i * .05)) + '" title="'
-        + esc(x.name) + '：剩余 ' + fmtNum(x.remaining) + ' / ' + fmtNum(x.total) + (x.expiresAt ? (x.recurring ? '，' + fmtTime(x.expiresAt).slice(0, 10) + ' 重置' : '，' + fmtTime(x.expiresAt).slice(0, 10) + ' 到期') : '') + '"></span>';
+        + esc(x.name) + T('：剩余 ') + fmtNum(x.remaining) + ' / ' + fmtNum(x.total) + (x.expiresAt ? (x.recurring ? T('，') + fmtTime(x.expiresAt).slice(0, 10) + T(' 重置') : T('，') + fmtTime(x.expiresAt).slice(0, 10) + T(' 到期')) : '') + '"></span>';
     });
     if (q.used > 0) bar += '<span class="seg used" style="flex:' + (q.used / total).toFixed(4) + ' 1 0" title="已使用 ' + fmtNum(q.used) + '"></span>';
   }
   const soon = q.parts.filter((x) => x.remaining > 0 && !x.recurring && x.expiresAt).sort((x, y) => x.expiresAt.localeCompare(y.expiresAt))[0];
   return '<div class="credit-line">'
-    + '<span class="credit"><span class="lbl">剩余</span>' + I.credit + '<b>' + fmtNum(q.remaining) + '</b></span>'
-    + '<span class="credit dim">' + (soon ? fmtNum(soon.remaining) + ' 于 ' + fmtTime(soon.expiresAt).slice(5, 10) + ' 到期 · ' : '') + '已用 ' + fmtNum(q.used) + ' / 共 ' + fmtNum(total) + (q.exceeded ? ' · <span style="color:var(--err)">已超额</span>' : '') + '</span>'
+    + T('<span class="credit"><span class="lbl">剩余</span>') + I.credit + '<b>' + fmtNum(q.remaining) + '</b></span>'
+    + '<span class="credit dim">' + (soon ? fmtNum(soon.remaining) + T(' 于 ') + fmtTime(soon.expiresAt).slice(5, 10) + T(' 到期 · ') : '') + T('已用 ') + fmtNum(q.used) + T(' / 共 ') + fmtNum(total) + (q.exceeded ? T(' · <span style="color:var(--err)">已超额</span>') : '') + '</span>'
     + '</div><div class="bar">' + bar + '</div>';
 }
 
@@ -1329,26 +1476,26 @@ function cardHtml(a) {
   const canCheckin = CHECKIN_PRODUCTS.has(a.product);
   return '<div class="card" draggable="true" data-id="' + esc(a.id) + '">'
     + '<div class="row1"><div class="name-group">'
-    + '<span class="name" data-act="rename" title="点击修改备注名">' + esc(a.name || '(未命名)') + '</span>'
+    + T('<span class="name" data-act="rename" title="点击修改备注名">') + esc(a.name || T('(未命名)')) + '</span>'
     + provBadges(a.provider, true, a.flavor)
-    + (isCurrent ? '<span class="pill cur" title="' + esc(CLIENT_LABEL[a.product] || '') + ' 客户端当前登录的账号">客户端当前</span>' : '')
-    + (a.product === 'zcode' && isGatewayCurrent(a) ? '<span class="pill gw" title="体验包接口最近一次补全用的账号（多账号时按轮换自动选择，与客户端登录无关）">接口使用中</span>' : '')
-    + (a.product === 'minimax' && isMiniMaxGatewayCurrent(a) ? '<span class="pill gw" title="本地接口最近一次补全用的账号（多账号时按轮换自动选择，与客户端登录无关）">接口使用中</span>' : '')
-    + (a.product === 'trae' && isTraeGatewayCurrent(a) ? '<span class="pill gw" title="本地接口最近一次补全用的账号（多账号时按轮换自动选择，与客户端登录无关）">接口使用中</span>' : '')
+    + (isCurrent ? '<span class="pill cur" title="' + esc(CLIENT_LABEL[a.product] ? T(CLIENT_LABEL[a.product]) : '') + T(' 客户端当前登录的账号">客户端当前</span>') : '')
+    + (a.product === 'zcode' && isGatewayCurrent(a) ? T('<span class="pill gw" title="体验包接口最近一次补全用的账号（多账号时按轮换自动选择，与客户端登录无关）">接口使用中</span>') : '')
+    + (a.product === 'minimax' && isMiniMaxGatewayCurrent(a) ? T('<span class="pill gw" title="本地接口最近一次补全用的账号（多账号时按轮换自动选择，与客户端登录无关）">接口使用中</span>') : '')
+    + (a.product === 'trae' && isTraeGatewayCurrent(a) ? T('<span class="pill gw" title="本地接口最近一次补全用的账号（多账号时按轮换自动选择，与客户端登录无关）">接口使用中</span>') : '')
     + (a.isPat ? '<span class="badge">PAT</span>' : '')
     + qoderWebBadge(a)
-    + (a.verified === false ? '<span class="pill fail">token 无效</span>' : '')
+    + (a.verified === false ? T('<span class="pill fail">token 无效</span>') : '')
     + (st.text ? '<span class="pill ' + st.cls + '" title="' + esc(a.lastResult ? fmtTime(a.lastResult.at) + ' ' + (a.lastResult.message || a.lastResult.status) : '') + '">' + esc(st.text) + '</span>' : '')
     + '</div><div class="ops">'
-    + (a.product === 'zcode' ? '<button class="icon-btn" data-act="claim" title="活动领取（billing/preview → claim，可能需过一次验证码）">' + I.gift + '</button>' : '')
-    + (canCheckin ? '<button class="icon-btn' + (state.busy[a.id] ? ' busy' : '') + '" data-act="checkin" title="' + (a.provider === 'workbuddy-intl' ? '发送活跃请求' : '立即领取') + '">' + (state.busy[a.id] ? I.refresh : I.play) + '</button>' : '')
-    + (a.canSwitch && !isCurrent && st.cls !== 'fail' ? '<button class="icon-btn" data-act="switch" title="切换 ' + (CLIENT_LABEL[a.product] || prodLabel(a.product)) + ' 客户端到此账号">' + I.swap + '</button>' : '')
-    + '<button class="icon-btn" data-act="quota" title="刷新积分">' + I.refresh + '</button>'
-    + '<button class="icon-btn del" data-act="del" title="删除（点两次确认）">' + I.trash + '</button>'
+    + (a.product === 'zcode' ? T('<button class="icon-btn" data-act="claim" title="活动领取（billing/preview → claim，可能需过一次验证码）">') + I.gift + '</button>' : '')
+    + (canCheckin ? '<button class="icon-btn' + (state.busy[a.id] ? ' busy' : '') + '" data-act="checkin" title="' + (a.provider === 'workbuddy-intl' ? T('发送活跃请求') : T('立即领取')) + '">' + (state.busy[a.id] ? I.refresh : I.play) + '</button>' : '')
+    + (a.canSwitch && !isCurrent && st.cls !== 'fail' ? T('<button class="icon-btn" data-act="switch" title="切换 ') + (CLIENT_LABEL[a.product] ? T(CLIENT_LABEL[a.product]) : prodLabel(a.product)) + ' 客户端到此账号">' + I.swap + '</button>' : '')
+    + T('<button class="icon-btn" data-act="quota" title="刷新积分">') + I.refresh + '</button>'
+    + T('<button class="icon-btn del" data-act="del" title="删除（点两次确认）">') + I.trash + '</button>'
     + '</div></div>'
     + '<div class="meta">'
-    + '<div class="mi"><span class="lbl">账号</span><span class="val" title="' + esc(a.email || a.phone || a.uid || '') + '">' + esc(a.phone && !a.email ? ident : mask(ident)) + '</span></div>'
-    + '<div class="mi right"><span class="lbl">' + (ex.isPlan ? '套餐到期' : ex.isAuto ? '凭据状态' : '有效期至') + '</span>'
+    + '<div class="mi"><span class="lbl">' + T('账号') + '</span><span class="val" title="' + esc(a.email || a.phone || a.uid || '') + '">' + esc(a.phone && !a.email ? ident : mask(ident)) + '</span></div>'
+    + '<div class="mi right"><span class="lbl">' + (ex.isPlan ? T('套餐到期') : ex.isAuto ? T('凭据状态') : T('有效期至')) + '</span>'
     + '<span class="val' + (ex.warn ? ' warn' : '') + '" title="' + esc(ex.title || '') + '">' + esc(ex.label) + '</span></div>'
     + '</div>'
     + creditHtml(a)
@@ -1442,7 +1589,7 @@ function renderProd() {
   const all = ofProduct(prod);
   const acc = all.filter((a) => !state.region || provOf(a.provider).cls === state.region);
   const list = $('list');
-  if (!acc.length) list.innerHTML = '<div class="empty">' + (all.length ? '该地区下没有账号。' : EMPTY_TIP[prod]) + '</div>';
+  if (!acc.length) list.innerHTML = '<div class="empty">' + (all.length ? T('该地区下没有账号。') : T(EMPTY_TIP[prod])) + '</div>';
   else list.innerHTML = sortedAccounts(prod, acc).map(cardHtml).join('');
   const canCheckin = CHECKIN_PRODUCTS.has(prod);
   $('s-count').textContent = acc.length;
@@ -1451,15 +1598,15 @@ function renderProd() {
     // 国内版 = 每日签到送积分；国际版 = 保持活跃（活跃不等于必有奖励）
     const cnAcc = acc.filter((a) => a.provider === 'workbuddy');
     const intlAcc = acc.filter((a) => a.provider === 'workbuddy-intl');
-    $('s-done-wrap').innerHTML = (cnAcc.length ? '<div class="stat"><span title="国内版每日签到送积分">领取（国内）</span><strong>' + cnAcc.filter(isDone).length + ' / ' + cnAcc.length + '</strong></div><div class="divider"></div>' : '')
-      + (intlAcc.length ? '<div class="stat"><span title="国际版定期发送活跃请求保持资格；活跃不等于必有奖励">活跃（国际）</span><strong>' + intlAcc.filter(isDone).length + ' / ' + intlAcc.length + '</strong></div><div class="divider"></div>' : '');
+    $('s-done-wrap').innerHTML = (cnAcc.length ? T('<div class="stat"><span title="国内版每日签到送积分">领取（国内）</span><strong>') + cnAcc.filter(isDone).length + ' / ' + cnAcc.length + '</strong></div><div class="divider"></div>' : '')
+      + (intlAcc.length ? T('<div class="stat"><span title="国际版定期发送活跃请求保持资格；活跃不等于必有奖励">活跃（国际）</span><strong>') + intlAcc.filter(isDone).length + ' / ' + intlAcc.length + '</strong></div><div class="divider"></div>' : '');
   } else {
     // 从 WorkBuddy 页切回来时 s-done 可能被 innerHTML 换没了，先重建结构再写值
-    if (!$('s-done')) $('s-done-wrap').innerHTML = '<div class="stat"><span>今日已领</span><strong id="s-done"></strong></div><div class="divider"></div>';
+    if (!$('s-done')) $('s-done-wrap').innerHTML = T('<div class="stat"><span>今日已领</span><strong id="s-done"></strong></div><div class="divider"></div>');
     $('s-done').textContent = acc.filter(isDone).length + ' / ' + acc.length;
   }
   const c = creditSum(acc);
-  $('s-credits-label').textContent = CREDIT_VIEWS.has(prod) ? '有效套餐' : '剩余积分';
+  $('s-credits-label').textContent = CREDIT_VIEWS.has(prod) ? T('有效套餐') : T('剩余积分');
   $('s-credits').textContent = CREDIT_VIEWS.has(prod)
     ? acc.filter((a) => { const q = state.quotas[a.id]; return q && !q.error && !q.empty; }).length + ' / ' + acc.length
     : c.loading ? '…' : (c.known ? fmtNum(c.sum) : '-');
@@ -1470,7 +1617,7 @@ function renderProd() {
   $('btn-checkin').style.display = canCheckin ? '' : 'none';
   if (!$('btn-checkin').disabled) {
     const hasIntl = acc.some((a) => a.provider === 'workbuddy-intl');
-    $('btn-checkin').innerHTML = I.play + (prod === 'workbuddy' && hasIntl ? '领取 / 活跃全部' : '领取全部 ' + prodLabel(prod));
+    $('btn-checkin').innerHTML = I.play + (prod === 'workbuddy' && hasIntl ? T('领取 / 活跃全部') : T('领取全部 ') + prodLabel(prod));
   }
   // 顶栏产品专属入口：ZCode 设置组、Trae 打开客户端，带状态灯（运行中绿点呼吸）
   const dot = (on, pulse) => '<span class="dot' + (on ? ' on' : '') + (on && pulse ? ' pulse' : '') + '"></span>';
@@ -1478,42 +1625,42 @@ function renderProd() {
   if (prod === 'zcode') {
     const acOn = state.zAutoClaim === true;
     const gwOn = state.zGateway === true;
-    $('zt-ac').innerHTML = dot(acOn) + '自动领取';
-    $('zt-ac').title = acOn ? '自动领取运行中——点我调整轮询周期 / 运行时长' : '自动领取已关闭——点我设置轮询周期与运行时长并开启';
-    $('zt-gw').innerHTML = dot(gwOn) + '接口' + (gwOn && state.zGatewayLan === true ? '·局域网' : '');
-    $('zt-gw').title = '体验包接口：开关、局域网开放与 IP 白名单';
+    $('zt-ac').innerHTML = dot(acOn) + T('自动领取');
+    $('zt-ac').title = acOn ? T('自动领取运行中——点我调整轮询周期 / 运行时长') : T('自动领取已关闭——点我设置轮询周期与运行时长并开启');
+    $('zt-gw').innerHTML = dot(gwOn) + T('接口') + (gwOn && state.zGatewayLan === true ? T('·局域网') : '');
+    $('zt-gw').title = T('体验包接口：开关、局域网开放与 IP 白名单');
     const zc = (state.status && state.status.zcodeClient) || {};
     const canOpen = zc.installed && window.creditdaddy && typeof window.creditdaddy.openZcodeClient === 'function';
     $('zt-open').style.display = canOpen ? '' : 'none';
     if (canOpen) {
-      $('zt-open').innerHTML = dot(zc.running === true, true) + '打开客户端';
-      $('zt-open').title = zc.running ? 'ZCode 客户端运行中，点我唤到前台' : 'ZCode 客户端未运行，点我启动';
+      $('zt-open').innerHTML = dot(zc.running === true, true) + T('打开客户端');
+      $('zt-open').title = zc.running ? T('ZCode 客户端运行中，点我唤到前台') : T('ZCode 客户端未运行，点我启动');
     }
   }
   $('t-actions').style.display = prod === 'trae' ? 'contents' : 'none';
   if (prod === 'trae') {
     const gwOn = state.tGateway === true;
-    $('tt-gw').innerHTML = dot(gwOn) + '接口' + (gwOn && state.tGatewayLan === true ? '·局域网' : '');
-    $('tt-gw').title = 'Trae 本地接口：开关、局域网开放与 IP 白名单';
+    $('tt-gw').innerHTML = dot(gwOn) + T('接口') + (gwOn && state.tGatewayLan === true ? T('·局域网') : '');
+    $('tt-gw').title = T('Trae 本地接口：开关、局域网开放与 IP 白名单');
     const tc = (state.status && state.status.traeClient) || {};
     const canOpen = tc.installed && window.creditdaddy && typeof window.creditdaddy.openTraeClient === 'function';
     $('tt-open').style.display = canOpen ? '' : 'none';
     if (canOpen) {
-      $('tt-open').innerHTML = dot(tc.running === true, true) + '打开客户端';
-      $('tt-open').title = tc.running ? 'Trae 客户端运行中，点我唤到前台' : 'Trae 客户端未运行，点我启动';
+      $('tt-open').innerHTML = dot(tc.running === true, true) + T('打开客户端');
+      $('tt-open').title = tc.running ? T('Trae 客户端运行中，点我唤到前台') : T('Trae 客户端未运行，点我启动');
     }
   }
   $('m-actions').style.display = prod === 'minimax' ? 'contents' : 'none';
   if (prod === 'minimax') {
     const gwOn = state.mGateway === true;
-    $('mt-gw').innerHTML = dot(gwOn) + '接口' + (gwOn && state.mGatewayLan === true ? '·局域网' : '');
-    $('mt-gw').title = 'MiniMax 本地接口：开关、局域网开放与 IP 白名单';
+    $('mt-gw').innerHTML = dot(gwOn) + T('接口') + (gwOn && state.mGatewayLan === true ? T('·局域网') : '');
+    $('mt-gw').title = T('MiniMax 本地接口：开关、局域网开放与 IP 白名单');
     const mc = (state.status && state.status.minimaxClient) || {};
     const canOpen = mc.installed && window.creditdaddy && typeof window.creditdaddy.openMiniMaxClient === 'function';
     $('mt-open').style.display = canOpen ? '' : 'none';
     if (canOpen) {
-      $('mt-open').innerHTML = dot(mc.running === true, true) + '打开客户端';
-      $('mt-open').title = mc.running ? 'MiniMax Code 客户端运行中，点我唤到前台' : 'MiniMax Code 客户端未运行，点我启动';
+      $('mt-open').innerHTML = dot(mc.running === true, true) + T('打开客户端');
+      $('mt-open').title = mc.running ? T('MiniMax Code 客户端运行中，点我唤到前台') : T('MiniMax Code 客户端未运行，点我启动');
     }
   }
 }
@@ -1539,24 +1686,24 @@ function renderDash() {
   const doneDom = domAcc.filter(isDone).length;
   const doneIntl = intlAcc.filter(isDone).length;
   $('kpis').innerHTML =
-    kpi('账号', state.accounts.length, byProd)
-    + kpi('今日领取' + (intlAcc.length ? ' / 活跃' : ''), intlAcc.length
+    kpi(T('账号'), state.accounts.length, byProd)
+    + kpi(T('今日领取') + (intlAcc.length ? T(' / 活跃') : ''), intlAcc.length
         ? doneDom + ' <small>/ ' + domAcc.length + '</small><small class="kpi-side"> · 活跃 ' + doneIntl + ' / ' + intlAcc.length + '</small>'
         : done + ' <small>/ ' + signable.length + '</small>',
-      !signable.length ? '暂无可领取的账号'
-        : (doneDom === domAcc.length && doneIntl === intlAcc.length ? (intlAcc.length ? '今天全部完成（国际为活跃请求，不保证奖励）' : '今天全部签完')
-        : '待办 ' + (signable.length - done) + (failed ? ' · 失败 ' + failed : '')),
+      !signable.length ? T('暂无可领取的账号')
+        : (doneDom === domAcc.length && doneIntl === intlAcc.length ? (intlAcc.length ? T('今天全部完成（国际为活跃请求，不保证奖励）') : T('今天全部签完'))
+        : T('待办 ') + (signable.length - done) + (failed ? T(' · 失败 ') + failed : '')),
       '领取 = 国内版每日签到；活跃 = 国际版定期活跃请求（保持资格，不保证奖励）')
-    + kpi('剩余积分', credit.loading ? '…' : (credit.known ? fmtNum(credit.sum) : '-'), credit.loading ? '正在读取各账号额度…' : creditByProd)
-    + kpi('下次自动领取', sch.ticking ? '领取中…' : sch.nextTickAt ? fmtTime(sch.nextTickAt).slice(11) : '-',
-      sch.lastTick ? '上一轮 ' + fmtTime(sch.lastTick.at).slice(5) + ' · ' + esc(sch.lastTick.summary || '') : '每 ~2 小时一轮');
+    + kpi(T('剩余积分'), credit.loading ? '…' : (credit.known ? fmtNum(credit.sum) : '-'), credit.loading ? T('正在读取各账号额度…') : creditByProd)
+    + kpi(T('下次自动领取'), sch.ticking ? T('领取中…') : sch.nextTickAt ? fmtTime(sch.nextTickAt).slice(11) : '-',
+      sch.lastTick ? T('上一轮 ') + fmtTime(sch.lastTick.at).slice(5) + ' · ' + esc(sch.lastTick.summary || '') : T('每 ~2 小时一轮'));
 
   // 仪表盘产品卡按组件设置里的顺序渲染（与标签栏同步），10Router 汇总卡按其顺序插入
   const prodCardHtml = (p) => {
     const list = ofProduct(p.id);
     let rows = '';
     if (!list.length) {
-      rows = '<span class="lbl">账号</span><span class="val dim">还没有，点击进入添加</span>';
+      rows = '<span class="lbl">' + T('账号') + '</span><span class="val dim">' + T('还没有,点击进入添加') + '</span>';
     } else if (CHECKIN_PRODUCTS.has(p.id)) {
       const d = list.filter(isDone).length;
       const c = creditSum(list);
@@ -1565,57 +1712,57 @@ function renderDash() {
         const cnList = list.filter((a) => a.provider === 'workbuddy');
         const intlList = list.filter((a) => a.provider === 'workbuddy-intl');
         const parts = [];
-        if (cnList.length) parts.push(cnList.filter(isDone).length + ' / ' + cnList.length + '（国内）');
-        if (intlList.length) parts.push(intlList.filter(isDone).length + ' / ' + intlList.length + '（国际 · 不保证奖励）');
-        rows += '<span class="lbl">领取 / 活跃</span><span class="val" title="' + esc(parts.join('，') + (intlList.length ? '（国际为活跃请求，不保证奖励）' : '')) + '">'
-          + (cnList.length ? cnList.filter(isDone).length + ' / ' + cnList.length + ' 国内' : '')
+        if (cnList.length) parts.push(cnList.filter(isDone).length + ' / ' + cnList.length + T('（国内）'));
+        if (intlList.length) parts.push(intlList.filter(isDone).length + ' / ' + intlList.length + T('（国际 · 不保证奖励）'));
+        rows += T('<span class="lbl">领取 / 活跃</span><span class="val" title="') + esc(parts.join(T('，')) + (intlList.length ? T('（国际为活跃请求，不保证奖励）') : '')) + '">'
+          + (cnList.length ? cnList.filter(isDone).length + ' / ' + cnList.length + T(' 国内') : '')
           + (cnList.length && intlList.length ? ' · ' : '')
-          + (intlList.length ? intlList.filter(isDone).length + ' / ' + intlList.length + ' 国际' : '')
+          + (intlList.length ? intlList.filter(isDone).length + ' / ' + intlList.length + T(' 国际') : '')
           + '</span>';
       } else if (p.id === 'minimax') {
         const planned = list.filter((a) => { const q = state.quotas[a.id]; return q && !q.error && !q.empty; }).length;
-        rows = '<span class="lbl">今日领取</span><span class="val">' + d + ' / ' + list.length + '</span>'
+        rows = T('<span class="lbl">今日领取</span><span class="val">') + d + ' / ' + list.length + '</span>'
           + '<span style="grid-column:1 / -1">' + meter(d, list.length) + '</span>'
-          + '<span class="lbl">剩余积分</span><span class="val">' + (c.known ? fmtNum(c.sum) : '-') + '</span>';
+          + T('<span class="lbl">剩余积分</span><span class="val">') + (c.known ? fmtNum(c.sum) : '-') + '</span>';
       } else {
-        rows = '<span class="lbl">今日领取</span><span class="val">' + d + ' / ' + list.length + '</span>';
+        rows = T('<span class="lbl">今日领取</span><span class="val">') + d + ' / ' + list.length + '</span>';
       }
       if (p.id !== 'minimax') {
         rows += '<span style="grid-column:1 / -1">' + meter(d, list.length) + '</span>'
-          + '<span class="lbl">剩余积分</span><span class="val">' + (c.known ? fmtNum(c.sum) : '-') + '</span>';
+          + T('<span class="lbl">剩余积分</span><span class="val">') + (c.known ? fmtNum(c.sum) : '-') + '</span>';
       }
     } else if (p.id === 'mirasim') {
       const planned = list.filter((a) => { const q = state.quotas[a.id]; return q && !q.error && !q.empty; }).length;
-      rows = '<span class="lbl">额度体系</span><span class="val dim">5h / 7d 滚动窗口</span>'
-        + '<span class="lbl">有效套餐</span><span class="val">' + planned + ' / ' + list.length + '</span>';
+      rows = T('<span class="lbl">额度体系</span><span class="val dim">5h / 7d 滚动窗口</span>')
+        + T('<span class="lbl">有效套餐</span><span class="val">') + planned + ' / ' + list.length + '</span>';
     } else if (p.id === 'catpaw') {
       const withPlan = list.filter((a) => { const q = state.quotas[a.id]; return q && !q.error && q.plan; });
       const credits = withPlan.reduce((s, a) => s + (Number(state.quotas[a.id].remaining) || 0), 0);
-      rows = '<span class="lbl">额度体系</span><span class="val dim">Credits 余额 + 套餐版本</span>'
-        + (withPlan.length ? '<span class="lbl">可用额度</span><span class="val">' + fmtNum(credits) + ' Credits（' + esc(withPlan.map((a) => state.quotas[a.id].plan).join(' / ')) + '）</span>' : '');
+      rows = T('<span class="lbl">额度体系</span><span class="val dim">Credits 余额 + 套餐版本</span>')
+        + (withPlan.length ? T('<span class="lbl">可用额度</span><span class="val">') + fmtNum(credits) + T(' Credits（') + esc(withPlan.map((a) => state.quotas[a.id].plan).join(' / ')) + T('）</span>') : '');
     } else {
       const planned = list.filter((a) => { const q = state.quotas[a.id]; return q && !q.error && !q.empty; }).length;
       // ZCode 没有每日签到：不展示签到语义的行
-      rows = '<span class="lbl">活动领取</span><span class="val dim">手动领取，或在标签页开自动轮询</span>'
-        + '<span class="lbl">有效套餐</span><span class="val">' + planned + ' / ' + list.length + '</span>';
+      rows = T('<span class="lbl">活动领取</span><span class="val dim">手动领取，或在标签页开自动轮询</span>')
+        + T('<span class="lbl">有效套餐</span><span class="val">') + planned + ' / ' + list.length + '</span>';
     }
     if (p.id === 'qoder' && list.some((a) => a.provider === 'qoder')) {
-      rows += '<span class="lbl">国际版风控身份</span><span class="val' + (s.riskIdentity ? '' : ' warn') + '">' + (s.riskIdentity ? (s.riskSource === 'cli' ? '已就绪（设备身份组件）' : '已就绪') : umidOffer(s) ? '需安装设备身份组件' : '未检测到客户端') + '</span>';
+      rows += T('<span class="lbl">国际版风控身份</span><span class="val') + (s.riskIdentity ? '' : ' warn') + '">' + (s.riskIdentity ? (s.riskSource === 'cli' ? T('已就绪（设备身份组件）') : T('已就绪')) : umidOffer(s) ? T('需安装设备身份组件') : T('未检测到客户端')) + '</span>';
     }
     if (CLIENT_LABEL[p.id]) {
       const cur = list.find((a) => a.product === p.id && isClientCurrent(a));
       const zid = p.id === 'zcode' ? s.zcodeCurrentIdentity : null;
       const live = cur ? esc(cur.name || cur.email || cur.uid)
-        : zid && (zid.email || zid.uid || zid.username) ? '未导入的账号（' + esc(zid.email || zid.username || zid.uid) + '）'
-        : p.id === 'mirasim' && s.mirasimCurrentUid ? '未导入的账号'
-        : p.id === 'catpaw' && s.catpawClient && s.catpawClient.signedIn && !list.some((a) => isClientCurrent(a)) ? '未导入的账号'
-        : p.id === 'trae' && s.traeClient && s.traeClient.signedIn && !list.some((a) => isClientCurrent(a)) ? '未导入的账号'
-        : p.id === 'minimax' && s.minimaxClient && s.minimaxClient.signedIn && !list.some((a) => isClientCurrent(a)) ? '未导入的账号'
-        : (p.id === 'workbuddy' && s.workbuddyCurrentUid ? '未导入的账号' : '—');
-      rows += '<span class="lbl">客户端当前</span><span class="val">' + live + '</span>';
+        : zid && (zid.email || zid.uid || zid.username) ? T('未导入的账号（') + esc(zid.email || zid.username || zid.uid) + T('）')
+        : p.id === 'mirasim' && s.mirasimCurrentUid ? T('未导入的账号')
+        : p.id === 'catpaw' && s.catpawClient && s.catpawClient.signedIn && !list.some((a) => isClientCurrent(a)) ? T('未导入的账号')
+        : p.id === 'trae' && s.traeClient && s.traeClient.signedIn && !list.some((a) => isClientCurrent(a)) ? T('未导入的账号')
+        : p.id === 'minimax' && s.minimaxClient && s.minimaxClient.signedIn && !list.some((a) => isClientCurrent(a)) ? T('未导入的账号')
+        : (p.id === 'workbuddy' && s.workbuddyCurrentUid ? T('未导入的账号') : '—');
+      rows += T('<span class="lbl">客户端当前</span><span class="val">') + live + '</span>';
     }
     return '<div class="prodcard" data-view="' + p.id + '"><div class="prod-head"><span class="prod-name"><span class="dot ' + p.id + '"></span>' + p.label
-      + '<span class="badge">' + list.length + ' 个账号</span></span><span class="prod-go">查看' + I.chevRight + '</span></div><div class="prod-rows">' + rows + '</div></div>';
+      + '<span class="badge">' + list.length + T(' 个账号</span></span><span class="prod-go">查看') + I.chevRight + '</span></div><div class="prod-rows">' + rows + '</div></div>';
   };
   $('prods').innerHTML = orderedVisibleComps().map((id) => {
     if (id === 'tenrouter') return trDashCard();
@@ -1626,101 +1773,112 @@ function renderDash() {
   // 需要处理：token 失效 / 即将过期、领取失败、国际版缺风控身份、10Router 额度告急 / 查询失败
   const att = [];
   if (!s.riskIdentity && state.accounts.some((a) => a.provider === 'qoder')) {
-    att.push({ view: 'qoder', name: 'Qoder 国际版', badges: '', pill: 'limited', text: umidOffer(s) ? '安装设备身份组件后才能领取' : '未检测到 Qoder 客户端，国际版无法领取' });
+    att.push({ view: 'qoder', name: T('Qoder 国际版'), badges: '', pill: 'limited', text: umidOffer(s) ? T('安装设备身份组件后才能领取') : T('未检测到 Qoder 客户端，国际版无法领取') });
   }
   for (const a of state.accounts) {
     const ex = expiryCell(a);
     const st = statusOf(a);
     const base = { view: a.product, name: a.name || a.email || a.id, badges: provBadges(a.provider) };
-    if (a.verified === false) att.push(Object.assign({ pill: 'fail', text: 'token 无效' }, base));
-    else if (ex.label === '已过期') att.push(Object.assign({ pill: 'fail', text: 'token 已过期' }, base));
-    else if (ex.warn) att.push(Object.assign({ pill: 'limited', text: ex.label.slice(5, 10) + ' 过期' }, base));
-    if (st.cls === 'fail') att.push(Object.assign({ pill: 'fail', text: a.provider === 'workbuddy-intl' ? '活跃失败' : '领取失败', title: st.msg }, base));
+    if (a.verified === false) att.push(Object.assign({ pill: 'fail', text: T('token 无效') }, base));
+    else if (ex.label === '已过期') att.push(Object.assign({ pill: 'fail', text: T('token 已过期') }, base));
+    else if (ex.warn) att.push(Object.assign({ pill: 'limited', text: ex.label.slice(5, 10) + T(' 过期') }, base));
+    if (st.cls === 'fail') att.push(Object.assign({ pill: 'fail', text: a.provider === 'workbuddy-intl' ? T('活跃失败') : T('领取失败'), title: st.msg }, base));
   }
   for (const c of (tr.quotas && tr.quotas.connections) || []) {
     if (!compVisible('tenrouter')) break;
     const base = { view: 'tenrouter', name: c.name || c.email || c.providerName, badges: '<span class="badge prod tenrouter">' + esc(c.providerName) + '</span>' };
-    if (c.error) att.push(Object.assign({ pill: 'fail', text: '额度查询失败', title: c.error }, base));
-    else if (c.isActive && quotaLow(c)) att.push(Object.assign({ pill: 'limited', text: '额度告急' }, base));
+    if (c.error) att.push(Object.assign({ pill: 'fail', text: T('额度查询失败'), title: c.error }, base));
+    else if (c.isActive && quotaLow(c)) att.push(Object.assign({ pill: 'limited', text: T('额度告急') }, base));
   }
   // 隐藏掉的组件不进「需要处理」（如收起 10Router 后不再展示其额度告急）
   const attVisible = att.filter((x) => compVisible(x.view));
-  $('att-count').textContent = attVisible.length ? attVisible.length + ' 项' : '';
+  $('att-count').textContent = attVisible.length ? attVisible.length + T(' 项') : '';
   $('attention').innerHTML = attVisible.length
     ? attVisible.slice(0, 8).map((x) => '<div class="item" data-view="' + x.view + '" title="' + esc(x.title || '') + '"><span class="item-main"><span class="item-name">' + esc(x.name) + '</span>' + x.badges + '</span>'
       + '<span class="item-side"><span class="pill ' + x.pill + '">' + esc(x.text) + '</span></span></div>').join('')
       + (attVisible.length > 8 ? '<div class="muted-empty">还有 ' + (attVisible.length - 8) + ' 项</div>' : '')
-    : '<div class="muted-empty">' + (state.accounts.length ? '<span class="ok-glyph">' + I.check + '</span>一切正常' : '还没有账号') + '</div>';
+    : '<div class="muted-empty">' + (state.accounts.length ? '<span class="ok-glyph">' + I.check + T('</span>一切正常') : T('还没有账号')) + '</div>';
 
   // 最近领取记录
-  const RES = { 'checked-in': ['ok', '领取成功'], already: ['ok', '已领过'], limited: ['limited', '本机已领'], 'no-activity': ['pending', '无可领活动'], failed: ['fail', '失败'] };
+  const RES = { 'checked-in': ['ok', T('领取成功')], already: ['ok', T('已领过')], limited: ['limited', T('本机已领')], 'no-activity': ['pending', T('无可领活动')], failed: ['fail', T('失败')] };
   const recent = state.accounts.filter((a) => a.lastResult && a.lastResult.at && compVisible(a.product))
     .sort((x, y) => String(y.lastResult.at).localeCompare(String(x.lastResult.at))).slice(0, 8);
-  $('last-tick').textContent = sch.lastTick ? '上一轮 ' + fmtTime(sch.lastTick.at).slice(5) : '';
+  $('last-tick').textContent = sch.lastTick ? T('上一轮 ') + fmtTime(sch.lastTick.at).slice(5) : '';
   $('recent').innerHTML = recent.length
     ? recent.map((a) => {
       const r = a.lastResult;
       let [cls, txt] = RES[r.status] || ['pending', r.status];
       // 国际版 WorkBuddy 是保持活跃（不保证奖励），不叫「领取」
-      if (a.provider === 'workbuddy-intl' && r.status === 'checked-in') txt = '活跃达成';
+      if (a.provider === 'workbuddy-intl' && r.status === 'checked-in') txt = T('活跃达成');
       const label = r.status === 'checked-in' && r.amount ? txt + ' +' + fmtNum(r.amount) : txt;
       return '<div class="item" data-view="' + a.product + '" title="' + esc(r.message || '') + '"><span class="item-main"><span class="item-name">' + esc(a.name || a.email || a.id) + '</span>' + provBadges(a.provider) + '</span>'
         + '<span class="item-side"><span class="pill ' + cls + '">' + esc(label) + '</span><span class="item-time">' + fmtTime(r.at).slice(5) + '</span></span></div>';
     }).join('')
-    : '<div class="muted-empty">还没有领取记录</div>';
+    : '<div class="muted-empty">' + T('还没有领取记录') + '</div>';
 }
 
 function renderStatus() {
   const s = state.status;
   if (!s) return;
-  $('ver').textContent = 'v' + s.version + ' · 数据目录 ' + s.dataDir;
+  $('ver').textContent = 'v' + s.version + T(' · 数据目录 ') + s.dataDir;
   document.title = 'CreditDaddy v' + s.version;
-  if (s.homepage) $('btn-home').href = s.homepage;
+  if (s.homepage) $('hm-home').href = s.homepage;
+  // 菜单脚注版本：面板版本 + 数据目录（与品牌区同一个口径，换行折行由 CSS 收敛）
+  $('hmenu-version').textContent = 'CreditDaddy v' + s.version;
+  $('hmenu-version').title = s.dataDir ? T('数据目录 ') + s.dataDir : '';
+  // 状态胶囊：领取中显示强调色文字，空闲显示「下次自动领取 HH:MM」（时间用 <b> 提权重）
   const sch = s.scheduler || {};
-  $('sched').textContent = sch.ticking ? '正在领取…'
-    : sch.nextTickAt ? '下次自动领取 ' + fmtTime(sch.nextTickAt).slice(11) : '';
-  $('sched').title = sch.lastTick ? '上一轮 ' + fmtTime(sch.lastTick.at) + '：' + sch.lastTick.summary : '';
+  const chip = $('sched');
+  chip.classList.toggle('busy', Boolean(sch.ticking));
+  if (sch.ticking) {
+    chip.innerHTML = I.refresh + T('正在领取…');
+  } else if (sch.nextTickAt) {
+    chip.innerHTML = I.clock + T('下次自动领取 <b class="num">') + fmtTime(sch.nextTickAt).slice(11) + '</b>';
+  } else {
+    chip.innerHTML = '';
+  }
+  chip.title = sch.lastTick ? T('上一轮 ') + fmtTime(sch.lastTick.at) + T('：') + sch.lastTick.summary : '';
   // 产品相关提示只在对应标签页出现
   const hasIntl = state.view === 'qoder' && state.region !== 'cn' && state.accounts.some((a) => a.provider === 'qoder');
   const n = $('notice');
   n.classList.toggle('info', state.view === 'zcode' || state.view === 'mirasim' || state.view === 'catpaw' || state.view === 'trae' || state.view === 'minimax' || (hasIntl && Boolean(s.riskIdentity)));
   if (state.view === 'minimax') {
     n.style.display = '';
-    n.innerHTML = '<div class="z-row"><span class="z-label">每日签到</span><span class="z-text">每日签到领 800~2000 积分 + 400 连签加成。支持自动检测本机 MiniMax Code 凭据与 Bearer Token 导入，自带标准 Anthropic 本地网关。</span></div>';
+    n.innerHTML = T('<div class="z-row"><span class="z-label">每日签到</span><span class="z-text">每日签到领 800~2000 积分 + 400 连签加成。支持自动检测本机 MiniMax Code 凭据与 Bearer Token 导入，自带标准 Anthropic 本地网关。</span></div>');
   } else if (state.view === 'trae') {
     n.style.display = '';
-    n.innerHTML = '<div class="z-row"><span class="z-label">每日签到</span><span class="z-text">每日签到领约 150 通用积分（7 天有效，多资源包自动归并）。凭据由本机 Trae 客户端解密导入，支持多账号快照一键切换。</span></div>';
+    n.innerHTML = T('<div class="z-row"><span class="z-label">每日签到</span><span class="z-text">每日签到领约 150 通用积分（7 天有效，多资源包自动归并）。凭据由本机 Trae 客户端解密导入，支持多账号快照一键切换。</span></div>');
   } else if (state.view === 'catpaw') {
     n.style.display = '';
-    n.innerHTML = '妙手（美团 CatPaw）按套餐发放 Credits（体验版 / 专业版…），没有每日签到。凭据由妙手客户端登录管理：读取额度用本机解密出的登录 token 直连桌面网关，token 失效时到妙手客户端重新登录后再「本机导入」即可。'
-      + '多账号切换：写入本机凭据后重启妙手客户端即生效（切换会自动保存当前登录，不丢号）。'
+    n.innerHTML = T('妙手（美团 CatPaw）按套餐发放 Credits（体验版 / 专业版…），没有每日签到。凭据由妙手客户端登录管理：读取额度用本机解密出的登录 token 直连桌面网关，token 失效时到妙手客户端重新登录后再「本机导入」即可。')
+      + T('多账号切换：写入本机凭据后重启妙手客户端即生效（切换会自动保存当前登录，不丢号）。')
       + catpawClientChip(s);
   } else if (state.view === 'mirasim') {
     n.style.display = '';
-    n.innerHTML = 'mirasim（原生 AI 编程开发环境）额度按「平台额度」（5h 滚动窗口、7d 全局上限与分模型上限）分配。Token 约 1 小时过期，读取额度时会自动用 refreshToken 静默续期并同步回客户端，无需手动处理。'
-      + '切换账号需要至少两个已导入的账号（当前登录 + 目标账号）：先在「添加账号 → 本机导入」把各账号分别导入，切换时当前登录会自动保存、目标账号写入客户端，桌面版切完自动重启 mirasim。'
+    n.innerHTML = T('mirasim（原生 AI 编程开发环境）额度按「平台额度」（5h 滚动窗口、7d 全局上限与分模型上限）分配。Token 约 1 小时过期，读取额度时会自动用 refreshToken 静默续期并同步回客户端，无需手动处理。')
+      + T('切换账号需要至少两个已导入的账号（当前登录 + 目标账号）：先在「添加账号 → 本机导入」把各账号分别导入，切换时当前登录会自动保存、目标账号写入客户端，桌面版切完自动重启 mirasim。')
       + mirasimClientChip(s);
   } else if (state.view === 'zcode') {
     n.style.display = '';
     const ac = state.zAutoClaim === true;
     const ziv = state.zClaimIntervalMin || 2;
     const zwin = state.zClaimWindowMin === 0 ? 0 : (state.zClaimWindowMin || 60);
-    n.innerHTML = '<div class="z-row"><span class="z-label">活动领取</span><span class="z-text">活动包积分，每日 0 点左右刷新（无每日签到）。自动领取'
-      + (ac ? '每 ' + ziv + ' 分钟检查资格' + (zwin > 0 ? '，本次运行 ' + zwin + ' 分钟' : '，持续运行') : '未开启（右上角设置轮询计划）')
-      + '；礼物图标 = 手动临时领。</span></div>';
+    n.innerHTML = T('<div class="z-row"><span class="z-label">活动领取</span><span class="z-text">活动包积分，每日 0 点左右刷新（无每日签到）。自动领取')
+      + (ac ? T('每 ') + ziv + T(' 分钟检查资格') + (zwin > 0 ? T('，本次运行 ') + zwin + T(' 分钟') : T('，持续运行')) : T('未开启（右上角设置轮询计划）'))
+      + T('；礼物图标 = 手动临时领。</span></div>');
   } else if (hasIntl && !s.riskIdentity && umidOffer(s)) {
     n.style.display = '';
     const busy = s.umid.installing || umidBusy;
-    n.innerHTML = 'Qoder 国际版只向带设备风控身份的请求下发「每天领 100 Credits」。这台 Linux / NAS 上没有 Qoder 客户端，'
-      + '可以安装「设备身份组件」：从 npm 官方包 @qoder-ai/qodercli 提取其内置的 UMID 程序（约 30MB 下载，校验 npm 完整性），装好后国际版即可领取（本机每天限领一个账号）。'
-      + ' <button class="btn primary" id="btn-umid" style="margin-left:6px"' + (busy ? ' disabled' : '') + '>' + (busy ? '安装中…' : '安装设备身份组件') + '</button>';
+    n.innerHTML = T('Qoder 国际版只向带设备风控身份的请求下发「每天领 100 Credits」。这台 Linux / NAS 上没有 Qoder 客户端，')
+      + T('可以安装「设备身份组件」：从 npm 官方包 @qoder-ai/qodercli 提取其内置的 UMID 程序（约 30MB 下载，校验 npm 完整性），装好后国际版即可领取（本机每天限领一个账号）。')
+      + ' <button class="btn primary" id="btn-umid" style="margin-left:6px"' + (busy ? ' disabled' : '') + '>' + (busy ? T('安装中…') : T('安装设备身份组件')) + '</button>';
   } else if (hasIntl && !s.riskIdentity) {
     n.style.display = '';
-    n.textContent = 'Qoder 国际版领取需要本机安装 Qoder 客户端：Qoder 只向带设备风控身份（由客户端生成）的请求下发「每天领 100 Credits」。当前未检测到客户端，国际版账号将无法领取。';
+    n.textContent = T('Qoder 国际版领取需要本机安装 Qoder 客户端：Qoder 只向带设备风控身份（由客户端生成）的请求下发「每天领 100 Credits」。当前未检测到客户端，国际版账号将无法领取。');
   } else if (hasIntl) {
     n.style.display = '';
-    n.textContent = '提示：Qoder 国际版每台设备每天只能有一个账号领取每日 100 Credits（服务端按设备限领），其余国际版账号会显示「本机已领」。'
-      + (s.riskSource === 'cli' && s.umid && s.umid.installed ? '（风控身份来自设备身份组件 qodercli ' + s.umid.installed.version + '）' : '');
+    n.textContent = T('提示：Qoder 国际版每台设备每天只能有一个账号领取每日 100 Credits（服务端按设备限领），其余国际版账号会显示「本机已领」。')
+      + (s.riskSource === 'cli' && s.umid && s.umid.installed ? T('（风控身份来自设备身份组件 qodercli ') + s.umid.installed.version + T('）') : '');
   } else {
     n.style.display = 'none';
   }
@@ -1729,20 +1887,20 @@ function renderStatus() {
 // mirasim 客户端状态芯片 + 「打开客户端」按钮
 function mirasimClientChip(s) {
   const c = s.mirasimClient || {};
-  if (!c.installed) return ' <span class="dim">客户端：未安装</span>';
+  if (!c.installed) return T(' <span class="dim">客户端：未安装</span>');
   const canOpen = window.creditdaddy && typeof window.creditdaddy.openMirasimClient === 'function';
-  return ' <span class="dim">客户端：' + (c.running ? '运行中' : '未运行') + '</span>'
-    + (canOpen ? ' <button class="btn" id="btn-miraopen" style="margin-left:4px" title="打开本机 Mirasim 客户端">打开客户端</button>' : '');
+  return T(' <span class="dim">客户端：') + (c.running ? T('运行中') : T('未运行')) + '</span>'
+    + (canOpen ? T(' <button class="btn" id="btn-miraopen" style="margin-left:4px" title="打开本机 Mirasim 客户端">打开客户端</button>') : '');
 }
 
 
 // 妙手客户端状态芯片 + 「打开客户端」按钮
 function catpawClientChip(s) {
   const c = s.catpawClient || {};
-  if (!c.installed) return ' <span class="dim">客户端：未安装（本机导入 / 切换需要 Windows 妙手客户端）</span>';
+  if (!c.installed) return T(' <span class="dim">客户端：未安装（本机导入 / 切换需要 Windows 妙手客户端）</span>');
   const canOpen = window.creditdaddy && typeof window.creditdaddy.openCatpawClient === 'function';
-  return ' <span class="dim">客户端：' + (c.running ? '运行中' : '未运行') + (c.signedIn ? '' : ' · 未登录') + '</span>'
-    + (canOpen ? ' <button class="btn" id="btn-cpopen" style="margin-left:4px" title="打开本机妙手客户端">打开客户端</button>' : '');
+  return T(' <span class="dim">客户端：') + (c.running ? T('运行中') : T('未运行')) + (c.signedIn ? '' : T(' · 未登录')) + '</span>'
+    + (canOpen ? T(' <button class="btn" id="btn-cpopen" style="margin-left:4px" title="打开本机妙手客户端">打开客户端</button>') : '');
 }
 
 // Qoder 设备身份组件（Linux / fnOS）
@@ -1752,7 +1910,7 @@ async function installUmid() {
   umidBusy = true; renderStatus();
   try {
     const r = await api('/api/qoder/umid/install', { method: 'POST' });
-    toast('设备身份组件已安装（qodercli ' + r.installed.version + '），Qoder 国际版可以领取了');
+    toast(T('设备身份组件已安装（qodercli ') + r.installed.version + T('），Qoder 国际版可以领取了'));
   } catch (e) { toast(e.message, false); }
   umidBusy = false;
   await loadStatus(); render(); loadLogs();
@@ -1763,32 +1921,32 @@ document.addEventListener('click', async (e) => {
   if (e.target.closest('#zt-open')) {
     try {
       const r = await window.creditdaddy.openZcodeClient();
-      if (r && r.ok) toast('已启动 ZCode 客户端');
-      else toast((r && r.error) || '无法打开 ZCode 客户端', false);
+      if (r && r.ok) toast(T('已启动 ZCode 客户端'));
+      else toast((r && r.error) || T('无法打开 ZCode 客户端'), false);
     } catch (err) { toast(String(err && err.message || err), false); }
     return;
   }
   if (e.target.closest('#btn-miraopen')) {
     try {
       const r = await window.creditdaddy.openMirasimClient();
-      if (r && r.ok) toast('已启动 Mirasim 客户端');
-      else toast((r && r.error) || '无法打开 Mirasim 客户端', false);
+      if (r && r.ok) toast(T('已启动 Mirasim 客户端'));
+      else toast((r && r.error) || T('无法打开 Mirasim 客户端'), false);
     } catch (err) { toast(String(err && err.message || err), false); }
     return;
   }
   if (e.target.closest('#btn-cpopen')) {
     try {
       const r = await window.creditdaddy.openCatpawClient();
-      if (r && r.ok) toast('已启动妙手客户端');
-      else toast((r && r.error) || '无法打开妙手客户端', false);
+      if (r && r.ok) toast(T('已启动妙手客户端'));
+      else toast((r && r.error) || T('无法打开妙手客户端'), false);
     } catch (err) { toast(String(err && err.message || err), false); }
     return;
   }
   if (e.target.closest('#tt-open')) {
     try {
       const r = await window.creditdaddy.openTraeClient();
-      if (r && r.ok) toast('已启动 Trae 客户端');
-      else toast((r && r.error) || '无法打开 Trae 客户端', false);
+      if (r && r.ok) toast(T('已启动 Trae 客户端'));
+      else toast((r && r.error) || T('无法打开 Trae 客户端'), false);
     } catch (err) { toast(String(err && err.message || err), false); }
     return;
   }
@@ -1801,7 +1959,7 @@ document.addEventListener('click', async (e) => {
     const st = state.tGatewayStats;
     $('tgw-url').innerHTML = '接口地址 <code>POST http://127.0.0.1:' + location.port + '/gateway/trae/v1/messages</code>（局域网开放时把 127.0.0.1 换成本机 IP）'
       + (st && st.lastCallAt
-        ? '<br>最近调用 ' + esc(String(st.lastCallAt).slice(11, 19)) + ' · 共 ' + st.calls + ' 次' + (st.lastAccount ? ' · 最后用号 ' + esc(st.lastAccount) : '')
+        ? '<br>最近调用 ' + esc(String(st.lastCallAt).slice(11, 19)) + T(' · 共 ') + st.calls + T(' 次') + (st.lastAccount ? T(' · 最后用号 ') + esc(st.lastAccount) : '')
         : '<br>尚未有调用');
     syncTgwLanFields();
     openModal('m-tgw');
@@ -1810,8 +1968,8 @@ document.addEventListener('click', async (e) => {
   if (e.target.closest('#mt-open')) {
     try {
       const r = await window.creditdaddy.openMiniMaxClient();
-      if (r && r.ok) toast('已启动 MiniMax Code 客户端');
-      else toast((r && r.error) || '无法打开 MiniMax Code 客户端', false);
+      if (r && r.ok) toast(T('已启动 MiniMax Code 客户端'));
+      else toast((r && r.error) || T('无法打开 MiniMax Code 客户端'), false);
     } catch (err) { toast(String(err && err.message || err), false); }
     return;
   }
@@ -1822,9 +1980,9 @@ document.addEventListener('click', async (e) => {
     const allow = Array.isArray(state.mGatewayAllow) ? state.mGatewayAllow : [];
     $('mgw-allow').value = (allow.length ? allow : (state.mGatewaySuggest ? [state.mGatewaySuggest] : [])).join('\n');
     const st = state.mGatewayStats;
-    $('mgw-url').innerHTML = '接口地址 <code>POST http://127.0.0.1:' + location.port + '/gateway/minimax/v1/messages</code>（局域网开放时把 127.0.0.1 换成本机 IP）'
+    $('mgw-url').innerHTML = '接口地址 <code>POST http://127.0.0.1:' + location.port + T('/gateway/minimax/v1/messages</code>（局域网开放时把 127.0.0.1 换成本机 IP）')
       + (st && st.lastCallAt
-        ? '<br>最近调用 ' + esc(String(st.lastCallAt).slice(11, 19)) + ' · 共 ' + st.calls + ' 次' + (st.lastAccount ? ' · 最后用号 ' + esc(st.lastAccount) : '')
+        ? '<br>最近调用 ' + esc(String(st.lastCallAt).slice(11, 19)) + T(' · 共 ') + st.calls + T(' 次') + (st.lastAccount ? T(' · 最后用号 ') + esc(st.lastAccount) : '')
         : '<br>尚未有调用');
     syncMgwLanFields();
     openModal('m-mgw');
@@ -1835,7 +1993,7 @@ document.addEventListener('click', async (e) => {
     $('zac-interval').value = state.zClaimIntervalMin || 2;
     $('zac-window').value = state.zClaimWindowMin === 0 ? 0 : (state.zClaimWindowMin || 60);
     $('zac-off').style.display = state.zAutoClaim === true ? '' : 'none';
-    $('zac-ok').textContent = state.zAutoClaim === true ? '保存' : '保存并启用';
+    $('zac-ok').textContent = state.zAutoClaim === true ? T('保存') : T('保存并启用');
     openModal('m-zac');
     return;
   }
@@ -1848,7 +2006,7 @@ document.addEventListener('click', async (e) => {
     const st = state.zGatewayStats;
     $('zgw-url').innerHTML = '接口地址 <code>POST http://127.0.0.1:' + location.port + '/gateway/zcode/v1/messages</code>（局域网开放时把 127.0.0.1 换成本机 IP）'
       + (st && st.lastCallAt
-        ? '<br>最近调用 ' + esc(String(st.lastCallAt).slice(11, 19)) + ' · 共 ' + st.calls + ' 次' + (st.lastAccount ? ' · 最后用号 ' + esc(st.lastAccount) : '')
+        ? '<br>最近调用 ' + esc(String(st.lastCallAt).slice(11, 19)) + T(' · 共 ') + st.calls + T(' 次') + (st.lastAccount ? T(' · 最后用号 ') + esc(st.lastAccount) : '')
         : '<br>尚未有调用');
     syncZgwLanFields();
     openModal('m-zgw');
@@ -1935,11 +2093,11 @@ function quotaLow(c) {
 
 function quotaValue(q) {
   const pct = quotaPct(q);
-  if (q.percentScale || (!(q.total > 0) && pct !== null)) return { big: fmtNum(pct) + '%', small: '剩余', pct };
+  if (q.percentScale || (!(q.total > 0) && pct !== null)) return { big: fmtNum(pct) + '%', small: T('剩余'), pct };
   if (q.total > 0) return { big: fmtNum(quotaRemaining(q)), small: '/ ' + fmtNum(q.total) + (q.unit ? ' ' + q.unit : ''), pct };
-  return { big: fmtNum(q.used || 0), small: '已用', pct };
+  return { big: fmtNum(q.used || 0), small: T('已用'), pct };
 }
-const resetLabel = (q) => (q.resetAt ? fmtTime(q.resetAt).slice(5) + (q.recurring === false ? ' 到期' : ' 重置') : '');
+const resetLabel = (q) => (q.resetAt ? fmtTime(q.resetAt).slice(5) + (q.recurring === false ? T(' 到期') : T(' 重置')) : '');
 
 // 明细整行：名称 + 数值/相对重置 + 水位条（CLIProxyAPI quotaRow 版式）
 function trRow(q) {
@@ -1952,8 +2110,8 @@ function lineVal(q) {
   // 粗略值（3.99/4 → 100%），只在没有绝对量时才退回百分比口径；
   // percentScale（Antigravity 这类限时窗口平等关系）保持百分比。
   const txt = (q.percentScale || !(q.total > 0))
-    ? '剩 ' + (pct !== null ? fmtNum(pct) + '%' : fmtNum(quotaRemaining(q)))
-    : '剩 ' + fmtNum(quotaRemaining(q)) + ' / ' + fmtNum(q.total || 0) + (q.unit ? ' ' + q.unit : '');
+    ? T('剩 ') + (pct !== null ? fmtNum(pct) + '%' : fmtNum(quotaRemaining(q)))
+    : T('剩 ') + fmtNum(quotaRemaining(q)) + ' / ' + fmtNum(q.total || 0) + (q.unit ? ' ' + q.unit : '');
   return '<span>' + esc(txt) + '</span> ' + relResetHtml(q);
 }
 
@@ -1971,7 +2129,7 @@ function trPrimaryHtml(q) {
 function trQuotaHtml(q, { dimWhenEmpty = false } = {}) {
   const v = quotaValue(q);
   const used = v.pct !== null && v.pct <= 0;
-  const val = used && dimWhenEmpty ? '已用完' : (q.percentScale || !(q.total > 0) ? '剩余 ' + v.big : '剩余 ' + v.big + ' ' + v.small);
+  const val = used && dimWhenEmpty ? T('已用完') : (q.percentScale || !(q.total > 0) ? T('剩余 ') + v.big : T('剩余 ') + v.big + ' ' + v.small);
   return '<div class="tr-q' + (used && dimWhenEmpty ? ' spent' : '') + '"><div class="tr-q-line"><span class="tr-q-name" title="' + esc(q.name) + '">' + esc(q.name) + '</span>'
     + '<span class="tr-q-val">' + esc(val) + relResetHtml(q) + '</span></div>'
     + (!(used && dimWhenEmpty) ? trMeter(v.pct) : '')
@@ -1979,7 +2137,7 @@ function trQuotaHtml(q, { dimWhenEmpty = false } = {}) {
 }
 
 // 积分包按名称系列聚合（"Bonus Pack 18/19/20" → "Bonus Pack ×3"），去掉尾部序号作键
-const packKey = (name) => String(name || '').replace(/[\s#(]*\d+\s*[)]?\s*$/, '').trim() || '积分包';
+const packKey = (name) => String(name || '').replace(/[\s#(]*\d+\s*[)]?\s*$/, '').trim() || T('积分包');
 function trPacksHtml(c, packs) {
   if (!packs.length) return '';
   const alive = packs.filter((q) => quotaRemaining(q) > 0);
@@ -1999,12 +2157,12 @@ function trPacksHtml(c, packs) {
   const aliveSum = alive.reduce((n, q) => n + quotaRemaining(q), 0);
   const open = Boolean(state.trOpen && state.trOpen[c.id]);
   const head = '<div class="tr-packs-head">积分包 <b>' + alive.length + '</b> 个可用'
-    + (alive.length ? '，共剩 ' + fmtNum(aliveSum) : '')
-    + (spent.length ? ' · ' + spent.length + ' 个已用完' : '') + '</div>';
+    + (alive.length ? T('，共剩 ') + fmtNum(aliveSum) : '')
+    + (spent.length ? ' · ' + spent.length + T(' 个已用完') : '') + '</div>';
   const lines = gs.map((g) => trLine(
     g.name + (g.count > 1 ? ' ×' + g.count : ''),
-    esc('剩 ' + fmtNum(g.rem) + (g.tot > 0 ? ' / ' + fmtNum(g.tot) : ''))
-      + (g.resetAt ? '<span class="tr-q-when"> · 最早 ' + esc(fmtTime(g.resetAt).slice(5, 10)) + ' 到期</span>' : ''),
+    esc(T('剩 ') + fmtNum(g.rem) + (g.tot > 0 ? ' / ' + fmtNum(g.tot) : ''))
+      + (g.resetAt ? T('<span class="tr-q-when"> · 最早 ') + esc(fmtTime(g.resetAt).slice(5, 10)) + T(' 到期</span>') : ''),
   )).join('');
   const detail = open
     ? [...alive.sort((a, b) => String(a.resetAt || '9999').localeCompare(String(b.resetAt || '9999'))), ...spent]
@@ -2012,7 +2170,7 @@ function trPacksHtml(c, packs) {
     : '';
   const collapsible = alive.length > gs.length || spent.length > 0;
   return '<div class="tr-packs">' + head + (open ? detail : lines)
-    + (collapsible ? '<button class="tr-more" data-tr="toggle" data-id="' + esc(c.id) + '">' + (open ? '收起' : '逐包明细') + '</button>' : '')
+    + (collapsible ? '<button class="tr-more" data-tr="toggle" data-id="' + esc(c.id) + '">' + (open ? T('收起') : T('逐包明细')) + '</button>' : '')
     + '</div>';
 }
 
@@ -2027,7 +2185,7 @@ function trCardHtml(c) {
   } else {
     const { primary, windows, packs } = splitQuotas(c);
     if (!(primary || windows.length || packs.length)) {
-      body = '<div class="msg">' + esc(/no separate quota|billed at standard/i.test(c.message || '') ? '按量计费，无额度可显示' : (c.message || '该供应商未返回额度数据')) + '</div>';
+      body = '<div class="msg">' + esc(/no separate quota|billed at standard/i.test(c.message || '') ? T('按量计费，无额度可显示') : (c.message || T('该供应商未返回额度数据'))) + '</div>';
     } else {
       // 与汇总卡同款默认视图：主额度 + 每个周 / 月窗口额度一条（带进度条）；积分包走聚合行，「逐包明细」展开单包
       body = (primary ? trPrimaryHtml(primary) : '')
@@ -2037,12 +2195,12 @@ function trCardHtml(c) {
   }
   return '<div class="tr-card' + (c.isActive ? '' : ' off') + (body && body.startsWith('<div class="msg') ? ' flat' : '') + '" draggable="true" data-id="' + esc(c.id) + '" data-vendor="' + esc(c.providerName || c.provider || '') + '"><div class="row1"><div class="name-group">'
     + '<span class="badge prod tenrouter">' + esc(c.providerName) + '</span>'
-    + (TR_REGION[c.provider] ? '<span class="badge ' + TR_REGION[c.provider][1] + '">' + TR_REGION[c.provider][0] + '</span>' : '')
+    + (TR_REGION[c.provider] ? '<span class="badge ' + TR_REGION[c.provider][1] + '">' + T(TR_REGION[c.provider][0]) + '</span>' : '')
     + '<span class="tr-name" title="' + esc([c.name, c.email].filter(Boolean).join(' · ')) + '">' + esc(who) + '</span>'
     + (showPlan ? '<span class="badge">' + esc(c.plan) + '</span>' : '')
-    + (c.isActive ? '' : '<span class="pill pending">已停用</span>')
-    + (c.limitReached ? '<span class="pill fail">已达上限</span>' : '')
-    + (c.isActive && !c.error && quotaLow(c) ? '<span class="pill limited">告急</span>' : '')
+    + (c.isActive ? '' : T('<span class="pill pending">已停用</span>'))
+    + (c.limitReached ? T('<span class="pill fail">已达上限</span>') : '')
+    + (c.isActive && !c.error && quotaLow(c) ? T('<span class="pill limited">告急</span>') : '')
     + '</div></div>' + body + '</div>';
 }
 
@@ -2054,7 +2212,7 @@ const trSorted = (list) => list.slice().sort((a, b) => (b.isActive - a.isActive)
 function trGroups(list) {
   const map = new Map();
   for (const c of trSorted(list)) {
-    const k = c.providerName || c.provider || '其他';
+    const k = c.providerName || c.provider || T('其他');
     if (!map.has(k)) map.set(k, []);
     map.get(k).push(c);
   }
@@ -2124,8 +2282,8 @@ function trVendorCardHtml(g) {
   const alivePacks = packs.filter((q) => quotaRemaining(q) > 0);
   const packRem = alivePacks.reduce((n, q) => n + quotaRemaining(q), 0);
   const briefs = [];
-  if (alivePacks.length) briefs.push('积分包×' + alivePacks.length + ' 剩 ' + fmtNum(packRem));
-  else if (packs.length) briefs.push('积分包已用完');
+  if (alivePacks.length) briefs.push(T('积分包×') + alivePacks.length + T(' 剩 ') + fmtNum(packRem));
+  else if (packs.length) briefs.push(T('积分包已用完'));
   const hasQuotas = Boolean(primary || others.length || packs.length);
   let quotaHtml;
   if (errs === items.length) {
@@ -2142,29 +2300,29 @@ function trVendorCardHtml(g) {
   }
   return '<div class="tr-card' + (quotaHtml && quotaHtml.startsWith('<div class="msg') ? ' flat' : '') + '" draggable="true" data-vendor="' + esc(g.name) + '"><div class="row1"><div class="name-group">'
     + '<span class="badge prod tenrouter">' + esc(g.name) + '</span>'
-    + (TR_REGION[prov] ? '<span class="badge ' + TR_REGION[prov][1] + '">' + TR_REGION[prov][0] + '</span>' : '')
-    + '<span class="badge">' + items.length + ' 个账号</span>'
-    + (lows ? '<span class="pill limited">告急 ×' + lows + '</span>' : '')
-    + (errs ? '<span class="pill fail" title="部分连接查询失败">失败 ×' + errs + '</span>' : '')
+    + (TR_REGION[prov] ? '<span class="badge ' + TR_REGION[prov][1] + '">' + T(TR_REGION[prov][0]) + '</span>' : '')
+    + '<span class="badge">' + items.length + T(' 个账号</span>')
+    + (lows ? T('<span class="pill limited">告急 ×') + lows + '</span>' : '')
+    + (errs ? T('<span class="pill fail" title="部分连接查询失败">失败 ×') + errs + '</span>' : '')
     + '</div></div>' + quotaHtml + '</div>';
 }
 
 function trSetupHtml() {
   return '<div class="setup"><h3>接入 10Router</h3>'
-    + '<div class="hint">填 10Router 的地址和一个<b>虚拟 key</b>（10Router 仪表盘 → API Keys 创建的 sk-…），就能在这里：</div>'
-    + '<div class="hint" style="margin:6px 0 12px">· 查看 10Router 里其他供应商（Claude / Codex / Kiro / GLM …）的额度卡片（需要 10Router 1.2.1+）<br>'
-    + '· 把本机 ZCode / OpenCode / mirasim / 小米 MiMo / 10Router 的用量同步进 10Router 的用量统计（同 10router-sync 插件，自动每小时一次）<br>'
+    + T('<div class="hint">填 10Router 的地址和一个<b>虚拟 key</b>（10Router 仪表盘 → API Keys 创建的 sk-…），就能在这里：</div>')
+    + T('<div class="hint" style="margin:6px 0 12px">· 查看 10Router 里其他供应商（Claude / Codex / Kiro / GLM …）的额度卡片（需要 10Router 1.2.1+）<br>')
+    + T('· 把本机 ZCode / OpenCode / mirasim / 小米 MiMo / 10Router 的用量同步进 10Router 的用量统计（同 10router-sync 插件，自动每小时一次）<br>')
     + '· 「10Router 本机」= 本机 10Router 实例自己记的账（如 zcode-free 经它中转的行）同步到聚合端；地址指向本机时自动跳过，避免自己导自己</div>'
-    + '<button class="btn primary" data-tr="settings">' + I.plus + '配置 10Router</button></div>';
+    + '<button class="btn primary" data-tr="settings">' + I.plus + T('配置 10Router</button></div>');
 }
 
 function renderTenrouter() {
   const box = $('tr-panel');
   const c = tr.config;
-  if (!c) { box.innerHTML = '<div class="empty">加载中…</div>'; return; }
+  if (!c) { box.innerHTML = '<div class="empty">' + T('加载中…') + '</div>'; return; }
   const gwLine = state.zGateway === true
-    ? '<div class="gw-line"><span class="dot on pulse"></span> ZCode 体验包接口运行中'
-      + (state.zGatewayStats && state.zGatewayStats.lastCallAt ? ' · 最近调用 ' + esc(String(state.zGatewayStats.lastCallAt).slice(11, 19)) + ' · ' + state.zGatewayStats.calls + ' 次 · 最后用号 ' + esc(state.zGatewayStats.lastAccount || '-') : ' · 尚未有调用')
+    ? T('<div class="gw-line"><span class="dot on pulse"></span> ZCode 体验包接口运行中')
+      + (state.zGatewayStats && state.zGatewayStats.lastCallAt ? T(' · 最近调用 ') + esc(String(state.zGatewayStats.lastCallAt).slice(11, 19)) + ' · ' + state.zGatewayStats.calls + T(' 次 · 最后用号 ') + esc(state.zGatewayStats.lastAccount || '-') : T(' · 尚未有调用'))
       + ' · 模型 <code>zcode-free/glm-5.3-flash</code></div>'
     : '';
   if (!c.configured) { box.innerHTML = gwLine + trSetupHtml(); return; }
@@ -2192,7 +2350,7 @@ function renderTenrouter() {
   const activeVendor = vendor && shown.some((g) => g.name === vendor) ? vendor : '';
   if (groups.length) {
     tabStrip = '<div class="tr-tabs">'
-      + '<button class="btn' + (!activeVendor ? ' primary' : '') + '" data-tr="vendor" data-v="">全部</button>'
+      + '<button class="btn' + (!activeVendor ? ' primary' : '') + T('" data-tr="vendor" data-v="">全部</button>')
       + shown.map((g) => '<button class="btn' + (activeVendor === g.name ? ' primary' : '') + '" data-tr="vendor" data-v="' + esc(g.name) + '">' + esc(g.name) + ' ' + g.items.length + '</button>').join('')
       + '</div>';
   }
@@ -2208,20 +2366,20 @@ function renderTenrouter() {
       : '<div class="empty">没有可显示的供应商（可在「设置」里关掉隐藏）</div>';
   }
   const h = tr.health;
-  const healthStrong = !h ? '…' : h.ok ? '正常' : '异常';
+  const healthStrong = !h ? '…' : h.ok ? T('正常') : T('异常');
   const healthDetail = !h ? '' : h.ok
-    ? (h.driver ? '存储驱动 ' + h.driver : '') + (h.lastDriverError ? '（驱动降级：' + h.lastDriverError + '）' : '')
+    ? (h.driver ? T('存储驱动 ') + h.driver : '') + (h.lastDriverError ? T('（驱动降级：') + h.lastDriverError + T('）') : '')
     : (h.error || '');
   box.innerHTML = '<div class="toolbar"><div class="summary">'
-    + '<div class="stat" title="' + esc(healthDetail) + '"><span>10Router 健康</span><strong' + (h && !h.ok ? ' style="color:var(--err)"' : (h && h.lastDriverError ? ' style="color:var(--warn,#b45309)"' : '')) + '>' + healthStrong + '</strong></div><div class="divider"></div>'
-    + '<div class="stat"><span>供应商连接</span><strong>' + (tr.quotas ? list.length : '-') + '</strong></div><div class="divider"></div>'
-    + '<div class="stat"><span>额度告急</span><strong>' + (tr.quotas ? low : '-') + '</strong></div><div class="divider"></div>'
-    + '<div class="stat"><span>查询失败</span><strong>' + (tr.quotas ? failed : '-') + '</strong></div>'
+    + '<div class="stat" title="' + esc(healthDetail) + T('"><span>10Router 健康</span><strong') + (h && !h.ok ? ' style="color:var(--err)"' : (h && h.lastDriverError ? ' style="color:var(--warn,#b45309)"' : '')) + '>' + healthStrong + '</strong></div><div class="divider"></div>'
+    + T('<div class="stat"><span>供应商连接</span><strong>') + (tr.quotas ? list.length : '-') + '</strong></div><div class="divider"></div>'
+    + T('<div class="stat"><span>额度告急</span><strong>') + (tr.quotas ? low : '-') + '</strong></div><div class="divider"></div>'
+    + T('<div class="stat"><span>查询失败</span><strong>') + (tr.quotas ? failed : '-') + '</strong></div>'
     + '</div><div class="actions">'
-    + '<button class="btn" data-tr="refresh"' + (tr.loading ? ' disabled' : '') + '>' + (tr.loading ? '刷新中…' : '刷新额度') + '</button>'
-    + '<button class="btn" data-tr="sync" title="用量同步：自动开关、同步来源与手动同步（点我打开）"' + (tr.syncing || c.syncing ? ' disabled' : '') + '>'
-    + '<span class="dot' + (c.sync.enabled ? ' on' : '') + '"></span>' + (tr.syncing || c.syncing ? '同步中…' : '用量同步') + '</button>'
-    + '<button class="btn" data-tr="settings">设置</button>'
+    + '<button class="btn" data-tr="refresh"' + (tr.loading ? ' disabled' : '') + '>' + (tr.loading ? T('刷新中…') : T('刷新额度')) + '</button>'
+    + T('<button class="btn" data-tr="sync" title="用量同步：自动开关、同步来源与手动同步（点我打开）"') + (tr.syncing || c.syncing ? ' disabled' : '') + '>'
+    + '<span class="dot' + (c.sync.enabled ? ' on' : '') + '"></span>' + (tr.syncing || c.syncing ? T('同步中…') : T('用量同步')) + '</button>'
+    + T('<button class="btn" data-tr="settings">设置</button>')
     + '</div></div>'
     + tabStrip
     + '<div class="tr-grid">' + grid + '</div>';
@@ -2233,11 +2391,11 @@ function trDashCard() {
   const list = (tr.quotas && tr.quotas.connections) || [];
   const low = list.filter((x) => x.isActive && !x.error && quotaLow(x)).length;
   const ls = c.lastSync;
-  const rows = '<span class="lbl">供应商连接</span><span class="val">' + (tr.quotas ? list.length : tr.error ? '读取失败' : '…') + '</span>'
-    + '<span class="lbl">额度告急</span><span class="val' + (low ? ' warn' : '') + '">' + (tr.quotas ? low : '-') + '</span>'
-    + '<span class="lbl">用量同步</span><span class="val">' + (ls ? esc(fmtTime(ls.at).slice(5)) : c.sync.enabled ? '等待首次同步' : '手动') + '</span>';
+  const rows = T('<span class="lbl">供应商连接</span><span class="val">') + (tr.quotas ? list.length : tr.error ? T('读取失败') : '…') + '</span>'
+    + T('<span class="lbl">额度告急</span><span class="val') + (low ? ' warn' : '') + '">' + (tr.quotas ? low : '-') + '</span>'
+    + T('<span class="lbl">用量同步</span><span class="val">') + (ls ? esc(fmtTime(ls.at).slice(5)) : c.sync.enabled ? T('等待首次同步') : T('手动')) + '</span>';
   return '<div class="prodcard" data-view="tenrouter"><div class="prod-head"><span class="prod-name"><span class="dot tenrouter"></span>10Router</span>'
-    + '<span class="prod-go">查看' + I.chevRight + '</span></div><div class="prod-rows">' + rows + '</div></div>';
+    + T('<span class="prod-go">查看') + I.chevRight + '</span></div><div class="prod-rows">' + rows + '</div></div>';
 }
 
 async function loadTrConfig() {
@@ -2269,9 +2427,9 @@ function openTrSettings() {
   const c = tr.config || { sync: { enabled: true, sources: [] }, sources: [] };
   $('tr-endpoint').value = c.endpoint || '';
   $('tr-key').value = '';
-  $('tr-key').placeholder = c.keyMasked ? '已保存 ' + c.keyMasked + '（留空保持不变）' : 'sk-…';
+  $('tr-key').placeholder = c.keyMasked ? T('已保存 ') + c.keyMasked + T('（留空保持不变）') : 'sk-…';
   $('tr-admin-pw').value = '';
-  $('tr-admin-pw').placeholder = c.hasAdminPassword ? '已保存（留空保持不变）' : '可选：10Router 面板密码';
+  $('tr-admin-pw').placeholder = c.hasAdminPassword ? T('已保存（留空保持不变）') : T('可选：10Router 面板密码');
   $('tr-hide-empty').checked = state.trHideEmpty === true;
   $('tr-disconnect').style.display = c.configured ? '' : 'none';
   $('tr-test-msg').textContent = '';
@@ -2284,16 +2442,16 @@ function openTrSync() {
   $('tr-auto').checked = c.configured ? c.sync.enabled : true;
   $('tr-sources').innerHTML = (c.sources || []).map((x) => '<label class="check"><input type="checkbox" data-src="' + x.id + '"'
     + ((c.configured ? c.sync.sources.includes(x.id) : true) ? ' checked' : '') + (x.supported ? '' : ' disabled') + '> ' + esc(x.label)
-    + '<span class="dim">' + (x.found ? '' : '（本机未检测到）') + (x.supported ? '' : '（需要 Node 22.5+）') + '</span></label>').join('');
+    + '<span class="dim">' + (x.found ? '' : T('（本机未检测到）')) + (x.supported ? '' : T('（需要 Node 22.5+）')) + '</span></label>').join('');
   const ls = c.lastSync;
-  $('tr-sync-status').textContent = ls ? '上次同步 ' + fmtTime(ls.at).slice(5) + '：' + ls.summary : '还没有同步过';
+  $('tr-sync-status').textContent = ls ? T('上次同步 ') + fmtTime(ls.at).slice(5) + T('：') + ls.summary : T('还没有同步过');
   $('tr-sync-now').disabled = tr.syncing || c.syncing === true;
   openModal('m-trsync');
 }
 async function trSyncSave(close) {
   try {
     tr.config = await api('/api/tenrouter', { method: 'PUT', json: { syncEnabled: $('tr-auto').checked, sources: [...document.querySelectorAll('#tr-sources input[data-src]:checked')].map((x) => x.dataset.src) } });
-    if (close) { closeModal('m-trsync'); toast('用量同步设置已保存'); render(); }
+    if (close) { closeModal('m-trsync'); toast(T('用量同步设置已保存')); render(); }
   } catch (e) { toast(e.message, false); throw e; }
 }
 function trForm() {
@@ -2307,36 +2465,36 @@ function trForm() {
 async function trTest() {
   const f = trForm();
   $('tr-test-msg').style.color = '';
-  $('tr-test-msg').textContent = '测试中…';
+  $('tr-test-msg').textContent = T('测试中…');
   try {
     const r = await api('/api/tenrouter/test', { json: { endpoint: f.endpoint, key: f.key } });
     $('tr-test-msg').style.color = r.ok ? 'var(--ok)' : 'var(--err)';
     $('tr-test-msg').textContent = !r.ok ? '✗ ' + r.error
-      : r.quotas ? '✓ 连接成功：' + r.connections + ' 个可查额度的供应商连接' : '✓ 已连接，但' + r.warning + '（用量同步可以正常使用）';
+      : r.quotas ? T('✓ 连接成功：') + r.connections + T(' 个可查额度的供应商连接') : T('✓ 已连接，但') + r.warning + T('（用量同步可以正常使用）');
   } catch (e) { $('tr-test-msg').style.color = 'var(--err)'; $('tr-test-msg').textContent = '✗ ' + e.message; }
 }
 async function trSave() {
   const f = trForm();
-  if (!f.endpoint) return toast('请填写 10Router 地址', false);
-  if (!f.key && !(tr.config && tr.config.keyMasked)) return toast('请填写虚拟 key', false);
+  if (!f.endpoint) return toast(T('请填写 10Router 地址'), false);
+  if (!f.key && !(tr.config && tr.config.keyMasked)) return toast(T('请填写虚拟 key'), false);
   // 显示偏好只存在面板本地（localStorage），不上服务端
   state.trHideEmpty = $('tr-hide-empty').checked;
   try { localStorage.setItem('qd_tr_hideempty', state.trHideEmpty ? '1' : '0'); } catch (e) {}
   try {
     tr.config = await api('/api/tenrouter', { method: 'PUT', json: f });
     closeModal('m-10r');
-    toast('已保存 10Router 设置');
+    toast(T('已保存 10Router 设置'));
     tr.quotas = null; tr.error = null;
     loadTrQuotas(true);
   } catch (e) { toast(e.message, false); }
 }
 async function trDisconnect() {
-  if (!(await uiConfirm('断开后会删除保存的 10Router 地址、key 与同步进度（10Router 里已同步的数据不受影响）。', '断开 10Router', '断开'))) return;
+  if (!(await uiConfirm(T('断开后会删除保存的 10Router 地址、key 与同步进度（10Router 里已同步的数据不受影响）。'), T('断开 10Router'), T('断开')))) return;
   try { tr.config = await api('/api/tenrouter', { method: 'DELETE' }); tr.quotas = null; tr.error = null; closeModal('m-10r'); render(); }
   catch (e) { toast(e.message, false); }
 }
 async function trSyncAccounts() {
-  if (!(tr.config && tr.config.configured)) return toast('请先保存 10Router 设置', false);
+  if (!(tr.config && tr.config.configured)) return toast(T('请先保存 10Router 设置'), false);
   const btn = $('tr-sync-accounts');
   const pw = $('tr-admin-pw').value;
   btn.disabled = true;
@@ -2397,6 +2555,12 @@ async function loadAccounts() {
   render();
   renderStatus();
   loadQuotas();
+}
+// 轻量刷新账号列表（只重拉 /api/accounts + 重绘，不重查每账号额度）：
+// 「缺网页会话」徽章的数据源 qoderWebCapturedAt 在账号 meta 里，网页会话是在登录窗
+// 关闭时才收割绑定的（晚于登录成功提示数秒），登录成功后与周期轮询里都要按这个口径补拉。
+async function refreshAccountList() {
+  try { state.accounts = (await api('/api/accounts')).accounts; render(); } catch (e) { /* 下一轮再试 */ }
 }
 let quotaRun = 0;
 let quotaLoadedAt = 0;
@@ -2462,7 +2626,7 @@ async function loadCurrentLogs() {
     const ico = (lvl) => lvl === 'error' ? '✗' : lvl === 'warn' ? '⚠' : lvl === 'info' ? '·' : '';
     el.innerHTML = logs.length
       ? logs.map((l) => '<div class="' + esc(l.level) + '">[' + esc(l.at) + '] <span class="lvl-ico">' + ico(l.level) + '</span>' + (withTag ? esc(l.tag) + ' · ' : '') + esc(l.msg) + '</div>').join('')
-      : (state.logLevel === 'all' ? '（暂无）' : '（暂无警告或错误）');
+      : (state.logLevel === 'all' ? T('（暂无）') : T('（暂无警告或错误）'));
     if (atBottom) el.scrollTop = el.scrollHeight;
   } catch (e) {}
 }
@@ -2474,15 +2638,15 @@ async function checkinOne(id) {
     const d = await api('/api/accounts/' + encodeURIComponent(id) + '/checkin', { method: 'POST' });
     const r = d.results && d.results[0];
     const accObj = state.accounts.find((x) => x.id === id);
-    const accLabel = (r && r.account) || (accObj && (accObj.name || accObj.id)) || '该账号';
-    toast(r ? (accLabel + '：' + (r.status === 'checked-in' ? '领取成功 +' + r.claimedAmount + ' Credits' : (r.error || r.message || r.status))) : d.summary, !(r && r.status === 'failed'));
+    const accLabel = (r && r.account) || (accObj && (accObj.name || accObj.id)) || T('该账号');
+    toast(r ? (accLabel + T('：') + (r.status === 'checked-in' ? T('领取成功 +') + r.claimedAmount + ' Credits' : (r.error || r.message || r.status))) : d.summary, !(r && r.status === 'failed'));
   } catch (e) { toast(e.message, false); }
   delete state.busy[id];
   await loadStatus(); await loadAccounts(); loadLogs();
 }
 async function checkinAll(btn, product) {
   const label = btn.innerHTML;
-  btn.disabled = true; btn.innerHTML = I.refresh + '领取中…';
+  btn.disabled = true; btn.innerHTML = I.refresh + T('领取中…');
   try {
     const d = await api('/api/checkin', { json: { skipIfCheckedToday: false, product } });
     toast(d.summary);
@@ -2500,30 +2664,30 @@ async function onCardClick(e) {
   if (act === 'claim') return openClaim(id);
   if (act === 'switch') {
     const a = state.accounts.find((x) => x.id === id);
-    const client = CLIENT_LABEL[a && a.product] || (a && prodLabel(a.product)) || '客户端';
+    const client = (CLIENT_LABEL[a && a.product] ? T(CLIENT_LABEL[a && a.product]) : '') || (a && prodLabel(a.product)) || T('客户端');
     const tip = a && a.product === 'zcode'
-      ? '\n需先退出 ZCode；切换后重新打开 ZCode 即为新账号。当前登录会先保存到 CreditDaddy，不会丢号。'
+      ? T('\n需先退出 ZCode；切换后重新打开 ZCode 即为新账号。当前登录会先保存到 CreditDaddy，不会丢号。')
       : a && a.product === 'mirasim'
-        ? '\n需先退出 Mirasim；切换后重新打开即为新账号。当前登录会先保存到 CreditDaddy，不会丢号。'
+        ? T('\n需先退出 Mirasim；切换后重新打开即为新账号。当前登录会先保存到 CreditDaddy，不会丢号。')
         : a && a.product === 'catpaw'
-          ? '\n需先退出妙手；切换后重新打开妙手即为新账号。当前登录会先保存到 CreditDaddy，不会丢号。'
+          ? T('\n需先退出妙手；切换后重新打开妙手即为新账号。当前登录会先保存到 CreditDaddy，不会丢号。')
           : a && a.product === 'trae'
-            ? '\n需先退出 Trae；切换后重新打开 Trae 即为新账号。当前登录会先自动快照保存到 CreditDaddy，不会丢号。'
+            ? T('\n需先退出 Trae；切换后重新打开 Trae 即为新账号。当前登录会先自动快照保存到 CreditDaddy，不会丢号。')
             : a && a.product === 'qoder'
-              ? '\n需先退出 Qoder；切换后重新打开 Qoder 即为新账号。运行中的 Qoder 退出时会把旧登录写回去，可选「关闭并强制切换」代为关进程。'
-              : '\n客户端会自动应用新会话；当前登录账号的最新 token 会先保存到 CreditDaddy。';
-    if (!(await uiConfirm('把 ' + client + ' 切换到「' + (a && a.name || id) + '」？' + tip, '切换账号', '切换'))) return;
+              ? T('\n需先退出 Qoder；切换后重新打开 Qoder 即为新账号。运行中的 Qoder 退出时会把旧登录写回去，可选「关闭并强制切换」代为关进程。')
+              : T('\n客户端会自动应用新会话；当前登录账号的最新 token 会先保存到 CreditDaddy。');
+    if (!(await uiConfirm(T('把 {client} 切换到「{name}」?', { client, name: (a && a.name || id) }) + tip, T('切换账号'), T('切换')))) return;
     const doSwitch = (force) => api('/api/accounts/' + encodeURIComponent(id) + '/switch', { json: { force } });
     try {
       let r;
       try { r = await doSwitch(false); }
       catch (err) {
         if (err.code !== 'ZCODE_RUNNING' && err.code !== 'MIRASIM_RUNNING' && err.code !== 'CATPAW_RUNNING' && err.code !== 'TRAE_RUNNING' && err.code !== 'QODER_RUNNING') throw err;
-        if (!(await uiConfirm(err.message + '\n\n仍要强制切换吗？强制切换会先关闭客户端再写入登录，重新打开客户端即为新账号。', client + ' 正在运行', '关闭并强制切换'))) return;
+        if (!(await uiConfirm(err.message + T('\n\n仍要强制切换吗？强制切换会先关闭客户端再写入登录，重新打开客户端即为新账号。'), client + T(' 正在运行'), T('关闭并强制切换')))) return;
         r = await doSwitch(true);
       }
-      const msg = r && r.alreadyActive ? client + ' 当前已是该账号'
-        : (r && r.closedClient ? '已关闭并切换 ' : '') + client + ' 已切换到 ' + (a && a.name || id);
+      const msg = r && r.alreadyActive ? client + T(' 当前已是该账号')
+        : (r && r.closedClient ? T('已关闭并切换 ') : '') + client + T(' 已切换到 ') + (a && a.name || id);
       toast(msg);
       await loadStatus(); await loadAccounts();
       // 桌面版切号后自动唤醒打开客户端，免去手动查找客户端快捷方式
@@ -2531,7 +2695,7 @@ async function onCardClick(e) {
         setTimeout(async () => {
           try {
             const re = await window.creditdaddy.openZcodeClient();
-            if (re && re.ok) toast('已重新启动 ZCode 客户端');
+            if (re && re.ok) toast(T('已重新启动 ZCode 客户端'));
           } catch (e) {}
         }, 800);
       }
@@ -2539,7 +2703,7 @@ async function onCardClick(e) {
         setTimeout(async () => {
           try {
             const re = await window.creditdaddy.openMirasimClient();
-            if (re && re.ok) toast('已重新启动 Mirasim 客户端');
+            if (re && re.ok) toast(T('已重新启动 Mirasim 客户端'));
           } catch (e) {}
         }, 800);
       }
@@ -2547,7 +2711,7 @@ async function onCardClick(e) {
         setTimeout(async () => {
           try {
             const re = await window.creditdaddy.openCatpawClient();
-            if (re && re.ok) toast('已重新启动妙手客户端');
+            if (re && re.ok) toast(T('已重新启动妙手客户端'));
           } catch (e) {}
         }, 800);
       }
@@ -2555,8 +2719,8 @@ async function onCardClick(e) {
         setTimeout(async () => {
           try {
             const re = await window.creditdaddy.openTraeClient();
-            if (re && re.ok) toast('已重新启动 Trae 客户端');
-            else toast((re && re.error) || '无法打开 Trae 客户端（桌面版才能自动拉起）', false);
+            if (re && re.ok) toast(T('已重新启动 Trae 客户端'));
+            else toast((re && re.error) || T('无法打开 Trae 客户端（桌面版才能自动拉起）'), false);
           } catch (e) {}
         }, 800);
       }
@@ -2565,7 +2729,7 @@ async function onCardClick(e) {
   }
   if (act === 'rename') {
     const a = state.accounts.find((x) => x.id === id);
-    const name = await uiPrompt('修改备注名', a && a.name || '', { okText: '保存' });
+    const name = await uiPrompt(T('修改备注名'), a && a.name || '', { okText: T('保存') });
     if (name === null) return;
     try { await api('/api/accounts/' + encodeURIComponent(id), { method: 'PATCH', json: { name } }); await loadAccounts(); }
     catch (err) { toast(err.message, false); }
@@ -2575,11 +2739,11 @@ async function onCardClick(e) {
     if (!armed[id]) {
       armed[id] = setTimeout(() => { delete armed[id]; btn.classList.remove('armed'); }, 3000);
       btn.classList.add('armed');
-      toast('再点一次确认删除');
+      toast(T('再点一次确认删除'));
       return;
     }
     clearTimeout(armed[id]); delete armed[id];
-    try { await api('/api/accounts/' + encodeURIComponent(id), { method: 'DELETE' }); toast('已删除'); delete state.quotas[id]; await loadAccounts(); }
+    try { await api('/api/accounts/' + encodeURIComponent(id), { method: 'DELETE' }); toast(T('已删除')); delete state.quotas[id]; await loadAccounts(); }
     catch (err) { toast(err.message, false); }
   }
 }
@@ -2596,7 +2760,7 @@ function loadCaptchaSdk() {
       const s = document.createElement('script');
       s.src = CAPTCHA_SDK_URL;
       s.onload = () => resolve();
-      s.onerror = () => reject(new Error('验证码组件加载失败（网络问题？）'));
+      s.onerror = () => reject(new Error(T('验证码组件加载失败（网络问题？）')));
       document.head.appendChild(s);
     });
   }
@@ -2633,11 +2797,11 @@ function renderClaimBody() {
   $('claim-body').innerHTML = claimState.plans.map((pl, i) =>
     '<div class="claim-plan"><div><b>' + esc(pl.name || pl.planId) + '</b>'
     + (pl.description ? '<div class="dim grants">' + esc(pl.description) + '</div>' : '')
-    + (pl.grants && pl.grants.length ? '<div class="dim grants">' + pl.grants.map(esc).join('；') + '</div>' : '')
-    + '</div><button class="btn primary" data-claim="' + i + '"' + (claimState.busy ? ' disabled' : '') + '>领取</button></div>'
+    + (pl.grants && pl.grants.length ? '<div class="dim grants">' + pl.grants.map(esc).join(T('；')) + '</div>' : '')
+    + '</div><button class="btn primary" data-claim="' + i + '"' + (claimState.busy ? ' disabled' : '') + T('>领取</button></div>')
   ).join('')
     + '<div id="claim-status" class="dim" style="margin-top:8px"></div>'
-    + '<div id="cap-holder"></div><button class="btn" id="cap-btn" hidden>打开验证码</button>';
+    + T('<div id="cap-holder"></div><button class="btn" id="cap-btn" hidden>打开验证码</button>');
 }
 
 // 阿里云验证码：先静默验证（8s 超时），不行就让用户点按钮弹验证码。移植自 zcode-switch captcha.js。
@@ -2651,13 +2815,13 @@ function runCaptcha(cfg) {
       if (done || !param) return;
       done = true;
       clearTimeout(timer);
-      st.textContent = '人机验证已通过';
+      st.textContent = T('人机验证已通过');
       resolve(param);
     };
     const interactive = (why) => {
       if (done) return;
       clearTimeout(timer);
-      st.textContent = '需要完成人机验证：点下方按钮，按提示完成验证码';
+      st.textContent = T('需要完成人机验证：点下方按钮，按提示完成验证码');
       if (btn) { btn.hidden = false; btn.focus(); }
       if (why && typeof why !== 'string') st.title = JSON.stringify(why).slice(0, 160);
     };
@@ -2671,7 +2835,7 @@ function runCaptcha(cfg) {
         button: '#cap-btn',
         getInstance: (instance) => {
           if (instance && typeof instance.startTracelessVerification === 'function') {
-            st.textContent = '人机验证中…';
+            st.textContent = T('人机验证中…');
             instance.startTracelessVerification();
             timer = setTimeout(() => interactive(), 8000);
           } else interactive();
@@ -2690,7 +2854,7 @@ async function doClaim(i) {
   const st = $('claim-status');
   claimState.busy = true;
   renderClaimBody();
-  $('claim-status').textContent = '准备领取…';
+  $('claim-status').textContent = T('准备领取…');
   let captchaParam = '';
   let region = '';
   try {
@@ -2700,27 +2864,27 @@ async function doClaim(i) {
       region = cfg.region || '';
       captchaParam = await runCaptcha(cfg);
     } else {
-      $('claim-status').textContent = '验证码配置不可用，按无验证码直接尝试…';
+      $('claim-status').textContent = T('验证码配置不可用，按无验证码直接尝试…');
     }
   } catch (e) {
-    $('claim-status').innerHTML = '<span class="msg err">' + esc('验证码失败：' + e.message) + '</span>';
+    $('claim-status').innerHTML = '<span class="msg err">' + esc(T('验证码失败：') + e.message) + '</span>';
     claimState.busy = false;
     renderClaimBody();
     return;
   }
-  $('claim-status').textContent = '领取中…';
+  $('claim-status').textContent = T('领取中…');
   try {
     const r = await api('/api/accounts/' + encodeURIComponent(claimState.accountId) + '/zcode/claim', {
       json: { planId: pl.planId, captchaParam, region },
     });
-    toast('领取成功：' + (r.planName || pl.name || pl.planId));
+    toast(T('领取成功：') + (r.planName || pl.name || pl.planId));
     closeModal('m-claim');
     loadQuotas([claimState.accountId]);
     loadLogs();
   } catch (e) {
     const errBox = $('claim-status');
     if (errBox) {
-      errBox.innerHTML = '<span class="msg err">' + esc(e.message) + (e.nextAt ? '（' + fmtTime(e.nextAt).slice(5, 16) + ' 后可再试）' : '') + '</span>';
+      errBox.innerHTML = '<span class="msg err">' + esc(e.message) + (e.nextAt ? T('（') + fmtTime(e.nextAt).slice(5, 16) + T(' 后可再试）') : '') + '</span>';
     }
   }
   claimState.busy = false;
@@ -2733,7 +2897,11 @@ $('claim-body').addEventListener('click', (e) => {
 });
 
 // ── 弹窗 ──
-function openModal(id) { $(id).classList.add('show'); }
+function openModal(id) {
+  // 设置弹出层不是遮罩弹窗：开其它弹窗前先收掉，避免浮在遮罩弹窗之上（层级错乱来源）
+  if (id !== 'm-settings') { const st = $('m-settings'); if (st) st.classList.remove('show'); }
+  $(id).classList.add('show');
+}
 function closeModal(id) { $(id).classList.remove('show'); if (id === 'm-add') deviceStop(); if (id === 'm-dialog') settleDialog(null); }
 
 // 页面内对话框（替代原生 confirm / prompt：面板嵌在飞牛桌面窗口里是跨域 iframe，原生弹框可能被浏览器拦截）
@@ -2747,12 +2915,12 @@ function uiDialog({ title, message, input, okText }) {
   $('dlg-msg').style.display = message ? '' : 'none';
   $('dlg-field').style.display = input ? '' : 'none';
   if (input) { $('dlg-input').type = input.type || 'text'; $('dlg-input').value = input.value || ''; $('dlg-input').placeholder = input.placeholder || ''; }
-  $('dlg-ok').textContent = okText || '确定';
+  $('dlg-ok').textContent = okText || T('确定');
   openModal('m-dialog');
   setTimeout(() => (input ? $('dlg-input') : $('dlg-ok')).focus(), 30);
   return new Promise((resolve) => { dialogResolve = (v) => resolve(input ? v : v !== null); });
 }
-const uiConfirm = (message, title, okText) => uiDialog({ title: title || '请确认', message, okText });
+const uiConfirm = (message, title, okText) => uiDialog({ title: title || T('请确认'), message, okText });
 const uiPrompt = (title, value, opts = {}) => uiDialog({ title, message: opts.message, input: { value, type: opts.type, placeholder: opts.placeholder }, okText: opts.okText });
 function okDialog() { const v = $('dlg-field').style.display === 'none' ? true : $('dlg-input').value; $('m-dialog').classList.remove('show'); settleDialog(v); }
 $('dlg-ok').addEventListener('click', okDialog);
@@ -2762,7 +2930,7 @@ $('dlg-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') okDia
 async function restartCreditDaddy() {
   const mask = document.createElement('div');
   mask.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:15px;gap:12px;backdrop-filter:blur(4px);user-select:none;';
-  mask.innerHTML = '<div style="font-size:28px">⏳</div><div style="font-weight:600">正在重启 CreditDaddy，请稍候…</div><div style="font-size:12px;color:rgba(255,255,255,.6)">服务恢复后将自动刷新页面</div>';
+  mask.innerHTML = T('<div style="font-size:28px">⏳</div><div style="font-weight:600">正在重启 CreditDaddy，请稍候…</div><div style="font-size:12px;color:rgba(255,255,255,.6)">服务恢复后将自动刷新页面</div>');
   document.body.appendChild(mask);
 
   try {
@@ -2785,14 +2953,14 @@ async function restartCreditDaddy() {
     } catch {}
     if (attempts > 30) {
       clearInterval(poll);
-      mask.innerHTML = '<div>重启超时或端口已改变</div><button class="btn primary" onclick="location.reload()" style="margin-top:10px">手动刷新</button>';
+      mask.innerHTML = T('<div>重启超时或端口已改变</div><button class="btn primary" onclick="location.reload()" style="margin-top:10px">手动刷新</button>');
     }
   }, 1000);
 }
 
 async function maybePromptRestartForLan(oldLan, newLan) {
   if (oldLan !== newLan) {
-    const ok = await uiConfirm('局域网开放绑定改动需重启服务生效，是否立即重启 CreditDaddy？', '配置已保存', '立即重启');
+    const ok = await uiConfirm(T('局域网开放绑定改动需重启服务生效，是否立即重启 CreditDaddy？'), T('配置已保存'), T('立即重启'));
     if (ok) {
       await restartCreditDaddy();
       return true;
@@ -2801,13 +2969,6 @@ async function maybePromptRestartForLan(oldLan, newLan) {
   return false;
 }
 
-$('btn-restart-app').addEventListener('click', async () => {
-  const ok = await uiConfirm('确定要重启 CreditDaddy 服务吗？正在进行的任务可能会中断。', '重启服务', '重启');
-  if (ok) {
-    closeModal('m-settings');
-    await restartCreditDaddy();
-  }
-});
 
 // ── 检查更新（桌面版）：主进程推状态（update:state），面板只管渲染 ──
 const updBridge = window.creditdaddy && window.creditdaddy.update ? window.creditdaddy.update : null;
@@ -2819,49 +2980,49 @@ function renderUpdateModal(s) {
   updState = s;
   const body = $('upd-body');
   const acts = $('upd-actions');
-  const cur = '当前 v' + (s.current || '?');
-  const rel = '<button class="btn" id="upd-rel">打开 Releases</button>';
-  const close = '<button class="btn" data-close-uu>稍后</button>';
+  const cur = T('当前 v') + (s.current || '?');
+  const rel = T('<button class="btn" id="upd-rel">打开 Releases</button>');
+  const close = T('<button class="btn" data-close-uu>稍后</button>');
   switch (s.phase) {
     case 'unsupported':
-      body.innerHTML = '<div class="hint">当前环境不支持应用内更新（开发模式 / Portable / 未签名的 macOS 版），请从 GitHub Releases 手动下载。</div>';
-      acts.innerHTML = rel + '<button class="btn" data-close-uu>取消</button>';
+      body.innerHTML = T('<div class="hint">当前环境不支持应用内更新（开发模式 / Portable / 未签名的 macOS 版），请从 GitHub Releases 手动下载。</div>');
+      acts.innerHTML = rel + T('<button class="btn" data-close-uu>取消</button>');
       break;
     case 'checking':
-      body.innerHTML = '<div class="hint">正在检查更新…</div>';
+      body.innerHTML = T('<div class="hint">正在检查更新…</div>');
       acts.innerHTML = close;
       break;
     case 'latest':
-      body.innerHTML = '<div class="hint"><span class="dot on"></span> 已是最新版本（' + cur + '）</div>';
-      acts.innerHTML = '<button class="btn primary" data-close-uu>好的</button>';
+      body.innerHTML = T('<div class="hint"><span class="dot on"></span> 已是最新版本（') + cur + '）</div>';
+      acts.innerHTML = T('<button class="btn primary" data-close-uu>好的</button>');
       break;
     case 'available':
       body.innerHTML = s.via === 'updater'
-        ? '<div class="hint">发现新版本 <b>v' + esc(s.version) + '</b>（' + cur + '）——正在后台下载，完成后退出 CreditDaddy 时自动安装。</div>'
-        : '<div class="hint">发现新版本 <b>v' + esc(s.version) + '</b>（' + cur + (s.sizeMB ? '，约 ' + s.sizeMB + ' MB' : '') + '），可由本机直接下载安装。</div>';
-      acts.innerHTML = (s.via === 'github' ? updActBtn('upd-go', '立即下载安装', 'primary') : '') + rel + close;
+        ? T('<div class="hint">发现新版本 <b>v') + esc(s.version) + '</b>（' + cur + '）——正在后台下载，完成后退出 CreditDaddy 时自动安装。</div>'
+        : T('<div class="hint">发现新版本 <b>v') + esc(s.version) + '</b>（' + cur + (s.sizeMB ? T('，约 ') + s.sizeMB + ' MB' : '') + '），可由本机直接下载安装。</div>';
+      acts.innerHTML = (s.via === 'github' ? updActBtn('upd-go', T('立即下载安装'), 'primary') : '') + rel + close;
       break;
     case 'downloading':
-      body.innerHTML = '<div class="hint">正在下载 v' + esc(s.version) + '</div>'
+      body.innerHTML = T('<div class="hint">正在下载 v') + esc(s.version) + '</div>'
         + '<div class="meter" style="margin:8px 0 4px"><span style="width:' + (s.percent || 0) + '%"></span></div>'
-        + '<div class="hint">' + (s.percent != null ? s.percent + '%' : '') + '（' + (s.mb || '…') + ' MB）' + (s.percent == null ? ' 获取大小中…' : '') + '</div>';
-      acts.innerHTML = '<button class="btn" data-close-uu>后台继续</button>';
+        + '<div class="hint">' + (s.percent != null ? s.percent + '%' : '') + T('（') + (s.mb || '…') + T(' MB）') + (s.percent == null ? T(' 获取大小中…') : '') + '</div>';
+      acts.innerHTML = T('<button class="btn" data-close-uu>后台继续</button>');
       break;
     case 'downloaded':
       body.innerHTML = '<div class="hint"><span class="dot on pulse"></span> <b>v' + esc(s.version) + '</b> '
-        + (s.via === 'updater' ? '已下载完成，重启即完成更新（退出时也会自动安装）。' : '安装包已下载完成，安装时 CreditDaddy 会先退出。') + '</div>';
-      acts.innerHTML = updActBtn('upd-go', s.via === 'updater' ? '立即重启更新' : '立即安装', 'primary') + close;
+        + (s.via === 'updater' ? T('已下载完成，重启即完成更新（退出时也会自动安装）。') : T('安装包已下载完成，安装时 CreditDaddy 会先退出。')) + '</div>';
+      acts.innerHTML = updActBtn('upd-go', s.via === 'updater' ? T('立即重启更新') : T('立即安装'), 'primary') + close;
       break;
     case 'error':
     default:
-      body.innerHTML = '<div class="hint" style="color:var(--err)">检查更新失败：' + esc(s.error || '未知错误') + '</div>';
-      acts.innerHTML = updActBtn('upd-retry', '重试', 'primary') + rel + '<button class="btn" data-close-uu>取消</button>';
+      body.innerHTML = T('<div class="hint" style="color:var(--err)">检查更新失败：') + esc(s.error || T('未知错误')) + '</div>';
+      acts.innerHTML = updActBtn('upd-retry', T('重试'), 'primary') + rel + T('<button class="btn" data-close-uu>取消</button>');
       break;
   }
   const relBtn = $('upd-rel');
   if (relBtn) relBtn.onclick = () => updBridge.openReleases();
   const goBtn = $('upd-go');
-  if (goBtn) { goBtn.disabled = true; goBtn.textContent = '处理中…'; updBridge.install().then(renderUpdateModal).catch((e) => { goBtn.disabled = false; goBtn.textContent = '重试'; }); }
+  if (goBtn) { goBtn.disabled = true; goBtn.textContent = T('处理中…'); updBridge.install().then(renderUpdateModal).catch((e) => { goBtn.disabled = false; goBtn.textContent = T('重试'); }); }
   const retryBtn = $('upd-retry');
   if (retryBtn) retryBtn.onclick = () => updBridge.check().then(renderUpdateModal).catch(() => {});
   acts.querySelectorAll('[data-close-uu]').forEach((b) => { b.onclick = () => closeModal('m-update'); });
@@ -2878,10 +3039,9 @@ async function openUpdateModal(autoCheck) {
   }
 }
 if (updBridge) {
-  updBridge.onState((s) => { updState = s; $('upd-ver') && ($('upd-ver').textContent = '当前 v' + (s.current || '?')); if (document.getElementById('m-update').classList.contains('show')) renderUpdateModal(s); });
+  updBridge.onState((s) => { updState = s; $('upd-ver') && ($('upd-ver').textContent = T('当前 v') + (s.current || '?')); if (document.getElementById('m-update').classList.contains('show')) renderUpdateModal(s); });
   updBridge.onOpen(() => openUpdateModal(true));
 }
-$('btn-update').onclick = () => openUpdateModal(true);
 // 更新日志小窗：桌面版读随包 CHANGELOG.md 的简要摘要；网页面板直接开 GitHub Releases
 function openFullChangelog() {
   if (updBridge && typeof updBridge.openReleases === 'function') updBridge.openReleases();
@@ -2900,11 +3060,10 @@ function openChangelogModal() {
           + (s.theme ? '<div class="hint">' + strip(s.theme) + '</div>' : '')
           + (s.topics && s.topics.length ? '<div class="hint" style="margin-top:4px">' + s.topics.map(strip).join(' · ') + '</div>' : '')
           + '</div>').join('')
-      : '<div class="hint">暂无本地更新日志，请到 GitHub Releases 查看。</div>';
+      : T('<div class="hint">暂无本地更新日志，请到 GitHub Releases 查看。</div>');
     openModal('m-changelog');
   }).catch(openReleases);
 }
-$('btn-changelog').onclick = openChangelogModal;
 $('btn-changelog-full').onclick = openFullChangelog;
 // 托盘菜单触发（IPC）
 if (updBridge && typeof updBridge.onChangelogOpen === 'function') {
@@ -2920,7 +3079,7 @@ $('zac-ok').addEventListener('click', async () => {
     state.zClaimWindowMin = r.claimWindowMin;
     renderStatus(); render();
     closeModal('m-zac');
-    toast('自动领取已开启：每 ' + r.claimIntervalMin + ' 分钟检查' + (r.claimWindowMin > 0 ? '，运行 ' + r.claimWindowMin + ' 分钟后自动关闭' : '，一直运行直到手动关闭'));
+    toast(T('自动领取已开启：每 ') + r.claimIntervalMin + T(' 分钟检查') + (r.claimWindowMin > 0 ? T('，运行 ') + r.claimWindowMin + T(' 分钟后自动关闭') : T('，一直运行直到手动关闭')));
   } catch (err) { toast(err.message, false); }
 });
 $('zac-off').addEventListener('click', async () => {
@@ -2929,7 +3088,7 @@ $('zac-off').addEventListener('click', async () => {
     state.zAutoClaim = r.autoClaim === true;
     renderStatus(); render();
     closeModal('m-zac');
-    toast('ZCode 自动领取：已关闭');
+    toast(T('ZCode 自动领取：已关闭'));
   } catch (err) { toast(err.message, false); }
 });
 
@@ -2951,8 +3110,8 @@ $('zgw-ok').addEventListener('click', async () => {
     renderStatus(); render();
     closeModal('m-zgw');
     if (await maybePromptRestartForLan(oldLan, state.zGatewayLan)) return;
-    toast('体验包接口：' + (r.enabled ? '已开启' : '已关闭')
-      + (r.enabled && r.lan ? '，局域网开放' + (r.allow && r.allow.length ? '，白名单 ' + r.allow.join('、') : '，白名单为空——白名单外需虚拟 key') + '；绑定改动重启后生效' : ''));
+    toast(T('体验包接口：') + (r.enabled ? T('已开启') : T('已关闭'))
+      + (r.enabled && r.lan ? T('，局域网开放') + (r.allow && r.allow.length ? T('，白名单 ') + r.allow.join(T('、')) : T('，白名单为空——白名单外需虚拟 key')) + T('；绑定改动重启后生效') : ''));
   } catch (err) { toast(err.message, false); }
 });
 
@@ -2974,8 +3133,8 @@ $('mgw-ok').addEventListener('click', async () => {
     renderStatus(); render();
     closeModal('m-mgw');
     if (await maybePromptRestartForLan(oldLan, state.mGatewayLan)) return;
-    toast('MiniMax 接口：' + (r.enabled ? '已开启' : '已关闭')
-      + (r.enabled && r.lan ? '，局域网开放' + (r.allow && r.allow.length ? '，白名单 ' + r.allow.join('、') : '') + '；绑定改动重启后生效' : ''));
+    toast(T('MiniMax 接口：') + (r.enabled ? T('已开启') : T('已关闭'))
+      + (r.enabled && r.lan ? T('，局域网开放') + (r.allow && r.allow.length ? T('，白名单 ') + r.allow.join(T('、')) : '') + T('；绑定改动重启后生效') : ''));
   } catch (err) { toast(err.message, false); }
 });
 
@@ -2997,8 +3156,8 @@ $('tgw-ok').addEventListener('click', async () => {
     renderStatus(); render();
     closeModal('m-tgw');
     if (await maybePromptRestartForLan(oldLan, state.tGatewayLan)) return;
-    toast('Trae 接口：' + (r.enabled ? '已开启' : '已关闭')
-      + (r.enabled && r.lan ? '，局域网开放' + (r.allow && r.allow.length ? '，白名单 ' + r.allow.join('、') : '') + '；绑定改动重启后生效' : ''));
+    toast(T('Trae 接口：') + (r.enabled ? T('已开启') : T('已关闭'))
+      + (r.enabled && r.lan ? T('，局域网开放') + (r.allow && r.allow.length ? T('，白名单 ') + r.allow.join(T('、')) : '') + T('；绑定改动重启后生效') : ''));
   } catch (err) { toast(err.message, false); }
 });
 
@@ -3010,13 +3169,13 @@ $('znet-ok').addEventListener('click', async () => {
     state.zProxyFirst = r.proxyFirst === true;
     await loadZNet();
     $('znet-url').value = '';
-    $('znet-url').placeholder = state.zProxyUrl || (state.zHasEnvProxy ? '跟随环境变量 HTTPS_PROXY' : 'http://192.168.31.101:7890');
-    $('znet-state').textContent = '已保存：' + (state.zProxyFirst === true ? '代理优先' : '直连优先')
-      + (state.zProxyUrl ? ' · 代理 ' + state.zProxyUrl : '');
-    toast('网络出口：' + (r.proxyFirst ? '代理优先（直连兜底）' : '直连优先（代理兜底）') + (body.proxyUrl === '' ? '，代理已清除' : '，代理已保存'));
+    $('znet-url').placeholder = state.zProxyUrl || (state.zHasEnvProxy ? T('跟随环境变量 HTTPS_PROXY') : 'http://192.168.31.101:7890');
+    $('znet-state').textContent = T('已保存：') + (state.zProxyFirst === true ? T('代理优先') : T('直连优先'))
+      + (state.zProxyUrl ? T(' · 代理 ') + state.zProxyUrl : '');
+    toast(T('网络出口：') + (r.proxyFirst ? T('代理优先（直连兜底）') : T('直连优先（代理兜底）')) + (body.proxyUrl === '' ? T('，代理已清除') : T('，代理已保存')));
   } catch (err) { toast(err.message, false); }
 });
-document.querySelectorAll('.mask').forEach((m) => {
+document.querySelectorAll('.mask, .setpop').forEach((m) => {
   m.addEventListener('mousedown', (e) => { if (e.target === m) closeModal(m.id); });
   m.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => closeModal(m.id)));
 });
@@ -3024,7 +3183,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   const pop = document.getElementById('hmenu-pop');
   if (pop && pop.classList.contains('show')) { pop.classList.remove('show'); return; }   // ESC 先收下拉
-  document.querySelectorAll('.mask.show').forEach((m) => closeModal(m.id));
+  document.querySelectorAll('.mask.show, .setpop.show').forEach((m) => closeModal(m.id));
 });
 document.querySelectorAll('#m-add .tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 function switchTab(name) {
@@ -3048,7 +3207,7 @@ function openAdd(product) {
   // 各产品支持的添加方式：MiniMax 三种都支持（浏览器登录 = 官方设备码授权，独立凭据链不与本机客户端互斥）
   const tabShown = { local: true, device: product !== 'mirasim' && product !== 'catpaw' && product !== 'trae', token: product !== 'zcode' && product !== 'mirasim' && product !== 'catpaw' && product !== 'trae' };
   document.querySelectorAll('#m-add .tab').forEach((t) => { t.style.display = tabShown[t.dataset.tab] ? '' : 'none'; });
-  $('local-hint').textContent = LOCAL_HINT[state.addProduct];
+  $('local-hint').textContent = T(LOCAL_HINT[state.addProduct]);
   let first = null;
   for (const o of $('f-provider').options) {
     const ok = !product || provOf(o.value).prod === product;
@@ -3064,8 +3223,8 @@ function openAdd(product) {
     if (ok && !firstDev) firstDev = o.value;
   }
   if (firstDev) $('dev-provider').value = firstDev;
-  $('dev-hint').textContent = (hasIncognito() ? '在内置隐私窗口里登录（不带出系统浏览器已登录的账号），' : '在浏览器里登录并授权，')
-    + '完成后账号自动添加。' + (product === 'qoder' ? '' : 'WorkBuddy / ZCode 用浏览器登录的账号同样可以一键切换客户端。');
+  $('dev-hint').textContent = (hasIncognito() ? T('在内置隐私窗口里登录（不带出系统浏览器已登录的账号），') : T('在浏览器里登录并授权，'))
+    + T('完成后账号自动添加。') + (product === 'qoder' ? '' : T('WorkBuddy / ZCode 用浏览器登录的账号同样可以一键切换客户端。'));
   openModal('m-add');
   switchTab('local');
   localScan();
@@ -3074,46 +3233,46 @@ function openAdd(product) {
 // 本机导入
 async function localScan() {
   const box = $('scan-result');
-  $('scan-status').textContent = '扫描中（最多约 10 秒）…';
-  box.innerHTML = '<div class="hint">正在读取本机客户端凭据（Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae / MiniMax）…</div>';
+  $('scan-status').textContent = T('扫描中（最多约 10 秒）…');
+  box.innerHTML = T('<div class="hint">正在读取本机客户端凭据（Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae / MiniMax）…</div>');
   try {
     const r = await api('/api/local/scan', { method: 'POST' });
     $('scan-status').textContent = '';
     let html = '';
     const cands = r.candidates.filter((c) => !state.addProduct || (c.provider ? provOf(c.provider).prod : 'qoder') === state.addProduct);
     for (const c of cands) {
-      const title = c.kind === 'app' ? esc(c.name || c.email || c.phone || '(未命名)') : '<span style="font-family:monospace">' + esc(c.tokenMasked) + '</span>';
-      const prov = (c.provider ? provBadges(c.provider) : '<span class="badge">' + esc(c.kind) + '</span>') + (c.current ? '<span class="pill cur">当前登录</span>' : '');
+      const title = c.kind === 'app' ? esc(c.name || c.email || c.phone || T('(未命名)')) : '<span style="font-family:monospace">' + esc(c.tokenMasked) + '</span>';
+      const prov = (c.provider ? provBadges(c.provider) : '<span class="badge">' + esc(c.kind) + '</span>') + (c.current ? T('<span class="pill cur">当前登录</span>') : '');
       const sub = c.kind === 'app'
-        ? esc(c.source) + (c.email ? ' · ' + esc(mask(c.email)) : c.phone ? ' · ' + esc(c.phone) : '') + (c.expiresAt ? ' · 有效期至 ' + esc(fmtTime(c.expiresAt)) : '')
-        : esc(c.source) + ' · ' + esc(String(c.file || '').split(/[\\/]/).pop()) + '（' + c.hits + ' 处）';
-      const btns = c.imported ? '<span class="pill ok">已导入</span>' + (c.provider ? '<button class="btn" data-cid="' + esc(c.id) + '" title="用本机凭据更新 token / 有效期 / 邮箱">同步信息</button>' : '')
-        : c.provider ? '<button class="btn primary" data-cid="' + esc(c.id) + '">导入</button>'
-        : '<button class="btn" data-cid="' + esc(c.id) + '" data-prov="qoder">导入·国际</button><button class="btn" data-cid="' + esc(c.id) + '" data-prov="qoder-cn">导入·国内</button>';
+        ? esc(c.source) + (c.email ? ' · ' + esc(mask(c.email)) : c.phone ? ' · ' + esc(c.phone) : '') + (c.expiresAt ? T(' · 有效期至 ') + esc(fmtTime(c.expiresAt)) : '')
+        : esc(c.source) + ' · ' + esc(String(c.file || '').split(/[\\/]/).pop()) + T('（') + c.hits + T(' 处）');
+      const btns = c.imported ? T('<span class="pill ok">已导入</span>') + (c.provider ? '<button class="btn" data-cid="' + esc(c.id) + T('" title="用本机凭据更新 token / 有效期 / 邮箱">同步信息</button>') : '')
+        : c.provider ? '<button class="btn primary" data-cid="' + esc(c.id) + T('">导入</button>')
+        : '<button class="btn" data-cid="' + esc(c.id) + T('" data-prov="qoder">导入·国际</button><button class="btn" data-cid="') + esc(c.id) + T('" data-prov="qoder-cn">导入·国内</button>');
       html += '<div class="cand"><div class="cand-main"><div class="cand-name">' + title + prov + '</div><div class="cand-sub">' + sub + '</div></div><div class="row">' + btns + '</div></div>';
     }
     for (const e of r.errors || []) {
-      html += '<div class="hint" style="color:var(--err)">读取失败：' + esc(e.file) + '：' + esc(e.error) + '</div>';
+      html += T('<div class="hint" style="color:var(--err)">读取失败：') + esc(e.file) + T('：') + esc(e.error) + '</div>';
     }
     if (!cands.length) {
-      const where = state.addProduct ? prodLabel(state.addProduct) : 'Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae / MiniMax';
-      const alt = state.addProduct === 'zcode' || state.addProduct === 'mirasim' || state.addProduct === 'catpaw' || state.addProduct === 'trae' ? '' : '，或改用「浏览器登录」「粘贴 Token」';
-      html += '<div class="hint">未发现已登录的 ' + where + ' 账号。请先在客户端登录' + alt + '。<br>已检查：Qoder / Qoder CN 客户端数据目录、WorkBuddy 凭据目录、ZCode 数据目录、mirasim 数据目录、妙手凭据目录、Trae 数据目录、MiniMax 数据目录'
-        + (r.scannedDirs && r.scannedDirs.length ? '、' + r.scannedDirs.map(esc).join('、') : '') + '</div>';
+      const where = state.addProduct ? prodLabel(state.addProduct) : T('Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae / MiniMax');
+      const alt = state.addProduct === 'zcode' || state.addProduct === 'mirasim' || state.addProduct === 'catpaw' || state.addProduct === 'trae' ? '' : T('，或改用「浏览器登录」「粘贴 Token」');
+      html += T('<div class="hint">未发现已登录的 ') + where + T(' 账号。请先在客户端登录') + alt + T('。<br>已检查：Qoder / Qoder CN 客户端数据目录、WorkBuddy 凭据目录、ZCode 数据目录、mirasim 数据目录、妙手凭据目录、Trae 数据目录、MiniMax 数据目录')
+        + (r.scannedDirs && r.scannedDirs.length ? T('、') + r.scannedDirs.map(esc).join(T('、')) : '') + '</div>';
     }
     box.innerHTML = html;
     box.querySelectorAll('button[data-cid]').forEach((b) => b.addEventListener('click', async () => {
       b.disabled = true;
       try {
         const d = await api('/api/local/import', { json: { candidateId: b.dataset.cid, provider: b.dataset.prov } });
-        toast((d.updated ? '已更新：' : '已导入：') + (d.account.name || d.account.id));
+        toast((d.updated ? T('已更新：') : T('已导入：')) + (d.account.name || d.account.id));
         await loadAccounts();
         localScan();
       } catch (e) { toast(e.message, false); b.disabled = false; }
     }));
   } catch (e) {
     $('scan-status').textContent = '';
-    box.innerHTML = '<div class="hint" style="color:var(--err)">扫描失败：' + esc(e.message) + '</div>';
+    box.innerHTML = T('<div class="hint" style="color:var(--err)">扫描失败：') + esc(e.message) + '</div>';
   }
 }
 
@@ -3137,13 +3296,13 @@ async function deviceLogin() {
     const flow = await api('/api/auth/device/start', { json: { provider } });
     $('device-box').style.display = '';
     $('dev-cancel').style.display = '';
-    const where = hasIncognito() ? '已在隐私窗口打开登录页' : '请在浏览器打开下方链接';
-    $('dev-status').textContent = where + '，登录并授权（' + Math.floor(flow.expiresIn / 60) + ' 分钟内有效）';
+    const where = hasIncognito() ? T('已在隐私窗口打开登录页') : T('请在浏览器打开下方链接');
+    $('dev-status').textContent = where + T('，登录并授权（') + Math.floor(flow.expiresIn / 60) + T(' 分钟内有效）');
     $('dev-link').href = flow.url;
     $('dev-link').textContent = flow.url;
     openAuth(flow.url);
     pollDevice(flow.sessionId, 0, ++devGen);
-  } catch (e) { toast('发起授权失败：' + e.message, false); }
+  } catch (e) { toast(T('发起授权失败：') + e.message, false); }
 }
 async function pollDevice(sessionId, n, gen) {
   if (gen !== devGen) return;
@@ -3151,20 +3310,24 @@ async function pollDevice(sessionId, n, gen) {
     const r = await api('/api/auth/device/poll', { json: { sessionId } });
     if (gen !== devGen) return;
     if (r.status === 'pending') {
-      if (n > 450) return deviceStop('授权超时，请重试');
-      $('dev-status').textContent = '等待授权中…（' + n + '）';
+      if (n > 450) return deviceStop(T('授权超时，请重试'));
+      $('dev-status').textContent = T('等待授权中…（') + n + T('）');
       devTimer = setTimeout(() => pollDevice(sessionId, n + 1, gen), 2000);
     } else if (r.status === 'ok') {
-      deviceStop('✓ 登录成功：' + (r.account.name || r.account.id) + (r.already ? '（账号已存在，已更新登录凭据）' : ''));
-      toast(r.already ? '已更新「' + (r.account.name || r.account.id) + '」的登录凭据' : '已添加：' + (r.account.name || r.account.id));
+      deviceStop(T('✓ 登录成功：') + (r.account.name || r.account.id) + (r.already ? T('（账号已存在，已更新登录凭据）') : ''));
+      toast(r.already ? T('已更新「') + (r.account.name || r.account.id) + T('」的登录凭据') : T('已添加：') + (r.account.name || r.account.id));
       if (r.account.id) delete state.quotas[r.account.id];   // 旧 token 的积分查询结果（可能是失败）作废，马上重查
       await loadStatus(); await loadAccounts();
+      // 网页会话 Cookie 是登录窗「关闭」时才收割绑定的（比这里的成功提示晚好几秒）——
+      // 补两轮轻量刷新，「缺网页会话」徽章随绑定落地即时消失，不必等 30s 周期轮。
+      setTimeout(refreshAccountList, 12000);
+      setTimeout(refreshAccountList, 30000);
     } else if (r.status === 'expired') {
-      deviceStop('会话已过期，请重新发起');
+      deviceStop(T('会话已过期，请重新发起'));
     } else {
-      deviceStop('授权失败：' + (r.error || r.status));
+      deviceStop(T('授权失败：') + (r.error || r.status));
     }
-  } catch (e) { if (gen === devGen) deviceStop('轮询异常：' + e.message); }
+  } catch (e) { if (gen === devGen) deviceStop(T('轮询异常：') + e.message); }
 }
 function deviceStop(msg) {
   devGen++;
@@ -3176,11 +3339,11 @@ function deviceStop(msg) {
 // 粘贴 token
 async function addToken() {
   const token = $('f-token').value.trim();
-  if (!token) return toast('请粘贴 token', false);
+  if (!token) return toast(T('请粘贴 token'), false);
   const b = $('btn-add-token'); b.disabled = true;
   try {
     const d = await api('/api/accounts', { json: { provider: $('f-provider').value, name: $('f-name').value.trim(), token } });
-    toast('已添加：' + (d.account.name || d.account.id) + (d.account.verified === false ? '（token 校验失败，请检查）' : ''), d.account.verified !== false);
+    toast(T('已添加：') + (d.account.name || d.account.id) + (d.account.verified === false ? T('（token 校验失败，请检查）') : ''), d.account.verified !== false);
     $('f-token').value = ''; $('f-name').value = '';
     closeModal('m-add');
     await loadAccounts();
@@ -3196,11 +3359,11 @@ function qoderWebBadge(a) {
   const at = a.qoderWebCapturedAt;
   if (at && Date.now() - new Date(at).getTime() <= 7 * 86400000) return '';
   const stale = Boolean(at);
-  const proxyHint = a.provider === 'qoder' ? '（国际版按 IP 识别地区：需先在「面板设置 → 网络出口」配置出口代理）' : '';
+  const proxyHint = a.provider === 'qoder' ? T('（国际版按 IP 识别地区：需先在「面板设置 → 网络出口」配置出口代理）') : '';
   const tip = stale
-    ? '网页会话已超过 7 天（' + fmtTime(at).slice(0, 10) + ' 抓取），可能已过期：导出到 10Router 后「套餐内 Credits」可能缺失，用「浏览器登录」重新登录一次 Qoder 即可补上' + proxyHint
-    : '缺少 Qoder 网页会话（Cookie）：导出到 10Router 后「套餐内 Credits」可能缺失，用「浏览器登录」登录一次 Qoder 即可自动抓取' + proxyHint;
-  return '<span class="badge web web-warn" title="' + esc(tip) + '">' + (stale ? '网页会话过期' : '缺网页会话') + '</span>';
+    ? T('网页会话已超过 7 天（') + fmtTime(at).slice(0, 10) + T(' 抓取），可能已过期：导出到 10Router 后「套餐内 Credits」可能缺失，用「浏览器登录」重新登录一次 Qoder 即可补上') + proxyHint
+    : T('缺少 Qoder 网页会话（Cookie）：导出到 10Router 后「套餐内 Credits」可能缺失，用「浏览器登录」登录一次 Qoder 即可自动抓取') + proxyHint;
+  return '<span class="badge web web-warn" title="' + esc(tip) + '">' + (stale ? T('网页会话过期') : T('缺网页会话')) + '</span>';
 }
 
 // 导出弹窗里的网页会话提示（10Router issue #44）：
@@ -3222,12 +3385,12 @@ function qoderWebSessionNote() {
     else if (Date.now() - new Date(at).getTime() > 7 * 86400000) stale.push(a);
   }
   if (!missing.length && !stale.length) return '';
-  const names = (arr) => arr.map((x) => x.name || x.email || x.uid || x.id).join('、');
+  const names = (arr) => arr.map((x) => x.name || x.email || x.uid || x.id).join(T('、'));
   const bits = [];
-  if (missing.length) bits.push('没有网页会话：' + names(missing));
-  if (stale.length) bits.push('会话已超过 7 天：' + names(stale));
-  return '10router 的「套餐内 Credits」逐资源包明细依赖 Qoder 网页会话（' + bits.join('；')
-    + '）。这些账号过去后套餐积分可能显示缺失——在「浏览器登录」重新登录一次 Qoder 再导出即可补上。';
+  if (missing.length) bits.push(T('没有网页会话：') + names(missing));
+  if (stale.length) bits.push(T('会话已超过 7 天：') + names(stale));
+  return T('10router 的「套餐内 Credits」逐资源包明细依赖 Qoder 网页会话（') + bits.join(T('；'))
+    + T('）。这些账号过去后套餐积分可能显示缺失——在「浏览器登录」重新登录一次 Qoder 再导出即可补上。');
 }
 function refreshExportNote() {
   const msg = qoderWebSessionNote();
@@ -3239,8 +3402,8 @@ function refreshExportNote() {
 // 导出
 async function doExport() {
   const password = $('ex-password').value;
-  if (!password.trim()) return toast('导出必须设置加密口令', false);
-  if (password.length < 4) return toast('口令至少 4 位', false);
+  if (!password.trim()) return toast(T('导出必须设置加密口令'), false);
+  if (password.length < 4) return toast(T('口令至少 4 位'), false);
   try {
     const sel = $('ex-provider').value;
     const scope = sel.startsWith('p:') ? { product: sel.slice(2) } : { provider: sel || undefined };
@@ -3253,7 +3416,7 @@ async function doExport() {
     URL.revokeObjectURL(a.href);
     $('ex-password').value = '';
     closeModal('m-export');
-    toast('已导出加密文件（可在 10router 或本面板导入）');
+    toast(T('已导出加密文件（可在 10router 或本面板导入）'));
   } catch (e) { toast(e.message, false); }
 }
 
@@ -3264,10 +3427,10 @@ $('file-input').addEventListener('change', async () => {
   const f = $('file-input').files[0];
   if (!f) return;
   let data;
-  try { data = JSON.parse(await f.text()); } catch (e) { return toast('文件不是合法 JSON', false); }
+  try { data = JSON.parse(await f.text()); } catch (e) { return toast(T('文件不是合法 JSON'), false); }
   pendingImport = data;
   if (data && data.format === '10router-oauth-secure-v1') {
-    $('pass-hint').textContent = '「' + f.name + '」已加密（CreditDaddy / 10router 迁移格式），请输入导出时设置的口令。';
+    $('pass-hint').textContent = T('「') + f.name + T('」已加密（CreditDaddy / 10router 迁移格式），请输入导出时设置的口令。');
     $('pass-input').value = '';
     openModal('m-pass');
     setTimeout(() => $('pass-input').focus(), 50);
@@ -3279,7 +3442,7 @@ async function submitImport(password) {
   try {
     const d = await api('/api/import', { json: { data: pendingImport, password } });
     closeModal('m-pass');
-    toast('导入完成（' + (d.source === '10router' ? '10router' : 'CreditDaddy') + '）：新增 ' + d.added + '，续期 ' + d.updated + '，跳过 ' + d.skipped);
+    toast(T('导入完成（') + (d.source === '10router' ? '10router' : 'CreditDaddy') + T('）：新增 ') + d.added + T('，续期 ') + d.updated + T('，跳过 ') + d.skipped);
     pendingImport = null;
     await loadAccounts();
   } catch (e) {
@@ -3290,7 +3453,7 @@ async function submitImport(password) {
 
 // ── 绑定 ──
 // 全局组件开关：收起 Qoder / WorkBuddy / ZCode / 10Router 的标签页与仪表盘对应卡片
-$('btn-comp').innerHTML = I.tune;
+$('btn-comp').innerHTML = I.settings;
 
 // ── 卡片拖拽排序（产品面板 + 10Router）：手动顺序优先级最高，落库 localStorage ──
 const dragState = { kind: null, id: null, vendor: null };
@@ -3407,13 +3570,13 @@ function applyComponents() {
 // 右上角面板设置：访问密码 + 组件显隐与排序 + 每产品账号排序（默认积分多者靠前，可手动固定）
 function secStatusHtml() {
   if (!state.sec.loaded) return '<span class="sec-status">…</span>';
-  return state.sec.enabled ? '<span class="sec-status on">已开启</span>' : '<span class="sec-status">未开启</span>';
+  return state.sec.enabled ? T('<span class="sec-status on">已开启</span>') : T('<span class="sec-status">未开启</span>');
 }
 function renderSecActions() {
   if (!state.sec.loaded) return '';
   return state.sec.enabled
-    ? '<button class="btn" data-sec-action="change">修改密码</button><button class="btn" data-sec-action="disable">关闭</button>'
-    : '<button class="btn primary" data-sec-action="enable">开启面板密码</button>';
+    ? T('<button class="btn" data-sec-action="change">修改密码</button><button class="btn" data-sec-action="disable">关闭</button>')
+    : T('<button class="btn primary" data-sec-action="enable">开启面板密码</button>');
 }
 async function applyPanelKey(next) {
   setKey(next);
@@ -3421,34 +3584,34 @@ async function applyPanelKey(next) {
 }
 async function doSecAction(action) {
   if (action === 'enable' || action === 'change') {
-    const pw = await uiPrompt(action === 'enable' ? '设置面板访问密码' : '输入新密码', '', {
-      type: 'password', okText: action === 'enable' ? '开启' : '保存',
-      placeholder: '至少 4 位，不能包含空格',
-      message: '设置后每次打开面板都需要输入此密码。导出账号的加密口令是独立设置，始终必填。',
+    const pw = await uiPrompt(action === 'enable' ? T('设置面板访问密码') : T('输入新密码'), '', {
+      type: 'password', okText: action === 'enable' ? T('开启') : T('保存'),
+      placeholder: T('至少 4 位，不能包含空格'),
+      message: T('设置后每次打开面板都需要输入此密码。导出账号的加密口令是独立设置，始终必填。'),
     });
     if (!pw) return;
     const val = String(pw).trim();
-    if (val.length < 4) return toast('面板访问密码至少 4 位', false);
-    if (/\s/.test(val)) return toast('面板访问密码不能包含空格', false);
+    if (val.length < 4) return toast(T('面板访问密码至少 4 位'), false);
+    if (/\s/.test(val)) return toast(T('面板访问密码不能包含空格'), false);
     try {
       const r = await api('/api/settings', { method: 'PUT', json: { panelKey: val } });
       await applyPanelKey(val);
       renderCompMenu();
-      toast(r.panelKeyEnabled ? '已设置面板访问密码，下次打开面板需要输入' : '已保存', true);
+      toast(r.panelKeyEnabled ? T('已设置面板访问密码，下次打开面板需要输入') : T('已保存'), true);
     } catch (e) { toast(e.message, false); }
     return;
   }
   if (action === 'disable') {
     const ok = await uiConfirm(
-      '关闭后打开面板不再需要密码（局域网 / 公网访问将无保护，仅建议本机使用）。账号导出仍必须设置加密口令。\n\n确定关闭面板访问密码吗？',
-      '关闭面板访问密码', '关闭');
+      T('关闭后打开面板不再需要密码（局域网 / 公网访问将无保护，仅建议本机使用）。账号导出仍必须设置加密口令。\n\n确定关闭面板访问密码吗？'),
+      T('关闭面板访问密码'), T('关闭'));
     if (!ok) return;
     try {
       const r = await api('/api/settings', { method: 'PUT', json: { disable: true } });
       await loadSettings();
       await applyPanelKey(r.panelKeyEnabled ? getKey() : '');
       renderCompMenu();
-      toast(r.panelKeyEnabled ? '该部署环境（fnOS / 环境变量）强制启用访问密码，无法在面板内关闭' : '已关闭面板访问密码', true);
+      toast(r.panelKeyEnabled ? T('该部署环境（fnOS / 环境变量）强制启用访问密码，无法在面板内关闭') : T('已关闭面板访问密码'), true);
     } catch (e) { toast(e.message, false); }
   }
 }
@@ -3459,7 +3622,7 @@ function renderCompMenu() {
     if (!c) return '';
     const vis = compVisible(id);
     return '<span class="comp-chip' + (vis ? '' : ' off') + '">'
-      + '<label class="check" title="勾选 = 显示该产品页"><input type="checkbox" data-comp="' + id + '"' + (vis ? ' checked' : '') + '>' + esc(c.label) + '</label>'
+      + T('<label class="check" title="勾选 = 显示该产品页"><input type="checkbox" data-comp="') + id + '"' + (vis ? ' checked' : '') + '>' + esc(T(c.label)) + '</label>'
       + '<button class="icon-btn mini" data-move="up" data-comp="' + id + '" title="前移（仪表盘与标签栏同步）">' + I.chevUp + '</button>'
       + '<button class="icon-btn mini" data-move="down" data-comp="' + id + '" title="后移（仪表盘与标签栏同步）">' + I.chevDown + '</button>'
       + '</span>';
@@ -3471,35 +3634,35 @@ function renderCompMenu() {
       + '<button class="icon-btn mini" data-acc-move="up" data-prod="' + p.id + '" data-aid="' + esc(a.id) + '" title="前移">' + I.chevUp + '</button>'
       + '<button class="icon-btn mini" data-acc-move="down" data-prod="' + p.id + '" data-aid="' + esc(a.id) + '" title="后移">' + I.chevDown + '</button>'
       + '</span>').join('');
-    return '<details class="sort-sec"' + (manual && manual.length ? ' open' : '') + '><summary>' + esc(p.label)
-      + (manual && manual.length ? ' <span class="badge">手动排序</span>' : '')
+    return '<details class="sort-sec"' + (manual && manual.length ? ' open' : '') + '><summary>' + esc(T(p.label))
+      + (manual && manual.length ? T(' <span class="badge">手动排序</span>') : '')
       + '<span class="dim" style="font-size:11px">' + ofProduct(p.id).length + '</span></summary>'
-      + '<div class="sort-hint">默认按剩余积分从多到少；拖拽卡片或用箭头固定顺序。</div>'
+      + T('<div class="sort-hint">默认按剩余积分从多到少；拖拽卡片或用箭头固定顺序。</div>')
       + '<div class="comp-chips">' + rows + '</div>'
-      + (manual && manual.length ? '<button class="btn" data-acc-reset="' + p.id + '" style="margin-top:6px">恢复默认排序</button>' : '')
+      + (manual && manual.length ? '<button class="btn" data-acc-reset="' + p.id + T('" style="margin-top:6px">恢复默认排序</button>') : '')
       + '</details>';
   }).join('');
   $('comp-menu').innerHTML =
-    '<div class="comp-menu-title">面板访问密码 ' + secStatusHtml() + '</div>'
-    + '<div class="hint">开启后每次打开面板都需要输入密码；密码可随时在此修改或关闭。'
-    + (state.sec.enabled ? '' : '账号导出不受影响（导出口令始终必填）。') + '</div>'
+    T('<div class="comp-menu-title">面板访问密码 ') + secStatusHtml() + '</div>'
+    + T('<div class="hint">开启后每次打开面板都需要输入密码；密码可随时在此修改或关闭。')
+    + (state.sec.enabled ? '' : T('账号导出不受影响（导出口令始终必填）。')) + '</div>'
     + '<div class="row">' + renderSecActions() + '</div>'
-    + '<div class="comp-menu-title">自动签到</div>'
+    + T('<div class="comp-menu-title">自动签到</div>')
     + '<div class="hint">' + autoCheckinHint() + '</div>'
-    + '<div class="comp-menu-title">组件顺序（仪表盘与标签栏同步）</div>' + '<div class="comp-chips">' + compChips + '</div>'
-    + '<div class="comp-menu-title">账号卡片排序</div>'
-    + (sortSections || '<div class="sort-hint">暂无账号</div>');
+    + T('<div class="comp-menu-title">组件顺序（仪表盘与标签栏同步）</div>') + '<div class="comp-chips">' + compChips + '</div>'
+    + T('<div class="comp-menu-title">账号卡片排序</div>')
+    + (sortSections || T('<div class="sort-hint">暂无账号</div>'));
 }
 
 /** 自动签到口径说明：调度周期 + 各产品业务日刷新时点 */
 function autoCheckinHint() {
   const sch = state.status && state.status.scheduler;
-  const next = sch && sch.nextTickAt ? '，下次执行 ' + esc(String(sch.nextTickAt).slice(11, 16)) : '';
+  const next = sch && sch.nextTickAt ? T('，下次执行 ') + esc(String(sch.nextTickAt).slice(11, 16)) : '';
   const zc = sch && sch.zcode;
   const zcText = zc && zc.enabled
-    ? 'ZCode 自动领取运行中（每 ' + (zc.intervalMin || 2) + ' 分钟' + (zc.autoOffAt ? '，约 ' + Math.max(1, Math.ceil((new Date(zc.autoOffAt).getTime() - Date.now()) / 60000)) + ' 分钟后自动关闭' : '，一直运行') + '），周期可在 ZCode 页「自动领取计划」里改'
-    : 'ZCode 活动领取默认关闭，可在 ZCode 页「自动领取计划」里开启并配置轮询周期';
-  return '守护进程每 ~2 小时自动扫描执行一轮全部账号' + next + '。各产品「业务日」刷新时点（UTC+8）：<b>Qoder 每日 10:00</b>（每台设备每日限领一个国际版账号）、<b>WorkBuddy 每日 00:00</b>，其余产品按 00:00；已领成功的账号按对应业务日记忆跳过，跨过刷新点后当天照常重试。' + esc(zcText) + '。';
+    ? T('ZCode 自动领取运行中（每 ') + (zc.intervalMin || 2) + T(' 分钟') + (zc.autoOffAt ? T('，约 ') + Math.max(1, Math.ceil((new Date(zc.autoOffAt).getTime() - Date.now()) / 60000)) + T(' 分钟后自动关闭') : T('，一直运行')) + T('），周期可在 ZCode 页「自动领取计划」里改')
+    : T('ZCode 活动领取默认关闭，可在 ZCode 页「自动领取计划」里开启并配置轮询周期');
+  return T('守护进程每 ~2 小时自动扫描执行一轮全部账号') + next + T('。各产品「业务日」刷新时点（UTC+8）：<b>Qoder 每日 10:00</b>（每台设备每日限领一个国际版账号）、<b>WorkBuddy 每日 00:00</b>，其余产品按 00:00；已领成功的账号按对应业务日记忆跳过，跨过刷新点后当天照常重试。') + esc(zcText) + T('。');
 }
 
 /** 在手动排序列表里移动一个 id；列表不存在时先按当前生效顺序物化一份 */
@@ -3526,21 +3689,16 @@ $('btn-comp').addEventListener('click', async () => {
   renderCompMenu();
   openModal('m-settings');
   // 每次打开都回到「通用」页签
-  document.querySelectorAll('#set-tabs .tab').forEach((x) => x.classList.toggle('active', x.dataset.setTab === 'general'));
-  document.querySelectorAll('#m-settings .pane[data-set-pane]').forEach((p) => p.classList.toggle('active', p.dataset.setPane === 'general'));
+  document.querySelectorAll('#set-tabs .tab').forEach((x) => x.classList.toggle('active', x.dataset.setTab === 'comp'));
+  document.querySelectorAll('#m-settings .pane[data-set-pane]').forEach((p) => p.classList.toggle('active', p.dataset.setPane === 'comp'));
   await loadSettings();
   renderCompMenu();
   // 网络出口（全局）：预填当前顺序与脱敏代理地址
   await loadZNet();
   (state.zProxyFirst === true ? $('znet-proxy') : $('znet-direct')).checked = true;
   $('znet-url').value = '';
-  $('znet-url').placeholder = state.zProxyUrl || (state.zHasEnvProxy ? '跟随环境变量 HTTPS_PROXY' : 'http://192.168.31.101:7890');
+  $('znet-url').placeholder = state.zProxyUrl || (state.zHasEnvProxy ? T('跟随环境变量 HTTPS_PROXY') : 'http://192.168.31.101:7890');
   $('znet-state').textContent = '';
-  // 桌面版才有检查更新入口（走 preload 桥到主进程的更新状态机）
-  if (updBridge) {
-    $('upd-entry').style.display = '';
-    try { const s = await updBridge.state(); updState = s; $('upd-ver').textContent = '当前 v' + (s.current || '?'); } catch {}
-  }
 });
 $('comp-menu').addEventListener('change', (e) => {
   const c = e.target.dataset && e.target.dataset.comp;
@@ -3586,10 +3744,10 @@ $('comp-menu').addEventListener('click', (e) => {
 applyComponents();
 renderCompMenu();
 
-$('btn-checkin-all').innerHTML = I.play + '全部领取';
-for (const id of ['btn-add', 'btn-add-dash']) $(id).innerHTML = I.plus + '添加账号';
-for (const id of ['btn-import', 'btn-import-dash']) { $(id).innerHTML = I.upload + '导入'; $(id).onclick = pickImport; }
-for (const id of ['btn-export', 'btn-export-dash']) $(id).innerHTML = I.download + '导出';
+$('btn-checkin-all').innerHTML = I.play + T('全部领取');
+for (const id of ['btn-add', 'btn-add-dash']) $(id).innerHTML = I.plus + T('添加账号');
+for (const id of ['btn-import', 'btn-import-dash']) { $(id).innerHTML = I.upload + T('导入'); $(id).onclick = pickImport; }
+for (const id of ['btn-export', 'btn-export-dash']) $(id).innerHTML = I.download + T('导出');
 $('btn-checkin-all').onclick = () => checkinAll($('btn-checkin-all'));
 $('btn-checkin').onclick = () => checkinAll($('btn-checkin'), state.view);
 $('btn-add-dash').onclick = () => openAdd('');
@@ -3608,7 +3766,7 @@ $('btn-pass-ok').onclick = () => submitImport($('pass-input').value);
 $('pass-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') submitImport($('pass-input').value); });
 $('btn-scan').onclick = localScan;
 $('btn-device').onclick = deviceLogin;
-$('dev-cancel').onclick = () => deviceStop('已取消');
+$('dev-cancel').onclick = () => deviceStop(T('已取消'));
 $('dev-link').addEventListener('click', (e) => { e.preventDefault(); openAuth($('dev-link').href); });
 $('btn-add-token').onclick = addToken;
 $('f-token').addEventListener('keydown', (e) => { if (e.key === 'Enter') addToken(); });
@@ -3658,14 +3816,14 @@ $('region').addEventListener('click', (e) => {
 });
 $('f-provider').addEventListener('change', () => {
   $('f-token').placeholder = $('f-provider').value.startsWith('minimax')
-    ? 'MiniMax OAuth Bearer Token（mmoat_…）'
+    ? T('MiniMax OAuth Bearer Token（mmoat_…）')
     : $('f-provider').value.startsWith('workbuddy')
-    ? 'WorkBuddy / CodeBuddy 登录 token（eyJ…，可在 CodeBuddyExtension 的 auth/*.info 中找到）'
-    : 'dt-… / jt-… 或 PAT（pt-…，自动兑换）';
+    ? T('WorkBuddy / CodeBuddy 登录 token（eyJ…，可在 CodeBuddyExtension 的 auth/*.info 中找到）')
+    : T('dt-… / jt-… 或 PAT（pt-…，自动兑换）');
 });
 $('btn-logs').onclick = () => {
   const c = $('log-card').classList.toggle('collapsed');
-  $('btn-logs').textContent = c ? '展开' : '收起';
+  $('btn-logs').textContent = c ? T('展开') : T('收起');
   if (!c) { loadCurrentLogs(); $('logs').scrollTop = $('logs').scrollHeight; }
 };
 $('log-tabs').addEventListener('click', (e) => {
@@ -3697,7 +3855,7 @@ function applyDashFold() {
   });
 }
 document.querySelectorAll('.dash-cols .fold-head').forEach((h) => {
-  h.title = '展开 / 收起';
+  h.title = T('展开 / 收起');
   h.addEventListener('click', () => {
     const k = h.closest('.pcard').dataset.fold;
     state.dashFold[k] = state.dashFold[k] !== true;
@@ -3709,11 +3867,14 @@ applyDashFold();
 
 // ── 启动：先直接请求（本机模式无需密钥）；只有服务端返回 401 时才询问密钥 ──
 initTheme();
-$('btn-home').innerHTML = I.github;
 applyView();
+function hideBootBusy() { const b = $('boot-busy'); if (!b) return; clearTimeout(hideBootBusy._t); b.classList.add('fade'); setTimeout(() => b.remove(), 300); }
 (function boot() {
   function start() {
-    loadStatus().then(loadAccounts).catch((e) => toast(e.message, false));
+    // 兜底：接口长时间不返回也不能让加载态永久盖着
+    hideBootBusy._t = setTimeout(hideBootBusy, 9000);
+    applyDictFromServer().then(() => {
+    loadStatus().then(loadAccounts).then(hideBootBusy, (e) => { toast(e.message, false); hideBootBusy(); });
     loadSettings().then(renderCompMenu);
     loadZNet();
     loadZGateway();
@@ -3728,12 +3889,15 @@ applyView();
     });
     loadLogs();
     setInterval(loadLogs, 10000);
-    setInterval(async () => { await loadStatus(); await loadZNet(); await loadZGateway(); await loadMGateway(); await loadTGateway(); render(); }, 30000);
+    setInterval(async () => { await loadStatus(); await loadZNet(); await loadZGateway(); await loadMGateway(); await loadTGateway(); await refreshAccountList(); render(); }, 30000);
+    });
   }
   // 先直接请求（本机模式无需密码）；需要密码时 api() 会弹框并重试
-  api('/api/status').then(start).catch((e) => toast(e.code === 'PANEL_KEY'
-    ? '未输入面板访问密码，刷新页面可重试' : '无法连接守护进程：' + e.message, false));
+  api('/api/status').then(start).catch((e) => { hideBootBusy(); toast(e.code === 'PANEL_KEY'
+    ? T('未输入面板访问密码，刷新页面可重试') : T('无法连接守护进程：') + e.message, false); });
 })();
 </script>
+<!-- 语言切换加载态 -->
+<div id="locale-busy" hidden><div class="lb-card"><span class="lb-spin"></span><span data-i18n="正在切换语言…">正在切换语言…</span></div></div>
 </body>
 </html>

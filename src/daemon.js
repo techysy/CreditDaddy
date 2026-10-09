@@ -53,6 +53,7 @@ import {
 import { addAccount, importAccounts, refreshContext } from './accounts.js';
 import { productImpl } from './providers.js';
 import { readWorkbuddySessions, writeWorkbuddySession, workbuddyAuthDir, currentWorkbuddyUid } from './workbuddyLocal.js';
+import { refreshWorkbuddyToken } from './workbuddyClient.js';
 import { liveToAccount as zcodeLiveAccount, switchTo as zcodeSwitchTo, currentZcodeUid, currentZcodeIdentity, detectZcode, ensureVirtualDeviceMid, terminateZcode, zcodeRunning } from './zcodeLocal.js';
 import { liveToAccount as mirasimLiveAccount, switchTo as mirasimSwitchTo, currentMirasimUid, detectMirasim, terminateMirasim, mirasimRunning } from './mirasimLocal.js';
 import { liveToAccount as catpawLiveAccount, switchTo as catpawSwitchTo, currentCatpawToken, detectCatpaw, terminateCatpaw } from './catpawLocal.js';
@@ -71,6 +72,7 @@ import * as zcodeGateway from './zcodeGateway.js';
 import { startDeviceFlow, pollDeviceFlow, LOGIN_KINDS } from './authDevice.js';
 import { detectInstalls, scanLocalTokens, putCandidate, peekCandidate } from './localDetect.js';
 import { PROVIDER_LABEL, APP_VERSION, PROVIDERS, PROJECT_URL } from './constants.js';
+import { getLocale, setLocale, normalizeLocale, loadDict, t as tr } from './i18n.js';
 
 const PRODUCT_IDS = ['qoder', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax'];
 
@@ -84,6 +86,7 @@ async function initPanelKey() {
   try { s = await loadSettings(); } catch {}
   const env = process.env.CREDITDADDY_PASSWORD || process.env.QODERDADDY_PASSWORD || '';
   PANEL_KEY = typeof s.panelKey === 'string' && s.panelKey ? s.panelKey : env;
+  setLocale(s.locale);
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -201,7 +204,7 @@ async function handleSettingsPut(res, body) {
   if (body?.disable === true) {
     await saveSettings({ panelKey: '' });
     await initPanelKey();   // 环境变量部署（fnOS）下关闭后仍保留安装向导密码
-    logger.warn('DAEMON', PANEL_KEY ? '面板访问密码已在设置里关闭，但部署环境仍注入密码（保持开启）' : '面板访问密码已关闭（导出账号仍需加密口令）');
+    logger.warn('DAEMON', PANEL_KEY ? '面板访问密码已在设置里关闭,但部署环境仍注入密码(保持开启)' : '面板访问密码已关闭(导出账号仍需加密口令)', {});
     return json(res, 200, { ok: true, panelKeyEnabled: Boolean(PANEL_KEY) });
   }
   const next = typeof body?.panelKey === 'string' ? body.panelKey.trim() : '';
@@ -210,7 +213,7 @@ async function handleSettingsPut(res, body) {
   if (/\s/.test(next)) return json(res, 400, { error: '面板访问密码不能包含空格' });
   await saveSettings({ panelKey: next });
   await initPanelKey();
-  logger.info('DAEMON', '面板访问密码已更新');
+  logger.info('DAEMON', '面板访问密码已更新', {});
   return json(res, 200, { ok: true, panelKeyEnabled: Boolean(PANEL_KEY) });
 }
 
@@ -245,9 +248,9 @@ async function handleApi(req, res, url) {
     const { account, duplicate } = result;
     if (duplicate) return json(res, 409, { error: `该账号已存在（${account.name || account.id}）` });
     if (account.verified === false) {
-      logger.warn('DAEMON', `账号 ${account.name || account.id} 校验失败：${account.verifyError}`);
+      logger.warn('DAEMON', '账号 {name} 校验失败:{err}', { name: account.name || account.id, err: account.verifyError });
     }
-    logger.info('DAEMON', `添加账号 ${account.name || account.id}（${PROVIDER_LABEL[account.provider]}）`);
+    logger.info('DAEMON', '添加账号 {name}({provider})', { name: account.name || account.id, provider: PROVIDER_LABEL[account.provider] });
     return json(res, 201, { account: publicAccount(account) });
   }
 
@@ -273,7 +276,7 @@ async function handleApi(req, res, url) {
       return i < 0 ? null : accounts.splice(i, 1)[0];
     });
     if (!removed) return json(res, 404, { error: '账号不存在' });
-    logger.info('DAEMON', `删除账号 ${removed.name || removed.id}`);
+    logger.info('DAEMON', '删除账号 {name}', { name: removed.name || removed.id });
     return json(res, 200, { ok: true });
   }
 
@@ -309,7 +312,7 @@ async function handleApi(req, res, url) {
     const account = accounts.find((a) => a.id === quotaMatch[1]);
     if (!account) return json(res, 404, { error: '账号不存在' });
     try {
-      const log = (m) => logger.info('QUOTA', `${account.name || account.id}：${m}`);
+      const log = (m) => logger.info('QUOTA', '{name}:{msg}', { name: account.name || account.id, msg: m });
       const ctx = { log, ...refreshContext(account, log) };
       return json(res, 200, { quota: await productImpl(account.provider).quota(account, ctx) });
     } catch (e) {
@@ -343,7 +346,7 @@ async function handleApi(req, res, url) {
         captchaParam: typeof body.captchaParam === 'string' ? body.captchaParam : '',
         region: typeof body.region === 'string' ? body.region : '',
       });
-      logger.info('DAEMON', `ZCode ${account.name || account.id} 领取成功：${outcome.planName}`);
+      logger.info('DAEMON', 'ZCode {name} 领取成功:{plan}', { name: account.name || account.id, plan: outcome.planName });
       await zcodeGateway.clearQuotaMark(account.id);
       await withAccounts((list) => {
         const cur = list.find((a) => a.id === account.id);
@@ -351,7 +354,7 @@ async function handleApi(req, res, url) {
       });
       return json(res, 200, outcome);
     } catch (e) {
-      logger.warn('DAEMON', `ZCode ${account.name || account.id} 领取失败：${e.message}`);
+      logger.warn('DAEMON', 'ZCode {name} 领取失败:{err}', { name: account.name || account.id, err: e.message });
       return json(res, 502, { error: e.message, code: e.code, nextAt: e.nextAt });
     }
   }
@@ -382,9 +385,13 @@ async function handleApi(req, res, url) {
       await (await import('./store.js')).saveSettings(patch);
       const lanNow = patch.zcodeGatewayLan ?? (await (await import('./store.js')).loadSettings()).zcodeGatewayLan === true;
       const allowText = patch.zcodeGatewayAllow ? patch.zcodeGatewayAllow.join(', ') : '';
-      logger.info('DAEMON', `ZCode 网关局域网：${lanNow ? '开' : '关（仅本机）'}${allowText ? `，白名单：${allowText}` : ''}（绑定改动重启后生效）`);
+      logger.info('DAEMON', 'ZCode 网关局域网:{state}{allow}(绑定改动重启后生效)', { state: lanNow ? '开' : '关(仅本机)', allow: allowText ? ',白名单:{list}' : '', list: allowText || '' });
     }
     return json(res, 200, await zcodeGateway.gatewayStatus());
+  }
+  if (p === '/api/i18n' && method === 'GET') {
+    const locale = getLocale();
+    return json(res, 200, { locale, dict: await loadDict(locale) });
   }
   // MiniMax 本地网关控制
   if (p === '/api/minimax-gateway' && method === 'GET') {
@@ -405,7 +412,7 @@ async function handleApi(req, res, url) {
       await (await import('./store.js')).saveSettings(patch);
       const lanNow = patch.minimaxGatewayLan ?? (await (await import('./store.js')).loadSettings()).minimaxGatewayLan === true;
       const allowText = patch.minimaxGatewayAllow ? patch.minimaxGatewayAllow.join(', ') : '';
-      logger.info('DAEMON', `MiniMax 网关局域网：${lanNow ? '开' : '关（仅本机）'}${allowText ? `，白名单：${allowText}` : ''}（绑定改动重启后生效）`);
+      logger.info('DAEMON', 'MiniMax 网关局域网:{state}{allow}(绑定改动重启后生效)', { state: lanNow ? '开' : '关(仅本机)', allow: allowText ? ',白名单:{list}' : '', list: allowText || '' });
     }
     return json(res, 200, await minimaxGateway.gatewayStatus());
   }
@@ -428,7 +435,7 @@ async function handleApi(req, res, url) {
       await (await import('./store.js')).saveSettings(patch);
       const lanNow = patch.traeGatewayLan ?? (await (await import('./store.js')).loadSettings()).traeGatewayLan === true;
       const allowText = patch.traeGatewayAllow ? patch.traeGatewayAllow.join(', ') : '';
-      logger.info('DAEMON', `Trae 网关局域网：${lanNow ? '开' : '关（仅本机）'}${allowText ? `，白名单：${allowText}` : ''}（绑定改动重启后生效）`);
+      logger.info('DAEMON', 'Trae 网关局域网:{state}{allow}(绑定改动重启后生效)', { state: lanNow ? '开' : '关(仅本机)', allow: allowText ? ',白名单:{list}' : '', list: allowText || '' });
     }
     return json(res, 200, await traeGateway.gatewayStatus());
   }
@@ -458,7 +465,7 @@ async function handleApi(req, res, url) {
       }
     } catch (e) { return json(res, 400, { error: e.message }); }
     const ac = autoClaimEnabled();
-    logger.info('DAEMON', `ZCode 出口：${proxyFirst() ? '代理优先' : '直连优先'}，自动领取：${ac ? `开（每 ${claimIntervalMin()} 分钟，${claimWindowMin() > 0 ? `运行 ${claimWindowMin()} 分钟` : '一直运行'}）` : '关'}，代理 ${proxyUrl() || '(环境变量/未设置)'}`);
+    logger.info('DAEMON', 'ZCode 出口:{route},自动领取:{claim},代理 {proxy}', { route: proxyFirst() ? '代理优先' : '直连优先', claim: ac ? '开(每 {min} 分钟,{window})' : '关', min: claimIntervalMin(), window: claimWindowMin() > 0 ? '运行 {windowMin} 分钟' : '一直运行', windowMin: claimWindowMin(), proxy: proxyUrl() || '(环境变量/未设置)' });
     return json(res, 200, {
       proxyFirst: proxyFirst(), autoClaim: ac, autoClaimUntil: ac ? autoClaimUntil() : null,
       claimIntervalMin: claimIntervalMin(), claimWindowMin: claimWindowMin(),
@@ -476,7 +483,7 @@ async function handleApi(req, res, url) {
       // 防丢号：先把 ZCode 当前登录（凭据 + config.json + 设备 ID）同步 / 保存进账号库，再覆盖
       const live = zcodeLiveAccount();
       if (live && live.uid !== target.uid) {
-        await addAccount(live, { trusted: true }).catch((e) => logger.warn('DAEMON', '同步 ZCode 当前登录失败：' + e.message));
+        await addAccount(live, { trusted: true }).catch((e) => logger.warn('DAEMON', '同步 ZCode 当前登录失败:{err}', { err: e.message }));
       }
       try {
         // 强制切换：先关掉运行中的 ZCode，否则它会把内存里的旧登录覆盖回文件，切换等于没切
@@ -484,8 +491,8 @@ async function handleApi(req, res, url) {
         if (body?.force === true) {
           const t = terminateZcode();
           closedClient = t.closed === true;
-          if (closedClient) logger.info('DAEMON', '已关闭 ZCode 客户端（强制切换）');
-          else if (t.running) logger.warn('DAEMON', '未能完全结束 ZCode 进程，继续强制切换');
+          if (closedClient) logger.info('DAEMON', '已关闭 ZCode 客户端(强制切换)', {});
+          else if (t.running) logger.warn('DAEMON', '未能完全结束 ZCode 进程,继续强制切换', {});
         }
         ensureVirtualDeviceMid(target);
         const r = zcodeSwitchTo(target, { force: body?.force === true });
@@ -494,7 +501,7 @@ async function handleApi(req, res, url) {
           const cur = list.find((a) => a.id === target.id);
           if (cur) cur.meta = { ...(cur.meta || {}), deviceMid: target.meta.deviceMid };
         });
-        logger.info('DAEMON', r.alreadyActive ? `ZCode 当前已是 ${target.name || target.id}` : `ZCode 已切换到 ${target.name || target.id}`);
+        logger.info('DAEMON', r.alreadyActive ? 'ZCode 当前已是 {name}' : 'ZCode 已切换到 {name}', { name: target.name || target.id });
         return json(res, 200, { ok: true, closedClient, ...r });
       } catch (e) {
         return json(res, e.zcodeRunning ? 409 : 400, { error: e.message, code: e.zcodeRunning ? 'ZCODE_RUNNING' : undefined });
@@ -505,7 +512,7 @@ async function handleApi(req, res, url) {
       try {
         const live = await mirasimLiveAccount();
         if (live && live.uid !== target.uid) {
-          await addAccount(live, { trusted: true }).catch((e) => logger.warn('DAEMON', '同步 mirasim 当前登录失败：' + e.message));
+          await addAccount(live, { trusted: true }).catch((e) => logger.warn('DAEMON', '同步 mirasim 当前登录失败:{err}', { err: e.message }));
         }
       } catch (e) {}
       try {
@@ -513,10 +520,10 @@ async function handleApi(req, res, url) {
         if (body?.force === true) {
           const t = terminateMirasim();
           closedClient = t.closed === true;
-          if (closedClient) logger.info('DAEMON', '已关闭 Mirasim 客户端（强制切换）');
+          if (closedClient) logger.info('DAEMON', '已关闭 Mirasim 客户端(强制切换)', {});
         }
         const r = await mirasimSwitchTo(target, { force: body?.force === true });
-        logger.info('DAEMON', r.alreadyActive ? `mirasim 当前已是 ${target.name || target.id}` : `mirasim 已切换到 ${target.name || target.id}`);
+        logger.info('DAEMON', r.alreadyActive ? 'mirasim 当前已是 {name}' : 'mirasim 已切换到 {name}', { name: target.name || target.id });
         return json(res, 200, { ok: true, closedClient, ...r });
       } catch (e) {
         return json(res, e.mirasimRunning ? 409 : 400, { error: e.message, code: e.mirasimRunning ? 'MIRASIM_RUNNING' : undefined });
@@ -527,7 +534,7 @@ async function handleApi(req, res, url) {
       try {
         const live = await catpawLiveAccount();
         if (live && live.token !== target.token) {
-          await addAccount(live, { trusted: true }).catch((e) => logger.warn('DAEMON', '同步妙手当前登录失败：' + e.message));
+          await addAccount(live, { trusted: true }).catch((e) => logger.warn('DAEMON', '同步妙手当前登录失败:{err}', { err: e.message }));
         }
       } catch (e) {}
       try {
@@ -535,11 +542,11 @@ async function handleApi(req, res, url) {
         if (body?.force === true) {
           const t = terminateCatpaw();
           closedClient = t.closed === true;
-          if (closedClient) logger.info('DAEMON', '已关闭妙手客户端（强制切换）');
-          else if (t.running) logger.warn('DAEMON', '未能完全结束妙手进程，继续强制切换');
+          if (closedClient) logger.info('DAEMON', '已关闭妙手客户端(强制切换)', {});
+          else if (t.running) logger.warn('DAEMON', '未能完全结束妙手进程,继续强制切换', {});
         }
         const r = await catpawSwitchTo(target, { force: body?.force === true });
-        logger.info('DAEMON', r.alreadyActive ? `妙手当前已是 ${target.name || target.id}` : `妙手已切换到 ${target.name || target.id}（重新打开客户端生效）`);
+        logger.info('DAEMON', r.alreadyActive ? '妙手当前已是 {name}' : '妙手已切换到 {name}(重新打开客户端生效)', { name: target.name || target.id });
         return json(res, 200, { ok: true, closedClient, ...r });
       } catch (e) {
         return json(res, e.catpawRunning ? 409 : 400, { error: e.message, code: e.catpawRunning ? 'CATPAW_RUNNING' : undefined });
@@ -555,20 +562,20 @@ async function handleApi(req, res, url) {
             provider: live.provider, token: live.token, name: live.user.name || live.user.email,
             uid: live.user.id, email: live.user.email, refreshToken: live.refreshToken, expiresAt: live.expiresAt,
             source: 'local-app', meta: { qoderAuth: live.authJson, qoderAuthFile: live.file },
-          }, { trusted: true }).catch((e) => logger.warn('DAEMON', '同步 Qoder 当前登录失败：' + e.message));
+          }, { trusted: true }).catch((e) => logger.warn('DAEMON', '同步 Qoder 当前登录失败:{err}', { err: e.message }));
         }
-      } catch (e) { logger.warn('DAEMON', '读取 Qoder 当前登录失败：' + e.message); }
+      } catch (e) { logger.warn('DAEMON', '读取 Qoder 当前登录失败:{err}', { err: e.message }); }
       try {
         // 强制切换：先关掉运行中的 Qoder，否则它退出时会把内存里的旧登录覆盖回文件
         let closedClient = false;
         if (body?.force === true) {
           const t = terminateQoder();
           closedClient = t.closed === true;
-          if (closedClient) logger.info('DAEMON', '已关闭 Qoder 客户端（强制切换）');
-          else if (t.running) logger.warn('DAEMON', '未能完全结束 Qoder 进程，继续强制切换');
+          if (closedClient) logger.info('DAEMON', '已关闭 Qoder 客户端(强制切换)', {});
+          else if (t.running) logger.warn('DAEMON', '未能完全结束 Qoder 进程,继续强制切换', {});
         }
         const r = await qoderSwitchTo(target, { force: body?.force === true });
-        logger.info('DAEMON', r.alreadyActive ? `Qoder 当前已是 ${target.name || target.id}` : `Qoder 已切换到 ${target.name || target.id}（重新打开 Qoder 生效）`);
+        logger.info('DAEMON', r.alreadyActive ? 'Qoder 当前已是 {name}' : 'Qoder 已切换到 {name}(重新打开 Qoder 生效)', { name: target.name || target.id });
         return json(res, 200, { ok: true, closedClient, ...r });
       } catch (e) {
         return json(res, e.qoderRunning ? 409 : 400, { error: e.message, code: e.qoderRunning ? 'QODER_RUNNING' : undefined });
@@ -579,15 +586,15 @@ async function handleApi(req, res, url) {
       try {
         const live = await traeLiveAccount();
         if (live && live.token !== target.token) {
-          await addAccount(live, { trusted: true }).catch((e) => logger.warn('DAEMON', '同步 Trae 当前登录失败：' + e.message));
+          await addAccount(live, { trusted: true }).catch((e) => logger.warn('DAEMON', '同步 Trae 当前登录失败:{err}', { err: e.message }));
           traeSnapshotLive();
         }
       } catch (e) {}
       try {
         // 退进程交给 switchTo：它要先确认目标有快照才会动手，避免「白关一次 Trae」
         const r = await traeSwitchTo(target, { force: body?.force === true });
-        if (r.closedClient) logger.info('DAEMON', '已关闭 Trae 客户端（强制切换）');
-        logger.info('DAEMON', r.alreadyActive ? `Trae 当前已是 ${target.name || target.id}` : `Trae 已切换到 ${target.name || target.id}（重新打开客户端生效）`);
+        if (r.closedClient) logger.info('DAEMON', '已关闭 Trae 客户端(强制切换)', {});
+        logger.info('DAEMON', r.alreadyActive ? 'Trae 当前已是 {name}' : 'Trae 已切换到 {name}(重新打开客户端生效)', { name: target.name || target.id });
         return json(res, 200, { ok: true, ...r });
       } catch (e) {
         return json(res, e.traeRunning ? 409 : 400, { error: e.message, code: e.traeRunning ? 'TRAE_RUNNING' : undefined });
@@ -600,11 +607,11 @@ async function handleApi(req, res, url) {
     const cur = readWorkbuddySessions().accounts.find((a) => a.current);
     if (cur && cur.uid !== target.uid) {
       const { file: _f, fileTime: _t, current: _c, ...rec } = cur;
-      await addAccount(rec, { trusted: true }).catch((e) => logger.warn('DAEMON', '同步 WorkBuddy 当前会话失败：' + e.message));
+      await addAccount(rec, { trusted: true }).catch((e) => logger.warn('DAEMON', '同步 WorkBuddy 当前会话失败:{err}', { err: e.message }));
     }
     try {
       const r = writeWorkbuddySession(target);
-      logger.info('DAEMON', `WorkBuddy 已切换到 ${target.name || target.id}`);
+      logger.info('DAEMON', 'WorkBuddy 已切换到 {name}', { name: target.name || target.id });
       return json(res, 200, { ok: true, file: r.file, previousUid: r.previousUid });
     } catch (e) {
       return json(res, 400, { error: e.message });
@@ -636,12 +643,12 @@ async function handleApi(req, res, url) {
     const kind = body?.kind === 'qoder-cn' ? 'qoder-cn' : 'qoder';
     // 诊断：登录窗关闭时两个域都会上报；收到 0 条 Cookie 说明窗口内根本没建立该域的网站会话
     const count = body?.diag?.cookieCount;
-    logger.info('DAEMON', `Qoder 网页会话收割（${kind}）：${typeof count === 'number' ? count + ' 条 Cookie' : '已上报'}`);
+    logger.info('DAEMON', 'Qoder 网页会话收割({kind}):{result}', { kind, result: typeof count === 'number' ? '{count} 条 Cookie' : '已上报', count });
     if (!cookie || cookie.length > 16384) return json(res, 200, { ok: true, bound: 0, empty: true });
     const { probeWebSession } = await import('./qoderClient.js');
     const probe = await probeWebSession(kind, cookie);
     if (!probe?.user_id) {
-      logger.warn('DAEMON', `${kind === 'qoder-cn' ? 'Qoder 国内版' : 'Qoder 国际版'}网页会话探测未通过（接口不认这份 Cookie），已丢弃`);
+      logger.warn('DAEMON', 'Qoder {edition}网页会话探测未通过(接口不认这份 Cookie),已丢弃', { edition: kind === 'qoder-cn' ? '国内版' : '国际版' });
       return json(res, 400, { error: '网页会话无效（探测接口未通过）' });
     }
     const now = new Date().toISOString();
@@ -661,9 +668,9 @@ async function handleApi(req, res, url) {
           [probe.user_id]: { kind, cookie, capturedAt: now },
         };
       });
-      logger.info('DAEMON', `收到 Qoder 网页会话（uid ${probe.user_id.slice(0, 8)}…），暂无匹配账号，已暂存待绑定`);
+      logger.info('DAEMON', '收到 Qoder 网页会话(uid {uid}...),暂无匹配账号,已暂存待绑定', { uid: probe.user_id.slice(0, 8) });
     } else {
-      logger.info('DAEMON', `已绑定 Qoder 网页会话到 ${bound} 个账号（逐资源包明细可用）`);
+      logger.info('DAEMON', '已绑定 Qoder 网页会话到 {n} 个账号(逐资源包明细可用)', { n: bound });
     }
     return json(res, 200, { ok: true, bound });
   }
@@ -753,6 +760,15 @@ async function handleApi(req, res, url) {
       provider: body.provider === 'qoder-cn' ? 'qoder-cn' : 'qoder',
       token: cand.token, source: 'local-scan',
     };
+    if (record.provider?.startsWith('workbuddy') && record.refreshToken) {
+      try {
+        const fresh = await refreshWorkbuddyToken(record);
+        Object.assign(record, { token: fresh.token, refreshToken: fresh.refreshToken, expiresAt: fresh.expiresAt });
+      } catch (e) {
+        if (e.authInvalid) return json(res, 409, { error: e.message });
+        return json(res, 502, { error: `WorkBuddy 本机凭据校验失败:${e.message}` });
+      }
+    }
     const { account, duplicate, updated } = await addAccount(
       { ...record, name: body.name || record.name || null },
       { trusted: Boolean(cand.record) },
@@ -760,7 +776,7 @@ async function handleApi(req, res, url) {
     if (duplicate && !updated) return json(res, 409, { error: '该账号已存在，信息已是最新' });
     // Trae 的登录态是 15 项文件快照而非单个凭据文件，导入时就建一次快照，否则该账号不可切换
     if (account.provider === 'trae') traeSnapshotLive();
-    logger.info('DAEMON', (updated ? '已用本机凭据更新：' : '从本机导入账号：') + (account.name || account.id));
+    logger.info('DAEMON', updated ? '已用本机凭据更新:{name}' : '从本机导入账号:{name}', { name: account.name || account.id });
     return json(res, updated ? 200 : 201, { account: publicAccount(account), updated });
   }
 
@@ -849,7 +865,7 @@ async function handleApi(req, res, url) {
           const cur = list.find((a) => a.provider === b.provider && a.uid && b.uid && String(a.uid) === String(b.uid) && !a.meta?.qoderAuth);
           if (cur) cur.meta = { ...(cur.meta || {}), qoderAuth: b.authJson, qoderAuthFile: b.file };
         }
-      }).catch((e) => logger.warn('DAEMON', '回填 Qoder 登录快照失败：' + e.message));
+      }).catch((e) => logger.warn('DAEMON', '回填 Qoder 登录快照失败:{err}', { err: e.message }));
     }
     // 妙手凭据文件只存 token：当前登录按 token 对齐账号库，避免每轮状态都打网关查 uid
     const cpToken = currentCatpawToken();
@@ -912,11 +928,20 @@ async function handleApi(req, res, url) {
 
   // Panel 设置：GET 读取（只回状态不回显密码），PUT 设置 / 修改 / 关闭访问密码
   if (p === '/api/settings' && method === 'GET') {
-    return json(res, 200, { panelKeyEnabled: Boolean(PANEL_KEY) });
+    return json(res, 200, { panelKeyEnabled: Boolean(PANEL_KEY), locale: getLocale() });
   }
   if (p === '/api/settings' && method === 'PUT') {
     const body = await readBody(req).catch(() => ({}));
-    return await handleSettingsPut(res, body);
+    if (body?.locale !== undefined) {
+      const locale = normalizeLocale(body.locale);
+      setLocale(locale);
+      await saveSettings({ locale });
+    }
+    // 只有携带密码字段才走密码分支：纯语言/其它设置的请求此前会掉进
+    // 「请提供新密码」400，面板 api() 抛错导致语言切换点了不刷新（i18n 切换失效根因）
+    if (body?.panelKey !== undefined || body?.disable === true) return await handleSettingsPut(res, body);
+    if (body?.locale !== undefined) return json(res, 200, { ok: true, panelKeyEnabled: Boolean(PANEL_KEY), locale: getLocale() });
+    return json(res, 400, { error: '请求未携带任何设置字段' });
   }
 
   // 导出（加密口令必填——账号含 token，不允许再导出明文文件）
@@ -928,18 +953,18 @@ async function handleApi(req, res, url) {
     // 日志只记范围与条数——口令、token 一概不落
     const scope = provider ? (PROVIDER_LABEL[provider] || provider) : (product ? `${product}（全部版本）` : '全部账号');
     if (password.length < 4) {
-      logger.warn('DAEMON', `导出被拒（${scope}）：未设置加密口令`);
+      logger.warn('DAEMON', '导出被拒({scope}):未设置加密口令', { scope });
       return json(res, 400, { error: '导出必须设置加密口令（至少 4 位）', code: 'PASSWORD_REQUIRED' });
     }
     try {
       const accounts = await loadAccounts();
       const blob = exportAccounts(accounts, { password, provider, product });
       // 信封是密文、不带条数，用同参数重算一遍过滤结果记进日志
-      logger.info('DAEMON', `导出账号（${scope}）：${buildExportPayload(accounts, { provider, product }).accounts.length} 个（密文口令导出）`);
+      logger.info('DAEMON', '导出账号({scope}):{n} 个(密文口令导出)', { scope, n: buildExportPayload(accounts, { provider, product }).accounts.length });
       return json(res, 200, blob);
     } catch (e) {
       if (e instanceof TransferError) {
-        logger.warn('DAEMON', `导出失败（${scope}）：${e.code}`);
+        logger.warn('DAEMON', '导出失败({scope}):{code}', { scope, code: e.code });
         return json(res, 400, { error: e.message, code: e.code });
       }
       throw e;
@@ -956,14 +981,14 @@ async function handleApi(req, res, url) {
       parsed = parseImport(data, { password: body?.password });
     } catch (e) {
       if (e instanceof TransferError) {
-        logger.warn('DAEMON', `导入失败：${e.code}（${e.message}）`);
+        logger.warn('DAEMON', '导入失败:{code}({message})', { code: e.code, message: e.message });
         return json(res, 400, { error: e.message, code: e.code });
       }
       throw e;
     }
     const r = await importAccounts(parsed.accounts);
     const skipped = r.skipped + parsed.skipped;
-    logger.info('DAEMON', `导入完成（${parsed.source}）：新增 ${r.added}，续期 ${r.updated}，跳过 ${skipped}`);
+    logger.info('DAEMON', '导入完成({source}):新增 {added},续期 {updated},跳过 {skipped}', { source: parsed.source, added: r.added, updated: r.updated, skipped });
     return json(res, 200, { added: r.added, updated: r.updated, skipped, source: parsed.source });
   }
 
@@ -985,7 +1010,7 @@ async function handleApi(req, res, url) {
         }).unref();
         process.exit(0);
       } catch (err) {
-        logger.error('DAEMON', `自动重启失败: ${err?.message || err}`);
+        logger.error('DAEMON', '自动重启失败: {err}', { err: err?.message || err });
       }
     }, 400);
     return;
@@ -1014,7 +1039,7 @@ export async function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
     const dead = list.filter((a) => a.provider === 'minimax-intl');
     if (dead.length) {
       await withAccounts((l) => { l.splice(0, l.length, ...l.filter((a) => a.provider !== 'minimax-intl')); });
-      logger.info('DAEMON', `已移除 ${dead.length} 个 MiniMax 国际版账号（该渠道已下线，额度接口对国内网络不可用）`);
+      logger.info('DAEMON', '已移除 {count} 个 MiniMax 国际版账号(该渠道已下线,额度接口对国内网络不可用)', { count: dead.length });
     }
   }
   let panelHtml = '';
@@ -1025,7 +1050,7 @@ export async function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
     try {
       const denied = rejectForeignRequest(req.headers, host);
       if (denied) {
-        logger.warn('DAEMON', `拒绝请求 ${req.method} ${url.pathname}：${denied}（Host=${req.headers.host || ''} Origin=${req.headers.origin || ''}）`);
+        logger.warn('DAEMON', '拒绝请求 {method} {path}:{denied}(Host={host} Origin={origin})', { method: req.method, path: url.pathname, denied, host: req.headers.host || '', origin: req.headers.origin || '' });
         return json(res, 403, { error: denied });
       }
       // ZCode 免费额度网关（数据面，先于面板路由；仅本机回路，见 zcodeGateway.js）。
@@ -1061,7 +1086,7 @@ export async function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
       res.end('Not Found');
     } catch (err) {
       const status = err instanceof HttpError ? err.status : 500;
-      if (status >= 500) logger.error('DAEMON', `请求处理失败：${err?.message || err}`);
+      if (status >= 500) logger.error('DAEMON', '请求处理失败:{err}', { err: err?.message || err });
       if (!res.headersSent) json(res, status, { error: err?.message || '内部错误' });
     }
   });
@@ -1074,23 +1099,23 @@ export async function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
         server.off('listening', onListening);
         if (err && err.code === 'EADDRINUSE' && attempts < 10) {
           attempts += 1;
-          logger.warn('DAEMON', `端口 ${p} 被占用，改试 ${p + 1}`);
+          logger.warn('DAEMON', '端口 {port} 被占用,改试 {next}', { port: p, next: p + 1 });
           server.close();
           setTimeout(() => bind(p + 1), 300);
         } else {
           // 兜底失败必须 reject：否则这个 promise 永远挂着，调用方的 startScheduler() 不会跑，
           // 进程既不监听也不退出，只在日志里留一行，看起来像「启动了但没反应」
           const msg = err?.message || String(err);
-          logger.error('DAEMON', `监听失败：${msg}`);
+          logger.error('DAEMON', '监听失败:{msg}', { msg });
           reject(new Error(`无法监听 ${host}:${p}：${msg}`));
         }
       };
       const onListening = () => {
         server.off('error', onError);
         const bound = server.address().port;
-        logger.info('DAEMON', `CreditDaddy 守护进程已启动：http://${host}:${bound}`);
+        logger.info('DAEMON', 'CreditDaddy 守护进程已启动:http://{host}:{port}', { host, port: bound });
         if ((host === '0.0.0.0' || host === '::') && !PANEL_KEY) {
-          logger.warn('DAEMON', '监听 0.0.0.0 且未设置 CREDITDADDY_PASSWORD —— 局域网内任何人可访问账号 API，建议设置访问密钥');
+          logger.warn('DAEMON', '监听 0.0.0.0 且未设置 CREDITDADDY_PASSWORD —— 局域网内任何人可访问账号 API,建议设置访问密钥', {});
         }
         resolve({ server, port: bound });
       };
