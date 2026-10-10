@@ -46,6 +46,7 @@
 - **tenrouter.json 配置落盘走 store.atomicWrite**（Windows 杀软瞬时占文件直接 EPERM 的坑改掉）；`saveConfig` 改为 async，`withConfig` 串行加 await。
 - **settings / state 损坏 JSON 读侧回退同目录 `.bak`**（断电半写不再让守护起不来），仍失败才以原错误上抛（不静默重置）。
 - **ZCode 1005（名额已满）消费 `err.nextAt`**：以服务端 `plan.ends_at` 把该账号挂进跳过窗口（进程内缓存 + `account.meta.zcodeClaimNextAt` 双轨），自动轮询在该时间点前不再空打。
+- **代理漏网收口（审计 M2）**：Qoder openapi（userinfo / quota / 活动列表 / 领取 / PAT→jobToken）与 WorkBuddy（billing / 国际版活跃探测 / token 刷新）统一走 `fetchJsonRace`——配置出口代理后这些请求也终于走代理（直连优先，报错才走代理兜底），**不带 `preferProxy: true` 的调用域**，行为跟设置了代理的机器不会变。`authDevice / qoderUmid / zcodeAuth / workbuddyAuth` 的认证流程继续保留直连（避免代理改 auth 路径的可变面）。
 
 ### 🐛 修复
 

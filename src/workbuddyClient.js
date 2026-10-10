@@ -17,6 +17,7 @@
  */
 
 import { FETCH_TIMEOUT_MS } from './constants.js';
+import { fetchJsonRace } from './zcodeClient.js';
 import { withRefreshDedupe } from './refreshGuard.js';
 
 const USER_AGENT = 'CLI/2.108.1 CodeBuddy/2.108.1';
@@ -80,11 +81,12 @@ function headersFor(account, token) {
 }
 
 async function post(account, path, token) {
-  const res = await fetch(`https://${apiHost(account)}${path}`, {
+  // fetchJsonRace 统一出口：连接段限时 + 配置了出口代理时直连/代理双路兜底
+  const res = await fetchJsonRace(`https://${apiHost(account)}${path}`, {
     method: 'POST',
     headers: headersFor(account, token),
     body: '{}',
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    timeoutMs: FETCH_TIMEOUT_MS,
   });
   const text = await res.text();
   let body = null;
@@ -97,7 +99,7 @@ async function post(account, path, token) {
 // 对齐 10router src/sse/services/codebuddyCheckin.js 的 intl 探测（stream 网关的系统提示与 typed blocks 是必需的，否则 11101）。
 const INTL_PROBE_MODEL = 'hy4-preview';
 async function postIntlProbe(account, token) {
-  const res = await fetch(`https://${apiHost(account)}/v2/chat/completions`, {
+  const res = await fetchJsonRace(`https://${apiHost(account)}/v2/chat/completions`, {
     method: 'POST',
     headers: { ...headersFor(account, token), 'Content-Type': 'application/json', Accept: 'text/event-stream' },
     body: JSON.stringify({
@@ -109,7 +111,7 @@ async function postIntlProbe(account, token) {
         { role: 'user', content: [{ type: 'text', text: 'hi' }] },
       ],
     }),
-    signal: AbortSignal.timeout(Math.max(FETCH_TIMEOUT_MS, 25_000)),
+    timeoutMs: Math.max(FETCH_TIMEOUT_MS, 25_000),
   });
   // 2xx = 会话建立成功，把 SSE 流排干（最多几个 token）
   const text = await res.text().catch(() => '');
@@ -152,7 +154,7 @@ export async function refreshWorkbuddyToken(account) {
   let lastError = null;
   for (const host of hosts) {
     try {
-      const res = await fetch(`https://${host}/v2/plugin/auth/token/refresh`, {
+      const res = await fetchJsonRace(`https://${host}/v2/plugin/auth/token/refresh`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -166,7 +168,7 @@ export async function refreshWorkbuddyToken(account) {
           ...(account.meta?.enterpriseId ? { 'X-Enterprise-Id': account.meta.enterpriseId } : {}),
         },
         body: '{}',
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        timeoutMs: FETCH_TIMEOUT_MS,
       });
       const j = await res.json().catch(() => ({}));
       const d = j?.data;

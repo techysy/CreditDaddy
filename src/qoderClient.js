@@ -23,8 +23,12 @@ export function apiBase(provider) {
   return provider === 'qoder-cn' ? CN_OPENAPI_BASE : OPENAPI_BASE;
 }
 
+// 所有 openapi / web 请求统一走 fetchJsonRace（连接段限时 + 配置了出口代理时直连/代理双路兜底）——
+// 此前裸 fetch：面板「网络出口 = 代理优先」对 Qoder 所有调用完全无效（审计 M2 漏网）。
+// options.preferProxy：国际版（按 IP 识别地区）由调用方给 true。
 async function req(url, options = {}) {
-  return fetch(url, { ...options, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+  const { preferProxy = false, ...rest } = options;
+  return fetchJsonRace(url, { ...rest, timeoutMs: FETCH_TIMEOUT_MS, preferProxy });
 }
 
 /**
@@ -45,6 +49,7 @@ export async function exchangePatToJobToken(pat, isCn = false) {
     method: 'POST',
     headers: buildExchangeHeaders(),
     body: JSON.stringify({ personal_token: pat }),
+    preferProxy: !isCn,
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -76,6 +81,7 @@ export async function fetchUserinfo(account) {
   if (!token) throw new Error('token 不可用');
   const res = await req(`${apiBase(account.provider)}${USERINFO_PATH}`, {
     headers: buildQoderHeaders(token),
+    preferProxy: account.provider === 'qoder',
   });
   if (!res.ok) throw new Error(`userinfo HTTP ${res.status}`);
   return res.json();
@@ -87,6 +93,7 @@ export async function fetchQuotaUsage(account) {
   if (!token) throw new Error('token 不可用');
   const res = await req(`${apiBase(account.provider)}${QUOTA_USAGE_PATH}`, {
     headers: buildQoderHeaders(token),
+    preferProxy: account.provider === 'qoder',
   });
   if (res.status === 401 || res.status === 403) throw new Error(`鉴权失败 (HTTP ${res.status})，token 可能已过期`);
   if (!res.ok) throw new Error(`quota HTTP ${res.status}`);
