@@ -50,6 +50,7 @@
 - **Windows 产物名加平台段**：CI / 本地统一改为 `CreditDaddy-Win-Setup-<版本>.exe` / `CreditDaddy-Win-Portable-<版本>.exe`（Windows 只有 x64，不带架构段）；应用内更新的资产匹配同时认新旧名，README 与发布说明同步。
 - **点组件 chip 置灰会把设置弹层一起关掉**：组件显隐切换会重建 `comp-menu`（`innerHTML` 整替换），被点的 chip 节点随之脱离 DOM；document 层的「点外面关闭」接着在同一次冒泡里检查 `closest('#m-settings')`，拿到的是脱离节点、判定落空而误关。现在点外关闭前加 `e.target.isConnected` 守卫：目标已被重渲染摘走的点击不算「点外面」。
 - **组件排序区的标题与提示字号/行距统一**：`.sort-hint` 从 11px/默认行高改为与 `.hint` 一致的 12px / 1.7（上下段不再显得字号忽大忽小、行距忽紧忽松）。
+- **面板设置字体层级重校**：说明文字上一轮被提到与字段标签同字号（12px），层级被拉平、看上去「标题字幕反了」。现在统一为三层：弹窗标题 14px/700 → 字段标签 12.5px/650 → 说明文字 11px/1.65 灰；`.comp-menu-title` 对齐字段标签；字段间距与弹层内边距微调（`.field` gap 6/14，`.setpop .modal` 16×18）。
 - **产物命名扩展到 macOS / fnOS**：mac dmg 改 `CreditDaddy-Mac-Setup-<版本>-<arch>.dmg`（zip 为 `-Mac-Portable-`，保留架构段）、fnOS fpk 改 `CreditDaddy-FnOS(-Window)-<版本>-<arch>.fpk`；release notes 与 README / DEPLOY 同步。此前仅 Windows 做了平台段。
 
 - **主题相关文案的硬编码中文**：头部三个按钮与主题分段控件的 `title` 此前全是静态中文；主题按钮标题里的「暗色」取自初始化时（字典未加载）就钉死的 `THEME_MODES` 数组。现在：`title` 由引擎按 `data-i18n` 同款机制翻译（补 6 个键），主题按钮标题在字典到达后重渲染（`window.__syncTheme`），mode 文案改取运行时的 `T('暗色'/'亮色')`。
