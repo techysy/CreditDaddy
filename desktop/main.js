@@ -555,7 +555,7 @@ async function harvestQoderWebSession(ses) {
     { kind: 'qoder-cn', url: 'https://qoder.cn' },
     { kind: 'qoder', url: 'https://qoder.com' },
   ];
-  const panelKey = daemonMod && typeof daemonMod.getPanelKey === 'function' ? daemonMod.getPanelKey() : '';
+  const panelKey = (daemonMod && typeof daemonMod.getSessionKey === 'function' && daemonMod.getSessionKey()) || (daemonMod && typeof daemonMod.getPanelKey === 'function' ? daemonMod.getPanelKey() : '');
   for (const t of targets) {
     const cookies = await ses.cookies.get({ url: t.url }).catch(() => []);
     const cookie = (cookies || []).map((c) => c.name + '=' + c.value).join('; ');
@@ -842,9 +842,7 @@ ipcRenderer.on('pw:verify-result', (_e, ok) => { if (!ok) { err.style.display = 
 ipcMain.on('pw:verify', (e, entered) => {
   const fromVerify = pwVerifyWin && !pwVerifyWin.isDestroyed() && e.sender === pwVerifyWin.webContents;
   if (!fromVerify) return;
-  const a = Buffer.from(String(entered || ''));
-  const b = Buffer.from(String(pwVerifyKey || ''));
-  const ok = pwVerifyKey && a.length === b.length && crypto.timingSafeEqual(a, b);
+  const ok = daemonMod && typeof daemonMod.verifyPanelPassword === 'function' && daemonMod.verifyPanelPassword(String(entered || ''));
   if (ok) {
     const r = pwVerifyResolve; pwVerifyResolve = null;
     try { pwVerifyWin.close(); } catch { /* ignore */ }
@@ -859,8 +857,8 @@ let pwMgrWin = null;
 async function promptManagePasswords() {
   if (pwMgrWin && !pwMgrWin.isDestroyed()) { pwMgrWin.focus(); return; }
   // 设了面板访问密码时，必须先验证才能查看明文——托盘菜单不能绕过面板密码
-  const panelKey = daemonMod && typeof daemonMod.getPanelKey === 'function' ? daemonMod.getPanelKey() : '';
-  if (panelKey && !(await verifyPanelKey(panelKey))) {
+  const needKey = daemonMod && typeof daemonMod.panelKeyRequired === 'function' && daemonMod.panelKeyRequired();
+  if (needKey && !(await verifyPanelKey())) {
     notify('密码管理已锁定', '需要输入面板访问密码才能查看已保存的密码。');
     return;
   }

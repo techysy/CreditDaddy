@@ -58,7 +58,8 @@
 - **刷新并发互斥与失效链熔断推广到 WorkBuddy / mirasim**：`minimaxClient` 的 in-flight dedupe + refreshToken 指纹熔断抽为公共模块 `src/refreshGuard.js`——面板额度查询与签到轮同链抢刷触发 12153 / invalid_grant 的误杀从根上消失。
 - **跨进程单实例守护**：`startDaemon` 启动前经 daemon.json pid + /api/status 探活，有活实例拒绝以 ALREADY_RUNNING 起第二份——杜绝两个守护共 dataDir 时 accounts / state / settings 的跨进程覆盖。runtime 记录推广到前台 / 后台 / 桌面三种启动方式，探活加一拍重试防瞬时假阴性。
 - **面板 fail-closed**：监听 0.0.0.0（网关开 LAN 或 NAS 部署）且未设访问密码时，面板 `/api/*` 与首页一律 403（socket 地址非回环即拒）。此前只是 Host 校验 + 一行警告。
-- **面板访问密码明文升级 scrypt 哈希落盘**：`panelKeyHash: scrypt:<salt>:<hash>`；password 关的 `put` 更新后立即清除明文（明文迁移一次自动）；引入 `panelKeyRequired()` 统一三模式（hash / plain / env-injected），`enabled` 断言全部修复。同时新增按源 IP 连续 10 次错锁 5 分钟（暴力猜密守卫）、同源日志限随行。
+- **面板访问密码明文升级 scrypt 哈希落盘**：`panelKeyHash: scrypt:<salt>:<hash>`；password 关的 `put` 更新后立即清除明文（明文迁移一次自动）；引入 `panelKeyRequired()` 统一三模式（hash / plain / env-injected），`enabled` 断言全部修复。同时新增按源 IP 连续 10 次错锁 5 分钟（暴力猜密守卫）、同源日志限随行。新增 `getSessionKey()`（进程随机主密钥，重启失效）给桌面壳寄主的 `x-qd-key` 与 `verifyPanelPassword()` 给密码管理门禁——hash 模式下桌面壳代码面不受影响。
+
 - **LAN 白名单通配规则收紧**：三个网关的 `e.endsWith('*')` 裸前缀隔断被关闭式修复（通配段必须以 `.` 结尾——`192.168.31.1*` 不再误把 `.100-199` 整段放行）。
 - **Trae 网关事件流与额度权重**：`fetchJsonRace` 事件流接默认 `connectMs:15s`（此前上游黑洞时裸 fetch 永不超时）；权重缓存带 10 分钟 TTL、失败保留旧快照，与 MiniMax 对齐。流式与非流式两个返回的 stop_reason 都不再伪装 `end_turn`（断流 / EOF / reader 抛错统一报 `interrupted`，客户端不再把截断当完整答案）。
 - **fetchJsonRace `redirect:'manual'`**：301/302 再把 POST 转 GET 丢 body、307 原样重放新地址不再换出（涉及三个网关大 body 凭据头的落地）。

@@ -81,6 +81,7 @@ const PRODUCT_IDS = ['qoder', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae',
  *  保证安装向导密码在 NAS 部署里始终有效。设置后所有 /api/* 需要 x-qd-key 头；密码不回显。 */
 let PANEL_KEY = '';
 let PANEL_KEY_HASH = null;      // 'scrypt:<salt_hex>:<hash_hex>' — 面板密码只存这个,不存明文
+let PANEL_SESSION = null;    // 进程级会话钥（重启随机）：桌面壳寄主的 loopback 凭证,外部没人知道
 let PANEL_KEY_MODE = 'none';    // 'plain' | 'hash' | 'none'
 
 function scryptPanelKey(peer) {
@@ -98,7 +99,7 @@ function scryptMatches(peer, stored) {
 }
 
 /** 面板密码是否生效（哈希 / 明文 / 环境变量任一路径都算）—— PANEL_KEY 字符串本身在哈希模式下为空。 */
-function panelKeyRequired() { return PANEL_KEY_MODE !== 'none'; }
+export function panelKeyRequired() { return PANEL_KEY_MODE !== 'none'; }
 
 async function initPanelKey() {
   let s = {};
@@ -127,6 +128,7 @@ async function initPanelKey() {
       PANEL_KEY_MODE = 'none';
     }
   }
+  PANEL_SESSION = crypto.randomBytes(16).toString('hex');   // 每次拉起重新随机（桌面上次用过期票不会误通行）
   setLocale(s.locale);
 }
 
@@ -179,8 +181,10 @@ async function readBody(req) {
  *  mode 'plain' → 仅环境变量来源，按原常量时间比;
  *  mode 'none' → 永远 false（本函数不该进来） */
 function keyMatches(given) {
-  if (PANEL_KEY_MODE === 'hash') return scryptMatches(String(given), PANEL_KEY_HASH);
-  const a = Buffer.from(String(given));
+  const head = String(given);
+  if (PANEL_SESSION && head === PANEL_SESSION) return true;   // 桌面寄主会话钥（重启随机,外部不可伪造）
+  if (PANEL_KEY_MODE === 'hash') return scryptMatches(head, PANEL_KEY_HASH);
+  const a = Buffer.from(head);
   const b = Buffer.from(PANEL_KEY);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
@@ -1133,6 +1137,12 @@ export function setRestartHandler(fn) { restartHandler = typeof fn === 'function
 
 /** 当前生效的面板访问密码（同进程宿主——桌面壳——调用本机 API 时带上 x-qd-key 头） */
 export function getPanelKey() { return PANEL_KEY; }
+export function getSessionKey() { return PANEL_SESSION; }
+export function verifyPanelPassword(input) {
+  if (PANEL_KEY_MODE === 'hash') return scryptMatches(String(input), PANEL_KEY_HASH);
+  if (PANEL_KEY_MODE === 'plain') return keyMatches(String(input));
+  return false;
+}
 
 /** 出口代理地址（面板「ZCode 网络出口」里存的，环境变量不算——登录窗显式设置用） */
 export function getLoginProxyUrl() { return proxyUrl() || null; }
