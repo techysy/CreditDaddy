@@ -317,6 +317,7 @@
   "<div class=\"hint\">开启后每次打开面板都需要输入密码；密码可随时在此修改或关闭。": "<div class=\"hint\">開啟後每次打開面板都需要輸入密碼；密碼可隨時在此修改或關閉。",
   "<div class=\"hint\">填 10Router 的地址和一个<b>虚拟 key</b>（10Router 仪表盘 → API Keys 创建的 sk-…），就能在这里：</div>": "<div class=\"hint\">填 10Router 的地址和一個<b>虛擬 key</b>（10Router 儀表盤 → API Keys 創建的 sk-…），就能在這裡：</div>",
   "<div class=\"hint\">未发现已登录的 ": "<div class=\"hint\">未發現已登錄的 ",
+  "<div class=\"hint\">在浏览器里打开的面板没有本机更新通道——请从 GitHub Releases 下载最新安装包安装。</div>": "<div class=\"hint\">在瀏覽器裡打開的面板沒有本機更新通道——請從 GitHub Releases 下載最新安裝包安裝。</div>",
   "<div class=\"hint\">暂无本地更新日志，请到 GitHub Releases 查看。</div>": "<div class=\"hint\">暫無本地更新日誌，請到 GitHub Releases 查看。</div>",
   "<div class=\"hint\">正在读取本机客户端凭据（Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae / MiniMax）…</div>": "<div class=\"hint\">正在讀取本機客戶端憑據（Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae / MiniMax）…</div>",
   "<div class=\"hint\">正在检查更新…</div>": "<div class=\"hint\">正在檢查更新…</div>",

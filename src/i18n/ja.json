@@ -317,6 +317,7 @@
   "<div class=\"hint\">开启后每次打开面板都需要输入密码；密码可随时在此修改或关闭。": "<div class=\"hint\">有効にすると、パネルを開くたびにパスワードが必要になります。ここからいつでも変更またはオフにできます。",
   "<div class=\"hint\">填 10Router 的地址和一个<b>虚拟 key</b>（10Router 仪表盘 → API Keys 创建的 sk-…），就能在这里：</div>": "<div class=\"hint\">10Router のアドレスと<b>仮想キー</b>(10Router ダッシュボード → API Keys で作成した sk-...)を入力すると、ここで次のことができます:</div>",
   "<div class=\"hint\">未发现已登录的 ": "<div class=\"hint\">ログイン済みの ",
+  "<div class=\"hint\">在浏览器里打开的面板没有本机更新通道——请从 GitHub Releases 下载最新安装包安装。</div>": "<div class=\"hint\">ブラウザで開いたパネルには本機の更新チャネルがありません。GitHub Releases から最新のインストーラーをダウンロードしてください。</div>",
   "<div class=\"hint\">暂无本地更新日志，请到 GitHub Releases 查看。</div>": "<div class=\"hint\">ローカルの更新履歴はまだありません。GitHub Releases をご覧ください。</div>",
   "<div class=\"hint\">正在读取本机客户端凭据（Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae / MiniMax）…</div>": "<div class=\"hint\">ローカルのクライアント認証情報を読み込み中(Qoder / WorkBuddy / ZCode / mirasim / CatPaw / Trae / MiniMax)...</div>",
   "<div class=\"hint\">正在检查更新…</div>": "<div class=\"hint\">アップデートを確認しています...</div>",

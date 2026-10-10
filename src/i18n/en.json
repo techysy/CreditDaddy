@@ -317,6 +317,7 @@
   "<div class=\"hint\">开启后每次打开面板都需要输入密码；密码可随时在此修改或关闭。": "<div class=\"hint\">Once enabled, the password is required every time the panel opens; you can change or turn it off here at any time.",
   "<div class=\"hint\">填 10Router 的地址和一个<b>虚拟 key</b>（10Router 仪表盘 → API Keys 创建的 sk-…），就能在这里：</div>": "<div class=\"hint\">Enter the 10Router address and a <b>virtual key</b> (an sk-... created under API Keys in the 10Router dashboard), and you can do the following here:</div>",
   "<div class=\"hint\">未发现已登录的 ": "<div class=\"hint\">No signed-in ",
+  "<div class=\"hint\">在浏览器里打开的面板没有本机更新通道——请从 GitHub Releases 下载最新安装包安装。</div>": "<div class=\"hint\">A panel opened in a browser has no local update channel — download the latest installer from GitHub Releases.</div>",
   "<div class=\"hint\">暂无本地更新日志，请到 GitHub Releases 查看。</div>": "<div class=\"hint\">No local changelog yet. See GitHub Releases.</div>",
   "<div class=\"hint\">正在读取本机客户端凭据（Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae / MiniMax）…</div>": "<div class=\"hint\">Reading local client credentials (Qoder / WorkBuddy / ZCode / mirasim / CatPaw / Trae / MiniMax)...</div>",
   "<div class=\"hint\">正在检查更新…</div>": "<div class=\"hint\">Checking for updates...</div>",

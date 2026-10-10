@@ -510,7 +510,7 @@
         <div class="hmenu-pop" id="hmenu-pop">
           <div class="hmenu-group">
             <div class="hmenu-title" data-i18n="工作区">工作区</div>
-            <button class="hmenu-item" id="hm-update" style="display:none">检查更新</button>
+            <button class="hmenu-item" id="hm-update">检查更新</button>
             <button class="hmenu-item" id="changelog-brief-btn">更新日志</button>
           </div>
           <div class="hmenu-group">
@@ -1305,9 +1305,7 @@ function initTheme() {
   withIcon('hm-restart', I.power);
   withIcon('feedback-btn', I.msg);
   withIcon('donate-btn', I.heart);
-  // 检查更新仅桌面版有意义（网页面板无 updater），非桌面版隐藏该项。
-  // 注意：updBridge 是后面才声明的 const，这里不能引用（TDZ），直接查 creditdaddy 桥。
-  if (!(window.creditdaddy && window.creditdaddy.update)) $('hm-update').style.display = 'none';
+  // 检查更新：桌面版走应用内更新；纯浏览器（无 updater 桥）也保留入口——点开给「去 Releases 手动下载」的承接。
   $('hm-update').onclick = () => { closeHmenu(); openUpdateModal(true); };
   $('hm-restart').onclick = async () => {
     closeHmenu();
@@ -3088,6 +3086,10 @@ function renderUpdateModal(s) {
   const rel = T('<button class="btn" id="upd-rel">打开 Releases</button>');
   const close = T('<button class="btn" data-close-uu>稍后</button>');
   switch (s.phase) {
+    case 'unsupported-browser':
+      body.innerHTML = T('<div class="hint">在浏览器里打开的面板没有本机更新通道——请从 GitHub Releases 下载最新安装包安装。</div>');
+      acts.innerHTML = rel + T('<button class="btn" data-close-uu>取消</button>');
+      break;
     case 'unsupported':
       body.innerHTML = T('<div class="hint">当前环境不支持应用内更新（开发模式 / Portable / 未签名的 macOS 版），请从 GitHub Releases 手动下载。</div>');
       acts.innerHTML = rel + T('<button class="btn" data-close-uu>取消</button>');
@@ -3124,7 +3126,7 @@ function renderUpdateModal(s) {
       break;
   }
   const relBtn = $('upd-rel');
-  if (relBtn) relBtn.onclick = () => updBridge.openReleases();
+  if (relBtn) relBtn.onclick = () => { if (updBridge) updBridge.openReleases(); else openFullChangelog(); };
   const goBtn = $('upd-go');
   if (goBtn) { goBtn.disabled = true; goBtn.textContent = T('处理中…'); updBridge.install().then(renderUpdateModal).catch((e) => { goBtn.disabled = false; goBtn.textContent = T('重试'); }); }
   const retryBtn = $('upd-retry');
@@ -3132,7 +3134,12 @@ function renderUpdateModal(s) {
   acts.querySelectorAll('[data-close-uu]').forEach((b) => { b.onclick = () => closeModal('m-update'); });
 }
 async function openUpdateModal(autoCheck) {
-  if (!updBridge) return;
+  if (!updBridge) {
+    // 纯浏览器：没有本机 updater 通道，保留入口并给出 Releases 下载承接
+    openModal('m-update');
+    renderUpdateModal({ phase: 'unsupported-browser', current: (state.status && state.status.version) || '' });
+    return;
+  }
   openModal('m-update');
   try {
     updState = await updBridge.state();
