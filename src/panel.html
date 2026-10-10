@@ -1120,7 +1120,7 @@ let toastTimer = null;
 const armed = {};
 function toast(msg, ok) {
   const t = $('toast');
-  t.textContent = msg;
+  t.textContent = T(msg);
   t.classList.toggle('err', ok === false);
   t.classList.add('show');
   clearTimeout(toastTimer);
@@ -1482,7 +1482,7 @@ function trLine(name, valHtml, title) {
 function creditHtml(a) {
   const q = state.quotas[a.id];
   if (!q) return T('<div class="credit-line"><span class="dim">读取积分中…</span></div><div class="bar"></div>');
-  if (q.error) return '<div class="credit-line"><span class="dim" title="' + esc(q.error) + '">积分读取失败：' + esc(q.error.slice(0, 40)) + '</span></div><div class="bar"></div>';
+  if (q.error) return '<div class="credit-line"><span class="dim" title="' + esc(T(q.error)) + '">' + T('积分读取失败：') + esc(q.error.slice(0, 40)) + '</span></div><div class="bar"></div>';
   if (q.empty) return T('<div class="credit-line"><span class="dim">无有效套餐（仅免费额度）</span></div><div class="bar"></div>');
 
   // 妙手：Credits 钱包余额 + 当前版本（体验版 / 专业版），无「总量」口径，不画水位条
@@ -1497,11 +1497,11 @@ function creditHtml(a) {
   // 多窗口配额体系（mirasim 等）：每个窗口平等等权，独立一行带分散对齐的名称、数值与三档细水位条
   if (a.product === 'mirasim' && q.parts && q.parts.length) {
     const isExhausted = q.exceeded || (q.remaining <= 0);
-    const planBadge = q.plan ? '<span class="badge">' + esc(q.plan) + T(' 套餐</span>') : '';
+    const planBadge = q.plan ? '<span class="badge">' + esc(T(q.plan)) + T(' 套餐</span>') : '';
     const expLabel = q.planExpiresAt ? '<span class="dim">' + fmtTime(q.planExpiresAt).slice(0, 10) + T(' 到期</span>') : '';
     // 状态采用温和的徽章，避免整行大红字制造恐慌
     const topStatus = isExhausted
-      ? '<span class="pill pending">' + esc(q.bottleneckLabel || T('额度已用尽')) + '</span>'
+      ? '<span class="pill pending">' + esc(T(q.bottleneckLabel || '') || T('额度已用尽')) + '</span>'
       : T('<span class="lbl">可用额度</span><b>') + fmtNum(q.remaining) + '%</b>';
 
     const fmtUnits = (n) => (n >= 10000 ? (n / 10000).toFixed(2) + T('万') : fmtNum(Math.round(n)));
@@ -1522,10 +1522,10 @@ function creditHtml(a) {
       + '<div class="mirasim-windows">' + rows + '</div>';
   }
 
-  const unit = q.unit ? ' ' + q.unit : '';
+  const unit = q.unit ? ' ' + T(q.unit) : '';
   if (q.unit) {
     const items = q.parts.map((x) => {
-      const base = esc(x.name) + ' ' + fmtNum(x.remaining) + '/' + fmtNum(x.total) + (x.unit ? ' ' + esc(x.unit) : '');
+      const base = esc(T(x.name)) + ' ' + fmtNum(x.remaining) + '/' + fmtNum(x.total) + (x.unit ? ' ' + esc(T(x.unit)) : '');
       if (x.pending && x.startsAt) return base + T('（') + fmtTime(x.startsAt).slice(5, 16) + T(' 生效）');
       return base + (x.expiresAt ? T('（') + fmtTime(x.expiresAt).slice(5, 16) + (x.recurring ? T(' 重置）') : T(' 到期）')) : '');
     }).join(' · ');
@@ -1542,9 +1542,9 @@ function creditHtml(a) {
   if (total > 0) {
     q.parts.filter((x) => x.remaining > 0).forEach((x, i) => {
       bar += '<span class="seg" style="flex:' + (x.remaining / total).toFixed(4) + ' 1 0;--a:' + (x.recurring ? 1 : Math.max(.45, .85 - i * .05)) + '" title="'
-        + esc(x.name) + T('：剩余 ') + fmtNum(x.remaining) + ' / ' + fmtNum(x.total) + (x.expiresAt ? (x.recurring ? T('，') + fmtTime(x.expiresAt).slice(0, 10) + T(' 重置') : T('，') + fmtTime(x.expiresAt).slice(0, 10) + T(' 到期')) : '') + '"></span>';
+        + esc(T(x.name)) + T('：剩余 ') + fmtNum(x.remaining) + ' / ' + fmtNum(x.total) + (x.expiresAt ? (x.recurring ? T('，') + fmtTime(x.expiresAt).slice(0, 10) + T(' 重置') : T('，') + fmtTime(x.expiresAt).slice(0, 10) + T(' 到期')) : '') + '"></span>';
     });
-    if (q.used > 0) bar += '<span class="seg used" style="flex:' + (q.used / total).toFixed(4) + ' 1 0" title="已使用 ' + fmtNum(q.used) + '"></span>';
+    if (q.used > 0) bar += '<span class="seg used" style="flex:' + (q.used / total).toFixed(4) + ' 1 0" title="' + T('已使用 ') + fmtNum(q.used) + '"></span>';
   }
   const soon = q.parts.filter((x) => x.remaining > 0 && !x.recurring && x.expiresAt).sort((x, y) => x.expiresAt.localeCompare(y.expiresAt))[0];
   return '<div class="credit-line">'
@@ -1574,7 +1574,7 @@ function cardHtml(a) {
     + '</div><div class="ops">'
     + (a.product === 'zcode' ? T('<button class="icon-btn" data-act="claim" title="活动领取（billing/preview → claim，可能需过一次验证码）">') + I.gift + '</button>' : '')
     + (canCheckin && (a.provider !== 'workbuddy-intl' || wbActOn()) ? '<button class="icon-btn' + (state.busy[a.id] ? ' busy' : '') + '" data-act="checkin" title="' + (a.provider === 'workbuddy-intl' ? T('发送活跃请求') : T('立即领取')) + '">' + (state.busy[a.id] ? I.refresh : I.play) + '</button>' : '')
-    + (a.canSwitch && !isCurrent && st.cls !== 'fail' ? T('<button class="icon-btn" data-act="switch" title="切换 ') + (CLIENT_LABEL[a.product] ? T(CLIENT_LABEL[a.product]) : prodLabel(a.product)) + ' 客户端到此账号">' + I.swap + '</button>' : '')
+    + (a.canSwitch && !isCurrent && st.cls !== 'fail' ? T('<button class="icon-btn" data-act="switch" title="切换 ') + (CLIENT_LABEL[a.product] ? T(CLIENT_LABEL[a.product]) : prodLabel(a.product)) + T(' 客户端到此账号">') + I.swap + '</button>' : '')
     + T('<button class="icon-btn" data-act="quota" title="刷新积分">') + I.refresh + '</button>'
     + T('<button class="icon-btn del" data-act="del" title="删除（点两次确认）">') + I.trash + '</button>'
     + '</div></div>'
@@ -1585,7 +1585,7 @@ function cardHtml(a) {
     + '</div>'
     + creditHtml(a)
     + (st.msg && !(state.quotas[a.id] && state.quotas[a.id].error && state.quotas[a.id].error.includes(st.msg.slice(-24)))
-      ? '<div class="msg' + (st.err ? ' err' : '') + '" title="' + esc(st.msg) + '">' + esc(st.msg) + '</div>' : '')
+      ? '<div class="msg' + (st.err ? ' err' : '') + '" title="' + esc(T(st.msg)) + '">' + esc(T(st.msg)) + '</div>' : '')
     + '</div>';
 }
 
@@ -1778,7 +1778,7 @@ function renderDash() {
       !signable.length ? T('暂无可领取的账号')
         : (doneDom === domAcc.length && doneIntl === intlAcc.length ? (intlAcc.length ? T('今天全部完成（国际为活跃请求，不保证奖励）') : T('今天全部签完'))
         : T('待办 ') + (signable.length - done) + (failed ? T(' · 失败 ') + failed : '')),
-      '领取 = 国内版每日签到；活跃 = 国际版定期活跃请求（保持资格，不保证奖励）')
+      T('领取 = 国内版每日签到；活跃 = 国际版定期活跃请求（保持资格，不保证奖励）'))
     + kpi(T('剩余积分'), credit.loading ? '…' : (credit.known ? fmtNum(credit.sum) : '-'), credit.loading ? T('正在读取各账号额度…') : creditByProd)
     + kpi(T('下次自动领取'), sch.ticking ? T('领取中…') : sch.nextTickAt ? fmtTime(sch.nextTickAt).slice(11) : '-',
       sch.lastTick ? T('上一轮 ') + fmtTime(sch.lastTick.at).slice(5) + ' · ' + esc(sch.lastTick.summary || '') : T('每 ~2 小时一轮'));
@@ -1881,7 +1881,7 @@ function renderDash() {
   $('attention').innerHTML = attVisible.length
     ? attVisible.slice(0, 8).map((x) => '<div class="item" data-view="' + x.view + '" title="' + esc(x.title || '') + '"><span class="item-main"><span class="item-name">' + esc(x.name) + '</span>' + x.badges + '</span>'
       + '<span class="item-side"><span class="pill ' + x.pill + '">' + esc(x.text) + '</span></span></div>').join('')
-      + (attVisible.length > 8 ? '<div class="muted-empty">还有 ' + (attVisible.length - 8) + ' 项</div>' : '')
+      + (attVisible.length > 8 ? T('<div class="muted-empty">还有 ') + (attVisible.length - 8) + T(' 项</div>') : '')
     : '<div class="muted-empty">' + (state.accounts.length ? '<span class="ok-glyph">' + I.check + T('</span>一切正常') : T('还没有账号')) + '</div>';
 
   // 最近领取记录
@@ -2042,10 +2042,10 @@ document.addEventListener('click', async (e) => {
     const allow = Array.isArray(state.tGatewayAllow) ? state.tGatewayAllow : [];
     $('tgw-allow').value = (allow.length ? allow : (state.tGatewaySuggest ? [state.tGatewaySuggest] : [])).join('\n');
     const st = state.tGatewayStats;
-    $('tgw-url').innerHTML = '接口地址 <code>POST http://127.0.0.1:' + location.port + '/gateway/trae/v1/messages</code>（局域网开放时把 127.0.0.1 换成本机 IP）'
+    $('tgw-url').innerHTML = T('接口地址 <code>POST http://127.0.0.1:') + location.port + T('/gateway/trae/v1/messages</code>（局域网开放时把 127.0.0.1 换成本机 IP）')
       + (st && st.lastCallAt
-        ? '<br>最近调用 ' + esc(String(st.lastCallAt).slice(11, 19)) + T(' · 共 ') + st.calls + T(' 次') + (st.lastAccount ? T(' · 最后用号 ') + esc(st.lastAccount) : '')
-        : '<br>尚未有调用');
+        ? T('<br>最近调用 ') + esc(String(st.lastCallAt).slice(11, 19)) + T(' · 共 ') + st.calls + T(' 次') + (st.lastAccount ? T(' · 最后用号 ') + esc(st.lastAccount) : '')
+        : T('<br>尚未有调用'));
     syncTgwLanFields();
     openModal('m-tgw');
     return;
@@ -2065,10 +2065,10 @@ document.addEventListener('click', async (e) => {
     const allow = Array.isArray(state.mGatewayAllow) ? state.mGatewayAllow : [];
     $('mgw-allow').value = (allow.length ? allow : (state.mGatewaySuggest ? [state.mGatewaySuggest] : [])).join('\n');
     const st = state.mGatewayStats;
-    $('mgw-url').innerHTML = '接口地址 <code>POST http://127.0.0.1:' + location.port + T('/gateway/minimax/v1/messages</code>（局域网开放时把 127.0.0.1 换成本机 IP）')
+    $('mgw-url').innerHTML = T('接口地址 <code>POST http://127.0.0.1:') + location.port + T('/gateway/minimax/v1/messages</code>（局域网开放时把 127.0.0.1 换成本机 IP）')
       + (st && st.lastCallAt
-        ? '<br>最近调用 ' + esc(String(st.lastCallAt).slice(11, 19)) + T(' · 共 ') + st.calls + T(' 次') + (st.lastAccount ? T(' · 最后用号 ') + esc(st.lastAccount) : '')
-        : '<br>尚未有调用');
+        ? T('<br>最近调用 ') + esc(String(st.lastCallAt).slice(11, 19)) + T(' · 共 ') + st.calls + T(' 次') + (st.lastAccount ? T(' · 最后用号 ') + esc(st.lastAccount) : '')
+        : T('<br>尚未有调用'));
     syncMgwLanFields();
     openModal('m-mgw');
     return;
@@ -2089,10 +2089,10 @@ document.addEventListener('click', async (e) => {
     const allow = Array.isArray(state.zGatewayAllow) ? state.zGatewayAllow : [];
     $('zgw-allow').value = (allow.length ? allow : (state.zGatewaySuggest ? [state.zGatewaySuggest] : [])).join('\n');
     const st = state.zGatewayStats;
-    $('zgw-url').innerHTML = '接口地址 <code>POST http://127.0.0.1:' + location.port + '/gateway/zcode/v1/messages</code>（局域网开放时把 127.0.0.1 换成本机 IP）'
+    $('zgw-url').innerHTML = T('接口地址 <code>POST http://127.0.0.1:') + location.port + T('/gateway/zcode/v1/messages</code>（局域网开放时把 127.0.0.1 换成本机 IP）')
       + (st && st.lastCallAt
-        ? '<br>最近调用 ' + esc(String(st.lastCallAt).slice(11, 19)) + T(' · 共 ') + st.calls + T(' 次') + (st.lastAccount ? T(' · 最后用号 ') + esc(st.lastAccount) : '')
-        : '<br>尚未有调用');
+        ? T('<br>最近调用 ') + esc(String(st.lastCallAt).slice(11, 19)) + T(' · 共 ') + st.calls + T(' 次') + (st.lastAccount ? T(' · 最后用号 ') + esc(st.lastAccount) : '')
+        : T('<br>尚未有调用'));
     syncZgwLanFields();
     openModal('m-zgw');
     return;
@@ -2179,7 +2179,7 @@ function quotaLow(c) {
 function quotaValue(q) {
   const pct = quotaPct(q);
   if (q.percentScale || (!(q.total > 0) && pct !== null)) return { big: fmtNum(pct) + '%', small: T('剩余'), pct };
-  if (q.total > 0) return { big: fmtNum(quotaRemaining(q)), small: '/ ' + fmtNum(q.total) + (q.unit ? ' ' + q.unit : ''), pct };
+  if (q.total > 0) return { big: fmtNum(quotaRemaining(q)), small: '/ ' + fmtNum(q.total) + (q.unit ? ' ' + T(q.unit) : ''), pct };
   return { big: fmtNum(q.used || 0), small: T('已用'), pct };
 }
 const resetLabel = (q) => (q.resetAt ? fmtTime(q.resetAt).slice(5) + (q.recurring === false ? T(' 到期') : T(' 重置')) : '');
@@ -2196,7 +2196,7 @@ function lineVal(q) {
   // percentScale（Antigravity 这类限时窗口平等关系）保持百分比。
   const txt = (q.percentScale || !(q.total > 0))
     ? T('剩 ') + (pct !== null ? fmtNum(pct) + '%' : fmtNum(quotaRemaining(q)))
-    : T('剩 ') + fmtNum(quotaRemaining(q)) + ' / ' + fmtNum(q.total || 0) + (q.unit ? ' ' + q.unit : '');
+    : T('剩 ') + fmtNum(quotaRemaining(q)) + ' / ' + fmtNum(q.total || 0) + (q.unit ? ' ' + T(q.unit) : '');
   return '<span>' + esc(txt) + '</span> ' + relResetHtml(q);
 }
 
@@ -2205,7 +2205,7 @@ function lineVal(q) {
 function trPrimaryHtml(q) {
   if (q.percentScale) return trRow(q);
   const v = quotaValue(q);
-  return '<div class="tr-primary"><div class="tr-line tr-primary-line"><span class="tr-q-name" title="' + esc(q.name) + '">' + esc(q.name) + '</span>'
+  return '<div class="tr-primary"><div class="tr-line tr-primary-line"><span class="tr-q-name" title="' + esc(T(q.name)) + '">' + esc(T(q.name)) + '</span>'
     + '<span class="tr-q-val"><b>' + esc(v.big) + '</b> <small class="dim">' + esc(v.small) + '</small> ' + relResetHtml(q) + '</span></div>'
     + (v.pct !== null ? trMeter(v.pct) : '')
     + '</div>';
@@ -2215,7 +2215,7 @@ function trQuotaHtml(q, { dimWhenEmpty = false } = {}) {
   const v = quotaValue(q);
   const used = v.pct !== null && v.pct <= 0;
   const val = used && dimWhenEmpty ? T('已用完') : (q.percentScale || !(q.total > 0) ? T('剩余 ') + v.big : T('剩余 ') + v.big + ' ' + v.small);
-  return '<div class="tr-q' + (used && dimWhenEmpty ? ' spent' : '') + '"><div class="tr-q-line"><span class="tr-q-name" title="' + esc(q.name) + '">' + esc(q.name) + '</span>'
+  return '<div class="tr-q' + (used && dimWhenEmpty ? ' spent' : '') + '"><div class="tr-q-line"><span class="tr-q-name" title="' + esc(T(q.name)) + '">' + esc(T(q.name)) + '</span>'
     + '<span class="tr-q-val">' + esc(val) + relResetHtml(q) + '</span></div>'
     + (!(used && dimWhenEmpty) ? trMeter(v.pct) : '')
     + '</div>';
@@ -2241,7 +2241,7 @@ function trPacksHtml(c, packs) {
   const gs = [...groups.values()].sort((a, b) => String(a.resetAt || '9999').localeCompare(String(b.resetAt || '9999')));
   const aliveSum = alive.reduce((n, q) => n + quotaRemaining(q), 0);
   const open = Boolean(state.trOpen && state.trOpen[c.id]);
-  const head = '<div class="tr-packs-head">积分包 <b>' + alive.length + '</b> 个可用'
+  const head = T('<div class="tr-packs-head">积分包 <b>') + alive.length + T('</b> 个可用')
     + (alive.length ? T('，共剩 ') + fmtNum(aliveSum) : '')
     + (spent.length ? ' · ' + spent.length + T(' 个已用完') : '') + '</div>';
   const lines = gs.map((g) => trLine(
@@ -2266,7 +2266,7 @@ function trCardHtml(c) {
   const showPlan = c.plan && !norm(c.plan).includes(norm(c.providerName)) && !norm(c.providerName).includes(norm(c.plan));
   let body;
   if (c.error) {
-    body = '<div class="msg err" title="' + esc(c.error) + '">查询失败：' + esc(c.error.slice(0, 80)) + '</div>';
+    body = '<div class="msg err" title="' + esc(T(c.error)) + '">' + T('查询失败：') + esc(c.error.slice(0, 80)) + '</div>';
   } else {
     const { primary, windows, packs } = splitQuotas(c);
     if (!(primary || windows.length || packs.length)) {
@@ -2372,9 +2372,9 @@ function trVendorCardHtml(g) {
   const hasQuotas = Boolean(primary || others.length || packs.length);
   let quotaHtml;
   if (errs === items.length) {
-    quotaHtml = '<div class="msg err">全部连接查询失败</div>';
+    quotaHtml = T('<div class="msg err">全部连接查询失败</div>');
   } else if (!hasQuotas) {
-    quotaHtml = '<div class="msg">该供应商没有可汇总的额度</div>';
+    quotaHtml = T('<div class="msg">该供应商没有可汇总的额度</div>');
   } else {
     // 「全部」视角不显示「最早到期」：每行自带相对重置时间，足够判断
     quotaHtml = (primary ? trPrimaryHtml(primary) : '')
@@ -2393,11 +2393,11 @@ function trVendorCardHtml(g) {
 }
 
 function trSetupHtml() {
-  return '<div class="setup"><h3>接入 10Router</h3>'
+  return T('<div class="setup"><h3>接入 10Router</h3>')
     + T('<div class="hint">填 10Router 的地址和一个<b>虚拟 key</b>（10Router 仪表盘 → API Keys 创建的 sk-…），就能在这里：</div>')
     + T('<div class="hint" style="margin:6px 0 12px">· 查看 10Router 里其他供应商（Claude / Codex / Kiro / GLM …）的额度卡片（需要 10Router 1.2.1+）<br>')
     + T('· 把本机 ZCode / OpenCode / mirasim / 小米 MiMo / 10Router 的用量同步进 10Router 的用量统计（同 10router-sync 插件，自动每小时一次）<br>')
-    + '· 「10Router 本机」= 本机 10Router 实例自己记的账（如 zcode-free 经它中转的行）同步到聚合端；地址指向本机时自动跳过，避免自己导自己</div>'
+    + T('· 「10Router 本机」= 本机 10Router 实例自己记的账（如 zcode-free 经它中转的行）同步到聚合端；地址指向本机时自动跳过，避免自己导自己</div>')
     + '<button class="btn primary" data-tr="settings">' + I.plus + T('配置 10Router</button></div>');
 }
 
@@ -2408,7 +2408,7 @@ function renderTenrouter() {
   const gwLine = state.zGateway === true
     ? T('<div class="gw-line"><span class="dot on pulse"></span> ZCode 体验包接口运行中')
       + (state.zGatewayStats && state.zGatewayStats.lastCallAt ? T(' · 最近调用 ') + esc(String(state.zGatewayStats.lastCallAt).slice(11, 19)) + ' · ' + state.zGatewayStats.calls + T(' 次 · 最后用号 ') + esc(state.zGatewayStats.lastAccount || '-') : T(' · 尚未有调用'))
-      + ' · 模型 <code>zcode-free/glm-5.3-flash</code></div>'
+      + T(' · 模型 <code>zcode-free/glm-5.3-flash</code></div>')
     : '';
   if (!c.configured) { box.innerHTML = gwLine + trSetupHtml(); return; }
   const list = (tr.quotas && tr.quotas.connections) || [];
@@ -2439,16 +2439,16 @@ function renderTenrouter() {
       + shown.map((g) => '<button class="btn' + (activeVendor === g.name ? ' primary' : '') + '" data-tr="vendor" data-v="' + esc(g.name) + '">' + esc(g.name) + ' ' + g.items.length + '</button>').join('')
       + '</div>';
   }
-  if (tr.error) grid = '<div class="empty">' + esc(tr.error) + '</div>';
-  else if (!tr.quotas) grid = '<div class="empty">正在读取 10Router 供应商额度…</div>';
-  else if (!list.length) grid = '<div class="empty">10Router 里还没有可查额度的供应商连接（OAuth 或支持额度查询的 API Key）。</div>';
+  if (tr.error) grid = '<div class="empty">' + esc(T(tr.error)) + '</div>';
+  else if (!tr.quotas) grid = T('<div class="empty">正在读取 10Router 供应商额度…</div>');
+  else if (!list.length) grid = T('<div class="empty">10Router 里还没有可查额度的供应商连接（OAuth 或支持额度查询的 API Key）。</div>');
   else if (activeVendor) {
     const g = groups.find((x) => x.name === activeVendor) || { items: [] };
     grid = '<div class="tr-vcards">' + sortedConnections(activeVendor, g.items).map(trCardHtml).join('') + '</div>';
   } else {
     grid = shown.length
       ? '<div class="tr-vcards">' + sortedVendorGroups(shown).map(trVendorCardHtml).join('') + '</div>'
-      : '<div class="empty">没有可显示的供应商（可在「设置」里关掉隐藏）</div>';
+      : T('<div class="empty">没有可显示的供应商（可在「设置」里关掉隐藏）</div>');
   }
   const h = tr.health;
   const healthStrong = !h ? '…' : h.ok ? T('正常') : T('异常');
@@ -2877,7 +2877,7 @@ async function openClaim(id) {
   claimState.plans = [];
   claimState.captcha = null;
   claimState.busy = false;
-  $('claim-body').innerHTML = '<div class="dim">读取可领取的活动…</div>';
+  $('claim-body').innerHTML = T('<div class="dim">读取可领取的活动…</div>');
   openModal('m-claim');
   try {
     const [plansResp, cap] = await Promise.all([
@@ -2895,7 +2895,7 @@ async function openClaim(id) {
 
 function renderClaimBody() {
   if (!claimState.plans.length) {
-    $('claim-body').innerHTML = '<div class="muted-empty">当前没有可领取的活动</div>';
+    $('claim-body').innerHTML = T('<div class="muted-empty">当前没有可领取的活动</div>');
     return;
   }
   $('claim-body').innerHTML = claimState.plans.map((pl, i) =>
@@ -3102,8 +3102,8 @@ function renderUpdateModal(s) {
       break;
     case 'available':
       body.innerHTML = s.via === 'updater'
-        ? T('<div class="hint">发现新版本 <b>v') + esc(s.version) + '</b>（' + cur + '）——正在后台下载，完成后退出 CreditDaddy 时自动安装。</div>'
-        : T('<div class="hint">发现新版本 <b>v') + esc(s.version) + '</b>（' + cur + (s.sizeMB ? T('，约 ') + s.sizeMB + ' MB' : '') + '），可由本机直接下载安装。</div>';
+        ? T('<div class="hint">发现新版本 <b>v') + esc(s.version) + T('</b>（') + cur + T('）——正在后台下载，完成后退出 CreditDaddy 时自动安装。</div>')
+        : T('<div class="hint">发现新版本 <b>v') + esc(s.version) + T('</b>（') + cur + (s.sizeMB ? T('，约 ') + s.sizeMB + ' MB' : '') + T('），可由本机直接下载安装。</div>');
       acts.innerHTML = (s.via === 'github' ? updActBtn('upd-go', T('立即下载安装'), 'primary') : '') + rel + close;
       break;
     case 'downloading':

@@ -24,6 +24,7 @@
   - 词条以中文原文为 key 兜底（缺词条回原文，永不空白），五套词条随包分发；「外观」下方新增语言分组，聚合菜单与面板设置两处入口共用同一切换逻辑。
   - 日志改为 `logger.info(tag, key, args)` 存 key + 参数，`getLogs()` 按当前语言实时重渲染——切换语言后历史日志一并换语，不用重跑任务。
   - `scripts/gen-i18n-zhtw.js` 用 opencc-js 自动生成繁体词条，不靠人工维护两套。
+- **i18n 词典漏网清零（+289 词条 ×4 语）**：机读全量扫描（`scripts/check-i18n.js`，注释/正则/转义感知的字面量提取）覆盖 src 运行时与面板的全部中文用户面字符串——日志模板、API 错误消息、额度/套餐/窗口/单位标签、密码门与切号确认、空态与 loading 文案、网关地址块、迁移/同步/设备身份全部入典四语；面板 toast 统一过 `T()`，任何词典内服务端错误消息自动随语言切换；额度行渲染点接 `T()`（plan / bottleneckLabel / q.name / unit / pack 名）。zh-TW 继续 opencc-js 转写。`scripts/release-check.sh` 挂为第 15 项硬门禁（有漏词条即失败）。
 - **日志结构化归档与历史查询**：每条日志除 `.log` 外双写 `daemon-YYYY-MM-DD.jsonl`（`{at, level, tag, msg, key, args}`；gzip、7 天保留期同处）。面板「运行日志」新增「加载历史」按钮：`GET /api/logs?history=1` 突破环形缓冲 300 条上限、按当前语言实时重渲染当日历史。
 - **直接导入 workbuddy-switch 备份（`wb-switch-accounts-*.json`）**：按 JWT issuer 自动识别国内/国际版（无需 provider 字段），从 `auth_raw` / `profile_raw` 还原完整会话结构（`meta.session`），导入后即可在面板一键切号到对应客户端。
 - **面板设置全面重构（贴近按钮的下拉弹出层）**
@@ -68,6 +69,9 @@
 - **仪表盘 KPI「活跃 x / y」硬编码**：`' · 活跃 '` 内嵌中文，走 `T(' · 活跃 {n} / {m}', ...)`。
 - **品牌区版本行可读性**：头部「v1.4.0 · 数据目录 …」行高 1.3 → 1.55，长 Windows 路径允许任意位置折行（此前反斜杠折行贴在一起）。
 - **Trae 网关提示去掉过期模型名录（#19）**：面板里写死的「Doubao-Seed / GLM-5.1 / Kimi-K2.6 / DeepSeek-V4 等 12 款模型」与 TRAE 2.3.87413 官方目录严重脱节；改为透传口径「官方目录持续更新，网关透传任意合法模型 ID——如 GLM-5.3 / DeepSeek-V4.1-Flash / MiMo-V2.6 / Kimi-K3」。模型目录归 **10Router** registry（`traeGateway.js` 对 `model` 原文透传、零校验）——CreditDaddy#19 → 10Router#54 已落地（`10router@cc108143`）。
+- **MiniMax 网关「请求详情」调试日志不随语言切换**：该条日志走了 key+args 归档但四份词典都漏了对应词条——英文面板下整条中文原文。补词条 ×4；同批新增的全量扫描（`scripts/check-i18n.js`）确认其余网关日志词条无遗漏。
+- **Trae SOLO 介绍段英文态显示中文（隐性死键）**：词典里存的是「含 `<code>/<b>` 标签的整段」做 key，而 `applyDictFromServer` 的文本节点行走的是**逐节点精确匹配**——标签把段落切成 4 个节点，整段键永远打不中。改按文本节点键（前缀节点新词条，后三段原有词条继续命中），旧死键清理。
+- **后台启动「启动超时（30s）」误报（探针超时贴边，`bgdaemon` 3 例全红的根因）**：`/api/status` 单次响应含 DPAPI 解密（Qoder 登录）与本机客户端探测，本机稳态耗时 ~1.9s、冷首击 ~4s；`probeStatus` 2 秒超时与之贴边，机器一忙探针永远超时 → `waitReady` 30 秒全部作废、误杀刚起的实例。探针超时放宽到 8 秒（回环地址，上限仍受 `READY_TIMEOUT 30s` 约束）。
 
 ### 📖 文档
 
