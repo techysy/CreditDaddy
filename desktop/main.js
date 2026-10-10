@@ -26,6 +26,8 @@ let tray = null;
 let quitting = false;
 let boundPort = PORT;
 let daemonMod = null;
+let buildInfo = null;      // #21 构建身份数据（打包产物才有；本地 dev 无 build.json → null，更新判定只按 semver）
+let buildInfoLib = null;   // src/buildInfo.js 模块引用（loadBuildInfo / isNewerRebuild）
 // 桌面壳 i18n:与内置 daemon 共用同一个 src/i18n.js 模块实例(同进程)——面板在
 // 「语言」里切换后经 daemon 的 setLocale 直接生效;托盘等本壳 UI 串在重建时按当前语言渲染。
 // 模块未加载前 Tt 原样返回中文 key(i18n 的约定),托盘最先创建时不受影响。
@@ -102,6 +104,10 @@ async function boot() {
     daemonMod = daemon;   // 保留模块引用：面板里改/关访问密码后，托盘领取实时读到新值（getPanelKey）
     daemon.setRestartHandler(() => restartApp());
     daemonInfo = { version: constants.APP_VERSION, dataDir: store.dataDir(), homepage: constants.PROJECT_URL || DEFAULT_HOMEPAGE };
+    try {
+      buildInfoLib = await load('src/buildInfo.js');
+      buildInfo = buildInfoLib.loadBuildInfo(serverRoot);
+    } catch { buildInfo = null; }
     checkin.startScheduler();
     // 面板切语言 → daemon 写 settings.json → 本壳即时重建托盘(同进程 i18n 实例已随 PUT 切走)
     try {
@@ -193,9 +199,19 @@ async function fetchLatestReleaseFromGitHub() {
   const rel = await res.json();
   const asset = (rel.assets || []).find((a) => /^CreditDaddy-(?:Win-)?Setup-.*\.exe$/.test(a.name));
   if (!asset) throw new Error(`最新 release ${rel.tag_name} 没有 Windows 安装包`);
+  // #21：同版本平局裁决要读 release 的构建身份资产（老 release 没有 → 只按 semver）
+  let relBuild = null;
+  const biAsset = (rel.assets || []).find((a) => a.name === 'build-info.json');
+  if (biAsset) {
+    try {
+      const r = await net.fetch(biAsset.browser_download_url);
+      if (r.ok) relBuild = await r.json();
+    } catch { relBuild = null; }
+  }
   return {
     version: String(rel.tag_name).replace(/^v/i, ''),
     asset: { name: asset.name, url: asset.browser_download_url, size: asset.size || 0 },
+    buildInfo: relBuild,
   };
 }
 
@@ -243,7 +259,23 @@ async function checkFallbackSilently() {
   try {
     if (updateState.fallback || updateState.downloaded || updateState.available) return;
     const rel = await fetchLatestReleaseFromGitHub();
-    if (!isNewerVersion(rel.version, app.getVersion())) return;
+    if (!isNewerVersion(rel.version, app.getVersion())) {
+      // #21 平局裁决:版本相同但线上是更新的构建(同 tag 重推修复包)也提醒,语义化版本不受影响
+      if (buildInfoLib && buildInfo && rel.buildInfo && buildInfoLib.isNewerRebuild(buildInfo, rel.buildInfo)) {
+        updateState.fallback = { ...rel, rebuild: true };
+        refreshTrayMenu();
+        try {
+          const n = new Notification({
+            title: Tt('CreditDaddy 新版本已就绪'),
+            body: Tt('检测到同版本新构建 v{v}（{commit}），可能包含修复，建议更新。', { v: rel.version, commit: rel.buildInfo.commit }),
+            silent: true,
+          });
+          n.on('click', () => openUpdateUi());
+          n.show();
+        } catch {}
+      }
+      return;
+    }
     updateState.fallback = rel;
     refreshTrayMenu();
     try {
@@ -260,7 +292,11 @@ async function checkFallbackSilently() {
 
 function trayUpdateLabel() {
   if (updateState.downloaded) return Tt('重启并安装更新');
-  if (updateState.fallback) return updateState.fallback.installerPath ? Tt('安装已下载的 v{v}', { v: updateState.fallback.version }) : Tt('下载并安装新版本 v{v}…', { v: updateState.fallback.version });
+  if (updateState.fallback) {
+    if (updateState.fallback.installerPath) return Tt('安装已下载的 v{v}', { v: updateState.fallback.version });
+    if (updateState.fallback.rebuild) return Tt('下载同版本新构建…');
+    return Tt('下载并安装新版本 v{v}…', { v: updateState.fallback.version });
+  }
   return Tt('检查更新…');
 }
 
@@ -287,7 +323,8 @@ function publishFallbackState() {
   if (!rel) return;
   if (rel.installerPath) pushUpdateUi({ phase: 'downloaded', version: rel.version, via: 'github' });
   else pushUpdateUi({
-    phase: 'available', version: rel.version, via: 'github',
+    phase: 'available', version: rel.version, via: 'github', rebuild: Boolean(rel.rebuild),
+    commit: rel.buildInfo && rel.buildInfo.commit || null,
     sizeMB: rel.asset && rel.asset.size ? Math.max(1, Math.round(rel.asset.size / 1048576)) : null,
   });
 }
@@ -309,7 +346,16 @@ async function checkUpdateInteractiveUi() {
   } catch {
     try {
       const rel = await fetchLatestReleaseFromGitHub();
-      if (!isNewerVersion(rel.version, app.getVersion())) { pushUpdateUi({ phase: 'latest' }); return; }
+      if (!isNewerVersion(rel.version, app.getVersion())) {
+        if (buildInfoLib && buildInfo && rel.buildInfo && buildInfoLib.isNewerRebuild(buildInfo, rel.buildInfo)) {
+          updateState.fallback = { ...rel, rebuild: true };
+          refreshTrayMenu();
+          publishFallbackState();
+          return;
+        }
+        pushUpdateUi({ phase: 'latest' });
+        return;
+      }
       updateState.fallback = rel;
       refreshTrayMenu();
       publishFallbackState();

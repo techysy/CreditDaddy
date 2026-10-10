@@ -43,6 +43,8 @@ jobs:
           mkdir -p fnos-packaging/app/server
           # CreditDaddy 零依赖：源码即产物，整包拷入
           cp -r bin src package.json README.md fnos-packaging/app/server/
+          # #21 构建身份
+          node scripts/gen-build-info.js fnos-packaging/app/server/build.json
           find fnos-packaging/app/server -type d -name '.tmp-*' -exec rm -rf {} + 2>/dev/null || true
           ls -la fnos-packaging/app/server/
 

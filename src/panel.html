@@ -1903,7 +1903,9 @@ function renderDash() {
 function renderStatus() {
   const s = state.status;
   if (!s) return;
-  $('ver').textContent = 'v' + s.version + T(' · 数据目录 ') + s.dataDir;
+  const buildTag = s.build && s.build.commit ? ' (' + s.build.commit + ')' : '';
+  $('ver').textContent = 'v' + s.version + buildTag + T(' · 数据目录 ') + s.dataDir;
+  if (s.build) $('ver').title = (s.build.commit || '') + (s.build.builtAt ? ' · ' + s.build.builtAt : '') + (s.build.channel && s.build.channel !== 'release' ? ' · ' + s.build.channel + (s.build.dirty ? '-dirty' : '') : '');
   document.title = 'CreditDaddy v' + s.version;
   if (s.homepage) $('hm-home').href = s.homepage;
   // 菜单脚注版本：面板版本 + 数据目录（与品牌区同一个口径，换行折行由 CSS 收敛）
@@ -3103,7 +3105,9 @@ function renderUpdateModal(s) {
       acts.innerHTML = T('<button class="btn primary" data-close-uu>好的</button>');
       break;
     case 'available':
-      body.innerHTML = s.via === 'updater'
+      body.innerHTML = s.rebuild
+        ? T('<div class="hint">检测到同版本新构建 <b>v') + esc(s.version) + (s.commit ? ' · ' + esc(s.commit) : '') + T('</b>——可能包含修复，可直接下载安装覆盖当前构建。</div>')
+        : s.via === 'updater'
         ? T('<div class="hint">发现新版本 <b>v') + esc(s.version) + T('</b>（') + cur + T('）——正在后台下载，完成后退出 CreditDaddy 时自动安装。</div>')
         : T('<div class="hint">发现新版本 <b>v') + esc(s.version) + T('</b>（') + cur + (s.sizeMB ? T('，约 ') + s.sizeMB + ' MB' : '') + T('），可由本机直接下载安装。</div>');
       acts.innerHTML = (s.via === 'github' ? updActBtn('upd-go', T('立即下载安装'), 'primary') : '') + rel + close;

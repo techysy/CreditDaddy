@@ -54,6 +54,7 @@ import { addAccount, importAccounts, refreshContext } from './accounts.js';
 import { productImpl } from './providers.js';
 import { readWorkbuddySessions, writeWorkbuddySession, workbuddyAuthDir, currentWorkbuddyUid } from './workbuddyLocal.js';
 import { refreshWorkbuddyToken } from './workbuddyClient.js';
+import { loadBuildInfo } from './buildInfo.js';
 import { liveToAccount as zcodeLiveAccount, switchTo as zcodeSwitchTo, currentZcodeUid, currentZcodeIdentity, detectZcode, ensureVirtualDeviceMid, terminateZcode, zcodeRunning } from './zcodeLocal.js';
 import { liveToAccount as mirasimLiveAccount, switchTo as mirasimSwitchTo, currentMirasimUid, detectMirasim, terminateMirasim, mirasimRunning } from './mirasimLocal.js';
 import { liveToAccount as catpawLiveAccount, switchTo as catpawSwitchTo, currentCatpawToken, detectCatpaw, terminateCatpaw } from './catpawLocal.js';
@@ -251,7 +252,9 @@ export function rejectForeignRequest(headers, bindHost) {
  */
 async function handleSettingsPut(res, body) {
   if (body?.disable === true) {
-    await saveSettings({ panelKey: '' });
+    // 明文与 scrypt 哈希一起清——漏清 panelKeyHash 的话 initPanelKey 重读又把模式拉回 hash,
+    // 「关闭」永不生效,还会误报成「部署环境强制注入」。
+    await saveSettings({ panelKey: '', panelKeyHash: '' });
     await initPanelKey();   // 环境变量部署（fnOS）下关闭后仍保留安装向导密码
     logger.warn('DAEMON', panelKeyRequired() ? '面板访问密码已在设置里关闭,但部署环境仍注入密码(保持开启)' : '面板访问密码已关闭(导出账号仍需加密口令)', {});
     return json(res, 200, { ok: true, panelKeyEnabled: panelKeyRequired() });
@@ -989,6 +992,7 @@ async function handleApi(req, res, url) {
       ok: true,
       app: 'CreditDaddy',
       version: APP_VERSION,
+      build: loadBuildInfo() || undefined,   // #21 构建身份(打包产物才有;无文件不返回该键)
       homepage: PROJECT_URL,
       accountsCount: accounts.length,
       dataDir: dataDir(),

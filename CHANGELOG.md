@@ -25,6 +25,7 @@
   - 日志改为 `logger.info(tag, key, args)` 存 key + 参数，`getLogs()` 按当前语言实时重渲染——切换语言后历史日志一并换语，不用重跑任务。
   - `scripts/gen-i18n-zhtw.js` 用 opencc-js 自动生成繁体词条，不靠人工维护两套。
 - **i18n 词典漏网清零（+289 词条 ×4 语）**：机读全量扫描（`scripts/check-i18n.js`，注释/正则/转义感知的字面量提取）覆盖 src 运行时与面板的全部中文用户面字符串——日志模板、API 错误消息、额度/套餐/窗口/单位标签、密码门与切号确认、空态与 loading 文案、网关地址块、迁移/同步/设备身份全部入典四语；面板 toast 统一过 `T()`，任何词典内服务端错误消息自动随语言切换；额度行渲染点接 `T()`（plan / bottleneckLabel / q.name / unit / pack 名）。zh-TW 继续 opencc-js 转写。`scripts/release-check.sh` 挂为第 15 项硬门禁（有漏词条即失败）。
+- **构建身份注入与「同版本新构建」更新识别（#21）**：打包产物（桌面 exe/dmg、npm 包、fnOS fpk）随包 `build.json`（version / commit / builtAt / channel）；`/api/status` 暴露 `build`，面板品牌区与托盘 tooltip 显示短哈希；release 附 `build-info.json` 资产，应用内更新在 **semver 相等时做平局裁决**——线上同版本但 commit 不同且构建更晚（同 tag 重推修复包）时提醒「检测到同版本新构建」，本地 dev / dirty / 无元数据一律回退纯 semver 旧行为。CI 三 workflow 已接线生成，npm 经 `prepack` 写入。
 - **桌面壳（托盘 / 本机弹窗 / 通知）随面板语言切换（+79 词条 ×4 语）**：桌面 main 进程与内置 daemon 共用同一个 `src/i18n.js` 模块实例——托盘菜单、气泡与系统通知、「保存/更新密码」询问窗、面板密码验证窗、「已保存的密码」管理窗、右键菜单（复制/粘贴/全选/填充密码）、验证码与登录子窗标题、客户端探测错误等全部接入词典；面板切语言经 `settings.json` watcher 400ms 内即时重建托盘。「妙手」英译同时在 en/ja/ko 统一为官方名 **CatPaw**（去 Miaoshou/妙手 混用），桌面壳字符串同步纳入 `check-i18n.js` 默认门禁（豁免只剩 CLI 与解析锚点等非 UI 串）。
 - **日志结构化归档与历史查询**：每条日志除 `.log` 外双写 `daemon-YYYY-MM-DD.jsonl`（`{at, level, tag, msg, key, args}`；gzip、7 天保留期同处）。面板「运行日志」新增「加载历史」按钮：`GET /api/logs?history=1` 突破环形缓冲 300 条上限、按当前语言实时重渲染当日历史。
 - **直接导入 workbuddy-switch 备份（`wb-switch-accounts-*.json`）**：按 JWT issuer 自动识别国内/国际版（无需 provider 字段），从 `auth_raw` / `profile_raw` 还原完整会话结构（`meta.session`），导入后即可在面板一键切号到对应客户端。
@@ -73,6 +74,7 @@
 - **聚合菜单「检查更新」在所有环境显示**：此前该项 `display:none` 藏在 markup 里且只在桌面版有条件恢复——结果任何环境都看不到。现在始终显示：桌面版照旧走应用内更新；纯浏览器打开面板时（无 updater 桥）点开给出承接「在浏览器里打开的面板没有本机更新通道——请从 GitHub Releases 下载最新安装包安装」+「打开 Releases」按钮，不再空藏入口（词条 ×4）。
 - **MiniMax 网关「请求详情」调试日志不随语言切换**：该条日志走了 key+args 归档但四份词典都漏了对应词条——英文面板下整条中文原文。补词条 ×4；同批新增的全量扫描（`scripts/check-i18n.js`）确认其余网关日志词条无遗漏。
 - **Trae SOLO 介绍段英文态显示中文（隐性死键）**：词典里存的是「含 `<code>/<b>` 标签的整段」做 key，而 `applyDictFromServer` 的文本节点行走的是**逐节点精确匹配**——标签把段落切成 4 个节点，整段键永远打不中。改按文本节点键（前缀节点新词条，后三段原有词条继续命中），旧死键清理。
+- **面板访问密码「关闭」永不生效**：`PUT {disable:true}` 只清了明文 `panelKey`，漏清 scrypt 哈希——重读设置又把模式拉回 hash，关闭按钮点了没反应，还误报「部署环境强制注入」。现在两种形态一起清；环境变量（fnOS 向导）部署仍按设计保持开启。回归测试随 `test/hardening.test.js` 入库（关后无密码直连 /api/settings 200）。
 - **后台启动「启动超时（30s）」误报（探针超时贴边，`bgdaemon` 3 例全红的根因）**：`/api/status` 单次响应含 DPAPI 解密（Qoder 登录）与本机客户端探测，本机稳态耗时 ~1.9s、冷首击 ~4s；`probeStatus` 2 秒超时与之贴边，机器一忙探针永远超时 → `waitReady` 30 秒全部作废、误杀刚起的实例。探针超时放宽到 8 秒（回环地址，上限仍受 `READY_TIMEOUT 30s` 约束）。
 - **「妙手」英译在词典值里不统一（Miaoshou / CatPaw 混用）**：en/ja/ko 词条值统一为产品英文名 **CatPaw**（键不变，源中文仍为「妙手」）；10Router 测试连接错误消息接 `T()`。
 

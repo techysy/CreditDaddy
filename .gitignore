@@ -11,3 +11,4 @@ desktop/server/
 desktop/server.bak-*/
 .claude/worktrees/
 .claude/worktree*
+/build.json

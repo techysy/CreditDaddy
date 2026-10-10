@@ -15,7 +15,8 @@
     "bin",
     "src",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "build.json"
   ],
   "engines": {
     "node": ">=20"
@@ -23,7 +24,8 @@
   "scripts": {
     "start": "node bin/creditdaddy.js daemon",
     "test": "node --test",
-    "release-check": "bash scripts/release-check.sh"
+    "release-check": "bash scripts/release-check.sh",
+    "prepack": "node scripts/gen-build-info.js build.json"
   },
   "license": "MIT",
   "devDependencies": {

@@ -110,3 +110,92 @@ test('307 重定向不会把请求体（账号 token）重放到别处', async (
   target.close();
   redirector.close();
 });
+
+// ── 面板访问密码「关闭」必须真的关掉（panelKey 与 panelKeyHash 一起清） ──
+
+test('PUT /api/settings {disable:true} 清除哈希后 panelKeyEnabled=false（回归：只清明文时关闭永不生效）', async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'creditdaddy-hard-pk-'));
+  const crypto = (await import('node:crypto')).default;
+  const salt = crypto.randomBytes(8);
+  const hash = crypto.scryptSync('testpw123', salt, 32).toString('hex');
+  await fs.writeFile(path.join(home, 'settings.json'), JSON.stringify({
+    panelKey: '',
+    panelKeyHash: `scrypt:${salt.toString('hex')}:${hash}`,
+  }));
+
+  const saved = process.env.CREDITDADDY_HOME;
+  process.env.CREDITDADDY_HOME = home;
+  let daemon;
+  try {
+    daemon = await import('../src/daemon.js');
+    const { server, port } = await daemon.startDaemon(0, '127.0.0.1');
+    assert.ok(daemon.panelKeyRequired(), '前置：哈希存在时密码应当生效');
+    try {
+      const put = await new Promise((resolve, reject) => {
+        const req = http.request({ host: '127.0.0.1', port, path: '/api/settings', method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-qd-key': 'testpw123' } }, (res) => {
+          const chunks = [];
+          res.on('data', (c) => chunks.push(c));
+          res.on('end', () => resolve({ status: res.statusCode, body: JSON.parse(Buffer.concat(chunks).toString('utf8')) }));
+        });
+        req.on('error', reject);
+        req.end(JSON.stringify({ disable: true }));
+      });
+      assert.equal(put.status, 200);
+      assert.equal(put.body.panelKeyEnabled, false, '关闭后不应再要求密码（此前漏清 panelKeyHash 会返回 true 并误报部署强制）');
+      assert.equal(daemon.panelKeyRequired(), false);
+      const s = JSON.parse(await fs.readFile(path.join(home, 'settings.json'), 'utf8'));
+      assert.ok(!s.panelKey && !s.panelKeyHash, 'settings 里两种形态的密码都应清掉');
+      // 无密码状态下直接 GET 应可访问（fail-open 到未设密码的本机口径）
+      const get = await new Promise((resolve, reject) => {
+        const req = http.request({ host: '127.0.0.1', port, path: '/api/settings', method: 'GET' }, (res) => {
+          res.resume();
+          res.on('end', () => resolve(res.statusCode));
+        });
+        req.on('error', reject);
+        req.end();
+      });
+      assert.equal(get, 200);
+    } finally {
+      await new Promise((r) => server.close(r));
+    }
+  } finally {
+    process.env.CREDITDADDY_HOME = saved;
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
+// ── #21 构建身份:loadBuildInfo 读盘容忍 与 isNewerRebuild 平局裁决矩阵 ──
+
+test('loadBuildInfo:缺文件 / 损坏 / 缺 commit 一律 null(回退老行为)', async () => {
+  const { loadBuildInfo } = await import('../src/buildInfo.js');
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'creditdaddy-hard-bi-'));
+  try {
+    assert.equal(loadBuildInfo(home), null);
+    await fs.writeFile(path.join(home, 'build.json'), 'not-json');
+    assert.equal(loadBuildInfo(home), null);
+    await fs.writeFile(path.join(home, 'build.json'), JSON.stringify({ version: '1.4.0' }));
+    assert.equal(loadBuildInfo(home), null);
+    const info = { version: '1.4.0', commit: 'abc1234', builtAt: '2026-10-10T00:00:00Z', channel: 'release' };
+    await fs.writeFile(path.join(home, 'build.json'), JSON.stringify(info));
+    assert.deepEqual(loadBuildInfo(home), info);
+  } finally {
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
+test('isNewerRebuild:仅 release 渠道 + commit 不同 + builtAt 更晚才算平局更新', async () => {
+  const { isNewerRebuild } = await import('../src/buildInfo.js');
+  const base = (over) => ({ version: '1.4.0', commit: 'aaa1111', builtAt: '2026-10-10T10:00:00Z', channel: 'release', ...over });
+  // 典型「同 tag 重推修复包」:commit 不同且时间更晚 → 提醒
+  assert.equal(isNewerRebuild(base({}), base({ commit: 'bbb2222', builtAt: '2026-10-10T12:00:00Z' })), true);
+  // commit 相同(纯发布时间差)→ 不算
+  assert.equal(isNewerRebuild(base({}), base({ builtAt: '2026-10-10T12:00:00Z' })), false);
+  // 线上更旧(本地比线上新)→ 不算
+  assert.equal(isNewerRebuild(base({ builtAt: '2026-10-10T12:00:00Z' }), base({ commit: 'bbb2222', builtAt: '2026-10-10T10:00:00Z' })), false);
+  // 本机是 dev / local / dirty 渠道 → 永不提醒
+  assert.equal(isNewerRebuild(base({ channel: 'local' }), base({ commit: 'bbb2222', builtAt: '2026-10-10T12:00:00Z' })), false);
+  // 缺元数据任何一侧 → 不算
+  assert.equal(isNewerRebuild(null, base({})), false);
+  assert.equal(isNewerRebuild(base({}), null), false);
+  assert.equal(isNewerRebuild(base({}), { commit: '', builtAt: '' }), false);
+});

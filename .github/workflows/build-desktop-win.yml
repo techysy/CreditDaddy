@@ -84,6 +84,8 @@ jobs:
           set -euo pipefail
           mkdir -p desktop/server
           cp -r bin src package.json README.md CHANGELOG.md desktop/server/
+          # #21 构建身份:打进 app,随 /api/status.build 与「同版本新构建」判定使用
+          node scripts/gen-build-info.js desktop/server/build.json
 
       - name: Install desktop dependencies
         run: npm install --no-audit --no-fund
@@ -141,6 +143,8 @@ jobs:
           set -euo pipefail
           mkdir -p desktop/server
           cp -r bin src package.json README.md CHANGELOG.md desktop/server/
+          # #21 构建身份:打进 app,随 /api/status.build 与「同版本新构建」判定使用
+          node scripts/gen-build-info.js desktop/server/build.json
           ls desktop/server/
 
       - name: Install desktop dependencies
@@ -166,6 +170,8 @@ jobs:
           cp desktop/dist/CreditDaddy-Win-Portable-*.exe release-files/
           # electron-updater 按 latest.yml 发现新版本（NSIS 自更新；Portable 不参与）
           cp desktop/dist/latest.yml release-files/
+          # #21 构建身份资产:同版本平局裁决的对照物(进口在 desktop checkFallbackSilently)
+          node scripts/gen-build-info.js release-files/build-info.json
           ( cd release-files && sha256sum *.exe > SHA256SUMS-desktop.txt )
           cat release-files/SHA256SUMS-desktop.txt
 
@@ -180,6 +186,7 @@ jobs:
           gh release upload "${{ github.ref_name }}" \
             release-files/*.exe \
             release-files/latest.yml \
+            release-files/build-info.json \
             release-files/SHA256SUMS-desktop.txt \
             --clobber --repo "$GITHUB_REPOSITORY"
         env:
