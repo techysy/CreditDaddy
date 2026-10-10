@@ -42,17 +42,18 @@ export function loadConfig() {
   } catch { return structuredClone(DEFAULT_CONFIG); }
 }
 
-function saveConfig(c) {
+// 配置落盘走 store.atomicWrite：Windows 上杀软/同步盘瞬时占文件会直接 EPERM，
+// 裸 renameSync 会整路抛到 API 500；atomicWrite 内置占用重试与直写兜底
+async function saveConfig(c) {
   fs.mkdirSync(dataDir(), { recursive: true, mode: 0o700 });
-  const tmp = `${FILE()}.${process.pid}.${crypto.randomUUID()}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(c, null, 2), { mode: 0o600 });
-  fs.renameSync(tmp, FILE());
+  const { atomicWrite } = await import('./store.js');
+  await atomicWrite(FILE(), JSON.stringify(c, null, 2));
 }
 
 // 读改写串行，避免面板保存与后台同步互相覆盖
 let chain = Promise.resolve();
 function withConfig(fn) {
-  const run = chain.then(async () => { const c = loadConfig(); const r = await fn(c); saveConfig(c); return r; });
+  const run = chain.then(async () => { const c = loadConfig(); const r = await fn(c); await saveConfig(c); return r; });
   chain = run.catch(() => {});
   return run;
 }

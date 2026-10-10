@@ -17,6 +17,7 @@
  */
 
 import { FETCH_TIMEOUT_MS } from './constants.js';
+import { withRefreshDedupe } from './refreshGuard.js';
 
 const USER_AGENT = 'CLI/2.108.1 CodeBuddy/2.108.1';
 const CN_DEFAULT_HOST = 'www.codebuddy.cn';
@@ -202,7 +203,11 @@ async function withToken(account, fn, onRefresh) {
   let token = account.token;
   let refreshed = false;
   const doRefresh = async () => {
-    const creds = await refreshWorkbuddyToken(account);
+    // 并发互斥 + 失效链熔断：与 minimax 共用 refreshGuard（面板额度查询与签到轮同链抢刷的根堵点）
+    const creds = await withRefreshDedupe(account, refreshWorkbuddyToken, {
+      deadMessage: 'WorkBuddy 凭据链已被服务端作废，等待重新登录',
+      deadNotice: 'WorkBuddy 凭据链已失效，将不再自动重试（重新登录或重新导入该账号后自动恢复）',
+    });
     Object.assign(account, { token: creds.token, refreshToken: creds.refreshToken, expiresAt: creds.expiresAt });
     token = creds.token;
     refreshed = true;

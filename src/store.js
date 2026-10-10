@@ -85,6 +85,17 @@ async function readJson(file, fallback) {
     return JSON.parse(await fs.readFile(file, 'utf8'));
   } catch (e) {
     if (e.code === 'ENOENT') return fallback;
+    // 主文件损坏/截断（断电半写、杀软抖动）时,写侧维护了一份同目录 .bak——先试它,
+    // 不至于直接让守护起不来；仍失败才抛出原（保留报错方向,不静默重置）。
+    if (e instanceof SyntaxError || e.name === 'SyntaxError') {
+      const bak = file + '.bak';
+      try {
+        const bakText = await fs.readFile(bak, 'utf8');
+        const parsed = JSON.parse(bakText);
+        console.error('readJson: 主文件损坏,已用备份恢复 ' + bak);
+        return parsed;
+      } catch { /* 没有备份或备份同坏——按原错误上抛 */ }
+    }
     throw new Error(`读取 ${file} 失败: ${e.message}`);
   }
 }

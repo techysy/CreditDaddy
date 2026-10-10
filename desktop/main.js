@@ -81,6 +81,12 @@ async function boot() {
     const bindHost = anyLan ? '0.0.0.0' : '127.0.0.1';
     const r = await daemon.startDaemon(PORT, bindHost);
     boundPort = r.port;
+    // runtime 记录：前台 / 后台 / 桌面 all 都写（P0-3 单实例守护）。桌面壳重启时若旧实例
+    // 仍存活，startDaemon 已经在上面把 ALREADY_RUNNING 拉上来了，走这里也不会重复写。
+    try {
+      const { writeRuntime } = await import('../src/bgdaemon.js');
+      await writeRuntime({ pid: process.pid, port: r.port, host: bindHost, startedAt: new Date().toISOString(), version: constants.APP_VERSION });
+    } catch {}
     daemonMod = daemon;   // 保留模块引用：面板里改/关访问密码后，托盘领取实时读到新值（getPanelKey）
     daemon.setRestartHandler(() => restartApp());
     daemonInfo = { version: constants.APP_VERSION, dataDir: store.dataDir(), homepage: constants.PROJECT_URL || DEFAULT_HOMEPAGE };

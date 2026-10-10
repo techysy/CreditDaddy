@@ -45,7 +45,8 @@ export async function setGatewayEnabled(v) {
 
 const cooling = new Map();  // accountId → 冷却截止(ms)
 const dead = new Map();     // accountId → 拉黑时的凭据指纹（指纹变化 = 已重新授权/导入，自动复活）
-const weights = new Map();  // accountId → 上次查到的剩余积分
+const weights = new Map();  // accountId → { w: 剩余积分权重, at: 查询时刻 }
+const WEIGHT_TTL_MS = 10 * 60_000;  // 超过 10 分钟重查额度，让积分变化反映到分流上
 
 export const stats = {
   lastCallAt: null,
@@ -89,16 +90,17 @@ export function __resetForTests() {
 }
 
 async function accountWeight(a) {
-  if (!weights.has(a.id)) {
-    try {
-      const q = await fetchTraeQuota(a);
-      const remaining = Number(q?.remaining) || 0;
-      weights.set(a.id, Math.max(MIN_WEIGHT, remaining));
-    } catch {
-      weights.set(a.id, MIN_WEIGHT);
-    }
+  const hit = weights.get(a.id);
+  if (hit && Date.now() - hit.at < WEIGHT_TTL_MS) return hit.w;
+  let w = hit?.w ?? MIN_WEIGHT;
+  try {
+    const q = await fetchTraeQuota(a);
+    w = Math.max(MIN_WEIGHT, Number(q?.remaining) || 0);
+  } catch {
+    // 额度查询失败保留上次快照权重（网络抖动不该把主力踢成保底权重）
   }
-  return weights.get(a.id);
+  weights.set(a.id, { w, at: Date.now() });
+  return w;
 }
 
 const swrr = new Map();
@@ -162,7 +164,13 @@ function remoteAllowed(remote, allowList) {
   return (Array.isArray(allowList) ? allowList : []).some((entry) => {
     const e = String(entry || '').trim();
     if (!e) return false;
-    if (e.endsWith('*')) return host.toLowerCase().startsWith(e.slice(0, -1).toLowerCase());
+    if (e.endsWith('*')) {
+      // 通配要求带点段尾：防止 192.168.31.1* 这类把 .100-.199 整段一起放行的怪手。
+      // 要扩整段子网，把写法统一为 192.168.31.*（带尾句点）。
+      const prefix = e.slice(0, -1);
+      if (!prefix.endsWith('.')) return false;
+      return host.toLowerCase().startsWith(prefix.toLowerCase());
+    }
     return host.toLowerCase() === e.toLowerCase();
   });
 }
@@ -416,7 +424,9 @@ export async function handleGateway(req, res) {
     // 获取 events 流
     let eventsRes;
     try {
-      eventsRes = await fetch(`${TRAE_SOLO_BASE}/chat_sessions/${chatSessionId}/events?reply_to_message_id=${encodeURIComponent(messageId)}`, {
+      // 走 fetchJsonRace：连接段 15s 限时 + 统一代理 / 直连兜底与会话请求自洽（此前裸 fetch——
+      // 上游黑洞时一直挂到客户端断开,也整体不走面板配置的出口代理,不是统一的接口设计）
+      eventsRes = await fetchJsonRace(`${TRAE_SOLO_BASE}/chat_sessions/${chatSessionId}/events?reply_to_message_id=${encodeURIComponent(messageId)}`, {
         headers: {
           Authorization: token.startsWith('Cloud-IDE-JWT ') ? token : `Cloud-IDE-JWT ${token.trim()}`,
           Accept: 'text/event-stream',
@@ -424,6 +434,8 @@ export async function handleGateway(req, res) {
           Referer: 'https://solo.trae.cn/',
         },
         signal: clientAbort.signal,
+        timeoutMs: UPSTREAM_TIMEOUT_MS,
+        connectMs: 15_000,
       });
     } catch (e) {
       cleanupSession();
@@ -483,10 +495,11 @@ export async function handleGateway(req, res) {
       const decoder = new TextDecoder();
       let buffer = '';
 
+      let streamCompleted = false;
       try {
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) { streamCompleted = true; break; }
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split('\n');
           buffer = lines.pop();
@@ -570,9 +583,13 @@ export async function handleGateway(req, res) {
         if (inputTokens > 0) deltaUsage.input_tokens = inputTokens;
         if (cacheReadTokens > 0) deltaUsage.cache_read_input_tokens = cacheReadTokens;
 
+        // 上游没正常收尾（断流 / EOF / reader 抛错）时,stop_reason 别伪装成 end_turn——
+        // 客户端把截断的字当完整答案就再也看不见了（两个分支都报 interrupted）。
+        const stopReason = streamCompleted ? 'end_turn' : 'interrupted';
+
         sendSse('message_delta', {
           type: 'message_delta',
-          delta: { stop_reason: 'end_turn', stop_sequence: null },
+          delta: { stop_reason: stopReason, stop_sequence: null },
           usage: deltaUsage,
         });
         sendSse('message_stop', { type: 'message_stop' });
@@ -588,11 +605,12 @@ export async function handleGateway(req, res) {
       let fullThinking = '';
       let fullText = '';
       let usageInfo = null;
+      let streamCompleted = false;
 
       try {
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) { streamCompleted = true; break; }
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split('\n');
           buffer = lines.pop();
@@ -637,7 +655,7 @@ export async function handleGateway(req, res) {
         role: 'assistant',
         model: requestedModel,
         content,
-        stop_reason: 'end_turn',
+        stop_reason: streamCompleted ? 'end_turn' : 'interrupted',
         stop_sequence: null,
         usage: usageObj,
       }));

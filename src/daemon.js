@@ -80,12 +80,53 @@ const PRODUCT_IDS = ['qoder', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae',
  *  未设置（或被面板关闭）时回退环境变量 CREDITDADDY_PASSWORD（fnOS / 命令行部署注入），
  *  保证安装向导密码在 NAS 部署里始终有效。设置后所有 /api/* 需要 x-qd-key 头；密码不回显。 */
 let PANEL_KEY = '';
+let PANEL_KEY_HASH = null;      // 'scrypt:<salt_hex>:<hash_hex>' — 面板密码只存这个,不存明文
+let PANEL_KEY_MODE = 'none';    // 'plain' | 'hash' | 'none'
+
+function scryptPanelKey(peer) {
+  const salt = crypto.randomBytes(8);
+  const h = crypto.scryptSync(String(peer), salt, 32);
+  return `scrypt:${salt.toString('hex')}:${h.toString('hex')}`;
+}
+function scryptMatches(peer, stored) {
+  try {
+    const [algo, saltHex, hashHex] = String(stored).split(':');
+    if (algo !== 'scrypt' || !saltHex || !hashHex) return false;
+    const h = crypto.scryptSync(String(peer), Buffer.from(saltHex, 'hex'), 32);
+    return crypto.timingSafeEqual(h, Buffer.from(hashHex, 'hex'));
+  } catch { return false; }
+}
+
+/** 面板密码是否生效（哈希 / 明文 / 环境变量任一路径都算）—— PANEL_KEY 字符串本身在哈希模式下为空。 */
+function panelKeyRequired() { return PANEL_KEY_MODE !== 'none'; }
 
 async function initPanelKey() {
   let s = {};
   try { s = await loadSettings(); } catch {}
   const env = process.env.CREDITDADDY_PASSWORD || process.env.QODERDADDY_PASSWORD || '';
-  PANEL_KEY = typeof s.panelKey === 'string' && s.panelKey ? s.panelKey : env;
+  // 存储面板密码只存 scrypt 哈希——此前的明文 panelKey 见了顺手升级（写为哈希并清除明文）。
+  if (typeof s.panelKeyHash === 'string' && s.panelKeyHash.startsWith('scrypt:')) {
+    PANEL_KEY_HASH = s.panelKeyHash;
+    PANEL_KEY_MODE = 'hash';
+    PANEL_KEY = '';
+    if (s.panelKey) await saveSettings({ panelKey: '' });
+  } else {
+    const plain = typeof s.panelKey === 'string' && s.panelKey ? s.panelKey : '';
+    if (plain) {
+      PANEL_KEY_HASH = scryptPanelKey(plain);
+      PANEL_KEY_MODE = 'hash';
+      PANEL_KEY = '';
+      await saveSettings({ panelKeyHash: PANEL_KEY_HASH, panelKey: '' });
+    } else if (env) {
+      PANEL_KEY = env;
+      PANEL_KEY_HASH = null;
+      PANEL_KEY_MODE = 'plain';   // 环境变量来源的密码按现状走（部署侧管理）
+    } else {
+      PANEL_KEY = '';
+      PANEL_KEY_HASH = null;
+      PANEL_KEY_MODE = 'none';
+    }
+  }
   setLocale(s.locale);
 }
 
@@ -133,8 +174,12 @@ async function readBody(req) {
   try { return raw ? JSON.parse(raw) : {}; } catch { throw new HttpError(400, '请求体不是合法 JSON'); }
 }
 
-/** 常量时间比较，避免通过响应时间逐字符猜出密钥 */
+/** 常量时间比较，避免通过响应时间逐字符猜出密钥；
+ *  mode 'hash' → scrypt 推导比;
+ *  mode 'plain' → 仅环境变量来源，按原常量时间比;
+ *  mode 'none' → 永远 false（本函数不该进来） */
 function keyMatches(given) {
+  if (PANEL_KEY_MODE === 'hash') return scryptMatches(String(given), PANEL_KEY_HASH);
   const a = Buffer.from(String(given));
   const b = Buffer.from(PANEL_KEY);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
@@ -182,7 +227,7 @@ export function rejectForeignRequest(headers, bindHost) {
   if (loopbackBind && !LOOPBACK_HOSTS.has(hostName)) {
     return 'Host 不被允许';
   }
-  if (!loopbackBind && !PANEL_KEY && !localHosts().has(hostName)) {
+  if (!loopbackBind && !panelKeyRequired() && !localHosts().has(hostName)) {
     return 'Host 不被允许';
   }
   const origin = headers.origin;
@@ -204,26 +249,68 @@ async function handleSettingsPut(res, body) {
   if (body?.disable === true) {
     await saveSettings({ panelKey: '' });
     await initPanelKey();   // 环境变量部署（fnOS）下关闭后仍保留安装向导密码
-    logger.warn('DAEMON', PANEL_KEY ? '面板访问密码已在设置里关闭,但部署环境仍注入密码(保持开启)' : '面板访问密码已关闭(导出账号仍需加密口令)', {});
-    return json(res, 200, { ok: true, panelKeyEnabled: Boolean(PANEL_KEY) });
+    logger.warn('DAEMON', panelKeyRequired() ? '面板访问密码已在设置里关闭,但部署环境仍注入密码(保持开启)' : '面板访问密码已关闭(导出账号仍需加密口令)', {});
+    return json(res, 200, { ok: true, panelKeyEnabled: panelKeyRequired() });
   }
   const next = typeof body?.panelKey === 'string' ? body.panelKey.trim() : '';
   if (!next) return json(res, 400, { error: '请提供新密码，或提交 disable 关闭' });
   if (next.length < 4) return json(res, 400, { error: '面板访问密码至少 4 位' });
   if (/\s/.test(next)) return json(res, 400, { error: '面板访问密码不能包含空格' });
-  await saveSettings({ panelKey: next });
+  // 只存 scrypt 哈希，明文设置完立刻请出数据目录
+  await saveSettings({ panelKeyHash: scryptPanelKey(next), panelKey: '' });
   await initPanelKey();
-  logger.info('DAEMON', '面板访问密码已更新', {});
-  return json(res, 200, { ok: true, panelKeyEnabled: Boolean(PANEL_KEY) });
+  logger.info('DAEMON', '面板访问密码已更新（scrypt 哈希落盘)', {});
+  return json(res, 200, { ok: true, panelKeyEnabled: panelKeyRequired() });
+}
+
+// socket 地址级回环判定（不是 hostname）：PANEL_KEY 未设时 fail-closed 的关键输入
+function isLoopbackSocketAddr(remote) {
+  const r = String(remote || '');
+  return !r || /^(::1|::ffff:127\.0\.0\.1|127\.0\.0\.1)$/.test(r);
+}
+
+// PANEL_KEY 按源 IP 失败计数限速：401 暴力猜密是免费的网络噪音――连错 10 次锁 5 分钟。
+// timingSafeEqual 防了侧信道，防不了离线字典速度撞库；失败计数只留进程内，重启归零。
+const keyFails = new Map();  // socketRemote → { n, lockedUntil }
+const KEY_FAIL_LIMIT = 10;
+const KEY_FAIL_LOCK_MS = 5 * 60_000;
+
+function remoteKeyAddr(req) { return String((req.socket && req.socket.remoteAddress) || ''); }
+function keyThrottled(remote) {
+  const rec = keyFails.get(remote);
+  if (!rec) return false;
+  if (rec.lockedUntil && Date.now() < rec.lockedUntil) return true;
+  if (rec.lockedUntil) keyFails.delete(remote);
+  return false;
+}
+function noteKeyMiss(remote) {
+  const rec = keyFails.get(remote) || { n: 0 };
+  rec.n += 1;
+  if (rec.n >= KEY_FAIL_LIMIT) { rec.lockedUntil = Date.now() + KEY_FAIL_LOCK_MS; rec.n = 0;
+    logger.warn('DAEMON', '面板密码连续 {n} 次错误,来源 {remote} 已限流 5 分钟', { n: KEY_FAIL_LIMIT, remote }); }
+  keyFails.set(remote, rec);
 }
 
 async function handleApi(req, res, url) {
-  if (PANEL_KEY) {
+  if (!panelKeyRequired()) {
+    const remote = (req.socket && req.socket.remoteAddress) || '';
+    if (!isLoopbackSocketAddr(remote)) {
+      logger.warn('DAEMON', '拒绝非本机请求(未设面板访问密码):{method} {path} 来自 {remote}', { method: req.method, path: url.pathname, remote });
+      return json(res, 403, { error: '未设置面板访问密码时，面板账号接口仅允许本机访问——请在「设置 → 通用 → 面板访问密码」设置密码后再从局域网访问' });
+    }
+  }
+  if (panelKeyRequired()) {
+    const remote = remoteKeyAddr(req);
+    if (keyThrottled(remote)) {
+      return json(res, 429, { error: '面板密码连续错误过多，已限流 5 分钟' });
+    }
     // 只认 x-qd-key 头：query 传密会落入 fnOS / 反代的访问日志
     const key = req.headers['x-qd-key'] || '';
     if (!keyMatches(key)) {
+      noteKeyMiss(remote);
       return json(res, 401, { error: '需要访问密钥（x-qd-key 头）', code: 'PANEL_KEY' });
     }
+    keyFails.delete(remote);   // 猜对了立即清零
   }
   const p = url.pathname;
   const method = req.method;
@@ -928,13 +1015,13 @@ async function handleApi(req, res, url) {
       traeClient: { installed: traeDet.clientInstalled, signedIn: traeDet.signedIn, running: traeDet.running },
       minimaxCurrentUid: mmLiveUid,
       minimaxClient: (() => { const d = detectMiniMax(); return { installed: d.installed, signedIn: d.signedIn, running: d.running }; })(),
-      keyRequired: Boolean(PANEL_KEY),
+      keyRequired: panelKeyRequired(),
     });
   }
 
   // Panel 设置：GET 读取（只回状态不回显密码），PUT 设置 / 修改 / 关闭访问密码
   if (p === '/api/settings' && method === 'GET') {
-    return json(res, 200, { panelKeyEnabled: Boolean(PANEL_KEY), locale: getLocale(), workbuddyActivity: (await loadSettings()).workbuddyActivity !== false });
+    return json(res, 200, { panelKeyEnabled: panelKeyRequired(), locale: getLocale(), workbuddyActivity: (await loadSettings()).workbuddyActivity !== false });
   }
   if (p === '/api/settings' && method === 'PUT') {
     const body = await readBody(req).catch(() => ({}));
@@ -961,7 +1048,7 @@ async function handleApi(req, res, url) {
     // 只有携带密码字段才走密码分支：纯语言/其它设置的请求此前会掉进
     // 「请提供新密码」400，面板 api() 抛错导致语言切换点了不刷新（i18n 切换失效根因）
     if (body?.panelKey !== undefined || body?.disable === true) return await handleSettingsPut(res, body);
-    if (body?.locale !== undefined) return json(res, 200, { ok: true, panelKeyEnabled: Boolean(PANEL_KEY), locale: getLocale() });
+    if (body?.locale !== undefined) return json(res, 200, { ok: true, panelKeyEnabled: panelKeyRequired(), locale: getLocale() });
     return json(res, 400, { error: '请求未携带任何设置字段' });
   }
 
@@ -1052,6 +1139,19 @@ export function getLoginProxyUrl() { return proxyUrl() || null; }
 
 export async function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
   await initPanelKey();
+  // 跨进程单实例守护（P0-3 层）：daemon.json 记录 pid+port，端口探活信带——两个实例
+  // 共用同一 dataDir 时 accounts/settings/state.json 的后写会覆盖前写（进程内串行队列
+  // 不跨进程）。发现活实例直接拒启，不要悄悄抬到下一个端口共存。
+  {
+    const { statusRuntime } = await import('./bgdaemon.js');
+    const cur = await statusRuntime().catch(() => null);
+    if (cur && cur.running) {
+      logger.warn('DAEMON', 'CreditDaddy 守护进程已在运行(pid {pid},{host}:{port})—— 拒绝再起实例共用同一数据目录', { pid: cur.pid, host: cur.host, port: cur.port });
+      const err = new Error('CreditDaddy 守护进程已在运行（pid ' + cur.pid + '，' + (cur.host || '127.0.0.1') + ':' + cur.port + '），如需重启请先停止旧实例（CLI 可用 creditdaddy stop）');
+      err.code = 'ALREADY_RUNNING';
+      throw err;
+    }
+  }
   // 一次性清理：1.3.3 曾短暂支持 minimax-intl（MiniMax 国际版），实测其 API 侧对国内出口
   // 全链路 401（区域识别无法绕过），双版本策略已撤回——存量国际版账号移除，避免签到 /
   // 额度轮询对未知 provider 反复报错。仅在真的命中存量时落盘。
@@ -1097,8 +1197,15 @@ export async function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
       if (url.pathname.startsWith('/api/')) {
         return await handleApi(req, res, url);
       }
-      // Web 面板
+      // Web 面板（未设密码时同 API 口径 fail-closed）
       if (url.pathname === '/' || url.pathname === '/index.html') {
+        if (!panelKeyRequired()) {
+          const remote = (req.socket && req.socket.remoteAddress) || '';
+          if (!isLoopbackSocketAddr(remote)) {
+            res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+            return res.end('CreditDaddy：未设置面板访问密码时,面板仅允许本机访问——请在本机面板「设置 → 通用 → 面板访问密码」设置密码后再从局域网访问');
+          }
+        }
         if (!panelHtml) { try { panelHtml = await fs.readFile(PANEL_FILE, 'utf8'); } catch {} }
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(panelHtml || '<h1>CreditDaddy</h1><p>panel.html 缺失</p>');
@@ -1135,7 +1242,7 @@ export async function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
         server.off('error', onError);
         const bound = server.address().port;
         logger.info('DAEMON', 'CreditDaddy 守护进程已启动:http://{host}:{port}', { host, port: bound });
-        if ((host === '0.0.0.0' || host === '::') && !PANEL_KEY) {
+        if ((host === '0.0.0.0' || host === '::') && !panelKeyRequired()) {
           logger.warn('DAEMON', '监听 0.0.0.0 且未设置 CREDITDADDY_PASSWORD —— 局域网内任何人可访问账号 API,建议设置访问密钥', {});
         }
         resolve({ server, port: bound });

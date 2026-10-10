@@ -186,7 +186,13 @@ function remoteAllowed(remote, allowList) {
   return (Array.isArray(allowList) ? allowList : []).some((entry) => {
     const e = String(entry || '').trim();
     if (!e) return false;
-    if (e.endsWith('*')) return host.toLowerCase().startsWith(e.slice(0, -1).toLowerCase());
+    if (e.endsWith('*')) {
+      // 通配要求带点段尾：防止 192.168.31.1* 这类把 .100-.199 整段一起放行的怪手。
+      // 要扩整段子网，把写法统一为 192.168.31.*（带尾句点）。
+      const prefix = e.slice(0, -1);
+      if (!prefix.endsWith('.')) return false;
+      return host.toLowerCase().startsWith(prefix.toLowerCase());
+    }
     return host.toLowerCase() === e.toLowerCase();
   });
 }

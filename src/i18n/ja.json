@@ -1110,5 +1110,11 @@
   "默认按剩余积分从多到少；直接按住拖动卡片调整顺序。": "既定は残りクレジットの多い順。カードをドラッグして並び替えできます。",
   "点击切换显隐": "クリックで表示切替",
   "点按切换显隐（置灰 = 隐藏）；按住拖动调整顺序。": "クリックで表示切替(グレー = 非表示)。ドラッグで並び替え。",
-  "开启后，Trae SOLO 积分与模型能力（官方目录持续更新，网关透传任意合法模型 ID——如 GLM-5.3 / DeepSeek-V4.1-Flash / MiMo-V2.6 / Kimi-K3）变成本机的一个原生 Anthropic Messages 补全接口——在 10Router 或 Claude Code 等工具中建一个 anthropic-compatible 节点指向本机 <code>/gateway/trae/v1/messages</code> 即可调用。支持多账号自动加权轮转、429 限流自动冷却 5 分钟、流式增量与完整思考过程（thinking_delta）。白名单内的机器<b>免密直连</b>；本机回环（127.0.0.1）始终放行。": "有効化すると、Trae SOLO クレジットとモデル能力（公式カタログは継続更新。ゲートウェイは任意の有効なモデル ID — GLM-5.3 / DeepSeek-V4.1-Flash / MiMo-V2.6 / Kimi-K3 など — を透過します）が、本機上のネイティブ Anthropic Messages 補完 API になります。10Router や Claude Code で anthropic-compatible ノードを本機の <code>/gateway/trae/v1/messages</code> に向ければ呼べます。多アカウント加重ローテーション、429 時自動 5 分クールダウン、ストリーム増分と完全 thinking_delta に対応。許可リストのマシンはパスワード不要、ループバック(127.0.0.1)は常時許可。"
+  "开启后，Trae SOLO 积分与模型能力（官方目录持续更新，网关透传任意合法模型 ID——如 GLM-5.3 / DeepSeek-V4.1-Flash / MiMo-V2.6 / Kimi-K3）变成本机的一个原生 Anthropic Messages 补全接口——在 10Router 或 Claude Code 等工具中建一个 anthropic-compatible 节点指向本机 <code>/gateway/trae/v1/messages</code> 即可调用。支持多账号自动加权轮转、429 限流自动冷却 5 分钟、流式增量与完整思考过程（thinking_delta）。白名单内的机器<b>免密直连</b>；本机回环（127.0.0.1）始终放行。": "有効化すると、Trae SOLO クレジットとモデル能力（公式カタログは継続更新。ゲートウェイは任意の有効なモデル ID — GLM-5.3 / DeepSeek-V4.1-Flash / MiMo-V2.6 / Kimi-K3 など — を透過します）が、本機上のネイティブ Anthropic Messages 補完 API になります。10Router や Claude Code で anthropic-compatible ノードを本機の <code>/gateway/trae/v1/messages</code> に向ければ呼べます。多アカウント加重ローテーション、429 時自動 5 分クールダウン、ストリーム増分と完全 thinking_delta に対応。許可リストのマシンはパスワード不要、ループバック(127.0.0.1)は常時許可。",
+  "面板密码连续 {n} 次错误,来源 {remote} 已限流 5 分钟": "パネルパスワードを連続 {n} 回誤入力。{remote} を 5 分間レート制限しました",
+  "面板密码连续错误过多,已限流 5 分钟": "パネルパスワードの誤入力が多すぎます。5 分間レート制限しました",
+  "CreditDaddy 守护进程已在运行(pid {pid},{host}:{port})—— 拒绝再起实例共用同一数据目录": "CreditDaddy は既に起動しています (pid {pid}, {host}:{port})。同一データディレクトリの二重起動を拒否しました",
+  "拒绝非本机请求(未设面板访问密码):{method} {path} 来自 {remote}": "ローカル以外からのリクエストを拒否(パネルパスワード未設定): {method} {path} from {remote}",
+  "面板访问密码已更新（scrypt 哈希落盘)": "パネルパスワードを更新しました(scrypt ハッシュで保存)",
+  "{label} 名额已领完,跳过直到 {until}(服务端计划结束点)": "{label} クォータ切れ。{until} までスキップ(サーバー側予定時刻)"
 }

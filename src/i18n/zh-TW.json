@@ -1111,5 +1111,11 @@
   "默认按剩余积分从多到少；直接按住拖动卡片调整顺序。": "預設按剩餘積分從多到少;直接按住拖動卡片調整順序。",
   "点击切换显隐": "點擊切換顯隱",
   "点按切换显隐（置灰 = 隐藏）；按住拖动调整顺序。": "點按切換顯隱(置灰 = 隱藏);按住拖動調整順序。",
-  "开启后，Trae SOLO 积分与模型能力（官方目录持续更新，网关透传任意合法模型 ID——如 GLM-5.3 / DeepSeek-V4.1-Flash / MiMo-V2.6 / Kimi-K3）变成本机的一个原生 Anthropic Messages 补全接口——在 10Router 或 Claude Code 等工具中建一个 anthropic-compatible 节点指向本机 <code>/gateway/trae/v1/messages</code> 即可调用。支持多账号自动加权轮转、429 限流自动冷却 5 分钟、流式增量与完整思考过程（thinking_delta）。白名单内的机器<b>免密直连</b>；本机回环（127.0.0.1）始终放行。": "開啟後，Trae SOLO 積分與模型能力（官方目錄持續更新，網關透傳任意合法模型 ID——如 GLM-5.3 / DeepSeek-V4.1-Flash / MiMo-V2.6 / Kimi-K3）變成本機的一個原生 Anthropic Messages 補全接口——在 10Router 或 Claude Code 等工具中建一個 anthropic-compatible 節點指向本機 <code>/gateway/trae/v1/messages</code> 即可調用。支持多帳號自動加權輪轉、429 限流自動冷卻 5 分鐘、流式增量與完整思考過程（thinking_delta）。白名單內的機器<b>免密直連</b>；本機回環（127.0.0.1）始終放行。"
+  "开启后，Trae SOLO 积分与模型能力（官方目录持续更新，网关透传任意合法模型 ID——如 GLM-5.3 / DeepSeek-V4.1-Flash / MiMo-V2.6 / Kimi-K3）变成本机的一个原生 Anthropic Messages 补全接口——在 10Router 或 Claude Code 等工具中建一个 anthropic-compatible 节点指向本机 <code>/gateway/trae/v1/messages</code> 即可调用。支持多账号自动加权轮转、429 限流自动冷却 5 分钟、流式增量与完整思考过程（thinking_delta）。白名单内的机器<b>免密直连</b>；本机回环（127.0.0.1）始终放行。": "開啟後，Trae SOLO 積分與模型能力（官方目錄持續更新，網關透傳任意合法模型 ID——如 GLM-5.3 / DeepSeek-V4.1-Flash / MiMo-V2.6 / Kimi-K3）變成本機的一個原生 Anthropic Messages 補全接口——在 10Router 或 Claude Code 等工具中建一個 anthropic-compatible 節點指向本機 <code>/gateway/trae/v1/messages</code> 即可調用。支持多帳號自動加權輪轉、429 限流自動冷卻 5 分鐘、流式增量與完整思考過程（thinking_delta）。白名單內的機器<b>免密直連</b>；本機回環（127.0.0.1）始終放行。",
+  "面板密码连续 {n} 次错误,来源 {remote} 已限流 5 分钟": "面板密碼連續 {n} 次錯誤,來源 {remote} 已限流 5 分鐘",
+  "面板密码连续错误过多,已限流 5 分钟": "面板密碼連續錯誤過多，已限流 5 分鐘",
+  "CreditDaddy 守护进程已在运行(pid {pid},{host}:{port})—— 拒绝再起实例共用同一数据目录": "CreditDaddy 守護進程已在運行(pid {pid},{host}:{port})—— 拒絕再起實例共用同一數據目錄",
+  "拒绝非本机请求(未设面板访问密码):{method} {path} 来自 {remote}": "拒絕非本機請求(未設面板訪問密碼):{method} {path} 來自 {remote}",
+  "面板访问密码已更新（scrypt 哈希落盘)": "面板訪問密碼已更新（scrypt 哈希落盤)",
+  "{label} 名额已领完,跳过直到 {until}(服务端计划结束点)": "{label} 名額已領完,跳過直到 {until}(服務端計劃結束點)"
 }

@@ -52,6 +52,18 @@
 - **组件排序区的标题与提示字号/行距统一**：`.sort-hint` 从 11px/默认行高改为与 `.hint` 一致的 12px / 1.7（上下段不再显得字号忽大忽小、行距忽紧忽松）。
 - **面板设置字体层级重校**：说明文字上一轮被提到与字段标签同字号（12px），层级被拉平、看上去「标题字幕反了」。现在统一为三层：弹窗标题 14px/700 → 字段标签 12.5px/650 → 说明文字 11px/1.65 灰；`.comp-menu-title` 对齐字段标签；字段间距与弹层内边距微调（`.field` gap 6/14，`.setpop .modal` 16×18）。
 - **Trae 网关提示去掉过期模型名录**（#19）：面板里写死的「Doubao-Seed / GLM-5.1 / Kimi-K2.6 / DeepSeek-V4 等 12 款模型」已和 TRAE 2.3.87413 官方目录严重脱节。改为透传口径「官方目录持续更新，网关透传任意合法模型 ID——如 GLM-5.3 / DeepSeek-V4.1-Flash / MiMo-V2.6 / Kimi-K3」。模型目录本身在 **10Router** 侧注册表维护（`traeGateway.js` 对 `model` 原文透传、零校验），CreditDaddy 无需随目录改代码。
+
+### 🛡️ 健壮化专项（发版前审计对标）
+
+- **刷新并发互斥与失效链熔断推广到 WorkBuddy / mirasim**：`minimaxClient` 的 in-flight dedupe + refreshToken 指纹熔断抽为公共模块 `src/refreshGuard.js`——面板额度查询与签到轮同链抢刷触发 12153 / invalid_grant 的误杀从根上消失。
+- **跨进程单实例守护**：`startDaemon` 启动前经 daemon.json pid + /api/status 探活，有活实例拒绝以 ALREADY_RUNNING 起第二份——杜绝两个守护共 dataDir 时 accounts / state / settings 的跨进程覆盖。runtime 记录推广到前台 / 后台 / 桌面三种启动方式，探活加一拍重试防瞬时假阴性。
+- **面板 fail-closed**：监听 0.0.0.0（网关开 LAN 或 NAS 部署）且未设访问密码时，面板 `/api/*` 与首页一律 403（socket 地址非回环即拒）。此前只是 Host 校验 + 一行警告。
+- **面板访问密码明文升级 scrypt 哈希落盘**：`panelKeyHash: scrypt:<salt>:<hash>`；password 关的 `put` 更新后立即清除明文（明文迁移一次自动）；引入 `panelKeyRequired()` 统一三模式（hash / plain / env-injected），`enabled` 断言全部修复。同时新增按源 IP 连续 10 次错锁 5 分钟（暴力猜密守卫）、同源日志限随行。
+- **LAN 白名单通配规则收紧**：三个网关的 `e.endsWith('*')` 裸前缀隔断被关闭式修复（通配段必须以 `.` 结尾——`192.168.31.1*` 不再误把 `.100-199` 整段放行）。
+- **Trae 网关事件流与额度权重**：`fetchJsonRace` 事件流接默认 `connectMs:15s`（此前上游黑洞时裸 fetch 永不超时）；权重缓存带 10 分钟 TTL、失败保留旧快照，与 MiniMax 对齐。流式与非流式两个返回的 stop_reason 都不再伪装 `end_turn`（断流 / EOF / reader 抛错统一报 `interrupted`，客户端不再把截断当完整答案）。
+- **fetchJsonRace `redirect:'manual'`**：301/302 再把 POST 转 GET 丢 body、307 原样重放新地址不再换出（涉及三个网关大 body 凭据头的落地）。
+- **tenrouter.json 走 store.atomicWrite**(Windows 杀软瞬时占文件 EPERM 直接 500 的坑修）;`saveConfig` 改为 async,withConfig 串行带 await。settings/state 损坏 JSON 回退同目录 `.bak`(断电半写不再让守护起不来，行为保留报错方向不静默重置）。
+- **ZCode 名额已满消费 err.nextAt**:1005 错误直接进跳过窗口（进程内缓存 + account.meta.zcodeClaimNextAt 双轨），自动轮询在该时间点前不再空打。
 - **产物命名扩展到 macOS / fnOS**：mac dmg 改 `CreditDaddy-Mac-Setup-<版本>-<arch>.dmg`（zip 为 `-Mac-Portable-`，保留架构段）、fnOS fpk 改 `CreditDaddy-FnOS(-Window)-<版本>-<arch>.fpk`；release notes 与 README / DEPLOY 同步。此前仅 Windows 做了平台段。
 
 - **主题相关文案的硬编码中文**：头部三个按钮与主题分段控件的 `title` 此前全是静态中文；主题按钮标题里的「暗色」取自初始化时（字典未加载）就钉死的 `THEME_MODES` 数组。现在：`title` 由引擎按 `data-i18n` 同款机制翻译（补 6 个键），主题按钮标题在字典到达后重渲染（`window.__syncTheme`），mode 文案改取运行时的 `T('暗色'/'亮色')`。

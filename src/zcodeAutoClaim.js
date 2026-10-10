@@ -14,6 +14,18 @@
 import { logger } from './logger.js';
 import { t } from './i18n.js';
 import { fetchClaimPlans, claimPlan, fetchCaptchaConfig } from './zcodeClient.js';
+import { withAccounts } from './store.js';
+
+// 额满（1005）时消费服务端 nextAt（plan.ends_at）：
+// 下轮自动轮询（claimIntervalMin 分钟一触）在 nextAt 之前跳过该号,不做无谓抢。
+// 进程内缓存 + 落盘 account.meta.zcodeClaimNextAt 双轨（重启保护）。
+const snoozeUntil = new Map();  // accountId → ms 时间戳
+
+function snoozeUntilMs(account) {
+  const meta = Number(new Date(account?.meta?.zcodeClaimNextAt || 0)) || 0;
+  const proc = snoozeUntil.get(account.id) || 0;
+  return Math.max(meta, proc);
+}
 
 // 桌面版（Electron 主进程）注册的隐藏窗口验证码实现；NAS / CLI 为 null（走「需手动领取」分支）
 let captchaProvider = null;
@@ -29,6 +41,13 @@ const grantsText = (plan) => (plan.grants && plan.grants.length ? plan.grants.jo
  */
 export async function zcodeAutoClaim(account) {
   const label = account.name || account.uid || account.id;
+  {
+    const until = snoozeUntilMs(account);
+    if (until && until > Date.now()) {
+        logger.debug('ZCODE-CLAIM', '{label} 名额已领完,跳过直到 {until}(服务端计划结束点)', { label, until: new Date(until).toISOString() });
+      return null;
+    }
+  }
   let plans;
   try {
     plans = (await fetchClaimPlans(account)).plans;
@@ -42,6 +61,7 @@ export async function zcodeAutoClaim(account) {
   let anySuccess = false;
   let needManual = false;
 
+  let snoozeAt = 0;
   for (const plan of plans) {
     const planName = plan.name || plan.planId;
     // 第 2 步：先试不带验证码
@@ -56,6 +76,9 @@ export async function zcodeAutoClaim(account) {
         claims.push({ plan: planName, ok: true, already: true });
                 logger.info('ZCODE-CLAIM', '{label}「{plan}」已领取过', { label, plan: planName });
         continue;
+      }
+      if (e.code === 1005 && e.nextAt) {
+        snoozeAt = Math.max(snoozeAt, Number(new Date(e.nextAt)) || 0);
       }
       if (e.code !== 3007 && e.code !== 3001) {
         claims.push({ plan: planName, ok: false, message: e.message });
@@ -79,10 +102,26 @@ export async function zcodeAutoClaim(account) {
       anySuccess = true;
             logger.info('ZCODE-CLAIM', '{label} 已领取「{plan}」(静默验证码){grants}', { label, plan: planName, grants: grantsText(plan) ? ':' + grantsText(plan) : '' });
     } catch (e2) {
+      if (e2.code === 1005 && e2.nextAt) {
+        snoozeAt = Math.max(snoozeAt, Number(new Date(e2.nextAt)) || 0);
+      }
       needManual = true;
       claims.push({ plan: planName, ok: false, needManual: true, message: e2.message });
             logger.warn('ZCODE-CLAIM', '{label}「{plan}」验证码未完成:{err}(可在面板手动领取)', { label, plan: planName, err: e2.message });
     }
+  }
+  // 1005 名额已满 → 按服务端 ends_at 将本账号挂进跳过窗口，下一轮自动轮询在该时间点前不再空打
+  if (snoozeAt > 0) {
+    snoozeUntil.set(account.id, snoozeAt);
+    try {
+      await withAccounts((list) => {
+        const cur = list.find((a) => a.id === account.id);
+        if (cur) {
+          cur.meta = cur.meta && typeof cur.meta === 'object' && !Array.isArray(cur.meta) ? cur.meta : {};
+          cur.meta.zcodeClaimNextAt = new Date(snoozeAt).toISOString();
+        }
+      });
+    } catch {}
   }
 
   const names = claims.filter((c) => c.ok && !c.already).map((c) => c.plan);

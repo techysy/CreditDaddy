@@ -160,7 +160,13 @@ export async function statusRuntime() {
   const rec = readRuntime();
   if (!rec) return { running: false, reason: 'no-state' };
   const pidAlive = isAlive(rec.pid);
-  const probe = pidAlive ? await probeStatus(rec) : { reachable: false };
+  let probe = pidAlive ? await probeStatus(rec) : { reachable: false };
+  // pid 还在但立刻探不通 = 大概率正在启动途中的瞬断（listening 刚触发、首个请求还没排到）。
+  // 只多等一拍再探一次：错了方向是放行双实例（状态互写）比错一刀拦死更危险
+  if (pidAlive && !probe.reachable) {
+    await new Promise((r) => setTimeout(r, 350));
+    probe = await probeStatus(rec);
+  }
   return { running: pidAlive && probe.reachable, pidAlive, probe, ...rec };
 }
 

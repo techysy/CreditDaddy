@@ -96,10 +96,11 @@ async function main() {
       const port = Number(flag('--port')) || Number(process.env.PORT) || undefined;
       const host = flag('--host') || process.env.HOST || undefined;
       const { server, port: boundPort } = await startDaemon(port, host);
-      // 端口被占时 daemon 会自动 +1 重试，真正在听的是 boundPort；
-      // 后台模式要把它记进状态文件，start/status 打印的必须是这个值
+      // 端口被占时 daemon 会自动 +1 重试，真正在听的是 boundPort（记录的必须用它）。
+      // runtime 记录不分前台/后台：单实例守护（daemon.js 启动守卫）靠 daemon.json 找活实例，
+      // 只有所有启动方式都写文件，另一个方向的探测才完整。清理按 pid 归属（见 stopDaemon/clearRuntime）。
       const background = process.env.CREDITDADDY_BG === '1';
-      if (background) {
+      {
         const { APP_VERSION } = await import('../src/constants.js');
         const { writeRuntime } = await import('../src/bgdaemon.js');
         await writeRuntime({
@@ -109,7 +110,7 @@ async function main() {
           startedAt: new Date().toISOString(),
           version: APP_VERSION,
         });
-        logger.info('CLI', '已在后台运行', {});
+        if (background) logger.info('CLI', '已在后台运行', {});
       }
       const { startScheduler } = await import('../src/checkin.js');
       startScheduler();

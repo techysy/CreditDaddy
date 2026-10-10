@@ -8,6 +8,7 @@
 
 import { fetchJsonRace } from './zcodeClient.js';
 import { FETCH_TIMEOUT_MS } from './constants.js';
+import { withRefreshDedupe } from './refreshGuard.js';
 
 const AUTH_ME_URL = 'https://auth.mirasim.ai/auth/me';
 const RELAY_LIMITS_URL = 'https://relay.mirasim.ai/v1/limits';
@@ -64,7 +65,11 @@ async function withToken(account, fn, ctx) {
   let token = account.token;
   let refreshed = false;
   const doRefresh = async () => {
-    const creds = await refreshMirasimToken(account);
+    // 并发互斥 + 失效链熔断：与 minimax / workbuddy 共用 refreshGuard
+    const creds = await withRefreshDedupe(account, refreshMirasimToken, {
+      deadMessage: 'mirasim 凭据链已被服务端作废，等待重新登录',
+      deadNotice: 'mirasim 凭据链已失效，将不再自动重试（重新登录或重新导入该账号后自动恢复）',
+    });
     account.token = creds.token;
     account.refreshToken = creds.refreshToken;
     if (creds.expiresAt) account.expiresAt = creds.expiresAt;

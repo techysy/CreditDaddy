@@ -13,6 +13,7 @@
  */
 
 import { fetchJsonRace } from './zcodeClient.js';
+import { withRefreshDedupe, refreshFpDead } from './refreshGuard.js';
 import { FETCH_TIMEOUT_MS } from './constants.js';
 
 export const MINIMAX_AGENT_BASE = 'https://agent.minimax.cn';
@@ -104,66 +105,38 @@ export async function withMiniMaxAuth(account, fn, ctx = {}) {
 }
 
 /**
- * refreshToken 是一次性的、刷新即轮换：两个并发 401 拿同一个 refreshToken 去刷新，
- * 必然一个成功一个 invalid_grant。签到轮（checkin）与面板的额度查询互不知情，
- * 面板每 2 分钟刷一轮账号额度，很容易和 2 小时一次的签到轮撞上。
- * 用 in-flight 表把同一账号的并发刷新合并成一次，后到者直接用刷新出来的新 token 重试。
+ * 并发互斥 + 失效链熔断已提升到 src/refreshGuard.js —— workbuddy / mirasim 复用同一守卫。
+ * MiniMax 特有的点：刷新前先 alignMiniMaxFromLocal 对齐本机客户端最新链（客户端会轮换）。
  */
-const refreshInFlight = new Map();
-
-/**
- * 链级熔断：某条 refreshToken 刷新报 invalid_grant(400/401)，说明整条凭据链已被服务端作废，
- * 继续拿同一条链重试只会刷出源源不断的 invalid_grant（面板每 2 分钟一轮额度查询，曾因此
- * 一晚上打出几百次无效刷新）。记录失效链的 refreshToken 指纹：凭据更新（重新登录/授权，
- * 或本机对齐换上了新链，指纹自然变化）之前，同一条链不再自动重试。
- */
-const deadRefreshFp = new Map();  // accountKey → 已被服务端作废的 refreshToken
-
-function refreshFpDead(account) {
-  const fp = account.refreshToken;
-  return typeof fp === 'string' && fp.length > 0 && deadRefreshFp.get(account.id || fp) === fp;
-}
-
 function refreshAccountToken(account, ctx = {}) {
-  const key = account.id || account.token;
-  const inflight = refreshInFlight.get(key);
-  if (inflight) return inflight;
-  const p = (async () => {
-    // 本机导入账号：刷新前对齐客户端最新的 refreshToken，避免用陈旧快照刷新触发 invalid_grant
+  return withRefreshDedupe(account, async (a) => {
     try {
       const { alignMiniMaxFromLocal } = await import('./minimaxLocal.js');
-      alignMiniMaxFromLocal(account, ctx.log);
+      alignMiniMaxFromLocal(a, ctx.log);
     } catch {}
-    if (refreshFpDead(account)) {
-      const err = new Error('MiniMax 凭据链已被服务端作废，等待重新登录');
-      err.auth = true;
-      throw err; // 静默快拒：不再打服务端，也不打扰日志（首次失效时已提示）
-    }
     ctx.log?.('MiniMax token 已过期，正在自动刷新…');
     try {
-      const refreshed = await refreshMiniMaxToken(account.refreshToken);
+      const refreshed = await refreshMiniMaxToken(a.refreshToken);
       const expiresAt = new Date(Date.now() + refreshed.expiresIn * 1000).toISOString();
       const creds = {
         token: refreshed.accessToken,
         refreshToken: refreshed.refreshToken,
         expiresAt,
       };
-      account.token = creds.token;
-      account.refreshToken = creds.refreshToken;
-      account.expiresAt = expiresAt;
+      a.token = creds.token;
+      a.refreshToken = creds.refreshToken;
+      a.expiresAt = expiresAt;
       await ctx.onRefresh?.(creds);
       return creds;
     } catch (refErr) {
       ctx.log?.(`MiniMax token 自动刷新失败: ${refErr.message}`);
-      if (refErr.auth && account.refreshToken) {
-        deadRefreshFp.set(account.id || account.refreshToken, account.refreshToken);
-        ctx.log?.('MiniMax 凭据链已失效，将不再自动重试（重新登录或重新导入该账号后自动恢复）');
-      }
       throw refErr;
     }
-  })().finally(() => refreshInFlight.delete(key));
-  refreshInFlight.set(key, p);
-  return p;
+  }, {
+    deadMessage: 'MiniMax 凭据链已被服务端作废，等待重新登录',
+    deadNotice: 'MiniMax 凭据链已失效，将不再自动重试（重新登录或重新导入该账号后自动恢复）',
+    log: ctx.log,
+  });
 }
 
 /**

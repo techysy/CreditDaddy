@@ -293,7 +293,7 @@ function combineSignals({ wallSignal, connectSignal, external }) {
  *     跑几分钟，不能因为「连接快、生成慢」被误杀。
  * 不传 connectMs 时退回单段 timeoutMs（旧行为，所有既有调用方不受影响）。
  */
-export async function fetchJsonRace(url, { method = 'GET', headers = {}, body = null, timeoutMs = 15000, connectMs = null, signal = null, preferProxy = false } = {}) {
+export async function fetchJsonRace(url, { method = 'GET', headers = {}, body = null, timeoutMs = 15000, connectMs = null, signal = null, preferProxy = false, redirect = 'manual' } = {}) {
   const useProxy = Boolean(effectiveProxy()) && !proxyBypass(url);
   const twoPhase = Number.isFinite(connectMs) && connectMs > 0 && connectMs < timeoutMs;
   // 超时信号必须每次尝试各建一个：共用一个的话，代理优先模式下第一条路吃完 timeoutMs，
@@ -302,7 +302,8 @@ export async function fetchJsonRace(url, { method = 'GET', headers = {}, body = 
     const wallSignal = AbortSignal.timeout(timeoutMs);
     const connectSignal = twoPhase ? AbortSignal.timeout(connectMs) : null;
     const { signal: abortSignal, releaseConnect } = combineSignals({ wallSignal, connectSignal, external: signal });
-    const base = { method, headers: { ...headers }, ...(body != null ? { body: typeof body === 'string' ? body : JSON.stringify(body) } : {}), signal: abortSignal };
+    // redirect 默认 manual：follow 的 301/302 会把 POST 转 GET 丢 body、307 会把大 body 重放。
+    const base = { method, headers: { ...headers }, ...(body != null ? { body: typeof body === 'string' ? body : JSON.stringify(body) } : {}), signal: abortSignal, redirect };
     return {
       // 响应头到达 = 连接段成功：摘掉 connectSignal 转发，此后只有墙钟/外部取消能中断流
       direct: async () => { const r = await fetch(url, base); releaseConnect(); return r; },
