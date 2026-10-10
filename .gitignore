@@ -8,3 +8,6 @@ fnos-packaging/.tmp-*/
 desktop/node_modules/
 desktop/dist/
 desktop/server/
+desktop/server.bak-*/
+.claude/worktrees/
+.claude/worktree*
