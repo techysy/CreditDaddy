@@ -3833,8 +3833,6 @@ $('comp-menu').addEventListener('click', (e) => {
     renderCompMenu();
     return;
   }
-  const secBtn = e.target.closest && e.target.closest('[data-sec-action]');
-  if (secBtn) { doSecAction(secBtn.dataset.secAction); return; }
   const reset = e.target.closest && e.target.closest('[data-acc-reset]');
   if (reset) {
     e.stopPropagation();
@@ -3850,6 +3848,13 @@ let dragCtx = null; // {type:'comp'|'acc', id, prod}
 let suppressToggleUntil = 0;   // 拖放结束瞬-ms 内不触发显隐切换（防止拖着拖着被当成点击）
 const clearDropMarks = () => document.querySelectorAll('.comp-chip.drop-before, .comp-chip.drop-after, .comp-chip.dragging')
   .forEach((x) => x.classList.remove('drop-before', 'drop-after', 'dragging'));
+// 面板密码按钮(开启/修改/关闭)的真实宿主是「通用」页签的 #sec-block——
+// 和密码区从 comp-menu 搬来时遗忘的旧监听不同,这里直接委托在按钮所在容器上,innerHTML 重建不失效
+$('sec-block').addEventListener('click', (e) => {
+  const secBtn = e.target.closest && e.target.closest('[data-sec-action]');
+  if (secBtn) doSecAction(secBtn.dataset.secAction);
+});
+
 $('comp-menu').addEventListener('dragstart', (e) => {
   const compEl = e.target.closest('[data-drag-comp]');
   const accEl = e.target.closest('[data-drag-acc]');
