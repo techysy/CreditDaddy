@@ -267,7 +267,7 @@
   .lb-spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--border-subtle); border-top-color: var(--ok); animation: spin .8s linear infinite; }
 
   /* modal */
-  .mask { position: fixed; inset: 0; z-index: 50; background: var(--mask); display: none; align-items: center; justify-content: center; padding: 16px; }
+  .mask { position: fixed; inset: 0; z-index: 96; background: var(--mask); display: none; align-items: center; justify-content: center; padding: 16px; }
   .mask.show { display: flex; }
   .modal { width: 560px; max-width: 100%; max-height: 90vh; overflow-y: auto; background: var(--surface); border-radius: 14px; padding: 16px 18px; box-shadow: var(--shadow); }
   .modal.sm { width: 360px; }
@@ -1143,6 +1143,7 @@ let keyPrompt = null;
 /** 弹一次密码输入框（并发的请求共用同一个）；返回 true = 已输入 */
 function promptKey(invalid) {
   if (!keyPrompt) {
+    hideBootBusy();   // 需要密码说明守护已应答:首屏 loading 卡让位给密码门(否则 z95 卡片盖住 z50 密码窗,看着就像卡死)
     keyPrompt = uiPrompt(T('输入面板访问密码'), '', {
       type: 'password', okText: T('进入'),
       message: (invalid ? T('密码不正确，请重新输入。\n') : '')
