@@ -3119,7 +3119,7 @@ function renderUpdateModal(s) {
       break;
     case 'error':
     default:
-      body.innerHTML = T('<div class="hint" style="color:var(--err)">检查更新失败：') + esc(s.error || T('未知错误')) + '</div>';
+      body.innerHTML = T('<div class="hint" style="color:var(--err)">检查更新失败：') + esc(T(s.error || '') || T('未知错误')) + '</div>';
       acts.innerHTML = updActBtn('upd-retry', T('重试'), 'primary') + rel + T('<button class="btn" data-close-uu>取消</button>');
       break;
   }

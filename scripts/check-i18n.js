@@ -6,16 +6,16 @@
  *   - 服务端：logger 消息模板（含/不含 args 都经 t() 渲染）、面板经 T() 渲染的状态/错误/额度标签
  *   - 面板：markup 文本节点、title/placeholder/data-i18n 属性、脚本里经 T() 的动态串
  *
- * 用法：node scripts/check-i18n.js [--full] [--all]
+ * 用法：node scripts/check-i18n.js [--full]
  *   --full  打印每条缺失的完整原文（默认截断 120 字）
- *   --all   连桌面壳 desktop/main.js 一起扫（默认跳过：壳未接 i18n，属后续独立工作项）
  * 退出码：有缺失 = 1，全部覆盖 = 0。CI / 发版检查可挂。
  *
  * 明确豁免（不是漏网）：
  *   - bin/creditdaddy.js —— CLI 终端输出固定简中，不取经 t()，不在面板/日志 i18n 范围
- *   - desktop/main.js  —— 桌面壳（托盘/弹窗）尚未接 i18n（--all 可见清单）
  *   - 语言切换按钮「简 / 繁 / 日」——语言名永远显示母语
  *   - 产品线拉丁名（ZCode / mirasim / Trae / MiniMax …）——品牌名各语言一致，不做词条
+ *   - 「本版主题：」——desktop changelog-brief 解析 CHANGELOG 用的锚点串，不是 UI 文案
+ *   - 「妙手.exe」——进程名匹配的静态比对串，不展示
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -23,9 +23,12 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const FULL = process.argv.includes('--full');
-const ALL = process.argv.includes('--all');
 const CJK = /[一-鿿]/;
-const EXEMPT = new Set(['简', '繁', '日', '妙手.exe']);   // 妙手.exe:进程名匹配用的内部串,不展示
+const EXEMPT = new Set([
+  '简', '繁', '日',
+  '妙手.exe',        // 进程名匹配用的内部串,不展示
+  '本版主题：', '本版主题:',   // desktop changelog-brief 的 CHANGELOG 解析锚点(全/半角两种冒号),不是 UI 文案
+]);
 
 const locales = ['en', 'ja', 'ko', 'zh-TW'];
 const dicts = Object.fromEntries(locales.map((l) => [l, JSON.parse(fs.readFileSync(path.join(ROOT, 'src/i18n', l + '.json'), 'utf8'))]));
@@ -114,7 +117,7 @@ function scanPanel(rel) {
 
 for (const f of fs.readdirSync(path.join(ROOT, 'src'))) if (f.endsWith('.js')) scanJs('src/' + f);
 scanPanel('src/panel.html');
-if (ALL) scanJs('desktop/main.js');
+scanJs('desktop/main.js');   // 桌面壳:与 daemon 共用词典(Tt 包装),同在门禁内
 
 for (const [text, locs] of missing) {
   bad++;

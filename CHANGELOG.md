@@ -25,6 +25,7 @@
   - 日志改为 `logger.info(tag, key, args)` 存 key + 参数，`getLogs()` 按当前语言实时重渲染——切换语言后历史日志一并换语，不用重跑任务。
   - `scripts/gen-i18n-zhtw.js` 用 opencc-js 自动生成繁体词条，不靠人工维护两套。
 - **i18n 词典漏网清零（+289 词条 ×4 语）**：机读全量扫描（`scripts/check-i18n.js`，注释/正则/转义感知的字面量提取）覆盖 src 运行时与面板的全部中文用户面字符串——日志模板、API 错误消息、额度/套餐/窗口/单位标签、密码门与切号确认、空态与 loading 文案、网关地址块、迁移/同步/设备身份全部入典四语；面板 toast 统一过 `T()`，任何词典内服务端错误消息自动随语言切换；额度行渲染点接 `T()`（plan / bottleneckLabel / q.name / unit / pack 名）。zh-TW 继续 opencc-js 转写。`scripts/release-check.sh` 挂为第 15 项硬门禁（有漏词条即失败）。
+- **桌面壳（托盘 / 本机弹窗 / 通知）随面板语言切换（+79 词条 ×4 语）**：桌面 main 进程与内置 daemon 共用同一个 `src/i18n.js` 模块实例——托盘菜单、气泡与系统通知、「保存/更新密码」询问窗、面板密码验证窗、「已保存的密码」管理窗、右键菜单（复制/粘贴/全选/填充密码）、验证码与登录子窗标题、客户端探测错误等全部接入词典；面板切语言经 `settings.json` watcher 400ms 内即时重建托盘。「妙手」英译同时在 en/ja/ko 统一为官方名 **CatPaw**（去 Miaoshou/妙手 混用），桌面壳字符串同步纳入 `check-i18n.js` 默认门禁（豁免只剩 CLI 与解析锚点等非 UI 串）。
 - **日志结构化归档与历史查询**：每条日志除 `.log` 外双写 `daemon-YYYY-MM-DD.jsonl`（`{at, level, tag, msg, key, args}`；gzip、7 天保留期同处）。面板「运行日志」新增「加载历史」按钮：`GET /api/logs?history=1` 突破环形缓冲 300 条上限、按当前语言实时重渲染当日历史。
 - **直接导入 workbuddy-switch 备份（`wb-switch-accounts-*.json`）**：按 JWT issuer 自动识别国内/国际版（无需 provider 字段），从 `auth_raw` / `profile_raw` 还原完整会话结构（`meta.session`），导入后即可在面板一键切号到对应客户端。
 - **面板设置全面重构（贴近按钮的下拉弹出层）**

@@ -26,6 +26,11 @@ let tray = null;
 let quitting = false;
 let boundPort = PORT;
 let daemonMod = null;
+// 桌面壳 i18n:与内置 daemon 共用同一个 src/i18n.js 模块实例(同进程)——面板在
+// 「语言」里切换后经 daemon 的 setLocale 直接生效;托盘等本壳 UI 串在重建时按当前语言渲染。
+// 模块未加载前 Tt 原样返回中文 key(i18n 的约定),托盘最先创建时不受影响。
+let I18N = null;
+const Tt = (text, vars) => (I18N ? I18N.t(text, vars) : text);
 let hideHintShown = false;
 let mainHiddenToTray = false;   // 主窗是否被用户主动收进托盘（区分于子窗关闭的级联隐藏）
 let childClosingAt = 0;         // 最近一次登录子窗 close 的时间戳：主窗 close 落在其后 1.5s 内视为级联而非用户点 X
@@ -60,10 +65,17 @@ async function boot() {
   app.setAppUserModelId('cn.techysy.creditdaddy');
   Menu.setApplicationMenu(null);
   registerAuthWindowIpc();
+  const load = (rel) => import(pathToFileURL(path.join(serverRoot, rel)).href);
+  // 先装 i18n 与 locale(daemon 起来前的错误框/首屏托盘也用得上):与 daemon 同模块实例
+  try {
+    I18N = await load('src/i18n.js');
+    const store0 = await load('src/store.js');
+    const bootLocale = (await store0.loadSettings().catch(() => ({}))).locale;
+    if (bootLocale) I18N.setLocale(bootLocale);
+  } catch { /* 词典不可用时 Tt 原样回中文,不阻塞启动 */ }
   // 托盘最先创建：即使 daemon 启动失败也能从托盘退出
   createTray();
   try {
-    const load = (rel) => import(pathToFileURL(path.join(serverRoot, rel)).href);
     const daemon = await load('src/daemon.js');
     const checkin = await load('src/checkin.js');
     const zauto = await load('src/zcodeAutoClaim.js');
@@ -91,8 +103,16 @@ async function boot() {
     daemon.setRestartHandler(() => restartApp());
     daemonInfo = { version: constants.APP_VERSION, dataDir: store.dataDir(), homepage: constants.PROJECT_URL || DEFAULT_HOMEPAGE };
     checkin.startScheduler();
+    // 面板切语言 → daemon 写 settings.json → 本壳即时重建托盘(同进程 i18n 实例已随 PUT 切走)
+    try {
+      let localeDebounce = null;
+      fs.watch(path.join(store.dataDir(), 'settings.json'), () => {
+        clearTimeout(localeDebounce);
+        localeDebounce = setTimeout(() => refreshTrayMenu(), 400);
+      });
+    } catch { /* watcher 失败不影响功能,托盘在下一次状态变化时仍会重建 */ }
   } catch (err) {
-    dialog.showErrorBox('CreditDaddy 启动失败', String((err && err.stack) || err));
+    dialog.showErrorBox(Tt('CreditDaddy 启动失败'), String((err && err.stack) || err));
     quitting = true;
     app.quit();
     return;
@@ -128,8 +148,8 @@ function setupAutoUpdate() {
       pushUpdateUi({ phase: 'downloaded', version: info.version, via: 'updater' });
       try {
         const n = new Notification({
-          title: 'CreditDaddy 新版本已就绪',
-          body: `v${info.version} 已在后台下载完成，退出 CreditDaddy 时自动安装（也可在托盘菜单里立即重启更新）。`,
+          title: Tt('CreditDaddy 新版本已就绪'),
+          body: Tt('v{v} 已在后台下载完成，退出 CreditDaddy 时自动安装（也可在托盘菜单里立即重启更新）。', { v: info.version }),
           silent: true,
         });
         n.on('click', () => showWin());
@@ -164,7 +184,7 @@ function isNewerVersion(next, cur) {
  */
 async function fetchLatestReleaseFromGitHub() {
   const m = /^https:\/\/github\.com\/([^/]+)\/([^/#?]+)/.exec(daemonInfo.homepage || DEFAULT_HOMEPAGE);
-  if (!m) throw new Error('无法从项目主页识别 GitHub 仓库');
+  if (!m) throw new Error(Tt('无法从项目主页识别 GitHub 仓库'));
   const repo = `${m[1]}/${m[2].replace(/\.git$/, '')}`;
   const res = await net.fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
     headers: { Accept: 'application/vnd.github+json' },
@@ -208,7 +228,7 @@ async function downloadSetupInstaller(rel, onProgress, signal) {
     if (onProgress) onProgress(buf.length, buf.length);
   }
   if (expectedSha && crypto.createHash('sha256').update(buf).digest('hex') !== expectedSha) {
-    throw new Error('安装包 SHA256 校验失败，已放弃安装');
+    throw new Error(Tt('安装包 SHA256 校验失败，已放弃安装'));
   }
   const file = path.join(app.getPath('temp'), rel.asset.name);
   fs.writeFileSync(file, buf);
@@ -228,8 +248,8 @@ async function checkFallbackSilently() {
     refreshTrayMenu();
     try {
       const n = new Notification({
-        title: 'CreditDaddy 有新版本',
-        body: `v${rel.version} 已发布，点这里或从托盘菜单「检查更新…」下载安装。`,
+        title: Tt('CreditDaddy 有新版本'),
+        body: Tt('v{v} 已发布，点这里或从托盘菜单「检查更新…」下载安装。', { v: rel.version }),
         silent: true,
       });
       n.on('click', () => openUpdateUi());
@@ -239,9 +259,9 @@ async function checkFallbackSilently() {
 }
 
 function trayUpdateLabel() {
-  if (updateState.downloaded) return '重启并安装更新';
-  if (updateState.fallback) return updateState.fallback.installerPath ? `安装已下载的 v${updateState.fallback.version}` : `下载并安装新版本 v${updateState.fallback.version}…`;
-  return '检查更新…';
+  if (updateState.downloaded) return Tt('重启并安装更新');
+  if (updateState.fallback) return updateState.fallback.installerPath ? Tt('安装已下载的 v{v}', { v: updateState.fallback.version }) : Tt('下载并安装新版本 v{v}…', { v: updateState.fallback.version });
+  return Tt('检查更新…');
 }
 
 // ── 检查更新面板弹窗：主进程只管状态机，UI 全交给面板（与 CreditDaddy 同一套设计语言） ──
@@ -278,7 +298,7 @@ async function checkUpdateInteractiveUi() {
   if (updateState.downloaded) { pushUpdateUi({ phase: 'downloaded', version: updateState.downloaded, via: 'updater' }); return; }
   if (updateState.fallback) { publishFallbackState(); return; }
   try {
-    if (!autoUpdater) throw new Error('electron-updater 不可用');
+    if (!autoUpdater) throw new Error(Tt('electron-updater 不可用'));
     const result = await autoUpdater.checkForUpdates();
     const v = result && result.updateInfo && result.updateInfo.version;
     if (updateState.downloaded) pushUpdateUi({ phase: 'downloaded', version: updateState.downloaded, via: 'updater' });
@@ -309,7 +329,7 @@ async function updateUiPrimary() {
         quitting = true;
         app.quit();
       } catch (err) {
-        pushUpdateUi({ phase: 'error', error: `启动安装程序失败：${String((err && err.message) || err)}（可手动运行 ${rel.installerPath}）` });
+        pushUpdateUi({ phase: 'error', error: Tt('启动安装程序失败：{err}（可手动运行 {file}）', { err: String((err && err.message) || err), file: rel.installerPath }) });
       }
     }
     return;
@@ -351,14 +371,14 @@ function zcodeCaptchaVerify(cfg) {
     const cleanup = () => { settled = true; if (capWin && !capWin.isDestroyed()) capWin.destroy(); };
     const fail = (msg) => { clearTimeout(timer); if (!settled) { cleanup(); reject(new Error(msg)); } };
     const pass = (param) => { clearTimeout(timer); if (!settled) { cleanup(); resolve({ captchaParam: param, region: cfg.region || '' }); } };
-    const timer = setTimeout(() => fail('等待验证码超时'), 120000);
+    const timer = setTimeout(() => fail(Tt('等待验证码超时')), 120000);
 
     // JSON 内嵌 <script> 时把 < 转义成 \u003c，防止配置值（服务端下发）里出现 </script> 闭合标签注入
     const jsonSafe = (o) => JSON.stringify(o).replace(/</g, '\\u003c');
-    const html = `<!doctype html><meta charset="utf-8"><title>验证码</title><body style="margin:0;background:#fff">
+    const html = `<!doctype html><meta charset="utf-8"><title>${Tt('验证码')}</title><body style="margin:0;background:#fff">
 <script>window.AliyunCaptchaConfig=${jsonSafe({ region: cfg.region || '', prefix: cfg.prefix || '' })};</script>
 <script src="https://o.alicdn.com/captcha-frontend/aliyunCaptcha/AliyunCaptcha.js"><\/script>
-<div id="c"></div><button id="b" hidden>打开验证码</button>
+<div id="c"></div><button id="b" hidden>${Tt('打开验证码')}</button>
 <script>
 window.initAliyunCaptcha({
   SceneId:${jsonSafe(cfg.sceneId)},mode:'popup',language:'zh-CN',showErrorTip:false,
@@ -374,7 +394,7 @@ window.initAliyunCaptcha({
 <\/script></body>`;
 
     capWin = new BrowserWindow({
-      show: false, width: 420, height: 560, title: '完成验证码（ZCode 活动领取）',
+      show: false, width: 420, height: 560, title: Tt('完成验证码（ZCode 活动领取）'),
       icon: iconPath(), autoHideMenuBar: true,
       webPreferences: { session: session.fromPartition('zcap-' + crypto.randomUUID()), contextIsolation: true, sandbox: true },
     });
@@ -382,9 +402,9 @@ window.initAliyunCaptcha({
       const msg = typeof message === 'string' ? message : (e && e.message) || '';
       if (msg.startsWith('ZCAP:OK:')) pass(msg.slice(8));
       else if (msg === 'ZCAP:INTERACTIVE') { if (capWin && !capWin.isDestroyed() && !capWin.isVisible()) capWin.show(); }
-      else if (msg.startsWith('ZCAP:ERR')) fail('验证码组件加载失败');
+      else if (msg.startsWith('ZCAP:ERR')) fail(Tt('验证码组件加载失败'));
     });
-    capWin.on('closed', () => fail('验证码未完成'));
+    capWin.on('closed', () => fail(Tt('验证码未完成')));
     capWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
   });
 }
@@ -399,26 +419,26 @@ function zcodePlanCompletion({ captchaCfg, jwt, rawBody, headers = {} }) {
   return new Promise((resolve, reject) => {
     let capWin = null;
     let settled = false;
-    const timer = setTimeout(() => { if (!settled) { settled = true; if (capWin && !capWin.isDestroyed()) capWin.destroy(); reject(new Error('网关补全超时（120s）')); } }, 120000);
+    const timer = setTimeout(() => { if (!settled) { settled = true; if (capWin && !capWin.isDestroyed()) capWin.destroy(); reject(new Error(Tt('网关补全超时（120s）'))); } }, 120000);
     const done = (fn, arg) => { if (!settled) { settled = true; clearTimeout(timer); if (capWin && !capWin.isDestroyed()) capWin.destroy(); fn(arg); } };
 
     const jsonSafe = (o) => JSON.stringify(o).replace(/</g, '<');
     capWin = new BrowserWindow({
-      show: false, width: 460, height: 600, title: 'ZCode 额度网关（后台验证）',
+      show: false, width: 460, height: 600, title: Tt('ZCode 额度网关（后台验证）'),
       icon: iconPath(), autoHideMenuBar: true,
       webPreferences: { session: session.fromPartition('zcap-' + crypto.randomUUID()), contextIsolation: true, sandbox: true },
     });
     capWin.webContents.on('console-message', (e, level, message) => {
       const msg = typeof message === 'string' ? message : (e && e.message) || '';
       if (msg.startsWith('ZGW:RESP:')) {
-        try { done(resolve, JSON.parse(msg.slice(9))); } catch { done(reject, new Error('网关响应解析失败')); }
+        try { done(resolve, JSON.parse(msg.slice(9))); } catch { done(reject, new Error(Tt('网关响应解析失败'))); }
       } else if (msg.startsWith('ZGW:ERR:')) {
         done(reject, new Error(msg.slice(8)));
       } else if (msg === 'ZCAP:INTERACTIVE') {
         if (capWin && !capWin.isDestroyed() && !capWin.isVisible()) capWin.show();
       }
     });
-    capWin.on('closed', () => done(reject, new Error('网关窗口提前关闭')));
+    capWin.on('closed', () => done(reject, new Error(Tt('网关窗口提前关闭'))));
 
     // 先落本站拿真实来源与 cookie，再在页内跑验证码 + 同源补全
     if (headers['User-Agent']) capWin.webContents.setUserAgent(headers['User-Agent']);
@@ -466,8 +486,8 @@ function zcodePlanCompletion({ captchaCfg, jwt, rawBody, headers = {} }) {
           console.log('ZGW:ERR:' + (e && e.message || String(e)));
         }
       })()`;
-      capWin.webContents.executeJavaScript(pageJs).catch((err) => done(reject, new Error('页内脚本执行失败：' + err.message)));
-    }).catch((err) => done(reject, new Error('zcode.z.ai 打开失败：' + err.message)));
+      capWin.webContents.executeJavaScript(pageJs).catch((err) => done(reject, new Error(Tt('页内脚本执行失败：') + err.message)));
+    }).catch((err) => done(reject, new Error(Tt('zcode.z.ai 打开失败：') + err.message)));
   });
 }
 
@@ -487,7 +507,7 @@ async function openIncognitoWindow(url) {
   const authWin = new BrowserWindow({
     width: 480,
     height: 720,
-    title: '登录（隐私窗口）',
+    title: Tt('登录（隐私窗口）'),
     icon: iconPath(),
     autoHideMenuBar: true,
     // 故意不设 parent：Windows 的 owner 级联（electron#26031/#12142）会在子窗销毁时连带
@@ -642,7 +662,7 @@ function offerPasswordSave({ origin, username, password }) {
   if (!store.isAvailable()) {
     if (!pwDisabledNotified) {
       pwDisabledNotified = true;
-      notify('密码管理已停用', '系统凭据加密不可用，无法安全保存密码（不会写明文到磁盘）。');
+      notify(Tt('密码管理已停用'), Tt('系统凭据加密不可用，无法安全保存密码（不会写明文到磁盘）。'));
     }
     return;
   }
@@ -668,7 +688,7 @@ function promptSavePassword(payload) {
     height: 256,
     parent: (win && !win.isDestroyed()) ? win : undefined,
     alwaysOnTop: true,
-    title: payload.isUpdate ? '更新密码？' : '保存密码？',
+    title: payload.isUpdate ? Tt('更新密码？') : Tt('保存密码？'),
     resizable: false,
     minimizable: false,
     maximizable: false,
@@ -682,20 +702,20 @@ function promptSavePassword(payload) {
 <body style="font-family:inherit;margin:0;padding:14px;display:flex;flex-direction:column;gap:8px;background:transparent">
 <div style="font-size:14px;font-weight:600">PW_TITLE</div>
 <div style="display:flex;gap:8px;align-items:center">
-<span style="width:56px;font-size:12px;color:#888">站点</span>
+<span style="width:56px;font-size:12px;color:#888">${Tt('站点')}</span>
 <input value="SITE_VAL" readonly style="flex:1;min-width:0;padding:5px 10px;font-size:13px;border:1px solid #8883;border-radius:6px;color:#555;background:transparent">
 </div>
 <div style="display:flex;gap:8px;align-items:center">
-<span style="width:56px;font-size:12px;color:#888">用户名</span>
-<input id="u" value="USER_VAL" placeholder="用户名" style="flex:1;min-width:0;padding:5px 10px;font-size:13px;border:1px solid #8883;border-radius:6px;outline:none">
+<span style="width:56px;font-size:12px;color:#888">${Tt('用户名')}</span>
+<input id="u" value="USER_VAL" placeholder="${Tt('用户名')}" style="flex:1;min-width:0;padding:5px 10px;font-size:13px;border:1px solid #8883;border-radius:6px;outline:none">
 </div>
 <div style="display:flex;gap:8px;align-items:center">
-<span style="width:56px;font-size:12px;color:#888">密码</span>
+<span style="width:56px;font-size:12px;color:#888">${Tt('密码')}</span>
 <input id="p" type="password" value="PASS_VAL" style="flex:1;min-width:0;padding:5px 10px;font-size:13px;border:1px solid #8883;border-radius:6px;outline:none">
 </div>
 <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
-<button id="never" style="padding:5px 12px;font-size:13px;border:1px solid #8883;border-radius:6px;cursor:pointer;background:transparent">永不保存此站点</button>
-<button id="no" style="padding:5px 12px;font-size:13px;border:1px solid #8883;border-radius:6px;cursor:pointer;background:transparent">暂不</button>
+<button id="never" style="padding:5px 12px;font-size:13px;border:1px solid #8883;border-radius:6px;cursor:pointer;background:transparent">${Tt('永不保存此站点')}</button>
+<button id="no" style="padding:5px 12px;font-size:13px;border:1px solid #8883;border-radius:6px;cursor:pointer;background:transparent">${Tt('暂不')}</button>
 <button id="ok" style="padding:5px 14px;font-size:13px;border:1px solid #8883;border-radius:6px;cursor:pointer">SAVE_LBL</button>
 </div>
 <script>
@@ -715,11 +735,11 @@ document.getElementById('no').addEventListener('click', () => window.close());
 </script>
 </body></html>`;
   const filled = html
-    .replace('PW_TITLE', esc(payload.isUpdate ? '更新密码？' : '保存密码？'))
+    .replace('PW_TITLE', esc(payload.isUpdate ? Tt('更新密码？') : Tt('保存密码？')))
     .replace('SITE_VAL', esc(payload.origin))
     .replace('USER_VAL', esc(payload.username))
     .replace('PASS_VAL', esc(payload.password))
-    .replace('SAVE_LBL', esc(payload.isUpdate ? '更新' : '保存'));
+    .replace('SAVE_LBL', esc(payload.isUpdate ? Tt('更新') : Tt('保存')));
   savePwWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(filled))
     .catch((e) => { console.log('pw save prompt load failed: ' + e.message); try { savePwWin.close(); } catch { /* ignore */ } });
   savePwWin.on('closed', () => { savePwWin = null; savePwPending = null; });
@@ -800,7 +820,7 @@ function verifyPanelKey(key) {
       parent: (win && !win.isDestroyed()) ? win : undefined,
       modal: true,
       alwaysOnTop: true,
-      title: '验证面板访问密码',
+      title: Tt('验证面板访问密码'),
       resizable: false,
       minimizable: false,
       maximizable: false,
@@ -811,13 +831,13 @@ function verifyPanelKey(key) {
     attachShellContextMenu(pwVerifyWin);
     const html = `<!doctype html><html><head><meta charset="utf-8"></head>
 <body style="font-family:inherit;margin:0;padding:14px;display:flex;flex-direction:column;gap:10px;background:transparent">
-<div style="font-size:14px;font-weight:600">输入面板访问密码</div>
-<div style="font-size:12px;color:#888">已保存的密码需要面板访问密码才能查看。</div>
-<input id="k" type="password" autofocus placeholder="面板访问密码" style="flex:1;min-width:0;padding:6px 10px;font-size:13px;border:1px solid #8883;border-radius:6px;outline:none">
-<div id="err" style="font-size:12px;color:#c0392b;display:none">密码不正确</div>
+<div style="font-size:14px;font-weight:600">${Tt('输入面板访问密码')}</div>
+<div style="font-size:12px;color:#888">${Tt('已保存的密码需要面板访问密码才能查看。')}</div>
+<input id="k" type="password" autofocus placeholder="${Tt('面板访问密码')}" style="flex:1;min-width:0;padding:6px 10px;font-size:13px;border:1px solid #8883;border-radius:6px;outline:none">
+<div id="err" style="font-size:12px;color:#c0392b;display:none">${Tt('密码不正确')}</div>
 <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:2px">
-<button id="cancel" style="padding:5px 12px;font-size:13px;border:1px solid #8883;border-radius:6px;cursor:pointer;background:transparent">取消</button>
-<button id="ok" style="padding:5px 14px;font-size:13px;border:1px solid #8883;border-radius:6px;cursor:pointer">确定</button>
+<button id="cancel" style="padding:5px 12px;font-size:13px;border:1px solid #8883;border-radius:6px;cursor:pointer;background:transparent">${Tt('取消')}</button>
+<button id="ok" style="padding:5px 14px;font-size:13px;border:1px solid #8883;border-radius:6px;cursor:pointer">${Tt('确定')}</button>
 </div>
 <script>
 const { ipcRenderer } = require('electron');
@@ -859,7 +879,7 @@ async function promptManagePasswords() {
   // 设了面板访问密码时，必须先验证才能查看明文——托盘菜单不能绕过面板密码
   const needKey = daemonMod && typeof daemonMod.panelKeyRequired === 'function' && daemonMod.panelKeyRequired();
   if (needKey && !(await verifyPanelKey())) {
-    notify('密码管理已锁定', '需要输入面板访问密码才能查看已保存的密码。');
+    notify(Tt('密码管理已锁定'), Tt('需要输入面板访问密码才能查看已保存的密码。'));
     return;
   }
   pwMgrWin = new BrowserWindow({
@@ -867,7 +887,7 @@ async function promptManagePasswords() {
     height: 520,
     parent: (win && !win.isDestroyed()) ? win : undefined,
     alwaysOnTop: true,
-    title: '已保存的密码',
+    title: Tt('已保存的密码'),
     autoHideMenuBar: true,
     show: true,
     webPreferences: { contextIsolation: false, nodeIntegration: true, sandbox: false },
@@ -884,7 +904,7 @@ const { ipcRenderer, clipboard } = require('electron');
 const BTN = 'padding:3px 10px;font-size:12px;border:1px solid #8883;border-radius:6px;cursor:pointer;background:transparent';
 const INP = 'flex:1;min-width:0;padding:4px 8px;font-size:13px;border:1px solid #8883;border-radius:6px;outline:none';
 const ORIGIN = 'flex-basis:100%;font-size:11px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
-const ERRS = { invalidOrigin: '站点地址无效', needPw: '密码不能为空', failed: '操作失败' };
+const ERRS = { invalidOrigin: '${Tt('站点地址无效')}', needPw: '${Tt('密码不能为空')}', failed: '${Tt('操作失败')}' };
 const errBox = document.getElementById('err');
 function showErr(key) { errBox.textContent = ERRS[key] || ERRS.failed; errBox.style.display = 'block'; }
 function clearErr() { errBox.style.display = 'none'; }
@@ -900,33 +920,33 @@ function row(it) {
     const un = document.createElement('input');
     un.style.cssText = INP + ';flex:2';
     un.value = it.username || '';
-    un.placeholder = '用户名';
+    un.placeholder = '${Tt('用户名')}';
     const pin = document.createElement('input');
     pin.style.cssText = INP + ';flex:2';
     pin.type = 'password';
-    pin.placeholder = '留空保持原密码';
+    pin.placeholder = '${Tt('留空保持原密码')}';
     let revealed = false;
     const show = document.createElement('button');
     show.style.cssText = BTN;
-    show.textContent = '显示';
+    show.textContent = '${Tt('显示')}';
     show.onclick = () => {
         if (!revealed) {
             const r = rpc({ action: 'reveal', id: it.id });
             if (!r.ok) return showErr(r.error || 'failed');
             pin.value = String(r.plain || '');
             pin.type = 'text';
-            show.textContent = '隐藏';
+            show.textContent = '${Tt('隐藏')}';
             revealed = true;
         } else {
             pin.value = '';
             pin.type = 'password';
-            show.textContent = '显示';
+            show.textContent = '${Tt('显示')}';
             revealed = false;
         }
     };
     const save = document.createElement('button');
     save.style.cssText = BTN;
-    save.textContent = '保存';
+    save.textContent = '${Tt('保存')}';
     save.onclick = () => {
         const r = rpc({ action: 'update', id: it.id, username: un.value, password: pin.value });
         if (!r.ok) return showErr(r.error || 'failed');
@@ -935,20 +955,20 @@ function row(it) {
     };
     const copy = document.createElement('button');
     copy.style.cssText = BTN;
-    copy.textContent = '复制';
+    copy.textContent = '${Tt('复制')}';
     copy.onclick = () => {
         const r = rpc({ action: 'reveal', id: it.id });
         if (!r.ok) return showErr(r.error || 'failed');
         clipboard.writeText(String(r.plain || ''));
-        copy.textContent = '已复制';
-        setTimeout(() => { copy.textContent = '复制'; }, 1200);
+        copy.textContent = '${Tt('已复制')}';
+        setTimeout(() => { copy.textContent = '${Tt('复制')}'; }, 1200);
     };
     const del = document.createElement('button');
     del.style.cssText = BTN;
-    del.textContent = '删除';
+    del.textContent = '${Tt('删除')}';
     del.onclick = () => {
         // 两步删除：第一次点变「确认删除？」，render 重建节点自动复位
-        if (del.dataset.arm !== '1') { del.dataset.arm = '1'; del.textContent = '确认删除？'; return; }
+        if (del.dataset.arm !== '1') { del.dataset.arm = '1'; del.textContent = '${Tt('确认删除？')}'; return; }
         rpc({ action: 'remove', id: it.id });
         render();
     };
@@ -960,24 +980,24 @@ function render() {
     box.textContent = '';
     const res = rpc({ action: 'list' });
     const list = Array.isArray(res.list) ? res.list : [];
-    if (!list.length) { box.textContent = '还没有已保存的密码——可在登录时保存，或在上方手动添加。'; return; }
+    if (!list.length) { box.textContent = '${Tt('还没有已保存的密码——可在登录时保存，或在上方手动添加。')}'; return; }
     for (const it of list) box.appendChild(row(it));
 }
 // 手动添加行（origin/用户名/密码）
 const addBox = document.getElementById('add');
 const aO = document.createElement('input');
 aO.style.cssText = INP + ';flex-basis:100%';
-aO.placeholder = '站点（如 https://qoder.com）';
+aO.placeholder = '${Tt('站点（如 https://qoder.com）')}';
 const aU = document.createElement('input');
 aU.style.cssText = INP;
-aU.placeholder = '用户名';
+aU.placeholder = '${Tt('用户名')}';
 const aP = document.createElement('input');
 aP.style.cssText = INP;
 aP.type = 'password';
-aP.placeholder = '密码';
+aP.placeholder = '${Tt('密码')}';
 const addBtn = document.createElement('button');
 addBtn.style.cssText = BTN;
-addBtn.textContent = '添加';
+addBtn.textContent = '${Tt('添加')}';
 addBtn.onclick = () => {
     if (!aP.value) return showErr('needPw');
     const r = rpc({ action: 'add', origin: aO.value.trim(), username: aU.value, password: aP.value });
@@ -1032,9 +1052,9 @@ ipcMain.on('pw:mgr', (e, msg) => {
 function attachShellContextMenu(target) {
   target.webContents.on('context-menu', (e, params) => {
     const items = [
-      { label: '复制', enabled: params.editFlags.canCopy, click: () => target.webContents.copy() },
-      { label: '粘贴', enabled: params.editFlags.canPaste, click: () => target.webContents.paste() },
-      { label: '全选', enabled: params.editFlags.canSelectAll, click: () => target.webContents.selectAll() },
+      { label: Tt('复制'), enabled: params.editFlags.canCopy, click: () => target.webContents.copy() },
+      { label: Tt('粘贴'), enabled: params.editFlags.canPaste, click: () => target.webContents.paste() },
+      { label: Tt('全选'), enabled: params.editFlags.canSelectAll, click: () => target.webContents.selectAll() },
     ];
     try {
       const origin = params.frameURL ? new URL(params.frameURL).origin : null;
@@ -1042,7 +1062,7 @@ function attachShellContextMenu(target) {
         const store = getPwStore();
         if (store.isAvailable()) {
           const fillItems = store.listForOrigin(origin).map((en) => ({
-            label: '填充密码：' + (en.username || '（无用户名）'),
+            label: Tt('填充密码：{user}', { user: en.username || Tt('（无用户名）') }),
             click: () => {
               try {
                 target.webContents.send('pw:fill', { origin, username: en.username, password: store.reveal(en.id) });
@@ -1076,7 +1096,7 @@ function registerAuthWindowIpc() {
     };
     try {
       const m = /^https?:\/\/github\.com\/([^/]+)\/([^/#?]+)/.exec(daemonInfo.homepage || DEFAULT_HOMEPAGE);
-      if (!m) throw new Error('无法从项目主页识别 GitHub 仓库');
+      if (!m) throw new Error(Tt('无法从项目主页识别 GitHub 仓库'));
       const repo = `${m[1]}/${m[2].replace(/\.git$/, '')}`;
       const res = await net.fetch(`https://api.github.com/repos/${repo}/releases?per_page=6`, {
         headers: { Accept: 'application/vnd.github+json' },
@@ -1084,7 +1104,7 @@ function registerAuthWindowIpc() {
       });
       if (!res.ok) throw new Error(`GitHub API 返回 HTTP ${res.status}`);
       const rels = await res.json();
-      if (!Array.isArray(rels) || !rels.length) throw new Error('Releases 列表为空');
+      if (!Array.isArray(rels) || !rels.length) throw new Error(Tt('Releases 列表为空'));
       return { ok: true, online: true, sections: rels.slice(0, 6).map((r) => parseBody(r.tag_name, r.body || '', r.published_at)) };
     } catch {
       // 回落：解析随包 CHANGELOG.md（打包时快照）
@@ -1114,7 +1134,7 @@ function registerAuthWindowIpc() {
   // 唤起小窗显示更新日志摘要（任何入口统一走 openChangelogBrief；IPC 只注册一次）
   ipcMain.handle('open-changelog-brief', () => openChangelogBrief());  ipcMain.handle('open-auth-window', async (_e, url) => {
     if (typeof url !== 'string' || !url.toLowerCase().startsWith('https://')) {
-      return { ok: false, error: '只允许打开 https 链接' };
+      return { ok: false, error: Tt('只允许打开 https 链接') };
     }
     try { await openIncognitoWindow(url); return { ok: true }; }
     catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
@@ -1143,7 +1163,7 @@ function registerAuthWindowIpc() {
         const err = await shell.openPath(cand);
         if (!err) return { ok: true };
       }
-      return { ok: false, error: '未找到 Mirasim 客户端可执行文件' };
+      return { ok: false, error: Tt('未找到 Mirasim 客户端可执行文件') };
     } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
   });
   // 妙手页「打开客户端」（本机安装于 %LOCALAPPDATA%\妙手\妙手.exe）
@@ -1156,7 +1176,7 @@ function registerAuthWindowIpc() {
         const err = await shell.openPath(cand);
         if (!err) return { ok: true };
       }
-      return { ok: false, error: '未找到妙手客户端可执行文件' };
+      return { ok: false, error: Tt('未找到妙手客户端可执行文件') };
     } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
   });
   // Trae 页「打开客户端」+ 切换后自动重开（安装位置随版本不同：TRAE SOLO CN / Trae CN / TRAE SOLO / Trae）
@@ -1173,7 +1193,7 @@ function registerAuthWindowIpc() {
           if (!err) return { ok: true };
         }
       }
-      return { ok: false, error: '未找到 Trae 客户端可执行文件' };
+      return { ok: false, error: Tt('未找到 Trae 客户端可执行文件') };
     } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
   });
   // MiniMax Code 页「打开客户端」
@@ -1187,7 +1207,7 @@ function registerAuthWindowIpc() {
         const err = await shell.openPath(cand);
         if (!err) return { ok: true };
       }
-      return { ok: false, error: '未找到 MiniMax Code 客户端可执行文件' };
+      return { ok: false, error: Tt('未找到 MiniMax Code 客户端可执行文件') };
     } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
   });
 }
@@ -1246,7 +1266,7 @@ function createWindow() {
     win.hide();
     if (!hideHintShown) {
       hideHintShown = true;
-      notify('CreditDaddy 仍在后台运行', '已最小化到系统托盘，自动领取不会中断。单击托盘图标可重新打开面板。');
+      notify(Tt('CreditDaddy 仍在后台运行'), Tt('已最小化到系统托盘，自动领取不会中断。单击托盘图标可重新打开面板。'));
     }
   });
   win.on('closed', () => { win = null; });
@@ -1275,7 +1295,7 @@ function notify(title, body) {
 }
 
 async function checkinNow() {
-  tray.setToolTip('CreditDaddy - 正在领取…');
+  tray.setToolTip(Tt('CreditDaddy - 正在领取…'));
   try {
     const panelKey = daemonMod && typeof daemonMod.getPanelKey === 'function' ? daemonMod.getPanelKey() : '';
     const res = await fetch('http://127.0.0.1:' + boundPort + '/api/checkin', {
@@ -1285,10 +1305,10 @@ async function checkinNow() {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error((data && data.error) || 'HTTP ' + res.status);
-    lastSummary = data.summary || '领取完成';
-    notify('CreditDaddy 领取完成', lastSummary);
+    lastSummary = data.summary || Tt('领取完成');
+    notify(Tt('CreditDaddy 领取完成'), lastSummary);
   } catch (e) {
-    lastSummary = '领取失败：' + (e && e.message);
+    lastSummary = Tt('领取失败：{err}', { err: (e && e.message) });
     notify('CreditDaddy', lastSummary);
   }
   refreshTrayMenu();
@@ -1316,27 +1336,27 @@ function createTray() {
 
 function refreshTrayMenu() {
   if (!tray) return;
-  tray.setToolTip('CreditDaddy v' + daemonInfo.version + ' - 后台自动领取运行中' + (lastSummary ? '\n' + lastSummary : ''));
+  tray.setToolTip(Tt('CreditDaddy v{v} - 后台自动领取运行中', { v: daemonInfo.version }) + (lastSummary ? '\n' + lastSummary : ''));
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'CreditDaddy v' + daemonInfo.version, enabled: false },
-    { label: '面板 127.0.0.1:' + boundPort, enabled: false },
+    { label: Tt('面板 {addr}', { addr: '127.0.0.1:' + boundPort }), enabled: false },
     ...(lastSummary ? [{ label: lastSummary.slice(0, 60), enabled: false }] : []),
-    ...(updateState.downloaded ? [{ label: '新版本 v' + updateState.downloaded + ' 已就绪，重启即更新', enabled: false }] : []),
+    ...(updateState.downloaded ? [{ label: Tt('新版本 v{v} 已就绪，重启即更新', { v: updateState.downloaded }), enabled: false }] : []),
     { type: 'separator' },
-    { label: '打开面板', click: () => showWin() },
-    { label: '立即领取全部账号', click: () => { checkinNow(); } },
+    { label: Tt('打开面板'), click: () => showWin() },
+    { label: Tt('立即领取全部账号'), click: () => { checkinNow(); } },
     { type: 'separator' },
-    { label: '开机自启（后台运行）', type: 'checkbox', checked: autoLaunchEnabled(), click: (item) => setAutoLaunch(item.checked) },
-    { label: '已保存的密码…', click: () => promptManagePasswords() },
-    { label: '打开数据目录', enabled: Boolean(daemonInfo.dataDir), click: () => shell.openPath(daemonInfo.dataDir) },
-    { label: '项目主页（GitHub）', click: () => shell.openExternal(daemonInfo.homepage) },
+    { label: Tt('开机自启（后台运行）'), type: 'checkbox', checked: autoLaunchEnabled(), click: (item) => setAutoLaunch(item.checked) },
+    { label: Tt('已保存的密码…'), click: () => promptManagePasswords() },
+    { label: Tt('打开数据目录'), enabled: Boolean(daemonInfo.dataDir), click: () => shell.openPath(daemonInfo.dataDir) },
+    { label: Tt('项目主页（GitHub）'), click: () => shell.openExternal(daemonInfo.homepage) },
     { type: 'separator' },
     ...(autoUpdater
       ? [{ label: trayUpdateLabel(), click: () => { openUpdateUi(); } }]
       : []),
-    { label: '更新日志…', click: () => openChangelogBrief() },
-    { label: '重启 CreditDaddy', click: () => restartApp() },
-    { label: '退出 CreditDaddy', click: () => { quitting = true; app.quit(); } },
+    { label: Tt('更新日志…'), click: () => openChangelogBrief() },
+    { label: Tt('重启 CreditDaddy'), click: () => restartApp() },
+    { label: Tt('退出 CreditDaddy'), click: () => { quitting = true; app.quit(); } },
   ]));
 }
 
