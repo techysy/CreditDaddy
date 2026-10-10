@@ -6,83 +6,73 @@
 
 ## [Unreleased]
 
-## [1.4.0] (2026-10-09)
+## [1.4.0] (2026-10-10)
 
-本版主题:**面板与日志多语言（5 语）+ WorkBuddy 本机凭据校验与 workbuddy-switch 备份导入**。无破坏性变更,可直接升级。
+本版主题：**面板与运行日志多语言（5 语）+ 面板设置全面重构 + MiniMax / WorkBuddy 凭据健壮化 + 发版前安全加固**。新增 ⚠️ 升级注意（含两项行为变更），其余为向后兼容增量。
+
+### ⚠️ 升级注意（先看这里）
+
+- **LAN 白名单通配规则收严（行为变更）**：网关局域网白名单的 `*` 通配此前是裸前缀匹配，`192.168.31.1*` 会把 `.100-.199` 整段一起放行。本版起**通配段必须以 `.` 结尾**（`192.168.31.*`）或写精确 IP——已有前缀写法的白名单升级后不再匹配，请改成点段尾写法。
+- **面板 fail-closed（行为变更）**：监听 `0.0.0.0`（网关开局域网、fnOS / NAS 部署）但**未设面板访问密码**时，面板 `/api/*` 与首页一律 403（此前仅 Host 校验 + 一行警告）。**升级后从局域网访问需要先在「面板设置 → 通用 → 面板访问密码」设密码**；本机桌面端与托盘操作不受影响。
+- **面板访问密码 scrypt 化（不可回滚迁移）**：密码改为 `panelKeyHash = scrypt:<salt>:<hash>` 落盘，首次启动自动把旧的明文 `panelKey` 迁移为哈希并清除明文。凡在 `settings.json` 里直接读过 `panelKey` 的第三方流程需改用面板接口；面板本身的照常。
+- **MiniMax 网关「一主一备」行为变更**：两个账号从逐请求交替改为**粘性主力选型**（详见修复）——看到主力固定且一段时间不切换，属预期行为而非异常。
+- **发行产物改名**：统一加平台段（`CreditDaddy-Win-Setup-1.4.0.exe`、`CreditDaddy-Mac-Setup-<ver>-<arch>.dmg`、`CreditDaddy-FnOS(-Window)-<ver>-<arch>.fpk`），下载路径变化；应用内更新代码兼容新旧名，不受影响。
 
 ### ✨ 新功能
 
-- **面板与运行日志国际化**：内置 **简体中文 / 繁體中文 / English / 日本語 / 한국어** 五套词条，面板顶部可切换，选择持久化在 `settings.json`（CLI / 桌面端 / 网页面板共用同一份设置）。
-  - **以中文原文为 key**：`t('...', vars)` 缺词条时直接回落中文原文，任何未覆盖的字符串都不会显示空白；`{name}` 一类占位符由调用方注入。
-  - **面板改造**：`src/panel.html` 静态文案改挂 `data-i18n`，运行时 `applyDictFromServer()` 经 `/api/i18n` 拉词条并回填，JS 动态拼接的文案统一走 `T()`。
-  - **日志同样可翻译**：日志改为 `logger.info(tag, key, args)` 存 key + 参数，`getLogs()` 按当前语言实时重渲染，切换语言后历史日志一并变中文/英文/日文/韩文，不用重跑任务。
-  - **繁简转换自动化**：`scripts/gen-i18n-zhtw.js` 用 opencc-js（cn→tw）生成 `src/i18n/zh-TW.json`，中文词条改动后一条命令重生成，不靠人手维护两套。
-  - 词条文件随包分发（`src/i18n/{en,ja,ko,zh-TW}.json`），离线也可用。
-- **直接导入 workbuddy-switch 导出的明文备份**：面板「导入文件」现在能吃 `wb-switch-accounts-*.json`，无需手工补 `provider` 字段。
-  - **按 JWT issuer 自动判定**：这类备份没有 provider 字段，改为解码 token 的 `iss` 自动识别 `workbuddy`（`www.workbuddy.cn` / `www.codebuddy.cn` / `copilot.tencent.com`）与 `workbuddy-intl`（`www.workbuddy.ai` / `www.workbuddy.ai` / `workbuddy.cc`）。
-  - **还原会话结构**：从 `auth_raw` / `profile_raw` 复原 `meta.session`（account / auth / accounts / allAccounts），导入的账号在面板里**可以直接一键切到 WorkBuddy 客户端**，而不是只躺在账号列表里。
-  - 备份里的 `domain` / `enterpriseId` / `refreshExpiresAt` 一并带回，导入后仍可正常续期。
+- **面板与运行日志五语国际化（简 / 繁 / EN / 日 / 韩）**
+  - 词条以中文原文为 key 兜底（缺词条回原文，永不空白），五套词条随包分发；「外观」下方新增语言分组，聚合菜单与面板设置两处入口共用同一切换逻辑。
+  - 日志改为 `logger.info(tag, key, args)` 存 key + 参数，`getLogs()` 按当前语言实时重渲染——切换语言后历史日志一并换语，不用重跑任务。
+  - `scripts/gen-i18n-zhtw.js` 用 opencc-js 自动生成繁体词条，不靠人工维护两套。
+- **日志结构化归档与历史查询**：每条日志除 `.log` 外双写 `daemon-YYYY-MM-DD.jsonl`（`{at, level, tag, msg, key, args}`；gzip、7 天保留期同处）。面板「运行日志」新增「加载历史」按钮：`GET /api/logs?history=1` 突破环形缓冲 300 条上限、按当前语言实时重渲染当日历史。
+- **直接导入 workbuddy-switch 备份（`wb-switch-accounts-*.json`）**：按 JWT issuer 自动识别国内/国际版（无需 provider 字段），从 `auth_raw` / `profile_raw` 还原完整会话结构（`meta.session`），导入后即可在面板一键切号到对应客户端。
+- **面板设置全面重构（贴近按钮的下拉弹出层）**
+  - 从全屏遮罩居中弹窗改为贴近齿轮下拉展开（`.setpop`，与聚合菜单同一视觉语言）；撤掉与菜单重复的项，「通用 / 组件与排序」两页签，默认回到通用。
+  - **通用页新增**：全局自动签到开关与频率（1/2/4/8 小时，PUT 后守护立即重调度）；WorkBuddy 国际版活跃请求开关（关闭时定时轮与手动领取跳过全部 `workbuddy-intl` 账号，服务端过滤）；日志显示方式（默认展开/收起，本机记忆）；面板访问密码（设置 / 修改 / 关闭）。
+  - **组件与排序**：组件显隐改点按整体切换（高亮 = 显示、置灰 = 隐藏）+ 拖拽重排（不再 ↑↓ 按钮）；排序提示语同步去掉箭头。
+- **首次加载态**：面板首屏等待守护进程数据时显示居中的加载卡片（静态 HTML 立即可见），数据到达或 9 秒兜底后淡出；守护不可达时收起来并报错而非永久卡住。
+- **语言切换加载态**：点语言分段立刻亮出「正在切换语言…」遮罩卡片，落盘与整页刷新期间常亮；失败收起、原语言保留。
+- **头部主题按钮**：亮 ↔ 暗一键反转（每次点击必有视觉反馈），「跟随系统」不进按钮循环（菜单里走三态分段控件），按钮图标/提示按实际生效的亮暗显示。
+
+### 🛡️ 安全与健壮化
+
+- **刷新并发互斥与失效链熔断推广（`src/refreshGuard.js`）**：`minimaxClient` 原生的 in-flight dedupe + refreshToken 指纹熔断抽为公共守卫，workbuddy / mirasim 接入同一模式——面板额度查询与签到轮同链抢刷触发 `12153` / `invalid_grant` 的误杀从根消失。
+- **跨进程单实例守护（ALREADY_RUNNING）**：启动前经 `daemon.json` pid + `/api/status` 探活（加一拍重试，防启动途中的瞬时假阴），有活实例拒绝起第二份。runtime 写入推广到前台 / 后台 / 桌面三种启动方式——两个实例共用 dataDir 时 accounts / state / settings 的跨进程覆盖被拆除。
+- **面板访问密码三重加固**：scrypt 哈希落盘（见升级注意）；**连错 10 次锁 5 分钟**（按源 IP 退避）；桌面壳寄主改走 `getSessionKey()`（进程随机钥，重启失效）与 `verifyPanelPassword()`（走 scrypt 比较）——hash 模式下桌面壳内凭证不再依赖明文存在。
+- **LAN 白名单通配规则收严**：三个网关所有 `e.endsWith('*')` 的通配必须承载点段尾（`192.168.31.*`）；不再支持裸前缀写法（见升级注意的行为变更行）。
+- **Trae 网关事件流与额度权重**：事件流接入 `fetchJsonRace`（连接段 15 秒限时 + 出站代理统一），不再裸 `fetch` 无超时；quota 权重缓存改为 10 分钟 TTL + 失败保留旧快照。
+- **fetchJsonRace 默认 `redirect: 'manual'`**：301/302 不再把 POST 转 GET 丢 body、307 不再原样重放凭据头的新地址（涉及三个网关的大 body 请求）。
+- **Trae 网关 stop_reason**：流式与非流式 EOF / 断流 / reader 抛错统一报 `interrupted`，不再伪装 `end_turn`——客户端不再把截断的字当完整答案。
+- **tenrouter.json 配置落盘走 store.atomicWrite**（Windows 杀软瞬时占文件直接 EPERM 的坑改掉）；`saveConfig` 改为 async，`withConfig` 串行加 await。
+- **settings / state 损坏 JSON 读侧回退同目录 `.bak`**（断电半写不再让守护起不来），仍失败才以原错误上抛（不静默重置）。
+- **ZCode 1005（名额已满）消费 `err.nextAt`**：以服务端 `plan.ends_at` 把该账号挂进跳过窗口（进程内缓存 + `account.meta.zcodeClaimNextAt` 双轨），自动轮询在该时间点前不再空打。
 
 ### 🐛 修复
 
-- **额度进度条渲染不全 / 主题分段控件被压成绿条**：`.seg` 这个类名被**两个互不相干的组件**同时使用——顶栏菜单的主题三态分段控件，与账号卡片的额度水位条分段。两条同名规则里，后者的 `display:block; height:5px; background:var(--ok)` 覆盖了前者的 `display:inline-flex`，反过来前者遗留的 `margin: 2px 6px 4px; padding:3px` 又被水位条分段继承。症状是双重的：主题控件塌成一条 5px 绿线、三个按钮溢出弹窗压住下方菜单项；水位条每个分段各吃掉 12px 横向 margin，总宽超出 100% 后被 `.bar` 的 `overflow:hidden` 裁掉，看上去就是「进度条只画了一半」。主题分段控件改用独立的 `.mode-seg`，`.seg` 归还给水位条专用。
-- **顶栏菜单没有语言入口**：界面语言此前只藏在「面板设置 → 通用」里，从聚合菜单找不到。现在「外观」下方新增「语言」分组（简 / 繁 / EN / 日 / 한 五档等宽分段，当前语言高亮），与设置弹窗里的下拉共用同一套切换逻辑（`PUT /api/settings {locale}` 落盘后刷新）。
-- **面板设置改为贴近按钮的弹出层**：原先点齿轮是全屏遮罩的居中弹窗，与旁边聚合菜单视觉语言不一致、且遮罩 repaint 导致点按发肉。现在与聚合菜单同款——紧贴齿轮右对齐下拉展开（`.setpop`），点击面板其他位置 / ESC 关闭，不再遮挡整页。
-- **语言切换加加载态**：点语言分段按钮立即亮出居中的「正在切换语言…」卡片（遮罩 + 转圈），落盘与整页刷新期间给出明确反馈；失败自动收起保留原语言。
-- **按钮点按瞬时反馈**：icon-btn / btn / 分段按钮 / 菜单项补 `:active` 缩放与下沉动效，消灭点击「有点卡」的观感。
-- **面板设置与聚合菜单内容去重**：设置弹出层撤掉「通用」页签（界面语言 / 检查更新 / 更新日志 / 重启与聚合菜单重复），只留「网络 / 组件与排序」，默认落到组件与排序。
-- **主题独立按钮**：头部新增主题图标按钮，只做**亮 ↔ 暗一键反转**（每次点击必有视觉反馈）。「跟随系统」不进按钮循环——系统主题与跟随系统一致时点那一档观感=没反应；跟随系统走菜单里的三态分段控件。按钮图标/提示按实际生效的亮暗显示。
-- **语言切换点了不切换（i18n 失效根因）**：`PUT /api/settings` 只带 `{locale}` 时会落入访问密码分支返回 400「请提供新密码」——语言实际已落盘，但面板 `api()` 见 400 抛错 → 加载态收起且不刷新页面，看上去就是"语言切换没反应"。现在按内容分流：只有带 `panelKey`/`disable` 才走密码分支，纯语言更新直接返回 200。
-- **弹窗层级修正**：设置弹出层此前会浮在遮罩弹窗（如更新日志）之上；现在打开任何遮罩弹窗前自动收起。
-- **首次加载态**：面板首屏等待守护进程数据时显示居中的加载卡片（静态 HTML 立即可见，不等 JS），数据到达或 9 秒兜底后淡出，接口不可达也能正确收起并提示。
-- **品牌区版本行可读性**：头部「v1.4.0 · 数据目录 …」行高从 1.3 提到 1.55 并对长路径允许任意位置折行（Windows 路径反斜杠此前折行紧贴着挤在一起）。
-- **头部主题按钮点了图标不切换**：头部按钮点击走 `applyThemeMode → renderThemeMode`，但 `renderThemeButton()` 只在菜单分段点击路径手动补调，头部路径漏了。现在 `renderThemeMode()` 成为唯一同步点（分段高亮 + 头部图标一起更新），所有改主题的通路（头部按钮 / 菜单分段）都自动同步。
-- **部分日志在非中文界面下仍是中文**：WorkBuddy 的「登录已失效…」与「今日额度已耗尽…」、签到汇总（成功/已领/无活动/失败）、10Router 同步汇总、「已同步新 token 到 xx 客户端」等消息此前是运行期拼好的中文字符串，拿不到字典翻译。汇总日志改为 key+args（签到汇总、10R 同步汇总均留 `summary` 原文供面板展示），其余消息字符串补进全语言字典。
-- **日志复合标签按语言替换**：账号标签是运行期拼出的「[WorkBuddy 国内版] 账号名」式复合串，整串不可能进字典。`getLogs` 现在对字符串参数里的已知产品/区域标签做子串替换（`localizeEmbedded`，用词表 `PROVIDER_LABEL`），非中文界面下 `[WorkBuddy 国内版]` → `[WorkBuddy China]` / `[WorkBuddy 中国版]` / `[WorkBuddy 중국판]` 等，账号名原样保留。
-- **日志结构化归档（历史也能切语言）**：每条日志在原有 `.log`（渲染后文本）之外，双写一份 `daemon-YYYY-MM-DD.jsonl`（`{at, level, tag, msg, key, args}`，同保留期清理与 gzip 归档）。面板「运行日志」新增**「加载历史」**按钮：`GET /api/logs?history=1` 读取当日结构化机档、突破环形缓冲 300 条上限、按当前界面语言实时重渲染——中文环境写下的行，切英文后读历史也是英文（源语言仍维持中文，详见词典设计）。旧版本日期的记录无 .jsonl 时静默回退。
-- **设置弹出层 UX 三连**：(1) 设置弹层打开时再点齿轮 = 关闭；点聚合菜单按钮时也收起设置弹层（根因：菜单按钮的 `stopPropagation` 挡住了 document 层的点外关闭）。(2) 「网络」页签改回「通用」，新增**全局自动签到开关**与**频率设置**（1/2/4/8 小时，修改立即生效并重调度）、**日志显示方式**（默认展开/收起，本机记忆）。(3) 定时签到全面配置化：`autoCheckin` / `checkinIntervalMin` 落 `settings.json`，关闭时状态页 `nextTickAt=null`，改结束后下一轮按新间隔执行。
-- **失败摘要桶标签翻译**：`summarizeAttempts` 的 7 个桶（验证码被拒/账号拉黑/额度耗尽/额度瞬时拒绝/429 限流/网络错误/上游错误）此前在非中文界面下保持中文；`localizeEmbedded` 词表扩充为产品标签 + 桶标签做子串替换。
-- **签到消息参数的他层翻译（en 后仍中文的最后一环）**：provider 返回的中文结果消息（`当前无可领取的活动`、`今日已领`、`今天已签到` 等）作为 `{msg}` 参数入日志，整句不在词典；带数字的复合句（`今日已签（连签 11 天）`、`今日第 1 天已签到（400 + 0 积分）`）则永远不可能精确匹配。`localizeArgs` 改为三级翻译：**整串精确 → 模式还原模板（ARG_PATTERNS，把数字还原成占位符）→ 子串标签替换**。用当天真实归档（26 行）按英文重渲染验证：除账号名外不再有中文。
-- **WorkBuddy 国际版「活跃请求」可全局关闭**：面板「设置 → 通用」新增开关（`settings.workbuddyActivity`，默认开）。关闭时：定时签到轮与手动领取跳过全部 `workbuddy-intl` 账号（服务端过滤，实测参与者从「国内号｜国际号」变「国内号」）、卡片不再显示「发送活跃请求」、仪表盘「今日领取 / 活跃」计数与页签国际版统计同时隐藏、全部领取按钮回到纯「领取全部」。
-- **仪表盘「活跃 x / y」硬编码**：KPI 行里的 `' · 活跃 '` 此前是 JS 内直写中文，改走 `T(' · 活跃 {n} / {m}')` 模板（4 语）。
-- **设置弹出层三组调整**：(1) 面板访问密码从「组件与排序」搬进「通用」（状态徽章 + 提示 + 开启/修改/关闭按钮移到 `#sec-block`，功能不变），**默认打开页签回到「通用」**；(2) 组件顺序与账号卡片排序**去掉↑↓箭头按钮**，改为直接**拖拽卡片**重排（HTML5 DnD，把手图标指示拖动位，按中线决定插前/插后）；(3) 排序提示语同步去掉箭头说法。
-- **组件显隐去掉复选框**：产品 chip 不再挂 ☑️ checkbox，改**点按整体切换显隐**（高亮 = 显示，置灰 + 灰阶 = 隐藏），并加引导行「点按切换显隐（置灰 = 隐藏）；按住拖动调整顺序。」（4 语）。拖拽后 150ms 防抖，防止拖放被误判成点击切换。
-- **Windows 产物名加平台段**：CI / 本地统一改为 `CreditDaddy-Win-Setup-<版本>.exe` / `CreditDaddy-Win-Portable-<版本>.exe`（Windows 只有 x64，不带架构段）；应用内更新的资产匹配同时认新旧名，README 与发布说明同步。
-- **点组件 chip 置灰会把设置弹层一起关掉**：组件显隐切换会重建 `comp-menu`（`innerHTML` 整替换），被点的 chip 节点随之脱离 DOM；document 层的「点外面关闭」接着在同一次冒泡里检查 `closest('#m-settings')`，拿到的是脱离节点、判定落空而误关。现在点外关闭前加 `e.target.isConnected` 守卫：目标已被重渲染摘走的点击不算「点外面」。
-- **组件排序区的标题与提示字号/行距统一**：`.sort-hint` 从 11px/默认行高改为与 `.hint` 一致的 12px / 1.7（上下段不再显得字号忽大忽小、行距忽紧忽松）。
-- **面板设置字体层级重校**：说明文字上一轮被提到与字段标签同字号（12px），层级被拉平、看上去「标题字幕反了」。现在统一为三层：弹窗标题 14px/700 → 字段标签 12.5px/650 → 说明文字 11px/1.65 灰；`.comp-menu-title` 对齐字段标签；字段间距与弹层内边距微调（`.field` gap 6/14，`.setpop .modal` 16×18）。
-- **Trae 网关提示去掉过期模型名录**（#19）：面板里写死的「Doubao-Seed / GLM-5.1 / Kimi-K2.6 / DeepSeek-V4 等 12 款模型」已和 TRAE 2.3.87413 官方目录严重脱节。改为透传口径「官方目录持续更新，网关透传任意合法模型 ID——如 GLM-5.3 / DeepSeek-V4.1-Flash / MiMo-V2.6 / Kimi-K3」。模型目录本身在 **10Router** 侧注册表维护（`traeGateway.js` 对 `model` 原文透传、零校验），CreditDaddy 无需随目录改代码。
-
-### 🛡️ 健壮化专项（发版前审计对标）
-
-- **刷新并发互斥与失效链熔断推广到 WorkBuddy / mirasim**：`minimaxClient` 的 in-flight dedupe + refreshToken 指纹熔断抽为公共模块 `src/refreshGuard.js`——面板额度查询与签到轮同链抢刷触发 12153 / invalid_grant 的误杀从根上消失。
-- **跨进程单实例守护**：`startDaemon` 启动前经 daemon.json pid + /api/status 探活，有活实例拒绝以 ALREADY_RUNNING 起第二份——杜绝两个守护共 dataDir 时 accounts / state / settings 的跨进程覆盖。runtime 记录推广到前台 / 后台 / 桌面三种启动方式，探活加一拍重试防瞬时假阴性。
-- **面板 fail-closed**：监听 0.0.0.0（网关开 LAN 或 NAS 部署）且未设访问密码时，面板 `/api/*` 与首页一律 403（socket 地址非回环即拒）。此前只是 Host 校验 + 一行警告。
-- **面板访问密码明文升级 scrypt 哈希落盘**：`panelKeyHash: scrypt:<salt>:<hash>`；password 关的 `put` 更新后立即清除明文（明文迁移一次自动）；引入 `panelKeyRequired()` 统一三模式（hash / plain / env-injected），`enabled` 断言全部修复。同时新增按源 IP 连续 10 次错锁 5 分钟（暴力猜密守卫）、同源日志限随行。新增 `getSessionKey()`（进程随机主密钥，重启失效）给桌面壳寄主的 `x-qd-key` 与 `verifyPanelPassword()` 给密码管理门禁——hash 模式下桌面壳代码面不受影响。
-
-- **LAN 白名单通配规则收紧**：三个网关的 `e.endsWith('*')` 裸前缀隔断被关闭式修复（通配段必须以 `.` 结尾——`192.168.31.1*` 不再误把 `.100-199` 整段放行）。
-- **Trae 网关事件流与额度权重**：`fetchJsonRace` 事件流接默认 `connectMs:15s`（此前上游黑洞时裸 fetch 永不超时）；权重缓存带 10 分钟 TTL、失败保留旧快照，与 MiniMax 对齐。流式与非流式两个返回的 stop_reason 都不再伪装 `end_turn`（断流 / EOF / reader 抛错统一报 `interrupted`，客户端不再把截断当完整答案）。
-- **fetchJsonRace `redirect:'manual'`**：301/302 再把 POST 转 GET 丢 body、307 原样重放新地址不再换出（涉及三个网关大 body 凭据头的落地）。
-- **tenrouter.json 走 store.atomicWrite**(Windows 杀软瞬时占文件 EPERM 直接 500 的坑修）;`saveConfig` 改为 async,withConfig 串行带 await。settings/state 损坏 JSON 回退同目录 `.bak`(断电半写不再让守护起不来，行为保留报错方向不静默重置）。
-- **ZCode 名额已满消费 err.nextAt**:1005 错误直接进跳过窗口（进程内缓存 + account.meta.zcodeClaimNextAt 双轨），自动轮询在该时间点前不再空打。
-- **产物命名扩展到 macOS / fnOS**：mac dmg 改 `CreditDaddy-Mac-Setup-<版本>-<arch>.dmg`（zip 为 `-Mac-Portable-`，保留架构段）、fnOS fpk 改 `CreditDaddy-FnOS(-Window)-<版本>-<arch>.fpk`；release notes 与 README / DEPLOY 同步。此前仅 Windows 做了平台段。
-
-- **主题相关文案的硬编码中文**：头部三个按钮与主题分段控件的 `title` 此前全是静态中文；主题按钮标题里的「暗色」取自初始化时（字典未加载）就钉死的 `THEME_MODES` 数组。现在：`title` 由引擎按 `data-i18n` 同款机制翻译（补 6 个键），主题按钮标题在字典到达后重渲染（`window.__syncTheme`），mode 文案改取运行时的 `T('暗色'/'亮色')`。
-- **WorkBuddy 本机凭据不做服务端校验，过期数据直接入库**：「本机导入」此前只把客户端会话文件里的快照原样写进账号库，不验证 token 是否还有效，导致本机客户端退出/换号后账号库留着早已失效的凭据（日志里表现为连续「已用本机凭据更新」却越用越坏）。现在入库前先用 `refreshToken` 打一次官方刷新接口换新 token：凭据已作废（401 / `12153` / `invalid_grant`）直接返回 **409** 拒绝入库并提示重新登录，其他失败返回 **502**，过期数据不会再污染账号库。思路参考 workbuddy-switch 的 `ensure_fresh_token`（缺失或不足 24h 即续期）与 `refresh_account_token`（失败即标记需重登）。
-- **MiniMax 本机导入与浏览器登录共用凭据链、互相作废**：`meta.authRecordKey` 既是「绑定本机客户端凭据链」的开关（刷新前对齐 + 刷新后回写 `auth.json`），又会因账号合并的浅合并被嫁接给别的账号，导致两条各自独立的**一次性 refreshToken 链**抢同一条链刷新，双双 `invalid_grant`。
-  - **本机导入不再绑定链**：`liveToAccount` 不再写 `authRecordKey`（本机导入只是「此刻读到的一份快照」，不该把账号永久绑到会轮换的客户端链上），只保留 `clientId` / `scopes` 来源标记。
-  - **对齐按 uid 校验归属**：`alignMiniMaxFromLocal` 重读 `auth.json` 的 record 后，若 uid 与账号不符则跳过对齐并写明原因，不再拿别人的链去刷新。
-  - **按来源回收脏 key**：账号合并时只有 `local-app` 才保留 `authRecordKey`，浏览器登录 / 设备登录刷新一律清掉，从源头堵住「同一 uid 先本机导入、后浏览器登录」与「给设备登录账号凭空挂链」两种脏数据。
-  - *历史脏数据安全兜底*：uid 校验已能拦住交叉刷新；把相关账号在面板「本机导入」重导一次即可让 `authRecordKey` 彻底消失。
-- **MiniMax「客户端当前」登出后不消失**：`currentMiniMaxUid()` 在 `auth.json` 的 records 为空（客户端未登录 / 已登出）时仍回落到 uid 缓存，把上次登录的 uid 一直返回。现在**records 为空一律返回 null**，缓存只在 record 仍存在且自身缺少 `subject` / `accountId` 时启用；写入缓存时顺手丢弃已不存在的 record（防陈旧、防膨胀）。`/api/status` 的 record-key 匹配命中多个（历史脏数据）时也用 uid 缓存收敛，不再随机取到不是客户端当前的账号。
-- **MiniMax 网关逐请求在两账号间交替（「一主一备」刷屏）**：原本用平滑加权轮询，两个账号积分接近时每次请求换人，主/备交替刷满运行日志。改为**粘性主力选型**：按剩余积分选主力并保持，仅当另一账号领先超过 10%（且绝对差超过 50 积分）、或主力被拉黑/冷却，才主动切换并记一行切换日志；重试兜底顺序仍按剩余积分。额度查询失败时保留上次快照权重，一次网络抖动不再误切主力。
-- **MiniMax 凭据链失效后的刷新风暴**：某条 refreshToken 被服务端作废（`invalid_grant`）后，面板每 2 分钟一轮额度查询持续触发自动刷新，曾一晚上打出 400 多次无效刷新。现在按 refreshToken 指纹**链级熔断**：失效链在凭据更新（重新登录/授权、本机对齐换上新链）之前不再自动重试，首次失效记一行提示，之后静默快拒不打服务端不刷日志。
-- **网关成功日志补一行 debug 详情**（`model` / `stream` / `User-Agent`），便于定位接入方；成功行本身不变。
+- **MiniMax 本机导入与浏览器登录共用凭据链、互相作废（`invalid_grant`）**：`meta.authRecordKey` 既是「绑定本机客户端凭证链」的开关，又在账号合并浅合并时被嫁接给别的账号。现在本机导入不再写 `authRecordKey`，对齐前按 uid 归属自检（uid 不符直接跳过），刷新合并按 source 回收（非 `local-app` 一律清掉）。
+- **MiniMax「客户端当前」登出后不消失**：`records` 为空时一律返回 null（不再回落 uid 缓存），缓存只在 record 仍存在且缺 `subject`/`accountId` 时启用。
+- **MiniMax 网关「一主一备」逐请求交替刷屏**：SWRR 在两个账号积分接近时逐请求换人，主/备交替刷满运行日志。改为**粘性主力选型**：按剩余积分选主力并保持，仅当另一账号领先超过 10%（且绝对差超过 50 分）或主力拉黑/冷却才切换；幅度抖动不翻主力。
+- **MiniMax 凭据链失效后的刷新风暴**：某条 refreshToken 被服务端作废后面板每 2 分钟一轮额度查询持续自动刷新——曾一晚打 400+ 次 `invalid_grant`。改链级熔断（失效链指纹在凭据更新前不再重试）。
+- **WorkBuddy 本机导入不做服务端校验（过期凭据直进库，越用越坏）**：入库前用 refreshToken 打一次官方刷新接口——401 / `12153` / `invalid_grant` 直接 409 拒绝入库并提示重新登录，其他失败返回 502，过期凭据不再污染账号库（思路对齐 workbuddy-switch 的 `ensure_fresh_token` 与 `refresh_account_token`）。
+- **面板样式三重修**:
+  - 额度进度条 / 主题分段控件冲突（`.seg` 类名被两个组件同时使用）：主题控件塌成绿条、水位条只画一半——分段控件独立用 `.mode-seg`、`.seg` 归还水位条。
+  - 设置弹出层与遮罩弹窗打开顺序错位（`m-changelog` 等浮在设置弹出层上）：`openModal` 打开任何遮罩弹窗前自动收起设置弹出层。点组件 chip 置灰会把设置弹出层一起关掉（重建的 `comp-menu` 把被点节点摘出 DOM，document 的点外关闭判定落空）→ 加了 `e.target.isConnected` 守卫：目标已被重渲染摘走的点击不算点外面。
+  - 面板设置字体层级反了（提示与标签同字号 12px）→ 统一为三层：弹窗标题 14px/700 → 字段标签 12.5px/650 → 说明文字 11px/1.65 灰，`.comp-menu-title` 对齐字段标签；相邻段落于 `.sort-hint` 与 `.hint` 同字号灰。
+- **语言切换点了不切换（`PUT /api/settings {locale}` 的 400 陷阱）**：面板语言没落盘前 `{locale}` 误入访问密码分支返 400，面板 `api()` 抛错导致加载态收起却不刷新——看上去就是「语言切换没反应」。分流按字段走密码分支，纯语言更新直接 200。
+- **主题按钮图标不联动**：按钮点击走 `applyThemeMode → renderThemeMode`，但 `renderThemeButton()` 只在菜单分段点击路径手动补调——头部路径漏掉。现在 `renderThemeMode()` 是唯一同步点（分段高亮 + 头部图标一起更新）。
+- **日志翻译各层残余中文** ——
+  - 签到汇总（`签到汇总：成功 A（+B Credits）、已领 C、无活动 D、失败 E`）与 10Router 同步汇总、ZCode 引「条 Cookie」、WorkBuddy 次元申请等从运行期拼出的整句，走 key+args 翻译。
+  - 复合标签 `[WorkBuddy 国内版] / [Qoder 国际版]`：整串不可能进词典，用 `localizeEmbedded` 按 `PROVIDER_LABEL` 词表子串替换；`ATTEMPT_BUCKETS` 的 7 个失败摘要桶（验证码被拒 / 账号拉黑 / 额度耗尽 等）同模式。
+  - 带数字的既有消息（`今日已签（连签 11 天）`、`今日第 1 天已签到（400 + 0 积分）`）永不整串匹配——还原成模板再翻译（`ARG_PATTERNS`，`{n}/{d}/{a}/{b}` 占位符）。
+- **仪表盘 KPI「活跃 x / y」硬编码**：`' · 活跃 '` 内嵌中文，走 `T(' · 活跃 {n} / {m}', ...)`。
+- **品牌区版本行可读性**：头部「v1.4.0 · 数据目录 …」行高 1.3 → 1.55，长 Windows 路径允许任意位置折行（此前反斜杠折行贴在一起）。
+- **Trae 网关提示去掉过期模型名录（#19）**：面板里写死的「Doubao-Seed / GLM-5.1 / Kimi-K2.6 / DeepSeek-V4 等 12 款模型」与 TRAE 2.3.87413 官方目录严重脱节；改为透传口径「官方目录持续更新，网关透传任意合法模型 ID——如 GLM-5.3 / DeepSeek-V4.1-Flash / MiMo-V2.6 / Kimi-K3」。模型目录归 **10Router** registry（`traeGateway.js` 对 `model` 原文透传、零校验）——CreditDaddy#19 → 10Router#54 已落地（`10router@cc108143`）。
 
 ### 📖 文档
 
-- **README 明确 npm CLI 是全平台安装方式（#17）**：下载表新增「全平台（安装包）· `npm i -g creditdaddy`」一行并在顶部加 npm 徽章；「方式三」改写为全平台通用指引，补 Node.js 在 Linux 的安装说明（官方预编译包 / NodeSource / 发行版仓库 / `nodejs_v24`）、`npx` 免安装试跑、**Linux 各功能可用性对照表**（Qoder 国际版 UMID 组件、客户端切号仅 Windows、妙手仅 Windows、用量同步需 Node 22.5+）、systemd user service 后台常驻与开机自启示例。说明发行包只区分 CPU 架构（x64 / arm64）不区分发行版。
-- **产品线补充平台边界**：Qoder 段标注 npm 全局安装的 UMID 安装路径；妙手段标注桌面客户端仅 Windows（非 Windows 平台自动隐藏对应入口，其余 6 条产品线不受影响）。
+- **README 明确 npm CLI 是全平台安装方式（#17）**：下载表加「全平台（安装包）· `npm i -g creditdaddy`」一行并在顶部加 npm 徽章；补 Node.js 在 Linux 的安装说明、「方式三」全平台通用指引、Linux 各功能可用性对照表（Qoder UMID 组件 / 妙手仅 Windows / 客户端切号仅 Windows / 用量同步需 Node 22.5+）、systemd user service 后台常驻与开机自启示例。
+- **README / DEPLOY 下载表统一命名**：产品一改 CreditDaddy-Win/Mac/FnOS 命名列子，与 CI 及 npm 的指引口径一致。
+- **产品线平台边界注明**：Qoder 段标注 npm 全局安装的 UMID 安装路径；妙手段标注桌面客户端仅 Windows（非 Windows 平台自动隐藏入口）。
 
 ## [1.3.3] (2026-10-08)
 
