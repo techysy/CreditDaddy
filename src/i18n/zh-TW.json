@@ -586,9 +586,6 @@
   "开启后，领到的体验包额度变成本机的一个补全接口——10Router 建一个 anthropic-compatible 节点指向本机": "開啟後，領到的體驗包額度變成本機的一個補全接口——10Router 建一個 anthropic-compatible 節點指向本機",
   "开启后,MiniMax 积分与模型能力变成本机的一个原生 Anthropic Messages 补全接口——在 10Router 或 Claude Code 等工具中建一个 anthropic-compatible 节点指向本机": "開啟後,MiniMax 積分與模型能力變成本機的一個原生 Anthropic Messages 補全接口——在 10Router 或 Claude Code 等工具中建一個 anthropic-compatible 節點指向本機",
   "开启后，MiniMax 积分与模型能力变成本机的一个原生 Anthropic Messages 补全接口——在 10Router 或 Claude Code 等工具中建一个 anthropic-compatible 节点指向本机": "開啟後，MiniMax 積分與模型能力變成本機的一個原生 Anthropic Messages 補全接口——在 10Router 或 Claude Code 等工具中建一個 anthropic-compatible 節點指向本機",
-  "开启后,Trae SOLO 积分与模型能力(Doubao-Seed / GLM-5.1 / Kimi-K2.6 / DeepSeek-V4 等 12 款模型)变成本机的一个原生 Anthropic Messages 补全接口——在 10Router 或 Claude Code 等工具中建一个 anthropic-compatible 节点指向本机": "開啟後,Trae SOLO 積分與模型能力(Doubao-Seed / GLM-5.1 / Kimi-K2.6 / DeepSeek-V4 等 12 款模型)變成本機的一個原生 Anthropic Messages 補全接口——在 10Router 或 Claude Code 等工具中建一個 anthropic-compatible 節點指向本機",
-  "开启后,Trae SOLO 积分与模型能力（Doubao-Seed / GLM-5.1 / Kimi-K2.6 / DeepSeek-V4 等 12 款模型）变成本机的一个原生 Anthropic Messages 补全接口——在 10Router 或 Claude Code 等工具中建一个 anthropic-compatible 节点指向本机": "開啟後,Trae SOLO 積分與模型能力(Doubao-Seed / GLM-5.1 / Kimi-K2.6 / DeepSeek-V4 等 12 款模型)變成本機的一個原生 Anthropic Messages 補全接口——在 10Router 或 Claude Code 等工具中建一個 anthropic-compatible 節點指向本機",
-  "开启后，Trae SOLO 积分与模型能力（Doubao-Seed / GLM-5.1 / Kimi-K2.6 / DeepSeek-V4 等 12 款模型）变成本机的一个原生 Anthropic Messages 补全接口——在 10Router 或 Claude Code 等工具中建一个 anthropic-compatible 节点指向本机": "開啟後，Trae SOLO 積分與模型能力（Doubao-Seed / GLM-5.1 / Kimi-K2.6 / DeepSeek-V4 等 12 款模型）變成本機的一個原生 Anthropic Messages 補全接口——在 10Router 或 Claude Code 等工具中建一個 anthropic-compatible 節點指向本機",
   "开启后按此周期检查活动资格并自动领取(首次检查在开启 2 分钟后开始)。活动包由服务端在每日 0 点左右刷新放出——若运行时段没有覆盖 0 点,会错过当次领取,建议把运行时长设为 0,或让时段跨过 0 点。需要验证码时无法自动通过,卡片上会提示手动领取。": "開啟後按此週期檢查活動資格並自動領取(首次檢查在開啟 2 分鐘後開始)。活動包由服務端在每日 0 點左右刷新放出——若運行時段沒有覆蓋 0 點,會錯過當次領取,建議把運行時長設為 0,或讓時段跨過 0 點。需要驗證碼時無法自動通過,卡片上會提示手動領取。",
   "开启后按此周期检查活动资格并自动领取（首次检查在开启 2 分钟后开始）。活动包由服务端在每日 0 点左右刷新放出——若运行时段没有覆盖 0 点,会错过当次领取,建议把运行时长设为 0,或让时段跨过 0 点。需要验证码时无法自动通过,卡片上会提示手动领取。": "開啟後按此週期檢查活動資格並自動領取(首次檢查在開啟 2 分鐘後開始)。活動包由服務端在每日 0 點左右刷新放出——若運行時段沒有覆蓋 0 點,會錯過當次領取,建議把運行時長設為 0,或讓時段跨過 0 點。需要驗證碼時無法自動通過,卡片上會提示手動領取。",
   "开启后按此周期检查活动资格并自动领取（首次检查在开启 2 分钟后开始）。活动包由服务端在每日 0 点左右刷新放出——若运行时段没有覆盖 0 点，会错过当次领取，建议把运行时长设为 0，或让时段跨过 0 点。需要验证码时无法自动通过，卡片上会提示手动领取。": "開啟後按此週期檢查活動資格並自動領取（首次檢查在開啟 2 分鐘後開始）。活動包由服務端在每日 0 點左右刷新放出——若運行時段沒有覆蓋 0 點，會錯過當次領取，建議把運行時長設為 0，或讓時段跨過 0 點。需要驗證碼時無法自動通過，卡片上會提示手動領取。",
@@ -1113,5 +1110,6 @@
   "默认按剩余积分从多到少;直接按住拖动卡片调整顺序。": "預設按剩餘積分從多到少;直接按住拖動卡片調整順序。",
   "默认按剩余积分从多到少；直接按住拖动卡片调整顺序。": "預設按剩餘積分從多到少;直接按住拖動卡片調整順序。",
   "点击切换显隐": "點擊切換顯隱",
-  "点按切换显隐（置灰 = 隐藏）；按住拖动调整顺序。": "點按切換顯隱(置灰 = 隱藏);按住拖動調整順序。"
+  "点按切换显隐（置灰 = 隐藏）；按住拖动调整顺序。": "點按切換顯隱(置灰 = 隱藏);按住拖動調整順序。",
+  "开启后，Trae SOLO 积分与模型能力（官方目录持续更新，网关透传任意合法模型 ID——如 GLM-5.3 / DeepSeek-V4.1-Flash / MiMo-V2.6 / Kimi-K3）变成本机的一个原生 Anthropic Messages 补全接口——在 10Router 或 Claude Code 等工具中建一个 anthropic-compatible 节点指向本机 <code>/gateway/trae/v1/messages</code> 即可调用。支持多账号自动加权轮转、429 限流自动冷却 5 分钟、流式增量与完整思考过程（thinking_delta）。白名单内的机器<b>免密直连</b>；本机回环（127.0.0.1）始终放行。": "開啟後，Trae SOLO 積分與模型能力（官方目錄持續更新，網關透傳任意合法模型 ID——如 GLM-5.3 / DeepSeek-V4.1-Flash / MiMo-V2.6 / Kimi-K3）變成本機的一個原生 Anthropic Messages 補全接口——在 10Router 或 Claude Code 等工具中建一個 anthropic-compatible 節點指向本機 <code>/gateway/trae/v1/messages</code> 即可調用。支持多帳號自動加權輪轉、429 限流自動冷卻 5 分鐘、流式增量與完整思考過程（thinking_delta）。白名單內的機器<b>免密直連</b>；本機回環（127.0.0.1）始終放行。"
 }

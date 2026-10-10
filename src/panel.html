@@ -858,7 +858,7 @@
       <label>IP 白名单（每行一个，支持 192.168.31.* 通配）</label>
       <textarea class="input" id="tgw-allow" rows="4" placeholder="192.168.31.101"></textarea>
     </div>
-    <div class="hint">开启后，Trae SOLO 积分与模型能力（Doubao-Seed / GLM-5.1 / Kimi-K2.6 / DeepSeek-V4 等 12 款模型）变成本机的一个原生 Anthropic Messages 补全接口——在 10Router 或 Claude Code 等工具中建一个 anthropic-compatible 节点指向本机 <code>/gateway/trae/v1/messages</code> 即可调用。支持多账号自动加权轮转、429 限流自动冷却 5 分钟、流式增量与完整思考过程（thinking_delta）。白名单内的机器<b>免密直连</b>；本机回环（127.0.0.1）始终放行。</div>
+    <div class="hint">开启后，Trae SOLO 积分与模型能力（官方目录持续更新，网关透传任意合法模型 ID——如 GLM-5.3 / DeepSeek-V4.1-Flash / MiMo-V2.6 / Kimi-K3）变成本机的一个原生 Anthropic Messages 补全接口——在 10Router 或 Claude Code 等工具中建一个 anthropic-compatible 节点指向本机 <code>/gateway/trae/v1/messages</code> 即可调用。支持多账号自动加权轮转、429 限流自动冷却 5 分钟、流式增量与完整思考过程（thinking_delta）。白名单内的机器<b>免密直连</b>；本机回环（127.0.0.1）始终放行。</div>
     <div class="modal-actions"><button class="btn" data-close>取消</button><button class="btn primary" id="tgw-ok">保存</button></div>
   </div>
 </div>
