@@ -43,9 +43,9 @@ jobs:
             echo
             echo "| 渠道 | 说明 |"
             echo "| --- | --- |"
-            echo "| fnOS / NAS | \`creditdaddy-${VERSION}-x86.fpk\` / \`-arm.fpk\`(新标签页)、\`creditdaddy-window-${VERSION}-*.fpk\`(桌面多窗口),在飞牛应用中心安装 |"
-            echo "| Windows | \`CreditDaddy-Setup-${VERSION}.exe\`(推荐,支持应用内检查更新)/ \`CreditDaddy-Portable-${VERSION}.exe\`(免安装) |"
-            echo "| macOS | \`mac-CreditDaddy-${VERSION}-arm64.dmg\`(Apple 芯片)/ \`mac-CreditDaddy-${VERSION}.dmg\`(Intel),未公证,首次右键打开 |"
+            echo "| fnOS / NAS | \`CreditDaddy-FnOS-${VERSION}-x86.fpk\` / \`CreditDaddy-FnOS-${VERSION}-arm.fpk\`(新标签页)、\`CreditDaddy-FnOS-Window-${VERSION}-*.fpk\`(桌面多窗口),在飞牛应用中心安装 |"
+            echo "| Windows | \`CreditDaddy-Win-Setup-${VERSION}.exe\`(推荐,支持应用内检查更新)/ \`CreditDaddy-Win-Portable-${VERSION}.exe\`(免安装) |"
+            echo "| macOS | \`CreditDaddy-Mac-Setup-${VERSION}-arm64.dmg\`(Apple 芯片)/ \`CreditDaddy-Mac-Setup-${VERSION}-x64.dmg\`(Intel),未公证,首次右键打开 |"
             echo "| npm CLI | \`npm i -g creditdaddy@${VERSION}\` |"
             echo
             echo "校验和见 SHA256SUMS-desktop.txt / SHA256SUMS-fpk.txt / SHA256SUMS-mac.txt。"
@@ -100,10 +100,15 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-files-mac
-          cp desktop/dist/*.dmg desktop/dist/*.zip release-files-mac/
-          # electron-updater 的元数据必须保持原文件名，不能加 mac- 前缀
+          cp desktop/dist/*.dmg release-files-mac/
+          # zip 没有 artifactName 配置段（schema 不认 zip 顶层键），按产物名手工改为平台统一命名
+          for f in desktop/dist/*.zip; do
+            b=$(basename "$f" .zip)
+            r=${b#CreditDaddy-}
+            cp "$f" "release-files-mac/CreditDaddy-Mac-Portable-$r.zip"
+          done
+          # electron-updater 的元数据必须保持原文件名（随 artifactName 已是 CreditDaddy-Mac-*）
           cp desktop/dist/latest-mac.yml release-files-mac/
-          ( cd release-files-mac && for f in *.dmg *.zip; do mv "$f" "mac-$f"; done )
           ( cd release-files-mac && shasum -a 256 * > SHA256SUMS-mac.txt )
           cat release-files-mac/SHA256SUMS-mac.txt
 
@@ -157,8 +162,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-files
-          cp desktop/dist/CreditDaddy-Setup-*.exe release-files/
-          cp desktop/dist/CreditDaddy-Portable-*.exe release-files/
+          cp desktop/dist/CreditDaddy-Win-Setup-*.exe release-files/
+          cp desktop/dist/CreditDaddy-Win-Portable-*.exe release-files/
           # electron-updater 按 latest.yml 发现新版本（NSIS 自更新；Portable 不参与）
           cp desktop/dist/latest.yml release-files/
           ( cd release-files && sha256sum *.exe > SHA256SUMS-desktop.txt )

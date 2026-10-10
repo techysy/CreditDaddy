@@ -102,8 +102,8 @@ jobs:
           VERSION="$(grep -E '^version[[:space:]]*=' manifest | head -1 | sed 's/.*=//;s/[[:space:]]//g')"
           [ -n "$VERSION" ] || { echo "ERROR: could not extract version from manifest"; exit 1; }
           SUFFIX=""
-          if [ "${{ matrix.variant }}" = "window" ]; then SUFFIX="-window"; fi
-          OUT="creditdaddy${SUFFIX}-${VERSION}-${{ matrix.arch }}.fpk"
+          if [ "${{ matrix.variant }}" = "window" ]; then SUFFIX="-Window"; fi
+          OUT="CreditDaddy-FnOS${SUFFIX}-${VERSION}-${{ matrix.arch }}.fpk"
           mv creditdaddy.fpk "${OUT}"
           ls -lh "${OUT}"
 
@@ -111,7 +111,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: creditdaddy-fpk-${{ matrix.variant }}-${{ matrix.arch }}-${{ github.sha }}
-          path: fnos-packaging/creditdaddy-*.fpk
+          path: fnos-packaging/CreditDaddy-FnOS-*.fpk
           if-no-files-found: error
           retention-days: 14
 
@@ -140,17 +140,17 @@ jobs:
       - name: Generate checksum
         run: |
           set -euo pipefail
-          ( cd fpk-assets && sha256sum creditdaddy-*.fpk > SHA256SUMS-fpk.txt )
+          ( cd fpk-assets && sha256sum CreditDaddy-FnOS-*.fpk > SHA256SUMS-fpk.txt )
           cat fpk-assets/SHA256SUMS-fpk.txt
 
       - name: Upload to Release
         run: |
           set -euo pipefail
           ls -lh fpk-assets/
-          N=$(ls fpk-assets/creditdaddy-*.fpk fpk-assets/SHA256SUMS-fpk.txt 2>/dev/null | wc -l)
+          N=$(ls fpk-assets/CreditDaddy-FnOS-*.fpk fpk-assets/SHA256SUMS-fpk.txt 2>/dev/null | wc -l)
           [ "$N" -ge 5 ] || { echo "ERROR: expected >=5 files (4 fpk + checksum), found $N"; exit 1; }
           gh release upload "${{ github.ref_name }}" \
-            fpk-assets/creditdaddy-*.fpk \
+            fpk-assets/CreditDaddy-FnOS-*.fpk \
             fpk-assets/SHA256SUMS-fpk.txt \
             --clobber --repo "$GITHUB_REPOSITORY"
         env:

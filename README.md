@@ -34,14 +34,14 @@
 | 平台 | 文件 | 说明 |
 | --- | --- | --- |
 | 全平台（安装包） | `npm i -g creditdaddy` | **任意平台**（Windows / macOS / Linux，x64 与 arm64 皆可），一行命令装成 `creditdaddy` 命令；也支持 `npx creditdaddy` 免安装试跑，详见[方式三](#方式三nodejs-cli--守护进程) |
-| Windows | `CreditDaddy-Setup-<版本>.exe` | 安装版（推荐） |
-| Windows | `CreditDaddy-Portable-<版本>.exe` | 便携版，免安装，双击运行 |
-| macOS（Apple Silicon） | `mac-CreditDaddy-<版本>-arm64.dmg` | M1 及以后的芯片 |
-| macOS（Intel） | `mac-CreditDaddy-<版本>.dmg` | Intel 芯片 |
-| 飞牛 fnOS | `creditdaddy-window-<版本>-x86.fpk` | **推荐**：桌面窗口入口（x86） |
-| 飞牛 fnOS | `creditdaddy-window-<版本>-arm.fpk` | 桌面窗口入口（ARM） |
-| 飞牛 fnOS | `creditdaddy-<版本>-x86.fpk` | 独立全屏 / 兼容入口（x86） |
-| 飞牛 fnOS | `creditdaddy-<版本>-arm.fpk` | 独立全屏 / 兼容入口（ARM） |
+| Windows | `CreditDaddy-Win-Setup-<版本>.exe` | 安装版（推荐） |
+| Windows | `CreditDaddy-Win-Portable-<版本>.exe` | 便携版，免安装，双击运行 |
+| macOS（Apple Silicon） | `CreditDaddy-Mac-Setup-<版本>-arm64.dmg` | M1 及以后的芯片 |
+| macOS（Intel） | `CreditDaddy-Mac-Setup-<版本>-x64.dmg` | Intel 芯片 |
+| 飞牛 fnOS | `CreditDaddy-FnOS-Window-<版本>-x86.fpk` | **推荐**：桌面窗口入口（x86） |
+| 飞牛 fnOS | `CreditDaddy-FnOS-Window-<版本>-arm.fpk` | 桌面窗口入口（ARM） |
+| 飞牛 fnOS | `CreditDaddy-FnOS-<版本>-x86.fpk` | 独立全屏 / 兼容入口（x86） |
+| 飞牛 fnOS | `CreditDaddy-FnOS-<版本>-arm.fpk` | 独立全屏 / 兼容入口（ARM） |
 
 > macOS 安装包未做代码签名：首次打开请在「应用程序」里**右键 → 打开**，或在终端执行 `xattr -cr /Applications/CreditDaddy.app`。
 > 飞牛 fnOS 部署自动启用密码保护，首次安装在向导中设置密码，「应用设置」中可重置。
@@ -141,7 +141,7 @@
 
 ### 方式二：飞牛 fnOS 应用包（fpk）
 
-1. 下载对应架构的 fpk 文件（推荐 `creditdaddy-window-<版本>-<架构>.fpk`）。
+1. 下载对应架构的 fpk 文件（推荐 `CreditDaddy-FnOS-Window-<版本>-<架构>.fpk`）。
 2. 在 fnOS 应用中心选择「手动安装」，安装过程中设置访问密码。
 3. 安装完成后通过桌面的窗口图标即可进入管理面板。
 

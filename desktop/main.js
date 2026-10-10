@@ -154,7 +154,7 @@ function isNewerVersion(next, cur) {
 /**
  * GitHub Releases 直查兜底（zcode/qoder 式：问版本接口 → 下完整安装包 → 运行安装），
  * 只依赖 GitHub API 与 release 资产本身，不依赖 electron-updater 的 latest.yml。
- * 只认最新正式 release（prerelease / draft 不参与），安装包取 CreditDaddy-Setup-*.exe。
+ * 只认最新正式 release（prerelease / draft 不参与），安装包取 CreditDaddy-Win-Setup-*.exe（兼容旧名 CreditDaddy-Setup-*.exe）。
  */
 async function fetchLatestReleaseFromGitHub() {
   const m = /^https:\/\/github\.com\/([^/]+)\/([^/#?]+)/.exec(daemonInfo.homepage || DEFAULT_HOMEPAGE);
@@ -165,7 +165,7 @@ async function fetchLatestReleaseFromGitHub() {
   });
   if (!res.ok) throw new Error(`GitHub API 返回 HTTP ${res.status}`);
   const rel = await res.json();
-  const asset = (rel.assets || []).find((a) => /^CreditDaddy-Setup-.*\.exe$/.test(a.name));
+  const asset = (rel.assets || []).find((a) => /^CreditDaddy-(?:Win-)?Setup-.*\.exe$/.test(a.name));
   if (!asset) throw new Error(`最新 release ${rel.tag_name} 没有 Windows 安装包`);
   return {
     version: String(rel.tag_name).replace(/^v/i, ''),

@@ -51,11 +51,11 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "CreditDaddy-Setup-${version}.${ext}",
+      "artifactName": "CreditDaddy-Win-Setup-${version}.${ext}",
       "shortcutName": "CreditDaddy"
     },
     "portable": {
-      "artifactName": "CreditDaddy-Portable-${version}.${ext}"
+      "artifactName": "CreditDaddy-Win-Portable-${version}.${ext}"
     },
     "extraResources": [
       {
@@ -63,6 +63,9 @@
         "to": "creditdaddy"
       }
     ],
+    "dmg": {
+      "artifactName": "CreditDaddy-Mac-Setup-${version}-${arch}.${ext}"
+    },
     "mac": {
       "category": "public.app-category.productivity",
       "target": [

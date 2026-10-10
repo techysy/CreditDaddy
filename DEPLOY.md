@@ -36,8 +36,8 @@ Actions 会在 ubuntu-24.04 / ubuntu-24.04-arm 两个 runner 上分别用官方 
 
     creditdaddy-<version>-x86.fpk           标签页版
     creditdaddy-<version>-arm.fpk
-    creditdaddy-window-<version>-x86.fpk    窗口版
-    creditdaddy-window-<version>-arm.fpk
+    CreditDaddy-FnOS-Window-<version>-x86.fpk    窗口版
+    CreditDaddy-FnOS-Window-<version>-arm.fpk
     SHA256SUMS-fpk.txt
 
 打 tag 时自动建 Release 并附上产物；手动触发则去 Actions 页面下载 artifact。
@@ -49,7 +49,7 @@ fnOS 应用中心 → 手动安装 → 选择 fpk。会自动安装依赖应用 
 | 包 | 点桌面图标后 |
 |---|---|
 | `creditdaddy-<版本>-<架构>.fpk` | 在浏览器**新标签页**打开面板 |
-| `creditdaddy-window-<版本>-<架构>.fpk` | 在飞牛桌面的**窗口**里打开面板 |
+| `CreditDaddy-FnOS-Window-<版本>-<架构>.fpk` | 在飞牛桌面的**窗口**里打开面板 |
 
 两种包是同一个应用（appname 都是 creditdaddy、共用数据目录），想换的话直接覆盖安装另一种即可，账号与密码都保留。
 窗口版注意：用 HTTPS 或远程域名访问飞牛时，浏览器会把 http 的窗口当作「混合内容」拦截，这种访问方式请用标签页版。
