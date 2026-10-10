@@ -46,7 +46,7 @@ import os from 'node:os';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { logger, getLogs } from './logger.js';
+import { logger, getLogs, readArchiveJsonl } from './logger.js';
 import {
   loadAccounts, loadState, withAccounts, publicAccount, dataDir, loadSettings, saveSettings, withSettings,
 } from './store.js';
@@ -64,7 +64,7 @@ import * as traeGateway from './traeGateway.js';
 import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl, autoClaimEnabled, autoClaimUntil, setAutoClaimEnabled, claimIntervalMin, setClaimIntervalMin, claimWindowMin, setClaimWindowMin } from './zcodeClient.js';
 import { exportAccounts, buildExportPayload, parseImport, TransferError } from './transfer.js';
 import { syncAccountsTo10r } from './tenrouterAccounts.js';
-import { runCheckinTick, getSchedulerInfo, dayKey, enableZcodeAutoClaimWindow, refreshZcodeScheduler, pollZcodeNow } from './checkin.js';
+import { runCheckinTick, getSchedulerInfo, dayKey, enableZcodeAutoClaimWindow, refreshZcodeScheduler, pollZcodeNow, resyncAutoCheckinScheduler } from './checkin.js';
 import { detectQoderApps, readQoderAppAccounts, riskIdentityAvailable, riskIdentitySource, switchTo as qoderSwitchTo, qoderRunning, terminateQoder } from './qoderApp.js';
 import { umidInfo, installUmid } from './qoderUmid.js';
 import * as tenrouter from './tenrouter.js';
@@ -845,6 +845,12 @@ async function handleApi(req, res, url) {
   // 日志（tag 过滤：?tag=MINIMAX-GW / ZCODE-GW 取网关调用日志，与运行日志分开展示）
   if (p === '/api/logs' && method === 'GET') {
     const tag = url.searchParams.get('tag') || null;
+    // ?history=1：读当日结构化归档（.jsonl），突破环形缓冲 300 条上限，按当前语言重渲染
+    if (url.searchParams.get('history') === '1') {
+      let lines = readArchiveJsonl({ limit: 2000 });
+      lines = tag ? lines.filter((l) => l.tag === tag) : lines.filter((l) => !(l.tag || '').endsWith('-GW'));
+      return json(res, 200, { logs: lines });
+    }
     return json(res, 200, { logs: getLogs(200, tag) });
   }
 
@@ -903,7 +909,7 @@ async function handleApi(req, res, url) {
         trae: dayKey(Date.now(), 'trae'),
         minimax: dayKey(Date.now(), 'minimax'),
       },
-      scheduler: getSchedulerInfo(),
+      scheduler: await getSchedulerInfo(),
       riskIdentity: riskIdentityAvailable(),
       riskSource: riskIdentitySource(),
       umid: umidInfo(),
@@ -928,7 +934,7 @@ async function handleApi(req, res, url) {
 
   // Panel 设置：GET 读取（只回状态不回显密码），PUT 设置 / 修改 / 关闭访问密码
   if (p === '/api/settings' && method === 'GET') {
-    return json(res, 200, { panelKeyEnabled: Boolean(PANEL_KEY), locale: getLocale() });
+    return json(res, 200, { panelKeyEnabled: Boolean(PANEL_KEY), locale: getLocale(), workbuddyActivity: (await loadSettings()).workbuddyActivity !== false });
   }
   if (p === '/api/settings' && method === 'PUT') {
     const body = await readBody(req).catch(() => ({}));
@@ -936,6 +942,21 @@ async function handleApi(req, res, url) {
       const locale = normalizeLocale(body.locale);
       setLocale(locale);
       await saveSettings({ locale });
+    }
+    // 全局自动签到 开关 / 频率（面板「设置 → 通用」）
+    if (typeof body?.autoCheckin === 'boolean') await saveSettings({ autoCheckin: body.autoCheckin });
+    if (body?.checkinIntervalMin !== undefined) {
+      const min = Math.max(15, Math.min(1440, Number(body.checkinIntervalMin) || 120));
+      await saveSettings({ checkinIntervalMin: min });
+    }
+    if (body?.autoCheckin !== undefined || body?.checkinIntervalMin !== undefined) {
+      await resyncAutoCheckinScheduler();
+      return json(res, 200, { ok: true });
+    }
+    // WB 国际版活跃请求总开关（面板「设置 → 通用」）
+    if (typeof body?.workbuddyActivity === 'boolean') {
+      await saveSettings({ workbuddyActivity: body.workbuddyActivity });
+      return json(res, 200, { ok: true });
     }
     // 只有携带密码字段才走密码分支：纯语言/其它设置的请求此前会掉进
     // 「请提供新密码」400，面板 api() 抛错导致语言切换点了不刷新（i18n 切换失效根因）

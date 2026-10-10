@@ -113,16 +113,22 @@
   /* 横向组件 chips：一行放下全部产品，不再一条一行占半屏 */
   .comp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .comp-chip { display: inline-flex; align-items: center; gap: 0; padding: 3px 4px 3px 10px; border-radius: 999px; background: var(--hover); font-size: 12px; font-weight: 600; color: var(--text); }
-  .comp-chip.off { opacity: .45; }
-  .comp-chip.off .check { text-decoration: line-through; }
+  .comp-chip.off { opacity: .5; filter: grayscale(.9); }
+  .comp-chip[data-comp-toggle] { cursor: pointer; }
   .comp-chip .sort-name { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .comp-chip .icon-btn.mini { width: 20px; height: 20px; }
+  .comp-chip[draggable] { cursor: grab; }
+  .comp-chip.dragging { opacity: .4; }
+  .comp-chip.drop-before { box-shadow: -3px 0 0 0 var(--ok); }
+  .comp-chip.drop-after { box-shadow: 3px 0 0 0 var(--ok); }
+  .drag-grip { color: var(--text-3); display: inline-flex; }
+  .drag-grip svg { width: 12px; height: 12px; }
   .icon-btn.mini { width: 20px; height: 20px; border-radius: 6px; font-size: 11px; line-height: 1; padding: 0; }
   .icon-btn.mini svg { width: 12px; height: 12px; }
   .sort-sec { border-top: 1px dashed var(--border-subtle); padding-top: 6px; font-size: 12px; }
   .sort-sec summary { cursor: pointer; color: var(--text-2); user-select: none; display: flex; align-items: center; gap: 6px; }
   .sort-sec summary::-webkit-details-marker { display: none; }
-  .sort-hint { font-size: 11px; color: var(--text-3); margin: 5px 0 3px; }
+  .sort-hint { font-size: 12px; color: var(--text-3); line-height: 1.7; margin: 6px 0 4px; }
   .sort-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 2px 0; }
   .sort-row .sort-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .card.dragging, .tr-card.dragging { opacity: .45; }
@@ -442,11 +448,41 @@
           <div class="modal">
             <div class="modal-title"><span data-i18n="面板设置">面板设置</span><button class="close" data-close>✕</button></div>
             <div class="tabs" id="set-tabs">
-              <button class="tab" data-set-tab="net" data-i18n="网络">网络</button>
-              <button class="tab active" data-set-tab="comp" data-i18n="组件与排序">组件与排序</button>
+              <button class="tab active" data-set-tab="net" data-i18n="通用">通用</button>
+              <button class="tab" data-set-tab="comp" data-i18n="组件与排序">组件与排序</button>
             </div>
         
-            <div class="pane" data-set-pane="net">
+            <div class="pane active" data-set-pane="net">
+              <div class="field">
+                <label data-i18n="全局自动签到">全局自动签到</label>
+                <label class="check"><input type="checkbox" id="cfg-auto-checkin"> <span data-i18n="开启自动签到">开启自动签到</span></label>
+                <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+                  <span class="hint" data-i18n="签到频率">签到频率</span>
+                  <select class="input" id="cfg-checkin-interval" style="width:auto">
+                    <option value="60" data-i18n="每 1 小时">每 1 小时</option>
+                    <option value="120" data-i18n="每 2 小时">每 2 小时</option>
+                    <option value="240" data-i18n="每 4 小时">每 4 小时</option>
+                    <option value="480" data-i18n="每 8 小时">每 8 小时</option>
+                  </select>
+                </div>
+                <div class="hint" data-i18n="作用于全部产品的定时签到轮(ZCode 活动领取在自身页签单独配置);修改立即生效,下一轮按新间隔执行。">作用于全部产品的定时签到轮(ZCode 活动领取在自身页签单独配置);修改立即生效,下一轮按新间隔执行。</div>
+              </div>
+              <div class="field">
+                <label data-i18n="WorkBuddy 国际版 活跃请求">WorkBuddy 国际版 活跃请求</label>
+                <label class="check"><input type="checkbox" id="cfg-wb-activity"> <span data-i18n="定期发送活跃请求（保持资格，不保证奖励）">定期发送活跃请求（保持资格，不保证奖励）</span></label>
+                <div class="hint" data-i18n="关闭后本机不再对国际版账号自动/手动发活跃请求;卡片与仪表盘的「活跃」入口一同隐藏。">关闭后本机不再对国际版账号自动/手动发活跃请求;卡片与仪表盘的「活跃」入口一同隐藏。</div>
+              </div>
+              <div class="field">
+                <label data-i18n="面板访问密码">面板访问密码</label>
+                <div id="sec-block"></div>
+              </div>
+              <div class="field">
+                <label data-i18n="日志显示">日志显示</label>
+                <select class="input" id="cfg-logs-display" style="width:auto">
+                  <option value="expanded" data-i18n="默认展开">默认展开</option>
+                  <option value="collapsed" data-i18n="默认收起">默认收起</option>
+                </select>
+              </div>
               <div class="field">
                 <label data-i18n="网络出口（全局）">网络出口（全局）</label>
                 <label class="check"><input type="radio" name="znet-order" id="znet-direct"> 直连优先（代理兜底）</label>
@@ -458,7 +494,7 @@
               </div>
             </div>
         
-            <div class="pane active" data-set-pane="comp">
+            <div class="pane" data-set-pane="comp">
               <div class="comp-menu" id="comp-menu"></div>
             </div>
         
@@ -602,6 +638,7 @@
           <button data-log-level="all" class="active">全部</button>
           <button data-log-level="warn" data-i18n="只看提醒">只看提醒</button>
         </div>
+        <button class="btn" id="btn-logs-history" data-i18n="加载历史">加载历史</button>
         <button class="btn" id="btn-logs" data-i18n="展开">展开</button>
       </div>
     </div>
@@ -878,6 +915,7 @@ const I = {
   // 齿轮：面板设置（比「推子」更通用地表达“设置”）
   settings: svg('<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>'),
   chevUp: svg('<path d="M18 15l-6-6-6 6"/>'),
+  grip: svg('<circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/>'),
   chevDown: svg('<path d="M6 9l6 6 6-6"/>'),
   chevRight: svg('<path d="M9 18l6-6-6-6"/>'),
   check: svg('<path d="M20 6L9 17l-5-5"/>'),
@@ -1143,6 +1181,7 @@ async function loadSettings() {
   try {
     const d = await api('/api/settings');
     state.sec = { enabled: Boolean(d.panelKeyEnabled), loaded: true };
+    state.wbActivity = d.workbuddyActivity !== false;   // WB 国际版活跃请求总开关（默认开）
     if (!d.panelKeyEnabled) setKey('');   // 关闭后清掉本地缓存的旧密钥
     if (d.locale) renderLocale(d.locale);
   } catch (e) { /* 401（密码开启但未输入）等状态由 promptKey 流程处理 */ }
@@ -1174,6 +1213,48 @@ async function applyDictFromServer() {
 
 document.getElementById('set-locale')?.addEventListener('change', (ev) => setLocale(ev.target.value));
 
+// ── 通用设置：全局自动签到（开关 + 频率，落盘立刻重调度）、日志默认显示方式（本机偏好）──
+const wbActOn = () => state.wbActivity !== false;
+$('cfg-wb-activity').addEventListener('change', async (e) => {
+  try {
+    await api('/api/settings', { method: 'PUT', json: { workbuddyActivity: e.target.checked } });
+    await loadSettings();
+    render(); renderStatus();
+    toast(T('已保存'), true);
+  } catch (err) { toast(err.message, false); }
+});
+function fillAutoCheckin() {
+  const sc = state.status && state.status.scheduler;
+  if (!sc) return;
+  $('cfg-auto-checkin').checked = sc.enabled !== false;
+  $('cfg-checkin-interval').value = String(sc.intervalMin || 120);
+}
+function logsDisplayDefault() {
+  try { return localStorage.getItem('qd_logs_expanded') !== '0' ? 'expanded' : 'collapsed'; } catch { return 'expanded'; }
+}
+function applyLogsDisplay(mode) {
+  const collapsed = mode !== 'expanded';
+  $('log-card').classList.toggle('collapsed', collapsed);
+  $('btn-logs').textContent = collapsed ? T('展开') : T('收起');
+  try { localStorage.setItem('qd_logs_expanded', collapsed ? '0' : '1'); } catch {}
+}
+$('cfg-auto-checkin').addEventListener('change', async (e) => {
+  try {
+    await api('/api/settings', { method: 'PUT', json: { autoCheckin: e.target.checked } });
+    await loadStatus();
+    toast(T('已保存'), true);
+  } catch (err) { toast(err.message, false); fillAutoCheckin(); }
+});
+$('cfg-checkin-interval').addEventListener('change', async (e) => {
+  try {
+    await api('/api/settings', { method: 'PUT', json: { checkinIntervalMin: Number(e.target.value) } });
+    await loadStatus();
+    toast(T('已保存'), true);
+  } catch (err) { toast(err.message, false); fillAutoCheckin(); }
+});
+$('cfg-logs-display').addEventListener('change', (e) => applyLogsDisplay(e.target.value));
+applyLogsDisplay(logsDisplayDefault());
+
 // ── 主题 ──
 // 应用的是「解析后的」亮/暗；用户选的三态（跟随系统 / 亮色 / 暗色）另存于 qd_theme，
 // 由 renderThemeMode() 反映到菜单里的分段控件（主题只有那一个入口）。
@@ -1203,6 +1284,7 @@ function initTheme() {
   const closeHmenu = () => hmenuPop.classList.remove('show');
   $('btn-header-menu').addEventListener('click', (e) => {
     e.stopPropagation();
+    closeModal('m-settings');   // 设置弹层与聚合菜单同处一处，开一个收一个
     const willOpen = !hmenuPop.classList.contains('show');
     if (willOpen) renderThemeMode();   // 打开时同步一次当前主题态（系统可能已变过）
     hmenuPop.classList.toggle('show', willOpen);
@@ -1211,7 +1293,8 @@ function initTheme() {
   document.addEventListener('click', (e) => { if (!e.target.closest('.hmenu')) closeHmenu(); });
   document.addEventListener('click', (e) => {
     const st = $('m-settings');
-    if (st && st.classList.contains('show') && !e.target.closest('#m-settings') && !e.target.closest('.head-setpop')) closeModal('m-settings');
+    // target 已脱离 DOM = 点击者所在区域刚被重渲染（如组件显隐切换重建 comp-menu），不算「点外面」
+    if (st && st.classList.contains('show') && e.target.isConnected && !e.target.closest('#m-settings') && !e.target.closest('.head-setpop')) closeModal('m-settings');
   });
   window.addEventListener('scroll', closeHmenu, true);
   // 菜单项图标：与头部按钮同款 Lucide 描边（静态文字前插图标）
@@ -1279,9 +1362,11 @@ function initTheme() {
     if (!themeBtn) return;
     const cur = resolvedTheme();
     themeBtn.innerHTML = cur === 'dark' ? I.moon : I.sun;
-    themeBtn.title = T('主题：{mode}（点击切换）', { mode: (THEME_MODES.find((m) => m[0] === cur) || THEME_MODES[0])[1] });
+    themeBtn.title = T('主题：{mode}（点击切换）', { mode: T(cur === 'dark' ? '暗色' : '亮色') });
   }
   themeBtn.addEventListener('click', () => applyThemeMode(resolvedTheme() === 'dark' ? 'light' : 'dark'));
+  // 字典到达后需要重渲染主题按钮（标题/图标）：暴露出脚本级入口供 boot 调
+  window.__syncTheme = renderThemeMode;
   renderThemeMode();
   $('theme-seg').addEventListener('click', (e) => {
     const btn = e.target.closest('[data-theme-mode]');
@@ -1488,7 +1573,7 @@ function cardHtml(a) {
     + (st.text ? '<span class="pill ' + st.cls + '" title="' + esc(a.lastResult ? fmtTime(a.lastResult.at) + ' ' + (a.lastResult.message || a.lastResult.status) : '') + '">' + esc(st.text) + '</span>' : '')
     + '</div><div class="ops">'
     + (a.product === 'zcode' ? T('<button class="icon-btn" data-act="claim" title="活动领取（billing/preview → claim，可能需过一次验证码）">') + I.gift + '</button>' : '')
-    + (canCheckin ? '<button class="icon-btn' + (state.busy[a.id] ? ' busy' : '') + '" data-act="checkin" title="' + (a.provider === 'workbuddy-intl' ? T('发送活跃请求') : T('立即领取')) + '">' + (state.busy[a.id] ? I.refresh : I.play) + '</button>' : '')
+    + (canCheckin && (a.provider !== 'workbuddy-intl' || wbActOn()) ? '<button class="icon-btn' + (state.busy[a.id] ? ' busy' : '') + '" data-act="checkin" title="' + (a.provider === 'workbuddy-intl' ? T('发送活跃请求') : T('立即领取')) + '">' + (state.busy[a.id] ? I.refresh : I.play) + '</button>' : '')
     + (a.canSwitch && !isCurrent && st.cls !== 'fail' ? T('<button class="icon-btn" data-act="switch" title="切换 ') + (CLIENT_LABEL[a.product] ? T(CLIENT_LABEL[a.product]) : prodLabel(a.product)) + ' 客户端到此账号">' + I.swap + '</button>' : '')
     + T('<button class="icon-btn" data-act="quota" title="刷新积分">') + I.refresh + '</button>'
     + T('<button class="icon-btn del" data-act="del" title="删除（点两次确认）">') + I.trash + '</button>'
@@ -1597,7 +1682,7 @@ function renderProd() {
   if (prod === 'workbuddy') {
     // 国内版 = 每日签到送积分；国际版 = 保持活跃（活跃不等于必有奖励）
     const cnAcc = acc.filter((a) => a.provider === 'workbuddy');
-    const intlAcc = acc.filter((a) => a.provider === 'workbuddy-intl');
+    const intlAcc = acc.filter((a) => a.provider === 'workbuddy-intl' && wbActOn());
     $('s-done-wrap').innerHTML = (cnAcc.length ? T('<div class="stat"><span title="国内版每日签到送积分">领取（国内）</span><strong>') + cnAcc.filter(isDone).length + ' / ' + cnAcc.length + '</strong></div><div class="divider"></div>' : '')
       + (intlAcc.length ? T('<div class="stat"><span title="国际版定期发送活跃请求保持资格；活跃不等于必有奖励">活跃（国际）</span><strong>') + intlAcc.filter(isDone).length + ' / ' + intlAcc.length + '</strong></div><div class="divider"></div>' : '');
   } else {
@@ -1616,7 +1701,7 @@ function renderProd() {
   document.querySelectorAll('#region button').forEach((x) => x.classList.toggle('active', x.dataset.r === state.region));
   $('btn-checkin').style.display = canCheckin ? '' : 'none';
   if (!$('btn-checkin').disabled) {
-    const hasIntl = acc.some((a) => a.provider === 'workbuddy-intl');
+    const hasIntl = acc.some((a) => a.provider === 'workbuddy-intl') && wbActOn();
     $('btn-checkin').innerHTML = I.play + (prod === 'workbuddy' && hasIntl ? T('领取 / 活跃全部') : T('领取全部 ') + prodLabel(prod));
   }
   // 顶栏产品专属入口：ZCode 设置组、Trae 打开客户端，带状态灯（运行中绿点呼吸）
@@ -1681,14 +1766,14 @@ function renderDash() {
   const byProd = orderedVisibleComps().filter((id) => id !== 'tenrouter').map((id) => prodLabel(id) + ' ' + ofProduct(id).length).join(' · ');
   const creditByProd = ['qoder', 'workbuddy', 'minimax'].filter(compVisible).map((id) => { const c = creditSum(ofProduct(id)); return prodLabel(id) + ' ' + (c.known ? fmtNum(c.sum) : '-'); }).join(' · ');
   // 今日进度拆「国内领取 / 国际活跃」：国际版 WorkBuddy 是保持活跃（活跃不等于必有奖励）
-  const intlAcc = signable.filter((a) => a.provider === 'workbuddy-intl');
+  const intlAcc = signable.filter((a) => a.provider === 'workbuddy-intl' && wbActOn());
   const domAcc = signable.filter((a) => a.provider !== 'workbuddy-intl');
   const doneDom = domAcc.filter(isDone).length;
   const doneIntl = intlAcc.filter(isDone).length;
   $('kpis').innerHTML =
     kpi(T('账号'), state.accounts.length, byProd)
     + kpi(T('今日领取') + (intlAcc.length ? T(' / 活跃') : ''), intlAcc.length
-        ? doneDom + ' <small>/ ' + domAcc.length + '</small><small class="kpi-side"> · 活跃 ' + doneIntl + ' / ' + intlAcc.length + '</small>'
+        ? doneDom + ' <small>/ ' + domAcc.length + '</small><small class="kpi-side">' + T(' · 活跃 {n} / {m}', { n: doneIntl, m: intlAcc.length }) + '</small>'
         : done + ' <small>/ ' + signable.length + '</small>',
       !signable.length ? T('暂无可领取的账号')
         : (doneDom === domAcc.length && doneIntl === intlAcc.length ? (intlAcc.length ? T('今天全部完成（国际为活跃请求，不保证奖励）') : T('今天全部签完'))
@@ -2606,6 +2691,25 @@ function applyLogTabs() {
     b.classList.toggle('active', b.dataset.logLevel === state.logLevel);
   });
 }
+// 加载今日整段历史（结构化归档，按当前语言实时重渲染，突破环形缓冲 300 条上限）。
+// 常规 10 秒轮询会把视图刷回最近 200 条——历史视图点「切标签/级别」即回到常规轮询。
+$('btn-logs-history').addEventListener('click', async () => {
+  const el = $('logs');
+  if (!el) return;
+  const qs = state.logTab === 'run' ? '' : ('&tag=' + encodeURIComponent(GW_LOG_TAG[state.logTab]));
+  try {
+    const data = await api('/api/logs?history=1' + qs);
+    let logs = data.logs || [];
+    if (state.logLevel !== 'all') logs = logs.filter((l) => l.level === 'warn' || l.level === 'error');
+    const withTag = state.logTab === 'run';
+    const ico = (lvl) => lvl === 'error' ? '✗' : lvl === 'warn' ? '⚠' : lvl === 'info' ? '·' : '';
+    el.innerHTML = logs.length
+      ? logs.map((l) => '<div class="' + esc(l.level) + '">[' + esc(l.at) + '] <span class="lvl-ico">' + ico(l.level) + '</span>' + (withTag ? esc(l.tag) + ' · ' : '') + esc(l.msg) + '</div>').join('')
+      : T('（暂无历史记录）');
+    el.scrollTop = el.scrollHeight;
+    toast(T('已加载今日历史 {n} 条', { n: logs.length }), true);
+  } catch (e) { toast(e.message, false); }
+});
 async function loadCurrentLogs() {
   const el = $('logs');
   if (!el) return;
@@ -3616,40 +3720,42 @@ async function doSecAction(action) {
   }
 }
 function renderCompMenu() {
-  // 组件顺序横向 chips：一行放下全部产品，勾选 = 显隐，箭头 = 前后移（顺序与标签栏同步）
+  // 组件顺序横向 chips：一行放下全部产品，勾选 = 显隐，拖动 = 前后移（顺序与标签栏同步）
   const compChips = state.compOrder.map((id) => {
     const c = COMPONENTS.find((x) => x.id === id);
     if (!c) return '';
     const vis = compVisible(id);
-    return '<span class="comp-chip' + (vis ? '' : ' off') + '">'
-      + T('<label class="check" title="勾选 = 显示该产品页"><input type="checkbox" data-comp="') + id + '"' + (vis ? ' checked' : '') + '>' + esc(T(c.label)) + '</label>'
-      + '<button class="icon-btn mini" data-move="up" data-comp="' + id + '" title="前移（仪表盘与标签栏同步）">' + I.chevUp + '</button>'
-      + '<button class="icon-btn mini" data-move="down" data-comp="' + id + '" title="后移（仪表盘与标签栏同步）">' + I.chevDown + '</button>'
+    return '<span class="comp-chip' + (vis ? '' : ' off') + '" draggable="true" data-drag-comp="' + id + '" data-comp-toggle="' + id + '"'
+      + ' title="' + T('点击切换显隐') + ' · ' + T('按住拖动调整顺序') + '">'
+      + T('<span class="drag-grip">') + I.grip + '</span>'
+      + '<span class="sort-name">' + esc(T(c.label)) + '</span>'
       + '</span>';
   }).join('');
   const sortSections = PRODUCTS.filter((p) => compVisible(p.id) && ofProduct(p.id).length).map((p) => {
     const manual = state.cardOrder[p.id];
-    const rows = sortedAccounts(p.id, ofProduct(p.id)).map((a) => '<span class="comp-chip" title="' + esc(a.name || a.email || a.uid || a.id) + '">'
+    const rows = sortedAccounts(p.id, ofProduct(p.id)).map((a) => '<span class="comp-chip" draggable="true" data-drag-acc="' + esc(a.id) + '" data-prod="' + p.id + '" title="' + esc(a.name || a.email || a.uid || a.id) + '">'
+      + T('<span class="drag-grip" title="按住拖动调整顺序">') + I.grip + '</span>'
       + '<span class="sort-name">' + esc(a.name || a.email || ('#' + a.id.slice(0, 6))) + '</span>'
-      + '<button class="icon-btn mini" data-acc-move="up" data-prod="' + p.id + '" data-aid="' + esc(a.id) + '" title="前移">' + I.chevUp + '</button>'
-      + '<button class="icon-btn mini" data-acc-move="down" data-prod="' + p.id + '" data-aid="' + esc(a.id) + '" title="后移">' + I.chevDown + '</button>'
       + '</span>').join('');
     return '<details class="sort-sec"' + (manual && manual.length ? ' open' : '') + '><summary>' + esc(T(p.label))
       + (manual && manual.length ? T(' <span class="badge">手动排序</span>') : '')
       + '<span class="dim" style="font-size:11px">' + ofProduct(p.id).length + '</span></summary>'
-      + T('<div class="sort-hint">默认按剩余积分从多到少；拖拽卡片或用箭头固定顺序。</div>')
+      + T('<div class="sort-hint">默认按剩余积分从多到少；直接按住拖动卡片调整顺序。</div>')
       + '<div class="comp-chips">' + rows + '</div>'
       + (manual && manual.length ? '<button class="btn" data-acc-reset="' + p.id + T('" style="margin-top:6px">恢复默认排序</button>') : '')
       + '</details>';
   }).join('');
-  $('comp-menu').innerHTML =
-    T('<div class="comp-menu-title">面板访问密码 ') + secStatusHtml() + '</div>'
+  $('sec-block').innerHTML =
+    secStatusHtml()
     + T('<div class="hint">开启后每次打开面板都需要输入密码；密码可随时在此修改或关闭。')
     + (state.sec.enabled ? '' : T('账号导出不受影响（导出口令始终必填）。')) + '</div>'
-    + '<div class="row">' + renderSecActions() + '</div>'
-    + T('<div class="comp-menu-title">自动签到</div>')
+    + '<div class="row">' + renderSecActions() + '</div>';
+  $('comp-menu').innerHTML =
+    T('<div class="comp-menu-title">自动签到</div>')
     + '<div class="hint">' + autoCheckinHint() + '</div>'
-    + T('<div class="comp-menu-title">组件顺序（仪表盘与标签栏同步）</div>') + '<div class="comp-chips">' + compChips + '</div>'
+    + T('<div class="comp-menu-title">组件顺序（仪表盘与标签栏同步）</div>')
+    + T('<div class="sort-hint">点按切换显隐（置灰 = 隐藏）；按住拖动调整顺序。</div>')
+    + '<div class="comp-chips">' + compChips + '</div>'
     + T('<div class="comp-menu-title">账号卡片排序</div>')
     + (sortSections || T('<div class="sort-hint">暂无账号</div>'));
 }
@@ -3686,13 +3792,18 @@ $('set-tabs').addEventListener('click', (e) => {
   document.querySelectorAll('#m-settings .pane[data-set-pane]').forEach((p) => p.classList.toggle('active', p.dataset.setPane === b.dataset.setTab));
 });
 $('btn-comp').addEventListener('click', async () => {
+  // 已打开再点齿轮 = 关闭（普通弹出层的开合直觉）
+  if ($('m-settings').classList.contains('show')) { closeModal('m-settings'); return; }
   renderCompMenu();
   openModal('m-settings');
   // 每次打开都回到「通用」页签
-  document.querySelectorAll('#set-tabs .tab').forEach((x) => x.classList.toggle('active', x.dataset.setTab === 'comp'));
-  document.querySelectorAll('#m-settings .pane[data-set-pane]').forEach((p) => p.classList.toggle('active', p.dataset.setPane === 'comp'));
+  document.querySelectorAll('#set-tabs .tab').forEach((x) => x.classList.toggle('active', x.dataset.setTab === 'net'));
+  document.querySelectorAll('#m-settings .pane[data-set-pane]').forEach((p) => p.classList.toggle('active', p.dataset.setPane === 'net'));
   await loadSettings();
   renderCompMenu();
+  fillAutoCheckin();
+  $('cfg-logs-display').value = logsDisplayDefault();
+  $('cfg-wb-activity').checked = wbActOn();
   // 网络出口（全局）：预填当前顺序与脱敏代理地址
   await loadZNet();
   (state.zProxyFirst === true ? $('znet-proxy') : $('znet-direct')).checked = true;
@@ -3700,38 +3811,18 @@ $('btn-comp').addEventListener('click', async () => {
   $('znet-url').placeholder = state.zProxyUrl || (state.zHasEnvProxy ? T('跟随环境变量 HTTPS_PROXY') : 'http://192.168.31.101:7890');
   $('znet-state').textContent = '';
 });
-$('comp-menu').addEventListener('change', (e) => {
-  const c = e.target.dataset && e.target.dataset.comp;
-  if (!c) return;
-  if (e.target.checked) state.hidden.delete(c); else state.hidden.add(c);
-  saveHiddenComps();
-  applyComponents();
-  renderCompMenu();
-});
 $('comp-menu').addEventListener('click', (e) => {
-  const secBtn = e.target.closest && e.target.closest('[data-sec-action]');
-  if (secBtn) { doSecAction(secBtn.dataset.secAction); return; }
-  const move = e.target.closest && e.target.closest('[data-move]');
-  if (move) {
-    e.stopPropagation();
-    const id = move.dataset.comp;
-    const i = state.compOrder.indexOf(id);
-    const j = move.dataset.move === 'up' ? i - 1 : i + 1;
-    if (i < 0 || j < 0 || j >= state.compOrder.length) return;
-    [state.compOrder[i], state.compOrder[j]] = [state.compOrder[j], state.compOrder[i]];
-    saveCompOrder();
+  const toggle = e.target.closest && e.target.closest('[data-comp-toggle]');
+  if (toggle && Date.now() >= suppressToggleUntil) {
+    const c = toggle.dataset.compToggle;
+    if (state.hidden.has(c)) state.hidden.delete(c); else state.hidden.add(c);
+    saveHiddenComps();
     applyComponents();
     renderCompMenu();
     return;
   }
-  const accMove = e.target.closest && e.target.closest('[data-acc-move]');
-  if (accMove) {
-    e.stopPropagation();
-    moveAccountId(accMove.dataset.prod, accMove.dataset.aid, accMove.dataset.accMove);
-    render();
-    renderCompMenu();
-    return;
-  }
+  const secBtn = e.target.closest && e.target.closest('[data-sec-action]');
+  if (secBtn) { doSecAction(secBtn.dataset.secAction); return; }
   const reset = e.target.closest && e.target.closest('[data-acc-reset]');
   if (reset) {
     e.stopPropagation();
@@ -3741,6 +3832,74 @@ $('comp-menu').addEventListener('click', (e) => {
     renderCompMenu();
   }
 });
+
+// ── 拖拽重排：组件与账号卡片共用（HTML5 DnD，横向 chip 按中线决定插前/插后）──
+let dragCtx = null; // {type:'comp'|'acc', id, prod}
+let suppressToggleUntil = 0;   // 拖放结束瞬-ms 内不触发显隐切换（防止拖着拖着被当成点击）
+const clearDropMarks = () => document.querySelectorAll('.comp-chip.drop-before, .comp-chip.drop-after, .comp-chip.dragging')
+  .forEach((x) => x.classList.remove('drop-before', 'drop-after', 'dragging'));
+$('comp-menu').addEventListener('dragstart', (e) => {
+  const compEl = e.target.closest('[data-drag-comp]');
+  const accEl = e.target.closest('[data-drag-acc]');
+  dragCtx = compEl ? { type: 'comp', id: compEl.dataset.dragComp }
+    : accEl ? { type: 'acc', prod: accEl.dataset.prod, id: accEl.dataset.dragAcc } : null;
+  if (!dragCtx) return;
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', dragCtx.id); } catch {}
+  (compEl || accEl).classList.add('dragging');
+});
+$('comp-menu').addEventListener('dragend', () => { dragCtx = null; suppressToggleUntil = Date.now() + 150; clearDropMarks(); });
+$('comp-menu').addEventListener('dragover', (e) => {
+  if (!dragCtx) return;
+  const sel = dragCtx.type === 'comp' ? '[data-drag-comp]' : '[data-drag-acc]';
+  const t = e.target.closest(sel);
+  if (!t) { e.dataTransfer.dropEffect = 'none'; return; }
+  if (dragCtx.type === 'acc' && t.dataset.prod !== dragCtx.prod) { e.dataTransfer.dropEffect = 'none'; return; }
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const r = t.getBoundingClientRect();
+  const before = e.clientX < r.left + r.width / 2;
+  t.classList.toggle('drop-before', before);
+  t.classList.toggle('drop-after', !before);
+});
+$('comp-menu').addEventListener('dragleave', (e) => {
+  const t = e.target.closest('.comp-chip');
+  if (t) t.classList.remove('drop-before', 'drop-after');
+});
+$('comp-menu').addEventListener('drop', (e) => {
+  if (!dragCtx) return;
+  const sel = dragCtx.type === 'comp' ? '[data-drag-comp]' : '[data-drag-acc]';
+  const t = e.target.closest(sel);
+  clearDropMarks();
+  if (!t) { dragCtx = null; return; }
+  e.preventDefault();
+  const r = t.getBoundingClientRect();
+  const after = e.clientX >= r.left + r.width / 2;
+  if (dragCtx.type === 'comp') {
+    const arr = state.compOrder.filter((id) => id !== dragCtx.id);
+    let idx = arr.indexOf(t.dataset.dragComp);
+    if (idx < 0) { dragCtx = null; return; }
+    if (after) idx += 1;
+    arr.splice(idx, 0, dragCtx.id);
+    state.compOrder = arr;
+    saveCompOrder();
+    applyComponents();
+  } else {
+    const baseIds = sortedAccounts(dragCtx.prod, ofProduct(dragCtx.prod)).map((a) => a.id);
+    const arr = (state.cardOrder[dragCtx.prod] && state.cardOrder[dragCtx.prod].length ? state.cardOrder[dragCtx.prod].slice() : baseIds)
+      .filter((id) => id !== dragCtx.id);
+    let idx = arr.indexOf(t.dataset.dragAcc);
+    if (idx < 0) { dragCtx = null; return; }
+    if (after) idx += 1;
+    arr.splice(idx, 0, dragCtx.id);
+    state.cardOrder[dragCtx.prod] = arr;
+    saveCardOrder();
+  }
+  suppressToggleUntil = Date.now() + 150;
+  dragCtx = null;
+  renderCompMenu();
+});
+
 applyComponents();
 renderCompMenu();
 
@@ -3823,6 +3982,7 @@ $('f-provider').addEventListener('change', () => {
 });
 $('btn-logs').onclick = () => {
   const c = $('log-card').classList.toggle('collapsed');
+  try { localStorage.setItem('qd_logs_expanded', c ? '0' : '1'); } catch {}
   $('btn-logs').textContent = c ? T('展开') : T('收起');
   if (!c) { loadCurrentLogs(); $('logs').scrollTop = $('logs').scrollHeight; }
 };
@@ -3874,6 +4034,7 @@ function hideBootBusy() { const b = $('boot-busy'); if (!b) return; clearTimeout
     // 兜底：接口长时间不返回也不能让加载态永久盖着
     hideBootBusy._t = setTimeout(hideBootBusy, 9000);
     applyDictFromServer().then(() => {
+    window.__syncTheme?.();   // 头部主题按钮的图标/标题在字典到达后重渲染（initTheme 时字典还没到，T() 当时只能回落中文）
     loadStatus().then(loadAccounts).then(hideBootBusy, (e) => { toast(e.message, false); hideBootBusy(); });
     loadSettings().then(renderCompMenu);
     loadZNet();

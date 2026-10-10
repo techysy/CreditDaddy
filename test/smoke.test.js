@@ -39,9 +39,9 @@ test('dayKey 按产品区分业务日界：Qoder 10:00，其余 00:00 (UTC+8)', 
   assert.equal(dayKey(new Date('2026-01-05T16:00:00Z').getTime(), 'workbuddy'), '2026-01-06');
 });
 
-test('下次 tick 在 2h~2h10m 之间', () => {
+test('下次 tick 在 2h~2h10m 之间', async () => {
   for (let i = 0; i < 20; i++) {
-    const ms = msUntilNextTick(Date.now(), () => 0.5);
+    const ms = await msUntilNextTick(() => 0.5);
     assert.ok(ms >= 2 * 3600_000 && ms <= 2 * 3600_000 + 10 * 60_000);
   }
 });

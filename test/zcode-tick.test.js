@@ -110,10 +110,10 @@ test('资格轮询周期可配置：默认 ~2 分钟，改配置后按新周期 
 test('stopScheduler 清掉普通与 ZCode 两套定时器状态', async () => {
   const { getSchedulerInfo } = await import('../src/checkin.js');
   enableZcodeAutoClaimWindow();
-  assert.equal(getSchedulerInfo().zcode.enabled, true);
+  assert.equal((await getSchedulerInfo()).zcode.enabled, true);
   stopScheduler();
-  assert.equal(getSchedulerInfo().zcode.enabled, true, '开关本身不因 stop 而变');
-  assert.equal(getSchedulerInfo().zcode.nextTickAt, null, '但下一次轮询时间应被清空');
+  assert.equal((await getSchedulerInfo()).zcode.enabled, true, '开关本身不因 stop 而变');
+  assert.equal((await getSchedulerInfo()).zcode.nextTickAt, null, '但下一次轮询时间应被清空');
   setAutoClaimEnabled(false);
   refreshZcodeScheduler();
 });

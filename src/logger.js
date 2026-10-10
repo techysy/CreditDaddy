@@ -9,6 +9,7 @@ import path from 'node:path';
 import os from 'node:os';
 import zlib from 'node:zlib';
 import { t } from './i18n.js';
+import { PROVIDER_LABEL } from './constants.js';
 
 const ARCHIVE_RETENTION_DAYS = 7;   // .log.gz 归档保留天数，更早的自动清理
 
@@ -22,6 +23,8 @@ try {
 
 let archiveDay = null;
 let archiveStream = null;
+let jsonlStream = null;
+let jsonlFile = null;
 
 function archiveLine(line) {
   if (!archiveDir) return;
@@ -37,10 +40,22 @@ function archiveLine(line) {
         prev.on('close', () => gzipAndCleanup(prevFile));
         prev.end();
       }
+      if (jsonlStream) {
+        const prevj = jsonlStream;
+        const prevjFile = jsonlFile;
+        jsonlStream = null;
+        prevj.on('error', () => {});
+        prevj.on('close', () => gzipAndCleanup(prevjFile));
+        prevj.end();
+      }
       archiveStream = fsSync.createWriteStream(path.join(archiveDir, `daemon-${day}.log`), { flags: 'a' });
+      jsonlFile = path.join(archiveDir, `daemon-${day}.jsonl`);
+      jsonlStream = fsSync.createWriteStream(jsonlFile, { flags: 'a' });
       archiveDay = day;
     }
     archiveStream.write('[' + line.at + '] ' + line.level.toUpperCase() + ' [' + line.tag + '] ' + line.msg + '\n');
+    // 结构化副行（JSONL）：key+args 原样落盘，读取侧按当前语言重渲染（历史也能切语言）
+    jsonlStream.write(JSON.stringify({ at: line.at, level: line.level, tag: line.tag, msg: line.msg, key: line.key, args: line.args }) + '\n');
   } catch { // 落盘失败不拖累主流程
   }
 }
@@ -82,7 +97,7 @@ function cleanupArchive() {
     cutoff.setDate(cutoff.getDate() - ARCHIVE_RETENTION_DAYS);
     cutoff.setHours(0, 0, 0, 0);
     for (const name of fsSync.readdirSync(archiveDir)) {
-      const m = /^daemon-(\d{4}-\d{2}-\d{2})\.log(\.gz)?$/.exec(name);
+      const m = /^daemon-(\d{4}-\d{2}-\d{2})\.(?:log|jsonl)(\.gz)?$/.exec(name);
       if (!m) continue;   // 只动本 daemon 的归档文件，不碰目录里其他文件
       const f = path.join(archiveDir, name);
       let fileDay;
@@ -135,12 +150,50 @@ export function summarizeAttempts(attempted) {
   return [...buckets.entries()].map(([k, n]) => `${k}×${n}`).join('、');
 }
 
+/**
+ * 运行期拼出的复合参数（如「[WorkBuddy 国内版] 账号名」）不可能整串进字典（账号名千变万化），
+ * 其中已知的产品 / 区域标签按当前语言做子串替换，其余字段原样保留。
+ */
+// 除产品线标签外，失败摘要的桶标签（summarizeAttempts 产出，记进 {detail} 参数，形如「账号拉黑×2」）
+// 同样是运行期复合串，整串无法进词典，按子串替换。
+const ATTEMPT_BUCKETS = ['验证码被拒', '账号拉黑', '额度耗尽', '额度瞬时拒绝', '429 限流', '网络错误', '上游错误'];
+
+function localizeEmbedded(text) {
+  let out = text;
+  for (const zh of [...Object.values(PROVIDER_LABEL), ...ATTEMPT_BUCKETS]) {
+    if (!out.includes(zh)) continue;
+    const tv = t(zh);
+    if (tv !== zh) out = out.split(zh).join(tv);
+  }
+  return out;
+}
+
+/** 带运行时数字的既有消息（连签 11 天 / 第 1 天 +400 积分）：按模式还原成模板再按当前语言渲染 */
+const ARG_PATTERNS = [
+  [/^今日已签（连签 (\d+) 天）$/, '今日已签（连签 {n} 天）', (m) => ({ n: m[1] })],
+  [/^今日第 (\d+) 天已签到（([\d.]+) \+ ([\d.]+) 积分）$/, '今日第 {d} 天已签到（{a} + {b} 积分）', (m) => ({ d: m[1], a: m[2], b: m[3] })],
+  [/^签到成功第 (\d+) 天（\+(\d+) 积分）$/, '签到成功第 {d} 天（+{p} 积分）', (m) => ({ d: m[1], p: m[2] })],
+  [/^今日已领取（\+(\d+) 积分）$/, '今日已领取（+{p} 积分）', (m) => ({ p: m[1] })],
+  [/^本机今日国际版额度已由「(.+)」领取（Qoder 每台设备每天限领一次）$/, '本机今日国际版额度已由「{name}」领取（Qoder 每台设备每天限领一次）', (m) => ({ name: localizeEmbedded(m[1]) })],
+];
+
+/** 字符串参数的三级翻译：整串精确 → 模式还原模板 → 子串标签替换 */
+function localizeArgString(v, ctx) {
+  const tv = t(v, ctx);
+  if (tv !== v) return tv;
+  for (const [re, tpl, vars] of ARG_PATTERNS) {
+    const m = re.exec(v);
+    if (m) return t(tpl, vars(m));
+  }
+  return localizeEmbedded(v);
+}
+
 function localizeArgs(args) {
   if (!args) return args;
   const loc = {};
-  for (const [k, v] of Object.entries(args)) loc[k] = typeof v === 'string' ? t(v, args) : v;
+  for (const [k, v] of Object.entries(args)) loc[k] = typeof v === 'string' ? localizeArgString(v, args) : v;
   const out = {};
-  for (const [k, v] of Object.entries(args)) out[k] = typeof v === 'string' ? t(v, loc) : v;
+  for (const [k, v] of Object.entries(args)) out[k] = typeof v === 'string' ? localizeArgString(v, loc) : v;
   return out;
 }
 
@@ -151,6 +204,34 @@ export function getLogs(limit = 100, tag = null) {
   return lines.slice(-limit).map((l) => (l.key ? { ...l, msg: t(l.key, localizeArgs(l.args)) } : l));
 }
 
+
+/**
+ * 读取结构化归档（.jsonl；缺省读当日、最多 limit 条）并按当前语言重渲染。
+ * 旧版本没有 .jsonl 时返回 []，调用方静默回退到环形缓冲。
+ * 同时兼容已 gzip 的当日归档（.jsonl.gz）。
+ */
+export function readArchiveJsonl({ day = null, limit = 2000 } = {}) {
+  if (!archiveDir) return [];
+  const d = day || ts().slice(0, 10);
+  const file = path.join(archiveDir, `daemon-${d}.jsonl`);
+  const gz = file + '.gz';
+  let raw = '';
+  try {
+    raw = fsSync.existsSync(file) ? fsSync.readFileSync(file, 'utf8') : '';
+    if (!raw && fsSync.existsSync(gz)) raw = zlib.gunzipSync(fsSync.readFileSync(gz)).toString('utf8');
+  } catch { return []; }
+  if (!raw) return [];
+  const lines = raw.split('\n').filter(Boolean).slice(-Math.max(1, Number(limit) || 2000));
+  const out = [];
+  for (const ln of lines) {
+    try {
+      const e = JSON.parse(ln);
+      out.push({ at: e.at, level: e.level, tag: e.tag, msg: e.key ? t(e.key, localizeArgs(e.args)) : e.msg });
+    } catch {}
+  }
+  return out;
+}
+
 /**
  * 测试收尾 / 进程退出用：关闭当前归档流，落盘后 gzip 归档并清理过期文件。
  *
@@ -159,19 +240,24 @@ export function getLogs(limit = 100, tag = null) {
  * 调用方不 await（测试里就是）也完全兼容，只是没人等它。
  */
 export function closeArchiveStream() {
-  if (!archiveStream) return Promise.resolve();
   const prev = archiveStream;
-  const prevFile = path.join(archiveDir, `daemon-${archiveDay}.log`);
+  const prevJ = jsonlStream;
+  const prevFile = archiveDay ? path.join(archiveDir, `daemon-${archiveDay}.log`) : null;
+  const prevJFile = jsonlFile;
   archiveStream = null;
+  jsonlStream = null;
   archiveDay = null;
-  return new Promise((resolve) => {
+  const closeOne = (stream, file) => new Promise((resolve) => {
+    if (!stream) return resolve();
     let settled = false;
-    const done = () => { if (!settled) { settled = true; resolve(); } };
-    prev.on('error', done);
-    prev.on('close', () => { gzipAndCleanup(prevFile); done(); });
-    // 兜底：万一 close 事件不来（fd 被外部占住），不让退出流程永远挂在这里
-    const timer = setTimeout(done, 2000);
+    const finish = (gzip) => { if (!settled) { settled = true; if (gzip) gzipAndCleanup(file); resolve(); } };
+    stream.on('error', () => finish(false));
+    // 只等 close 事件收尾（gzip 也在这里做）：end 的回调在 finish 阶段就触发，
+    // 那时 close 还没来、.gz 还没生成——await 完断言会看到对象不齐（测试 #3 逮过）
+    stream.on('close', () => finish(true));
+    const timer = setTimeout(() => finish(false), 2000);  // 兜底：close 不来不挂死
     timer.unref?.();
-    prev.end(done);
+    stream.end();
   });
+  return Promise.all([closeOne(prev, prevFile), closeOne(prevJ, prevJFile)]);
 }

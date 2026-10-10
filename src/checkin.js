@@ -1,8 +1,9 @@
 /**
- * 签到调度：普通账号每 ~2h 扫描一次；ZCode 自动活动领取使用独立的短周期调度。
+ * 签到调度：普通账号按配置的间隔（默认每 2h，面板设置可调 1-8h、可全局关闭）扫描一次；
+ * ZCode 自动活动领取使用独立的短周期调度。
  */
 
-import { loadAccounts, loadState, withAccounts, withState } from './store.js';
+import { loadAccounts, loadSettings, loadState, withAccounts, withState } from './store.js';
 import { productImpl } from './providers.js';
 import { productOf, PROVIDER_LABEL } from './constants.js';
 import { startUsageSyncScheduler } from './tenrouter.js';
@@ -17,7 +18,13 @@ import {
 import { logger } from './logger.js';
 import { t as tr } from './i18n.js';
 
-const TICK_MS = 2 * 60 * 60 * 1000;
+/** 全局自动签到配置：默认开启、每 120 分钟一轮；面板「设置 → 通用」可关 / 调频。 */
+export async function autoCheckinEnabled() {
+  return (await loadSettings()).autoCheckin !== false;
+}
+export async function checkinIntervalMin() {
+  return Math.max(15, Number((await loadSettings()).checkinIntervalMin) || 120);
+}
 const TICK_JITTER_MS = 10 * 60 * 1000;
 const ZCODE_JITTER_MS = 15 * 1000;
 const ZCODE_FIRST_DELAY_MS = 2 * 60 * 1000;
@@ -40,10 +47,13 @@ let lastTick = null;
 let ticking = false;
 
 /** 调度器状态（面板展示用） */
-export function getSchedulerInfo() {
+export async function getSchedulerInfo() {
   const enabled = autoClaimEnabled();
+  const autoCk = await autoCheckinEnabled();
   return {
-    running: Boolean(timerHandle), nextTickAt, lastTick, ticking,
+    enabled: autoCk,
+    intervalMin: await checkinIntervalMin(),
+    running: Boolean(timerHandle), nextTickAt: autoCk ? nextTickAt : null, lastTick, ticking,
     zcode: {
       enabled,
       intervalMin: claimIntervalMin(),
@@ -62,8 +72,8 @@ export function dayKey(nowMs = Date.now(), provider = 'qoder') {
   return new Date(nowMs + (8 - h) * 3600 * 1000).toISOString().slice(0, 10);
 }
 
-export function msUntilNextTick(nowMs = Date.now(), rand = Math.random) {
-  return Math.max(TICK_MS + Math.floor(rand() * TICK_JITTER_MS), 1000);
+export async function msUntilNextTick(rand = Math.random) {
+  return Math.max((await checkinIntervalMin()) * 60 * 1000 + Math.floor(rand() * TICK_JITTER_MS), 1000);
 }
 
 export function zcodeMsUntilNextTick(rand = Math.random) {
@@ -214,10 +224,13 @@ async function runTickNow(opts) {
 
 async function runTickInner(opts) {
   const allAccounts = await loadAccounts();
+  // WB 国际版活跃请求全局开关（面板「设置 → 通用」）：关闭时该轮与手动领取都不再打
+  const wbActivity = (await loadSettings()).workbuddyActivity !== false;
   const accounts = allAccounts.filter(
     (a) => (!opts.provider || a.provider === opts.provider)
         && (!opts.product || productOf(a.provider) === opts.product)
         && (!opts.onlyAccountId || a.id === opts.onlyAccountId)
+        && (wbActivity || a.provider !== 'workbuddy-intl')
         && typeof productImpl(a.provider)?.checkin === 'function'
   );
   const zAccounts = (opts.includeZcode !== false && autoClaimEnabled()
@@ -332,32 +345,44 @@ async function runTickInner(opts) {
   return { results, summary };
 }
 
+async function scheduleTick() {
+  const delay = await msUntilNextTick();
+  nextTickAt = new Date(Date.now() + delay).toISOString();
+  timerHandle = setTimeout(async () => {
+    try {
+      await runCheckinTick({ skipIfCheckedToday: true, includeZcode: false });
+    } catch (err) {
+      logger.error('CHECKIN', '定时轮失败:{err}', { err: err?.message || err });
+    } finally {
+      scheduleTick();
+    }
+  }, delay);
+  timerHandle.unref?.();
+  logger.info('CHECKIN', '定时签到已启动,下次执行约 {min} 分钟后', { min: Math.round(delay / 60000) });
+}
+
 /** 启动普通签到调度与 ZCode 独立轮询调度。 */
-export function startScheduler() {
+export async function startScheduler() {
   if (timerHandle) return;
   startUsageSyncScheduler();
   warmZcodeAppVersion();
-  const scheduleNext = () => {
-    const delay = msUntilNextTick();
-    nextTickAt = new Date(Date.now() + delay).toISOString();
-    timerHandle = setTimeout(async () => {
-      try {
-        await runCheckinTick({ skipIfCheckedToday: true, includeZcode: false });
-      } catch (err) {
-        logger.error('CHECKIN', '定时轮失败:{err}', { err: err?.message || err });
-      } finally {
-        scheduleNext();
-      }
-    }, delay);
-    timerHandle.unref?.();
-    logger.info('CHECKIN', '定时签到已启动,下次执行约 {min} 分钟后', { min: Math.round(delay / 60000) });
-  };
-  scheduleNext();
+  if (await autoCheckinEnabled()) {
+    scheduleTick();
+    setTimeout(() => {
+      runCheckinTick({ skipIfCheckedToday: true, includeZcode: false }).catch((err) =>
+        logger.error('CHECKIN', '引导轮失败:{err}', { err: err?.message || err }));
+    }, 15000).unref?.();
+  } else {
+    logger.info('CHECKIN', '自动签到已关闭（面板设置可开启）');
+  }
   syncZcodeScheduler();
-  setTimeout(() => {
-    runCheckinTick({ skipIfCheckedToday: true, includeZcode: false }).catch((err) =>
-      logger.error('CHECKIN', '引导轮失败:{err}', { err: err?.message || err }));
-  }, 15000).unref?.();
+}
+
+/** 面板修改全局自动签到开关 / 频率后重同步（daemon PUT /api/settings 调用）。 */
+export async function resyncAutoCheckinScheduler() {
+  if (timerHandle) { clearTimeout(timerHandle); timerHandle = null; nextTickAt = null; }
+  if (await autoCheckinEnabled()) scheduleTick();
+  else logger.info('CHECKIN', '自动签到已关闭');
 }
 
 export function stopScheduler() {
