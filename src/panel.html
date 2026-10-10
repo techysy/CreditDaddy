@@ -2556,7 +2556,7 @@ async function trTest() {
     $('tr-test-msg').style.color = r.ok ? 'var(--ok)' : 'var(--err)';
     $('tr-test-msg').textContent = !r.ok ? '✗ ' + r.error
       : r.quotas ? T('✓ 连接成功：') + r.connections + T(' 个可查额度的供应商连接') : T('✓ 已连接，但') + r.warning + T('（用量同步可以正常使用）');
-  } catch (e) { $('tr-test-msg').style.color = 'var(--err)'; $('tr-test-msg').textContent = '✗ ' + e.message; }
+  } catch (e) { $('tr-test-msg').style.color = 'var(--err)'; $('tr-test-msg').textContent = '✗ ' + T(e.message); }
 }
 async function trSave() {
   const f = trForm();
