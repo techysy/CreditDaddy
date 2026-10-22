@@ -1,0 +1,17 @@
+# CreditDaddy
+
+> 一个桌面应用，用于本地管理多家 AI 编程工具的多账号并自动每日领取积分，集成 10Router 额度总览、用量同步与网页会话免费额度捕获。
+
+从 Releases 下载对应平台安装包，也可 npm 全局安装；架构为本地守护进程 + Web 面板，数据存于 ~/.creditdaddy，仅监听 127.0.0.1。支持 Qoder、WorkBuddy、ZCode、mirasim、妙手、Trae、MiniMax、ModelScope 的账号导入、切换与每日自动签到，并提供 10Router 集成（额度卡片、账号同步、用量同步、外部配额卡推送）及 Token Harbor / 小米 MiMo / River / ModelScope / LongCat 的网页会话凭据捕获。
+
+## Docs
+
+- [CreditDaddy](https://raw.githubusercontent.com/techysy/CreditDaddy/main/README.md): AI 编程工具多账号管理与每日积分自动领取助手，含 10Router 集成、下载方式、架构与快速开始。
+- [fnOS 部署（fpk）](https://raw.githubusercontent.com/techysy/CreditDaddy/main/DEPLOY.md): FnOS fpk 打包发版流程：线上产物不得带病原则、授权规则、版本号三处一致与 release-check 审查步骤。
+- [2026-10-21 事故复盘：配额卡残留 + mirasim 用量重复同步](https://raw.githubusercontent.com/techysy/CreditDaddy/main/docs/incident-20261021-quota-sync.md): 配额卡残留与 mirasim 用量双记两起事故的现象、根因、修复与本地打包流程防范教训。
+- [MiniMax Code 本地反代网关与资产管理可行性技术调研](https://raw.githubusercontent.com/techysy/CreditDaddy/main/docs/minimax-code-gateway-feasibility.md): MiniMax Code 本地反代网关与资产管理可行性调研：Anthropic 协议架构、接口实测与每日签到验证。
+- [Trae 本地反代与 10Router 用量同步可行性技术调研](https://raw.githubusercontent.com/techysy/CreditDaddy/main/docs/trae-reverse-proxy-feasibility.md): Trae 本地反代与 10Router 用量同步可行性调研：Frontier WebSocket、Protobuf 封包与 TTNet 风控栈拆解。
+
+## Optional
+
+- [变更日志](https://raw.githubusercontent.com/techysy/CreditDaddy/main/CHANGELOG.md): 按版本排列的完整开发与变更日志，含 Unreleased 排期项与各版本主题、修复明细。
