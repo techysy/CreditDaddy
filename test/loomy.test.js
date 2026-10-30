@@ -33,9 +33,10 @@ test('Loomy 注册接口与身份校验已接入（新手机号一条龙）', as
   await assert.rejects(() => auth.registerLoomyByPhone({ phone: '13100000000', code: '' }), /验证码/);
 });
 
-test('Loomy 积分口径：normalizePointsBalance 映射永久/每日赠送', async () => {
+test('Loomy 积分口径：normalizePointsBalance 映射永久/每日赠送（records V1 真实字段）', async () => {
   const { normalizePointsBalance } = await import('../src/loomyClient.js');
-  const q = normalizePointsBalance({ data: { permanentPoints: 10500, dailyPoints: 3506, dailyLimit: 5000 } });
+  // 客户端 records 响应 data.data 实际字段：balance / dailyBalance / dailyLimitPoints / dailyConsumedPoints
+  const q = normalizePointsBalance({ data: { balance: 10500, dailyBalance: 3506, dailyLimitPoints: 5000, dailyConsumedPoints: 1494, list: [], total: 0 } });
   assert.equal(q.unit, '积分');
   assert.equal(q.remaining, 14006);
   const names = q.parts.map((p) => p.name);
@@ -45,9 +46,59 @@ test('Loomy 积分口径：normalizePointsBalance 映射永久/每日赠送', as
   assert.equal(daily.remaining, 3506);
   assert.equal(daily.used, 1494);
   assert.equal(daily.recurring, true);
+  // 旧字段别名仍兼容
+  const legacy = normalizePointsBalance({ data: { permanentPoints: 100, dailyPoints: 40, dailyLimit: 500 } });
+  assert.equal(legacy.remaining, 140);
   // 空数据 → empty 口径（绝不再拿模型数量冒充积分）
   const empty = normalizePointsBalance({ data: {} });
   assert.equal(empty.empty, true);
+});
+
+test('Loomy 积分查询：records 直接成功时只打一次接口', async () => {
+  const { fetchLoomyPoints } = await import('../src/loomyClient.js');
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts = {}) => {
+    calls.push({ url: String(url), method: opts.method || 'GET' });
+    if (String(url).includes('/api/v1/points/records')) {
+      return new Response(JSON.stringify({ code: '000000', desc: '成功', data: { balance: 10500, dailyBalance: 3506, dailyLimitPoints: 5000, dailyConsumedPoints: 1494, list: [], total: 0 } }));
+    }
+    throw new Error('unexpected url ' + url);
+  };
+  try {
+    const q = await fetchLoomyPoints({ token: 'sess-x', meta: {} });
+    assert.equal(q.remaining, 14006);
+    assert.equal(calls.length, 1);
+    assert.ok(calls[0].url.includes('/api/v1/points/records?pageNo=1&pageSize=1&recordType=all'));
+    assert.equal(calls[0].method, 'GET');
+  } finally { globalThis.fetch = realFetch; }
+});
+
+test('Loomy 积分查询：100002 时按客户端协议补 first-login 后重试', async () => {
+  const { fetchLoomyPoints } = await import('../src/loomyClient.js');
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  let recordsCount = 0;
+  globalThis.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    calls.push({ url: u, method: opts.method || 'GET' });
+    if (u.includes('/api/v1/points/records')) {
+      recordsCount++;
+      if (recordsCount === 1) return new Response(JSON.stringify({ code: '100002', desc: '未登录或登录已失效' }));
+      return new Response(JSON.stringify({ code: '000000', desc: '成功', data: { balance: 800, dailyBalance: 0, dailyLimitPoints: 5000, list: [], total: 0 } }));
+    }
+    if (u.includes('/api/v1/points/first-login')) {
+      assert.equal(opts.method, 'POST');
+      return new Response(JSON.stringify({ code: '000000', desc: '成功', data: {} }));
+    }
+    throw new Error('unexpected url ' + u);
+  };
+  try {
+    const q = await fetchLoomyPoints({ token: 'sess-x', meta: {} });
+    assert.equal(q.parts.find((p) => p.name === '永久积分').remaining, 800);
+    assert.equal(q.parts.find((p) => p.name === '每日赠送积分').remaining, 0);
+    assert.ok(calls.some((c) => c.url.includes('/api/v1/points/first-login')), '应补调 first-login 初始化');
+  } finally { globalThis.fetch = realFetch; }
 });
 
 test('ZCode 已知活动兜底清单包含 WEEKEND BUILD', async () => {
