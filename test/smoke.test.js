@@ -92,6 +92,14 @@ test('载荷构建不含 id，兼容新旧字段', () => {
   assert.equal(payload.accounts[0].providerSpecificData.userId, 'u-1');
 });
 
+test('Loomy 同步载荷带 authType:apikey——10R 原生 loomy 行就是 apikey 形态，不带会落成 oauth 丢凭据', () => {
+  const a = store.normalizeAccountInput({ provider: 'loomy', token: 'lmtok'.repeat(6) + 'ab', uid: '261030162018707426' });
+  const row = transfer.buildExportPayload([a]).accounts[0];
+  assert.equal(row.authType, 'apikey');
+  const q = transfer.buildExportPayload([store.normalizeAccountInput({ provider: 'qoder', token: 'jt-1' })]).accounts[0];
+  assert.equal(q.authType, undefined);
+});
+
 test('Qoder 网页会话随导出进 providerSpecificData，回导入恢复进 meta', () => {
   const a = store.normalizeAccountInput({ provider: 'qoder-cn', token: 'dt-web-sync', uid: 'u-web' });
   a.meta = { qoderWebSession: { cookie: 'session=abc; x=1', capturedAt: '2026-09-30T11:47:56.904Z' } };

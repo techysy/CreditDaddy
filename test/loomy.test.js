@@ -112,3 +112,22 @@ test('Loomy 账号支持切换（canSwitch）', async () => {
   const view = publicAccount({ provider: 'loomy', token: 'x'.repeat(20), meta: { phone: '13100003656' } });
   assert.equal(view.canSwitch, true);
 });
+
+test('currentLoomyUid 读凭据 userid——面板「客户端当前」徽章按 uid 比对', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { currentLoomyUid } = await import('../src/loomyLocal.js');
+  const fixture = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'loomy-uid-')), 'auth-session.json');
+  fs.writeFileSync(fixture, JSON.stringify({ session: 's'.repeat(32), userid: '261030162018707426', phone: '13100003656', updatedAt: 1 }));
+  const prev = process.env.LOOMY_CREDENTIAL_FILE;
+  process.env.LOOMY_CREDENTIAL_FILE = fixture;
+  try {
+    assert.equal(currentLoomyUid(), '261030162018707426');
+    fs.writeFileSync(fixture, JSON.stringify({ session: 's'.repeat(32) }));
+    assert.equal(currentLoomyUid(), null, '缺 userid 时应返回 null（徽章退化为不亮而不是误亮）');
+  } finally {
+    if (prev === undefined) delete process.env.LOOMY_CREDENTIAL_FILE; else process.env.LOOMY_CREDENTIAL_FILE = prev;
+    fs.rmSync(path.dirname(fixture), { recursive: true, force: true });
+  }
+});

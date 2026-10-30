@@ -111,6 +111,9 @@ export function buildExportPayload(accounts, { provider, product } = {}) {
       refreshToken: a.refreshToken || null,
       expiresAt: a.expiresAt || null,
       createdAt: a.createdAt,
+      // 10Router 原生 Loomy 行是 authType:'apikey'（apiKey=session，sms-login 路由同款）；
+      // 不带这个字段，10R 导入端按默认 oauth 落库、不写 apiKey 字段，loomy 运行时读不到凭据
+      ...(a.provider === 'loomy' ? { authType: 'apikey' } : {}),
       providerSpecificData: {
         authMethod: a.token.startsWith('pt-') ? 'pat' : 'device',
         userId: a.uid || null,

@@ -128,6 +128,11 @@ export function currentLoomyToken() {
   try { return readCredential()?.session || null; } catch { return null; }
 }
 
+/** 当前客户端登录的用户 ID（面板「客户端当前」徽章按 uid 比对——publicAccount 不下发 token，面板侧只能比 uid） */
+export function currentLoomyUid() {
+  try { return readCredential()?.userid || null; } catch { return null; }
+}
+
 /**
  * 读取 Loomy 客户端当前登录，返回标准化账号对象（供 addAccount / 本机导入）。
  */

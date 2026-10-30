@@ -1817,7 +1817,8 @@ function isClientCurrent(a) {
   if (a.product === 'catpaw') return Boolean(a.uid && s.catpawCurrentUid && s.catpawCurrentUid === a.uid);
   if (a.product === 'trae') return Boolean(a.uid && s.traeCurrentUid && s.traeCurrentUid === a.uid);
   if (a.product === 'minimax') return Boolean(a.uid && s.minimaxCurrentUid && s.minimaxCurrentUid === a.uid);
-  if (a.product === 'loomy') return Boolean(a.token && s.loomyCurrentToken && s.loomyCurrentToken === a.token);
+  // Loomy 按 uid 比对：publicAccount 不下发 token（面板侧 a.token 恒为空，按 token 比对徽章永远不亮）
+  if (a.product === 'loomy') return Boolean(a.uid && s.loomyCurrentUid && String(s.loomyCurrentUid) === String(a.uid));
   if (a.product === 'zcode') {
     const id = s.zcodeCurrentIdentity;
     return Boolean(id && ((a.uid && id.uid != null && String(id.uid) === String(a.uid)) || (a.email && id.email && id.email === a.email)));
@@ -2899,6 +2900,7 @@ const AM_CHANNELS = [
   { provider: 'qoder-cn', label: 'Qoder 国内版', syncable: true },
   { provider: 'workbuddy', label: 'WorkBuddy 国内版', syncable: true },
   { provider: 'workbuddy-intl', label: 'WorkBuddy 国际版', syncable: true },
+  { provider: 'loomy', label: '讯飞 Loomy', syncable: true },
 ];
 
 function openTrAccountManage() {

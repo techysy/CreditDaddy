@@ -62,7 +62,7 @@ import { liveToAccount as mirasimLiveAccount, switchTo as mirasimSwitchTo, curre
 import { liveToAccount as catpawLiveAccount, switchTo as catpawSwitchTo, currentCatpawToken, detectCatpaw, terminateCatpaw } from './catpawLocal.js';
 import { liveToAccount as traeLiveAccount, detectTrae, switchTo as traeSwitchTo, snapshotLive as traeSnapshotLive } from './traeLocal.js';
 import { liveToAccount as minimaxLiveAccount, detectMiniMax, currentMiniMaxUid, currentMiniMaxToken, currentMiniMaxRecordKey } from './minimaxLocal.js';
-import { liveToAccount as loomyLiveAccount, switchTo as loomySwitchTo, currentLoomyToken, detectLoomy, terminateLoomy } from './loomyLocal.js';
+import { liveToAccount as loomyLiveAccount, switchTo as loomySwitchTo, currentLoomyToken, currentLoomyUid, detectLoomy, terminateLoomy } from './loomyLocal.js';
 import * as minimaxGateway from './minimaxGateway.js';
 import * as traeGateway from './traeGateway.js';
 import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl, autoClaimEnabled, autoClaimUntil, setAutoClaimEnabled, claimIntervalMin, setClaimIntervalMin, claimWindowMin, setClaimWindowMin } from './zcodeClient.js';
@@ -1914,6 +1914,7 @@ async function handleApi(req, res, url) {
       minimaxCurrentUid: mmLiveUid,
       minimaxClient: (() => { const d = detectMiniMax(); return { installed: d.installed, signedIn: d.signedIn, running: d.running }; })(),
       loomyCurrentToken: currentLoomyToken(),
+      loomyCurrentUid: currentLoomyUid(),
       loomyClient: (() => { const d = detectLoomy(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       keyRequired: panelKeyRequired(),
     });
