@@ -13,7 +13,7 @@
 
 import { logger } from './logger.js';
 import { t } from './i18n.js';
-import { fetchClaimPlans, claimPlan, fetchCaptchaConfig } from './zcodeClient.js';
+import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, ZCODE_KNOWN_CLAIM_PLANS } from './zcodeClient.js';
 import { withAccounts } from './store.js';
 
 // 额满（1005）时消费服务端 nextAt（plan.ends_at）：
@@ -58,7 +58,12 @@ export async function zcodeAutoClaim(account) {
         logger.debug('ZCODE-CLAIM', '{label} 活动查询失败:{err}', { label, err: e.message });
     return null;
   }
-  if (!plans.length) return null;
+  if (!plans.length) {
+    // preview 为空 ≠ 无事可做：服务端偶尔把活动从列表里藏起来（2026-10-30 WEEKEND BUILD
+    // 实测 preview 返回空但 claim 按 planId 直接可领）。把已知清单合成伪 plan 走同一条
+    // 领取链路：1001/1002（不存在/已结束）在 catch 里静默跳过，不进卡片。
+    plans = ZCODE_KNOWN_CLAIM_PLANS.map((k) => ({ planId: k.planId, name: k.name || k.planId, description: '', priority: 0, grants: [] }));
+  }
 
   const claims = [];
   let anySuccess = false;
@@ -87,6 +92,8 @@ export async function zcodeAutoClaim(account) {
         snoozeAt = Math.max(snoozeAt, Number(new Date(e.nextAt)) || 0);
       }
       if (e.code !== 3007 && e.code !== 3001) {
+        // 1001/1002 = 已知清单里的活动不存在/已结束：静默跳过（不进卡片、不算失败）
+        if (e.code === 1001 || e.code === 1002) continue;
         claims.push({ plan: planName, ok: false, message: e.message });
                 logger.warn('ZCODE-CLAIM', '{label} 领取「{plan}」失败:{err}', { label, plan: planName, err: e.message });
         continue;
@@ -130,6 +137,8 @@ export async function zcodeAutoClaim(account) {
     } catch {}
   }
 
+  // 已知清单全部不可领（1001/1002 静默跳过）时 claims 为空：无事发生，不留痕迹
+  if (!claims.length) return null;
   const names = claims.filter((c) => c.ok && !c.already).map((c) => c.plan);
   const status = names.length ? 'checked-in'
     : claims.every((c) => c.already) ? 'already'

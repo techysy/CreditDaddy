@@ -10,6 +10,8 @@
  * 流程：
  *   1. sendLoomySms(phone)                -> POST /login/phone/sendMsgCode (获取 msgid)
  *   2. loginLoomyBySms({ phone, code, msgid }) -> POST /login/phone/checkCode   (换取 14 天 session token)
+ *   3. registerLoomyByPhone({ phone, code })   -> POST /register/phone/submit    (新手机号注册；与登录共用同一条验证码)
+ *   4. fetchLoomyIdentity(session)             -> POST /userinfo/query/baseInfo   (会话校验 / 昵称)
  */
 
 import crypto from 'node:crypto';
@@ -126,7 +128,11 @@ async function requestLoomy(path, body) {
 
   const json = await res.json().catch(() => ({}));
   if (json.code && json.code !== '000000') {
-    throw new Error(json.desc || json.message || `业务错误 (${json.code})`);
+    const err = new Error(json.desc || json.message || `业务错误 (${json.code})`);
+    err.code = json.code;
+    // 100002 / 020002 与客户端 AUTH_ERROR_CODES 同口径：登录态无效
+    if (json.code === '100002' || json.code === '020002') err.auth = true;
+    throw err;
   }
 
   return json.data;
@@ -184,5 +190,41 @@ export async function loginLoomyBySms({ phone, code, msgid }) {
     session: data.session,
     userid: data.userid || data.uid,
     phone: cleanPhone,
+  };
+}
+
+/**
+ * 新手机号注册（与登录共用同一条短信验证码，param 不带 msgid）。
+ * 渲染层 registerByPhone 同款：phone + code（可选 password，这里不设密码）。
+ */
+export async function registerLoomyByPhone({ phone, code }) {
+  const cleanPhone = String(phone || '').trim();
+  const cleanCode = String(code || '').trim();
+  if (!/^1[3-9]\d{9}$/.test(cleanPhone)) throw new Error('手机号格式不正确');
+  if (!cleanCode) throw new Error('验证码不能为空');
+
+  const data = await requestLoomy('/register/phone/submit', {
+    base: makeBase(),
+    param: { phone: cleanPhone, code: cleanCode },
+  });
+
+  // 注册成功即视为已登录（服务端语义同客户端：注册后可直接 checkCode 换 session）
+  return { success: true, ...data };
+}
+
+/** 会话校验 / 资料查询：POST /userinfo/query/baseInfo { param: { session } } */
+export async function fetchLoomyIdentity(session) {
+  const cleanSession = String(session || '').trim();
+  if (!cleanSession) throw new Error('缺少 session');
+
+  const data = await requestLoomy('/userinfo/query/baseInfo', {
+    base: makeBase(),
+    param: { session: cleanSession },
+  });
+
+  return {
+    userid: String(data?.userid || ''),
+    phone: String(data?.phone || ''),
+    nickname: String(data?.nickname || '').trim() || null,
   };
 }

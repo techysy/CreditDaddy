@@ -1601,6 +1601,27 @@ function registerAuthWindowIpc() {
       return { ok: false, error: Tt('未找到 MiniMax Code 客户端可执行文件') };
     } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
   });
+  // Loomy 页「打开客户端」：Program Files 优先，其次 LOCALAPPDATA（与 loomyLocal.candidateClientPath 同口径）
+  ipcMain.handle('open-loomy-client', async () => {
+    try {
+      const os = require('node:os');
+      const fs = require('node:fs');
+      const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+      const cands = [
+        'C:\\Program Files\\Loomy\\Loomy.exe',
+        'C:\\Program Files (x86)\\Loomy\\Loomy.exe',
+        path.join(local, 'Programs', 'Loomy', 'Loomy.exe'),
+      ];
+      for (const cand of cands) {
+        if (process.platform === 'win32' && fs.existsSync(cand)) {
+          const err = await shell.openPath(cand);
+          if (!err) return { ok: true };
+          return { ok: false, error: err };
+        }
+      }
+      return { ok: false, error: Tt('未找到 Loomy 客户端可执行文件') };
+    } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
+  });
 }
 
 function panelUrl() {

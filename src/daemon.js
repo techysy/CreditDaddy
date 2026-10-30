@@ -796,6 +796,33 @@ async function handleApi(req, res, url) {
       return json(res, 502, { error: e.message });
     }
   }
+  // preview 查不到的「隐藏活动」兜底：逐个试已知 planId（WEEKEND BUILD 实测 preview 空、claim 可领）
+  const zcodeClaimKnownMatch = p.match(/^\/api\/accounts\/([\w-]+)\/zcode\/claim-known$/);
+  if (zcodeClaimKnownMatch && method === 'POST') {
+    const accounts = await loadAccounts();
+    const account = accounts.find((a) => a.id === zcodeClaimKnownMatch[1]);
+    if (!account) return json(res, 404, { error: '账号不存在' });
+    if (account.provider !== 'zcode') return json(res, 400, { error: '只有 ZCode 账号支持活动领取' });
+    const { ZCODE_KNOWN_CLAIM_PLANS } = await import('./zcodeClient.js');
+    const claimed = [], already = [], skipped = [];
+    for (const known of ZCODE_KNOWN_CLAIM_PLANS) {
+      try {
+        const outcome = await claimPlan(account, known.planId, {});
+        claimed.push(outcome.planName || known.name || known.planId);
+        logger.info('DAEMON', 'ZCode {name} 领取隐藏活动成功:{plan}', { name: account.name || account.id, plan: outcome.planName || known.planId });
+        await zcodeGateway.clearQuotaMark(account.id);
+        await withAccounts((list) => {
+          const cur = list.find((a) => a.id === account.id);
+          if (cur) cur.lastResult = { status: 'checked-in', message: `已领取：${outcome.planName || known.planId}`, amount: 0, at: new Date().toISOString() };
+        });
+      } catch (e) {
+        if (e.code === 1003) already.push(known.name || known.planId);
+        else if (e.code === 1001 || e.code === 1002) skipped.push(known.name || known.planId);
+        else return json(res, 502, { error: e.message, code: e.code, partial: { claimed, already, skipped } });
+      }
+    }
+    return json(res, 200, { claimed, already, skipped });
+  }
   // 网络出口偏好（全局——Qoder/ZCode/cookie 探测等全部出口都走它）：默认「直连优先、代理兜底」，
   // 可切「代理优先、直连兜底」；代理地址可面板配置（存 zcode-net.json，0600；键名 zcode 前缀是历史遗留）
   // 自动领取开启时附带 1 小时时限（autoClaimUntil），到期调度器自动关闭并停止轮询
@@ -1066,7 +1093,23 @@ async function handleApi(req, res, url) {
     }
     // MiniMax 不做切换：客户端凭据只有一条路径派生的活动记录，且 refreshToken 轮换式一次性，
     // CreditDaddy 与客户端共用必然互抢（invalid_grant），切号能力已按用户决定移除。
-    if (!target.provider.startsWith('workbuddy')) return json(res, 400, { error: '只有 WorkBuddy / ZCode / mirasim / 妙手 / Trae 账号支持切换' });
+    if (target.provider === 'loomy') {
+      // 切换 = 把目标账号的 session/userid/phone 写进 auth-session.json，客户端下次启动应用
+      try {
+        let closedClient = false;
+        if (body?.force === true) {
+          const t = terminateLoomy();
+          closedClient = t.closed === true;
+          if (closedClient) logger.info('DAEMON', '已关闭 Loomy 客户端(强制切换)', {});
+        }
+        const r = await loomySwitchTo(target, { force: body?.force === true });
+        logger.info('DAEMON', r.alreadyActive ? 'Loomy 当前已是 {name}' : 'Loomy 已切换到 {name}(重新打开客户端生效)', { name: target.name || target.id });
+        return json(res, 200, { ok: true, closedClient, ...r });
+      } catch (e) {
+        return json(res, e.loomyRunning ? 409 : 400, { error: e.message, code: e.loomyRunning ? 'LOOMY_RUNNING' : undefined });
+      }
+    }
+    if (!target.provider.startsWith('workbuddy')) return json(res, 400, { error: '只有 WorkBuddy / ZCode / mirasim / 妙手 / Trae / Loomy 账号支持切换' });
     // 先把客户端当前会话的最新 token 收回账号库，避免被覆盖后丢失
     const cur = readWorkbuddySessions().accounts.find((a) => a.current);
     if (cur && cur.uid !== target.uid) {
@@ -1512,19 +1555,41 @@ async function handleApi(req, res, url) {
     const body = await readBody(req).catch(() => ({}));
     const { phone, code, msgid } = body || {};
     try {
-      const { loginLoomyBySms } = await import('./loomyAuth.js');
-      const r = await loginLoomyBySms({ phone, code, msgid });
+      const { loginLoomyBySms, registerLoomyByPhone } = await import('./loomyAuth.js');
+      let r;
+      try {
+        r = await loginLoomyBySms({ phone, code, msgid });
+      } catch (loginErr) {
+        // 未注册手机号服务端会拒登录：自动用同一条验证码注册后重试（新账号一条龙）。
+        // 注册也失败时优先回原始登录错误（更贴近用户操作的真实原因）。
+        try {
+          await registerLoomyByPhone({ phone, code });
+          logger.info('DAEMON', 'Loomy 新手机号已自动注册:{phone}', { phone: String(phone || '').replace(/(\d{3})\d{4}(\d{4})/, '$1****$2') });
+        } catch (regErr) {
+          logger.warn('DAEMON', 'Loomy 自动注册未通过:{err}（原始登录错误:{loginErr}）', { err: regErr.message, loginErr: loginErr.message });
+          throw loginErr;
+        }
+        r = await loginLoomyBySms({ phone, code, msgid });
+      }
       const phoneMasked = r.phone ? `${r.phone.slice(0, 3)}****${r.phone.slice(-4)}` : '';
-      const account = await addAccount({
+      // 昵称尽力而为：认证层 baseInfo 失败不挡导入
+      let nickname = null;
+      try {
+        const { fetchLoomyIdentity } = await import('./loomyAuth.js');
+        nickname = (await fetchLoomyIdentity(r.session))?.nickname || null;
+      } catch {}
+      const result = await addAccount({
         provider: 'loomy',
         token: r.session,
         uid: r.userid,
-        name: phoneMasked ? `Loomy (${phoneMasked})` : `Loomy (${r.userid.slice(-6)})`,
+        name: nickname ? `Loomy (${nickname})` : (phoneMasked ? `Loomy (${phoneMasked})` : `Loomy (${r.userid.slice(-6)})`),
+        expiresAt: new Date(Date.now() + 14 * 86400e3).toISOString(),
         source: 'sms-login',
         meta: { phone: r.phone, loggedInAt: new Date().toISOString() },
       }, { trusted: true });
-      logger.info('DAEMON', 'Loomy 手机号直登成功:{name}', { name: account.name || account.uid });
-      return json(res, 200, { success: true, account });
+      const account = result.account;
+      logger.info('DAEMON', 'Loomy 手机号直登成功:{name}{dup}', { name: account.name || account.uid, dup: result.duplicate ? '(已有账号,凭据已更新)' : '' });
+      return json(res, 200, { success: true, duplicate: Boolean(result.duplicate), account: publicAccount(account) });
     } catch (e) {
       return json(res, 400, { error: e.message });
     }

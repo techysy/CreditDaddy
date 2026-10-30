@@ -45,10 +45,31 @@ beforeEach(() => {
   setZcodeCaptchaProvider(null);
 });
 
-test('无可领活动：preview 为空返回 null', async () => {
+test('无可领活动：preview 为空且已知清单全部过期（1002）返回 null', async () => {
   mockFetch({ plans: [] });
+  claimBehaviors = [{ code: 1002, msg: '活动已结束' }];
   try {
     assert.equal(await zcodeAutoClaim(account), null);
+  } finally { globalThis.fetch = realFetch; }
+});
+
+test('preview 为空但已知清单可领：兜底领取隐藏活动', async () => {
+  mockFetch({ plans: [] });
+  claimBehaviors = [{ code: 0, data: { plan: { name: 'ZCODE WEEKEND BUILD' } } }];
+  try {
+    const r = await zcodeAutoClaim(account);
+    assert.equal(r.status, 'checked-in');
+    assert.match(r.message, /ZCODE WEEKEND BUILD/);
+    assert.equal(r.claims[0].via, 'direct');
+  } finally { globalThis.fetch = realFetch; }
+});
+
+test('preview 为空且已知清单已领过（1003）：按已领口径', async () => {
+  mockFetch({ plans: [] });
+  claimBehaviors = [{ code: 1003 }];
+  try {
+    const r = await zcodeAutoClaim(account);
+    assert.equal(r.status, 'already');
   } finally { globalThis.fetch = realFetch; }
 });
 

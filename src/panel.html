@@ -615,6 +615,9 @@
             <button class="btn" id="mt-gw"></button>
             <button class="btn" id="mt-open" style="display:none"></button>
           </span>
+          <span id="l-actions" style="display:none">
+            <button class="btn" id="lt-open" style="display:none"></button>
+          </span>
           <span id="w-actions" style="display:none">
             <button class="btn" id="wt-act" title="领取临时活动（额外补偿 / 首月赠礼），用已存凭据批量领，免逐个网页点击"></button>
           </span>
@@ -1938,6 +1941,16 @@ function renderProd() {
       $('mt-open').title = mc.running ? T('MiniMax Code 客户端运行中，点我唤到前台') : T('MiniMax Code 客户端未运行，点我启动');
     }
   }
+  $('l-actions').style.display = prod === 'loomy' ? 'contents' : 'none';
+  if (prod === 'loomy') {
+    const lc = (state.status && state.status.loomyClient) || {};
+    const canOpen = lc.installed && window.creditdaddy && typeof window.creditdaddy.openLoomyClient === 'function';
+    $('lt-open').style.display = canOpen ? '' : 'none';
+    if (canOpen) {
+      $('lt-open').innerHTML = dot(lc.running === true, true) + T('打开客户端');
+      $('lt-open').title = lc.running ? T('Loomy 客户端运行中，点我唤到前台') : T('Loomy 客户端未运行，点我启动');
+    }
+  }
   // WorkBuddy 临时活动（额外补偿 / 首月赠礼）批量领取入口——用已存凭据，免逐个网页点击
   $('w-actions').style.display = prod === 'workbuddy' ? 'contents' : 'none';
   if (prod === 'workbuddy') {
@@ -2248,6 +2261,14 @@ document.addEventListener('click', async (e) => {
       const r = await window.creditdaddy.openCatpawClient();
       if (r && r.ok) toast(T('已启动妙手客户端'));
       else toast((r && r.error) || T('无法打开妙手客户端'), false);
+    } catch (err) { toast(String(err && err.message || err), false); }
+    return;
+  }
+  if (e.target.closest('#lt-open')) {
+    try {
+      const r = await window.creditdaddy.openLoomyClient();
+      if (r && r.ok) toast(T('已启动 Loomy 客户端'));
+      else toast((r && r.error) || T('无法打开 Loomy 客户端'), false);
     } catch (err) { toast(String(err && err.message || err), false); }
     return;
   }
@@ -3616,6 +3637,16 @@ async function onCardClick(e) {
           } catch (e) {}
         }, 800);
       }
+      if (a && a.product === 'loomy' && r && r.closedClient && window.creditdaddy && typeof window.creditdaddy.openLoomyClient === 'function') {
+        // 强制切换关掉了客户端：写完凭据自动拉起，让新账号立刻生效
+        setTimeout(async () => {
+          try {
+            const re = await window.creditdaddy.openLoomyClient();
+            if (re && re.ok) toast(T('已重新启动 Loomy 客户端'));
+            else toast((re && re.error) || T('无法打开 Loomy 客户端（桌面版才能自动拉起）'), false);
+          } catch (e) {}
+        }, 800);
+      }
     } catch (err) { toast(err.message, false); }
     return;
   }
@@ -3714,7 +3745,34 @@ async function openClaim(id) {
 
 function renderClaimBody() {
   if (!claimState.plans.length) {
-    $('claim-body').innerHTML = T('<div class="muted-empty">当前没有可领取的活动</div>');
+    $('claim-body').innerHTML = T('<div class="muted-empty">当前没有可领取的活动</div>')
+      + '<div class="row" style="margin-top:10px;justify-content:flex-end"><button class="btn" id="btn-claim-known">' + T('尝试已知活动') + '</button><span class="hint" id="claim-known-msg"></span></div>';
+    $('btn-claim-known')?.addEventListener('click', async () => {
+      const btn = $('btn-claim-known');
+      const msg = $('claim-known-msg');
+      btn.disabled = true;
+      btn.textContent = T('尝试中…');
+      try {
+        const r = await api('/api/accounts/' + encodeURIComponent(claimState.accountId) + '/zcode/claim-known', { method: 'POST', json: {}, timeoutMs: 60_000 });
+        const bits = [];
+        if (r.claimed.length) bits.push(T('领取成功：') + r.claimed.join(T('、')));
+        if (r.already.length) bits.push(T('已领过：') + r.already.join(T('、')));
+        if (r.skipped.length) bits.push(T('暂不可领：') + r.skipped.length + T(' 个'));
+        msg.textContent = bits.join(T('；')) || T('没有可领取的活动');
+        if (r.claimed.length) {
+          toast(T('已领取：') + r.claimed.join(T('、')), true);
+          closeModal('m-claim');
+          await loadStatus();
+          await loadAccounts();
+          await loadQuotas([claimState.accountId], { live: true });
+          render();
+        }
+      } catch (e) {
+        msg.textContent = e.message;
+      }
+      btn.disabled = false;
+      btn.textContent = T('尝试已知活动');
+    });
     return;
   }
   $('claim-body').innerHTML = claimState.plans.map((pl, i) =>
@@ -4328,7 +4386,7 @@ $('btn-loomy-sms').addEventListener('click', async () => {
   btn.disabled = true;
   btn.textContent = T('发送中…');
   try {
-    const r = await api('/api/loomy/sms/send', { json: { phone } });
+    const r = await api('/api/loomy/sms/send', { json: { phone }, timeoutMs: 45_000 });
     loomyMsgId = r.msgid;
     toast(T('验证码已发送至手机，请查收短信'));
     $('loomy-code-field').style.display = '';
@@ -4364,8 +4422,8 @@ $('btn-loomy-login').addEventListener('click', async () => {
   btn.disabled = true;
   btn.textContent = T('登录中…');
   try {
-    const r = await api('/api/loomy/sms/login', { json: { phone, code, msgid: loomyMsgId } });
-    toast(T('Loomy 账号登录成功！已存入账号库'));
+    const r = await api('/api/loomy/sms/login', { json: { phone, code, msgid: loomyMsgId }, timeoutMs: 45_000 });
+    toast(r.duplicate ? T('账号已存在，登录凭据已更新') : T('Loomy 账号登录成功！已存入账号库'));
     closeModal('m-add');
     $('loomy-phone').value = '';
     $('loomy-code').value = '';

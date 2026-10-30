@@ -376,6 +376,16 @@ const CLAIM_FAIL = {
 
 const platform = () => `${process.platform}-${process.arch === 'arm64' ? 'arm64' : process.arch === 'x64' ? 'x64' : process.arch}`;
 
+/**
+ * 已知活动兜底清单：服务端偶尔把活动从 billing/preview 里藏起来（2026-10-30 WEEKEND BUILD
+ * 实测 preview 返回空 plans，但 claim 按 planId 直接可领、免验证码）。preview 查不到时
+ * 逐个试这里的 planId：1001/1002（不存在/已结束）当没有，1003 按已领口径，0 即领取成功。
+ * 活动过期后条目留在表里无害（claim 返回 1002 跳过）；新活动出现时在此追加一行。
+ */
+export const ZCODE_KNOWN_CLAIM_PLANS = [
+  { planId: 'zcode-v3-start-plan-1030-wk', name: 'ZCODE WEEKEND BUILD' },
+];
+
 export async function zaiHeaders(token, deviceMid) {
   const ver = await zcodeAppVersion();
   return {

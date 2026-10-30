@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld('creditdaddy', {
   openDoubaoClient: () => ipcRenderer.invoke('open-doubao-client'),
   /** 打开本机 MiniMax Code 客户端 @returns {Promise<{ok: boolean, error?: string}>} */
   openMiniMaxClient: () => ipcRenderer.invoke('open-minimax-client'),
+  /** 打开本机 Loomy 客户端 @returns {Promise<{ok: boolean, error?: string}>} */
+  openLoomyClient: () => ipcRenderer.invoke('open-loomy-client'),
   /** 重启 CreditDaddy 应用 @returns {Promise<{ok: boolean, error?: string}>} */
   restartApp: () => ipcRenderer.invoke('app-restart'),
   /** 简要更新日志（解析随包 CHANGELOG.md 的最近几个版本） */

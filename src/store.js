@@ -238,7 +238,7 @@ export function publicAccount(a) {
     qoderWebDead: String(a.provider).startsWith('qoder')
       ? (meta.qoderWebDead?.at || null)
       : null,
-    canSwitch: Boolean(meta.session?.account || meta.credentials || meta.qoderAuth || a.provider === 'catpaw' || a.provider === 'trae'),
+    canSwitch: Boolean(meta.session?.account || meta.credentials || meta.qoderAuth || a.provider === 'catpaw' || a.provider === 'trae' || a.provider === 'loomy'),
     verified: a.verified ?? null,
     createdAt: a.createdAt,
     lastCheckin: a.lastCheckin,
