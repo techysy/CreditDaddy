@@ -1772,5 +1772,6 @@
   "Loomy 账号登录成功！已存入账号库": "Loomy 계정 로그인 성공! 계정 저장소에 저장했습니다",
   "还没有 Loomy 账号。<br>点「添加账号 → 本机导入」可读取本机 Loomy 客户端当前登录的账号（Token 有效期约 14 天，免客户端运行），支持多账号保存切换，并可一键同步给 10Router 网关。": "Loomy 계정이 아직 없습니다.<br>「계정 추가 → 로컬 가져오기」로 로컬 Loomy 클라이언트에 현재 로그인된 계정을 읽어 올 수 있습니다(토큰 유효기간 약 14일, 클라이언트 실행 불필요). 다중 계정 저장·전환과 10Router 게이트웨이 원클릭 동기화를 지원합니다.",
   "读取本机 Loomy 客户端当前登录的账号（自动读取 Windows 本机 Public\\Loomy 用户凭据），Session 有效期约 14 天，支持一键同步至 10Router。": "로컬 Loomy 클라이언트에 현재 로그인된 계정을 읽어 옵니다(Windows 로컬 Public\\Loomy 자격증명 자동 판독). 세션 유효기간은 약 14일이며 10Router로 원클릭 동기화됩니다.",
-  "<div class=\"z-row\"><span class=\"z-label\">本机凭据</span><span class=\"z-text\">由本机 Loomy 客户端读取导入，约 14 天有效；支持多账号切换，可一键同步 10Router。</span></div>": "<div class=\"z-row\"><span class=\"z-label\">로컬 자격증명</span><span class=\"z-text\">로컬 Loomy 클라이언트에서 가져오며, 유효기간 약 14일. 다중 계정 전환과 10Router 원클릭 동기화를 지원합니다.</span></div>"
+  "<div class=\"z-row\"><span class=\"z-label\">本机凭据</span><span class=\"z-text\">由本机 Loomy 客户端读取导入，约 14 天有效；支持多账号切换，可一键同步 10Router。</span></div>": "<div class=\"z-row\"><span class=\"z-label\">로컬 자격증명</span><span class=\"z-text\">로컬 Loomy 클라이언트에서 가져오며, 유효기간 약 14일. 다중 계정 전환과 10Router 원클릭 동기화를 지원합니다.</span></div>",
+  "积分合计": "포인트 합계"
 }

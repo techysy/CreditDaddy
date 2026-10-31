@@ -1772,5 +1772,6 @@
   "Loomy 账号登录成功！已存入账号库": "Loomy 帳號登入成功！已存入帳號庫",
   "还没有 Loomy 账号。<br>点「添加账号 → 本机导入」可读取本机 Loomy 客户端当前登录的账号（Token 有效期约 14 天，免客户端运行），支持多账号保存切换，并可一键同步给 10Router 网关。": "還沒有 Loomy 帳號。<br>點「新增帳號 → 本機導入」可讀取本機 Loomy 客戶端當前登入的帳號（Token 有效期約 14 天，免客戶端運行），支援多帳號保存切換，並可一鍵同步給 10Router 閘道。",
   "读取本机 Loomy 客户端当前登录的账号（自动读取 Windows 本机 Public\\Loomy 用户凭据），Session 有效期约 14 天，支持一键同步至 10Router。": "讀取本機 Loomy 客戶端當前登入的帳號（自動讀取 Windows 本機 Public\\Loomy 用戶憑據），Session 有效期約 14 天，支援一鍵同步至 10Router。",
-  "<div class=\"z-row\"><span class=\"z-label\">本机凭据</span><span class=\"z-text\">由本机 Loomy 客户端读取导入，约 14 天有效；支持多账号切换，可一键同步 10Router。</span></div>": "<div class=\"z-row\"><span class=\"z-label\">本機憑據</span><span class=\"z-text\">由本機 Loomy 客戶端讀取導入，約 14 天有效；支援多帳號切換，可一鍵同步 10Router。</span></div>"
+  "<div class=\"z-row\"><span class=\"z-label\">本机凭据</span><span class=\"z-text\">由本机 Loomy 客户端读取导入，约 14 天有效；支持多账号切换，可一键同步 10Router。</span></div>": "<div class=\"z-row\"><span class=\"z-label\">本機憑據</span><span class=\"z-text\">由本機 Loomy 客戶端讀取導入，約 14 天有效；支援多帳號切換，可一鍵同步 10Router。</span></div>",
+  "积分合计": "積分合計"
 }

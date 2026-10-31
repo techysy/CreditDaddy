@@ -2025,6 +2025,18 @@ function renderDash() {
       const credits = withPlan.reduce((s, a) => s + (Number(state.quotas[a.id].remaining) || 0), 0);
       rows = T('<span class="lbl">额度体系</span><span class="val dim">Credits 余额 + 套餐版本</span>')
         + (withPlan.length ? T('<span class="lbl">可用额度</span><span class="val">') + fmtNum(credits) + T(' Credits（') + esc(withPlan.map((a) => state.quotas[a.id].plan).join(' / ')) + T('）</span>') : '');
+    } else if (p.id === 'loomy') {
+      // 积分口径产品：聚合各账号剩余积分（永久 + 每日）；没有签到语义的行
+      const planned = list.filter((a) => { const q = state.quotas[a.id]; return q && !q.error && !q.empty; }).length;
+      let sum = 0, known = 0;
+      for (const a of list) {
+        const q = state.quotas[a.id];
+        if (!q || q.error || q.empty) continue;
+        known++;
+        sum += Number(q.remaining) || 0;
+      }
+      rows = T('<span class="lbl">积分合计</span><span class="val">') + (known ? fmtNum(sum) : '-') + '</span>'
+        + T('<span class="lbl">有效套餐</span><span class="val">') + planned + ' / ' + list.length + '</span>';
     } else {
       const planned = list.filter((a) => { const q = state.quotas[a.id]; return q && !q.error && !q.empty; }).length;
       // ZCode 没有每日签到：不展示签到语义的行

@@ -1772,5 +1772,6 @@
   "Loomy 账号登录成功！已存入账号库": "Loomy account signed in! Saved to the account store",
   "还没有 Loomy 账号。<br>点「添加账号 → 本机导入」可读取本机 Loomy 客户端当前登录的账号（Token 有效期约 14 天，免客户端运行），支持多账号保存切换，并可一键同步给 10Router 网关。": "No Loomy accounts yet.<br>Use \"Add account → Local import\" to read the account currently signed in to the local Loomy client (token valid ~14 days, no client runtime needed). Supports multiple saved accounts with switching, and one-click sync to the 10Router gateway.",
   "读取本机 Loomy 客户端当前登录的账号（自动读取 Windows 本机 Public\\Loomy 用户凭据），Session 有效期约 14 天，支持一键同步至 10Router。": "Reads the account currently signed in to the local Loomy client (reads Windows-local Public\\Loomy credentials automatically); the session stays valid for about 14 days and can be synced to 10Router in one click.",
-  "<div class=\"z-row\"><span class=\"z-label\">本机凭据</span><span class=\"z-text\">由本机 Loomy 客户端读取导入，约 14 天有效；支持多账号切换，可一键同步 10Router。</span></div>": "<div class=\"z-row\"><span class=\"z-label\">Local credentials</span><span class=\"z-text\">Imported from the local Loomy client, valid ~14 days; supports multi-account switching and one-click 10Router sync.</span></div>"
+  "<div class=\"z-row\"><span class=\"z-label\">本机凭据</span><span class=\"z-text\">由本机 Loomy 客户端读取导入，约 14 天有效；支持多账号切换，可一键同步 10Router。</span></div>": "<div class=\"z-row\"><span class=\"z-label\">Local credentials</span><span class=\"z-text\">Imported from the local Loomy client, valid ~14 days; supports multi-account switching and one-click 10Router sync.</span></div>",
+  "积分合计": "Points total"
 }
