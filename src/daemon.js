@@ -62,7 +62,7 @@ import { liveToAccount as mirasimLiveAccount, switchTo as mirasimSwitchTo, curre
 import { liveToAccount as catpawLiveAccount, switchTo as catpawSwitchTo, currentCatpawToken, detectCatpaw, terminateCatpaw } from './catpawLocal.js';
 import { liveToAccount as traeLiveAccount, detectTrae, switchTo as traeSwitchTo, snapshotLive as traeSnapshotLive } from './traeLocal.js';
 import { liveToAccount as minimaxLiveAccount, detectMiniMax, currentMiniMaxUid, currentMiniMaxToken, currentMiniMaxRecordKey } from './minimaxLocal.js';
-import { liveToAccount as loomyLiveAccount, switchTo as loomySwitchTo, currentLoomyToken, currentLoomyUid, detectLoomy, terminateLoomy } from './loomyLocal.js';
+import { liveToAccount as loomyLiveAccount, hardSwitchLoomy, currentLoomyToken, currentLoomyUid, detectLoomy } from './loomyLocal.js';
 import * as minimaxGateway from './minimaxGateway.js';
 import * as traeGateway from './traeGateway.js';
 import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl, autoClaimEnabled, autoClaimUntil, setAutoClaimEnabled, claimIntervalMin, setClaimIntervalMin, claimWindowMin, setClaimWindowMin } from './zcodeClient.js';
@@ -1019,16 +1019,11 @@ async function handleApi(req, res, url) {
         }
       } catch (e) {}
       try {
-        let closedClient = false;
-        if (body?.force === true) {
-          const t = terminateLoomy();
-          closedClient = t.closed === true;
-          if (closedClient) logger.info('DAEMON', '已关闭 Loomy 客户端(强制切换)', {});
-          else if (t.running) logger.warn('DAEMON', '未能完全结束 Loomy 进程,继续强制切换', {});
-        }
-        const r = await loomySwitchTo(target, { force: body?.force === true });
-        logger.info('DAEMON', r.alreadyActive ? 'Loomy 当前已是 {name}' : 'Loomy 已切换到 {name}(重新打开客户端生效)', { name: target.name || target.id });
-        return json(res, 200, { ok: true, closedClient, ...r });
+        // 硬切换：总是先关客户端再写（客户端退出清理会回写旧登录，温和路径会被冲掉），
+        // 写完延时复核；面板收到 closedClient 后自动重新拉起客户端
+        const r = await hardSwitchLoomy(target);
+        logger.info('DAEMON', r.alreadyActive ? 'Loomy 当前已是 {name}' : r.verified ? 'Loomy 已切换到 {name}(凭据已落盘,重新打开客户端生效)' : 'Loomy 已切换到 {name},但凭据复核未落定(疑似有进程回写)', { name: target.name || target.id });
+        return json(res, 200, { ok: true, ...r });
       } catch (e) {
         return json(res, e.loomyRunning ? 409 : 400, { error: e.message, code: e.loomyRunning ? 'LOOMY_RUNNING' : undefined });
       }
@@ -1094,17 +1089,12 @@ async function handleApi(req, res, url) {
     // MiniMax 不做切换：客户端凭据只有一条路径派生的活动记录，且 refreshToken 轮换式一次性，
     // CreditDaddy 与客户端共用必然互抢（invalid_grant），切号能力已按用户决定移除。
     if (target.provider === 'loomy') {
-      // 切换 = 把目标账号的 session/userid/phone 写进 auth-session.json，客户端下次启动应用
+      // 切换 = 把目标账号的 session/userid/phone 写进 auth-session.json，客户端下次启动应用。
+      // 走硬切换（先关客户端 + 写后复核），避免客户端退出清理回写旧登录把切换冲掉
       try {
-        let closedClient = false;
-        if (body?.force === true) {
-          const t = terminateLoomy();
-          closedClient = t.closed === true;
-          if (closedClient) logger.info('DAEMON', '已关闭 Loomy 客户端(强制切换)', {});
-        }
-        const r = await loomySwitchTo(target, { force: body?.force === true });
-        logger.info('DAEMON', r.alreadyActive ? 'Loomy 当前已是 {name}' : 'Loomy 已切换到 {name}(重新打开客户端生效)', { name: target.name || target.id });
-        return json(res, 200, { ok: true, closedClient, ...r });
+        const r = await hardSwitchLoomy(target);
+        logger.info('DAEMON', r.alreadyActive ? 'Loomy 当前已是 {name}' : r.verified ? 'Loomy 已切换到 {name}(凭据已落盘,重新打开客户端生效)' : 'Loomy 已切换到 {name},但凭据复核未落定(疑似有进程回写)', { name: target.name || target.id });
+        return json(res, 200, { ok: true, ...r });
       } catch (e) {
         return json(res, e.loomyRunning ? 409 : 400, { error: e.message, code: e.loomyRunning ? 'LOOMY_RUNNING' : undefined });
       }
@@ -1778,7 +1768,9 @@ async function handleApi(req, res, url) {
       const allow = Array.isArray(c.accountSync?.providers) ? c.accountSync.providers : [];
       const accounts = await loadAccounts();
       const filtered = allow.length ? accounts.filter((a) => allow.includes(a.provider)) : accounts;
-      return json(res, 200, await syncAccountsTo10r({ endpoint: c.endpoint, key: c.key, adminPassword: c.adminPassword, accounts: filtered }));
+      const r = await syncAccountsTo10r({ endpoint: c.endpoint, key: c.key, adminPassword: c.adminPassword, accounts: filtered });
+      logger.info('DAEMON', '10Router 账号同步:{summary}', { summary: r.summary });
+      return json(res, 200, r);
     } catch (e) { return json(res, e.code === 'NOT_CONFIGURED' ? 409 : 500, { error: e.message, code: e.code }); }
   }
   // 额度卡推送（issue #24）：手动触发一轮 external-quota 推送（面板「免费额度」页同步按钮附带）

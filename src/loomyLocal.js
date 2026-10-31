@@ -178,6 +178,37 @@ export async function switchTo(account, { force = false } = {}) {
   return { switched: true, alreadyActive: false };
 }
 
+const napAsync = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * 硬切换：客户端退出清理会把内存里的旧登录写回 auth-session.json（迟到写入者——
+ * 「客户端没跑就直接写」的温和路径实测会被它回写冲掉，表现为「切了没生效」）。
+ * 统一走：先杀客户端 → 写凭据 → 延时复核 → 发现被回写冲掉就再补写一次 → 报告是否落定。
+ * 客户端重新打开时 restore() 无校验直接应用文件里的 session，落定即换号成功。
+ */
+export async function hardSwitchLoomy(account) {
+  const cred = readCredential();
+  if (!cred) throw new Error('本机 Loomy 客户端没有可用的登录凭据文件（未安装或未登录过）');
+  if (account.token === cred.session) {
+    return { switched: false, alreadyActive: true, closedClient: false, verified: true };
+  }
+
+  const wasRunning = loomyRunning();
+  const t = terminateLoomy();
+  const closedClient = wasRunning && t.running === false;
+
+  const next = { session: account.token, userid: account.uid || cred.userid, phone: account.meta?.phone || cred.phone || '' };
+  writeCredential(next);
+  await napAsync(1200);
+  let verified = readCredential()?.session === account.token;
+  if (!verified) {
+    writeCredential(next);
+    await napAsync(1200);
+    verified = readCredential()?.session === account.token;
+  }
+  return { switched: true, alreadyActive: false, closedClient, verified };
+}
+
 /** 终止 Loomy 客户端 */
 export function killLoomy() {
   if (!loomyRunning()) return;

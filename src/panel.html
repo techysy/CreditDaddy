@@ -3575,7 +3575,7 @@ async function onCardClick(e) {
         : a && a.product === 'catpaw'
           ? T('\n需先退出妙手；切换后重新打开妙手即为新账号。当前登录会先保存到 CreditDaddy，不会丢号。')
           : a && a.product === 'loomy'
-            ? T('\n需先退出 Loomy；切换后重新打开 Loomy 即为新账号。当前登录会先保存到 CreditDaddy，不会丢号。')
+            ? T('\n切换会先关闭 Loomy 客户端，写入登录后自动重新打开即为新账号。当前登录会先保存到 CreditDaddy，不会丢号。')
             : a && a.product === 'trae'
             ? T('\n需先退出 Trae；切换后重新打开 Trae 即为新账号。当前登录会先自动快照保存到 CreditDaddy，不会丢号。')
             : a && a.product === 'qoder'

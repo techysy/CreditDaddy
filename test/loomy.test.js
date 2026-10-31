@@ -131,3 +131,27 @@ test('currentLoomyUid 读凭据 userid——面板「客户端当前」徽章按
     fs.rmSync(path.dirname(fixture), { recursive: true, force: true });
   }
 });
+
+test('hardSwitchLoomy：写入凭据并复核落定；已活跃时不动文件', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { hardSwitchLoomy, readCredential } = await import('../src/loomyLocal.js');
+  const fixture = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'loomy-sw-')), 'auth-session.json');
+  fs.writeFileSync(fixture, JSON.stringify({ session: 'a'.repeat(32), userid: 'uid-a', phone: '13100003656', updatedAt: 1 }));
+  const prev = process.env.LOOMY_CREDENTIAL_FILE;
+  process.env.LOOMY_CREDENTIAL_FILE = fixture;
+  try {
+    const r = await hardSwitchLoomy({ token: 'b'.repeat(32), uid: 'uid-b', meta: { phone: '18700009058' } });
+    assert.equal(r.switched, true);
+    assert.equal(r.verified, true, '写入后延时复核应落定（无回写者时一次通过）');
+    assert.equal(readCredential().session, 'b'.repeat(32));
+    assert.equal(readCredential().userid, 'uid-b');
+    const again = await hardSwitchLoomy({ token: 'b'.repeat(32) });
+    assert.equal(again.alreadyActive, true);
+    assert.equal(again.switched, false);
+  } finally {
+    if (prev === undefined) delete process.env.LOOMY_CREDENTIAL_FILE; else process.env.LOOMY_CREDENTIAL_FILE = prev;
+    fs.rmSync(path.dirname(fixture), { recursive: true, force: true });
+  }
+});
