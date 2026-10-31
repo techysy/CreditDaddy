@@ -2129,7 +2129,7 @@ function renderStatus() {
   n.classList.toggle('info', state.view === 'zcode' || state.view === 'mirasim' || state.view === 'catpaw' || state.view === 'trae' || state.view === 'minimax' || state.view === 'loomy' || (state.view === 'workbuddy' && s.workbuddyClient && s.workbuddyClient.installed === false) || (hasIntl && Boolean(s.riskIdentity)));
   if (state.view === 'loomy') {
     n.style.display = '';
-    n.innerHTML = T('讯飞 Loomy 桌面 AI 工作搭子。凭据由本机客户端（Public\\Loomy\\userData\\auth-session.json）读取导入，有效期约 14 天。支持多账号保存切换，并可一键同步给 10Router 网关作为上游连接池。')
+    n.innerHTML = T('<div class="z-row"><span class="z-label">本机凭据</span><span class="z-text">由本机 Loomy 客户端读取导入，约 14 天有效；支持多账号切换，可一键同步 10Router。</span></div>')
       + loomyClientChip(s);
   } else if (state.view === 'minimax') {
     n.style.display = '';
