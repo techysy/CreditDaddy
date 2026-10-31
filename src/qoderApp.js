@@ -292,6 +292,8 @@ function riskRunner(provider) {
   if (app) return { exe: app.runtimeInfo, env: (VARIANTS.find((v) => v.provider === provider) || VARIANTS[0]).riskEnv, source: 'app' };
   const cli = installedUmid() || bundledCliUmid(provider);
   if (cli) return { exe: cli.path, env: CLI_RISK_ENV[provider] ?? CLI_RISK_ENV.qoder, source: 'cli' };
+  const localBin = qodercliRuntimeInfo(provider);
+  if (localBin) return { exe: localBin, env: CLI_RISK_ENV[provider] ?? CLI_RISK_ENV.qoder, source: 'cli' };
   return null;
 }
 
@@ -307,6 +309,19 @@ function bundledCliUmid(provider) {
       const exe = path.join(bin, d, RUNTIME_INFO_EXE);
       if (exists(exe)) return { path: exe };
     }
+  }
+  return null;
+}
+
+/** macOS：官方 qodercli（@qoder-ai/qodercli）把 runtime-info 设备身份组件解压到 ~\.qoder\.bin\runtime-info-darwin-<arch>-*（国内版 ~\.qoder-cn） */
+function qodercliRuntimeInfo(provider) {
+  if (process.platform !== 'darwin') return null;
+  const homes = provider === 'qoder-cn' ? ['.qoder-cn', '.qoder'] : ['.qoder', '.qoder-cn'];
+  for (const h of homes) {
+    const bin = path.join(os.homedir(), h, '.bin');
+    let dirs = [];
+    try { dirs = fs.readdirSync(bin).filter((n) => n.startsWith(`runtime-info-darwin-${process.arch}`)); } catch {}
+    if (dirs.length) return path.join(bin, dirs.sort().pop());
   }
   return null;
 }
