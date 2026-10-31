@@ -3575,7 +3575,7 @@ async function onCardClick(e) {
         : a && a.product === 'catpaw'
           ? T('\n需先退出妙手；切换后重新打开妙手即为新账号。当前登录会先保存到 CreditDaddy，不会丢号。')
           : a && a.product === 'loomy'
-            ? T('\n切换会先关闭 Loomy 客户端，写入登录后自动重新打开即为新账号。当前登录会先保存到 CreditDaddy，不会丢号。')
+            ? T('\n切换会先关闭并重新打开 Loomy 客户端。注意：客户端界面的登录态存在其内部存储，若重开后仍显示旧账号，需在客户端内「退出登录」后重新登录。')
             : a && a.product === 'trae'
             ? T('\n需先退出 Trae；切换后重新打开 Trae 即为新账号。当前登录会先自动快照保存到 CreditDaddy，不会丢号。')
             : a && a.product === 'qoder'
@@ -3639,13 +3639,14 @@ async function onCardClick(e) {
           } catch (e) {}
         }, 800);
       }
-      if (a && a.product === 'loomy' && r && r.closedClient && window.creditdaddy && typeof window.creditdaddy.openLoomyClient === 'function') {
-        // 强制切换关掉了客户端：写完凭据自动拉起，让新账号立刻生效
+      if (a && a.product === 'loomy' && r && !r.alreadyActive && window.creditdaddy && typeof window.creditdaddy.openLoomyClient === 'function') {
+        // 只要真切换了就自动拉起客户端（此前只在客户端原本运行时才拉，客户端没跑时切完毫无动静）
         setTimeout(async () => {
           try {
             const re = await window.creditdaddy.openLoomyClient();
-            if (re && re.ok) toast(T('已重新启动 Loomy 客户端'));
-            else toast((re && re.error) || T('无法打开 Loomy 客户端（桌面版才能自动拉起）'), false);
+            if (re && re.ok) {
+              toast(T('已重新打开 Loomy 客户端。注意：Loomy 的界面登录态存在客户端内部存储——若仍显示旧账号，请在客户端「退出登录」后重新登录目标账号'), false);
+            } else toast((re && re.error) || T('无法打开 Loomy 客户端（桌面版才能自动拉起）'), false);
           } catch (e) {}
         }, 800);
       }

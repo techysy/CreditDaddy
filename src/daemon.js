@@ -1022,7 +1022,7 @@ async function handleApi(req, res, url) {
         // 硬切换：总是先关客户端再写（客户端退出清理会回写旧登录，温和路径会被冲掉），
         // 写完延时复核；面板收到 closedClient 后自动重新拉起客户端
         const r = await hardSwitchLoomy(target);
-        logger.info('DAEMON', r.alreadyActive ? 'Loomy 当前已是 {name}' : r.verified ? 'Loomy 已切换到 {name}(凭据已落盘,重新打开客户端生效)' : 'Loomy 已切换到 {name},但凭据复核未落定(疑似有进程回写)', { name: target.name || target.id });
+        logger.info('DAEMON', r.alreadyActive ? 'Loomy 当前已是 {name}' : r.verified ? 'Loomy 已切换到 {name}(凭据已写入并重开客户端;客户端界面登录态以其内部存储为准,若仍显示旧账号需在客户端内退出重登)' : 'Loomy 已切换到 {name},但凭据复核未落定(疑似有进程回写)', { name: target.name || target.id });
         return json(res, 200, { ok: true, ...r });
       } catch (e) {
         return json(res, e.loomyRunning ? 409 : 400, { error: e.message, code: e.loomyRunning ? 'LOOMY_RUNNING' : undefined });
@@ -1093,7 +1093,7 @@ async function handleApi(req, res, url) {
       // 走硬切换（先关客户端 + 写后复核），避免客户端退出清理回写旧登录把切换冲掉
       try {
         const r = await hardSwitchLoomy(target);
-        logger.info('DAEMON', r.alreadyActive ? 'Loomy 当前已是 {name}' : r.verified ? 'Loomy 已切换到 {name}(凭据已落盘,重新打开客户端生效)' : 'Loomy 已切换到 {name},但凭据复核未落定(疑似有进程回写)', { name: target.name || target.id });
+        logger.info('DAEMON', r.alreadyActive ? 'Loomy 当前已是 {name}' : r.verified ? 'Loomy 已切换到 {name}(凭据已写入并重开客户端;客户端界面登录态以其内部存储为准,若仍显示旧账号需在客户端内退出重登)' : 'Loomy 已切换到 {name},但凭据复核未落定(疑似有进程回写)', { name: target.name || target.id });
         return json(res, 200, { ok: true, ...r });
       } catch (e) {
         return json(res, e.loomyRunning ? 409 : 400, { error: e.message, code: e.loomyRunning ? 'LOOMY_RUNNING' : undefined });
