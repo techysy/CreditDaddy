@@ -1025,6 +1025,7 @@ async function handleApi(req, res, url) {
         logger.info('DAEMON', r.alreadyActive ? 'Loomy 当前已是 {name}' : r.verified ? 'Loomy 已切换到 {name}(凭据已写入并重开客户端;客户端界面登录态以其内部存储为准,若仍显示旧账号需在客户端内退出重登)' : 'Loomy 已切换到 {name},但凭据复核未落定(疑似有进程回写)', { name: target.name || target.id });
         return json(res, 200, { ok: true, ...r });
       } catch (e) {
+        logger.warn('DAEMON', 'Loomy 切换到 {name} 失败:{err}', { name: target.name || target.id, err: e.message });
         return json(res, e.loomyRunning ? 409 : 400, { error: e.message, code: e.loomyRunning ? 'LOOMY_RUNNING' : undefined });
       }
     }
@@ -1096,6 +1097,7 @@ async function handleApi(req, res, url) {
         logger.info('DAEMON', r.alreadyActive ? 'Loomy 当前已是 {name}' : r.verified ? 'Loomy 已切换到 {name}(凭据已写入并重开客户端;客户端界面登录态以其内部存储为准,若仍显示旧账号需在客户端内退出重登)' : 'Loomy 已切换到 {name},但凭据复核未落定(疑似有进程回写)', { name: target.name || target.id });
         return json(res, 200, { ok: true, ...r });
       } catch (e) {
+        logger.warn('DAEMON', 'Loomy 切换到 {name} 失败:{err}', { name: target.name || target.id, err: e.message });
         return json(res, e.loomyRunning ? 409 : 400, { error: e.message, code: e.loomyRunning ? 'LOOMY_RUNNING' : undefined });
       }
     }

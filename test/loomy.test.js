@@ -155,3 +155,25 @@ test('hardSwitchLoomy：写入凭据并复核落定；已活跃时不动文件',
     fs.rmSync(path.dirname(fixture), { recursive: true, force: true });
   }
 });
+
+test('hardSwitchLoomy：凭据文件缺失（客户端内退出登录清空）也能直接写入目标账号', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { hardSwitchLoomy, readCredential } = await import('../src/loomyLocal.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loomy-sw-empty-'));
+  const fixture = path.join(dir, 'auth-session.json');   // 故意不存在
+  const prev = process.env.LOOMY_CREDENTIAL_FILE;
+  process.env.LOOMY_CREDENTIAL_FILE = fixture;
+  try {
+    const r = await hardSwitchLoomy({ token: 'c'.repeat(32), uid: 'uid-c', meta: { phone: '18700009058' } });
+    assert.equal(r.switched, true);
+    assert.equal(r.verified, true);
+    assert.equal(readCredential().session, 'c'.repeat(32));
+    assert.equal(readCredential().userid, 'uid-c');
+    assert.equal(readCredential().phone, '18700009058');
+  } finally {
+    if (prev === undefined) delete process.env.LOOMY_CREDENTIAL_FILE; else process.env.LOOMY_CREDENTIAL_FILE = prev;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

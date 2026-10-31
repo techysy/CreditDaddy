@@ -187,9 +187,13 @@ const napAsync = (ms) => new Promise((r) => setTimeout(r, ms));
  * 客户端重新打开时 restore() 无校验直接应用文件里的 session，落定即换号成功。
  */
 export async function hardSwitchLoomy(account) {
+  if (!account?.token) throw new Error('目标账号缺少 session token');
   const cred = readCredential();
-  if (!cred) throw new Error('本机 Loomy 客户端没有可用的登录凭据文件（未安装或未登录过）');
-  if (account.token === cred.session) {
+  // 凭据文件缺失（未装过客户端 / 用户在客户端里退出登录把它清空）不该挡切换——
+  // 目标账号的 session/userid/phone 在账号库里齐全，直接写就是
+  const userid = account.uid || cred?.userid;
+  if (!userid) throw new Error('目标账号缺少 userid，无法写入 Loomy 凭据（请重新登录该账号后再切换）');
+  if (cred && account.token === cred.session) {
     return { switched: false, alreadyActive: true, closedClient: false, verified: true };
   }
 
@@ -197,7 +201,7 @@ export async function hardSwitchLoomy(account) {
   const t = terminateLoomy();
   const closedClient = wasRunning && t.running === false;
 
-  const next = { session: account.token, userid: account.uid || cred.userid, phone: account.meta?.phone || cred.phone || '' };
+  const next = { session: account.token, userid, phone: account.meta?.phone || cred?.phone || '' };
   writeCredential(next);
   await napAsync(1200);
   let verified = readCredential()?.session === account.token;
