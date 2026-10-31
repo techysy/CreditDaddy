@@ -796,6 +796,27 @@ async function handleApi(req, res, url) {
       return json(res, 502, { error: e.message });
     }
   }
+  // Loomy 邀请码绑定：POST /api/v1/points/activation（协议逆向自客户端 points-service.bindInviteCode）
+  const loomyInviteMatch = p.match(/^\/api\/accounts\/([\w-]+)\/loomy\/invite$/);
+  if (loomyInviteMatch && method === 'POST') {
+    const body = await readBody(req).catch(() => ({}));
+    const code = String(body?.code || '').trim();
+    if (!code) return json(res, 400, { error: '缺少邀请码' });
+    const accounts = await loadAccounts();
+    const account = accounts.find((a) => a.id === loomyInviteMatch[1] && a.provider === 'loomy');
+    if (!account) return json(res, 404, { error: 'Loomy 账号不存在' });
+    try {
+      const { bindLoomyInviteCode, fetchLoomyActivation } = await import('./loomyClient.js');
+      const bind = await bindLoomyInviteCode(account, code);
+      let activation = null;
+      try { activation = await fetchLoomyActivation(account); } catch { /* 状态查询失败不影响绑定结果 */ }
+      logger.info('DAEMON', 'Loomy {name} 邀请码已绑定:{code}', { name: account.name, code });
+      return json(res, 200, { ok: true, bind, activation });
+    } catch (e) {
+      logger.warn('DAEMON', 'Loomy {name} 邀请码绑定失败:{err}', { name: account.name, err: e.message });
+      return json(res, e.auth ? 401 : 400, { error: e.message });
+    }
+  }
   // preview 查不到的「隐藏活动」兜底：逐个试已知 planId（WEEKEND BUILD 实测 preview 空、claim 可领）
   const zcodeClaimKnownMatch = p.match(/^\/api\/accounts\/([\w-]+)\/zcode\/claim-known$/);
   if (zcodeClaimKnownMatch && method === 'POST') {

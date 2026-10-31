@@ -217,3 +217,65 @@ export async function fetchLoomyPoints(account) {
 export async function fetchLoomyQuota(account) {
   return fetchLoomyPoints(account);
 }
+
+/** 邀请码激活状态：GET /api/v1/points/activation → {activated, appliedInvitationCode?}（实测响应形状） */
+export async function fetchLoomyActivation(account) {
+  const token = sessionOf(account);
+  if (!token) throw new Error('账号缺少 session token');
+  let res;
+  try {
+    res = await fetch(`${pointsBaseOf(account)}/api/v1/points/activation`, {
+      method: 'GET',
+      headers: { token },
+      signal: AbortSignal.timeout(12000),
+    });
+  } catch (e) {
+    const err = new Error(`Loomy 激活状态查询网络失败: ${e.message}`);
+    err.transient = true;
+    throw err;
+  }
+  const data = await res.json().catch(() => ({}));
+  if (data?.code === '100002' || data?.code === '020002') {
+    const err = new Error('Loomy session 已失效，请重新登录');
+    err.auth = true;
+    throw err;
+  }
+  if (data?.code && !LOOMY_POINTS_OK_CODES.has(data.code)) {
+    throw new Error(data.desc || data.message || `Loomy 激活状态查询错误 (${data.code})`);
+  }
+  const d = data?.data || {};
+  return { activated: Boolean(d.activated), appliedInvitationCode: d.appliedInvitationCode || null };
+}
+
+/** 绑定邀请码：POST /api/v1/points/activation {inviteCode} → 服务端 +5000 永久积分（每号一次） */
+export async function bindLoomyInviteCode(account, code) {
+  const token = sessionOf(account);
+  if (!token) throw new Error('账号缺少 session token');
+  const clean = String(code || '').trim();
+  if (!clean) throw new Error('缺少邀请码');
+  let res;
+  try {
+    res = await fetch(`${pointsBaseOf(account)}/api/v1/points/activation`, {
+      method: 'POST',
+      headers: { token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inviteCode: clean }),
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch (e) {
+    const err = new Error(`Loomy 邀请码绑定网络失败: ${e.message}`);
+    err.transient = true;
+    throw err;
+  }
+  const data = await res.json().catch(() => ({}));
+  if (data?.code === '100002' || data?.code === '020002') {
+    const err = new Error('Loomy session 已失效，请重新登录');
+    err.auth = true;
+    throw err;
+  }
+  if (data?.code && !LOOMY_POINTS_OK_CODES.has(data.code)) {
+    const err = new Error(data.desc || data.message || `邀请码绑定失败 (${data.code})`);
+    err.serverCode = data.code;
+    throw err;
+  }
+  return { bound: true, desc: data.desc || null, data: data.data || {} };
+}

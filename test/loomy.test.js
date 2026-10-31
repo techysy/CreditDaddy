@@ -107,6 +107,34 @@ test('ZCode 已知活动兜底清单包含 WEEKEND BUILD', async () => {
   assert.ok(ZCODE_KNOWN_CLAIM_PLANS.some((p) => p.planId === 'zcode-v3-start-plan-1030-wk'));
 });
 
+test('Loomy 邀请码：激活状态映射 + 绑定参数校验与成功路径', async () => {
+  const { fetchLoomyActivation, bindLoomyInviteCode } = await import('../src/loomyClient.js');
+  await assert.rejects(() => bindLoomyInviteCode({ token: 'x', meta: {} }, '   '), /缺少邀请码/);
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    calls.push({ u, m: opts.method || 'GET', b: opts.body });
+    if (u.includes('/api/v1/points/activation')) {
+      if ((opts.method || 'GET') === 'GET') return new Response(JSON.stringify({ code: '000000', desc: '成功', data: { activated: false } }));
+      return new Response(JSON.stringify({ code: '000000', desc: '成功', data: {} }));
+    }
+    throw new Error('unexpected ' + u);
+  };
+  try {
+    const st = await fetchLoomyActivation({ token: 's', meta: {} });
+    assert.deepEqual(st, { activated: false, appliedInvitationCode: null });
+    const r = await bindLoomyInviteCode({ token: 's', meta: {} }, '  8yzch5 ');
+    assert.equal(r.bound, true);
+    const posted = calls.find((c) => c.m === 'POST');
+    assert.equal(JSON.parse(posted.b).inviteCode, '8yzch5', 'trim 但不改大小写');
+    globalThis.fetch = async () => new Response(JSON.stringify({ code: '000000', desc: '成功', data: { activated: true, appliedInvitationCode: '8YZCH5' } }));
+    const st2 = await fetchLoomyActivation({ token: 's', meta: {} });
+    assert.equal(st2.activated, true);
+    assert.equal(st2.appliedInvitationCode, '8YZCH5');
+  } finally { globalThis.fetch = realFetch; }
+});
+
 test('Loomy 账号支持切换（canSwitch）', async () => {
   const { publicAccount } = await import('../src/store.js');
   const view = publicAccount({ provider: 'loomy', token: 'x'.repeat(20), meta: { phone: '13100003656' } });
