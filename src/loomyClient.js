@@ -130,13 +130,17 @@ export function normalizePointsBalance(data) {
   const total = permanent + daily;
   const parts = [];
   if (permanent > 0) parts.push({ name: '永久积分', total: permanent, used: 0, remaining: permanent, expiresAt: null, recurring: false, unit: '积分' });
+  // 服务端上报的 dailyConsumedPoints 存在即直读（哪怕是 0——「今日确实没消耗」），
+  // 缺字段才按 dailyLimit - daily 倒推；|| 链会把如实上报的 0 当缺失，
+  // 倒推出「已用 2000」的幻影（#42）。顶层 used 同口径：永久积分无消耗数据，总已用 = 每日已用。
+  const hasConsumed = d.dailyConsumedPoints !== undefined && d.dailyConsumedPoints !== null;
+  const dailyUsed = hasConsumed ? num(d.dailyConsumedPoints) : Math.max(0, dailyLimit - daily);
   if (daily > 0 || dailyLimit > 0) {
-    const dailyUsed = num(d.dailyConsumedPoints) || Math.max(0, dailyLimit - daily);
     parts.push({ name: '每日赠送积分', total: dailyLimit, used: dailyUsed, remaining: daily, expiresAt: null, recurring: true, unit: '积分' });
   }
   return {
     total,
-    used: Math.max(0, permanent + dailyLimit - total) || 0,
+    used: dailyUsed,
     remaining: total,
     unit: '积分',
     plan: null,

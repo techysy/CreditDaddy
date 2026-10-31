@@ -54,6 +54,19 @@ test('Loomy 积分口径：normalizePointsBalance 映射永久/每日赠送（re
   assert.equal(empty.empty, true);
 });
 
+test('#42：dailyConsumedPoints=0 如实直读——不再倒推出幻影「已用」', async () => {
+  const { normalizePointsBalance } = await import('../src/loomyClient.js');
+  const q = normalizePointsBalance({ data: { balance: 100, dailyBalance: 3000, dailyConsumedPoints: 0, dailyLimitPoints: 5000 } });
+  const daily = q.parts.find((p) => p.name === '每日赠送积分');
+  assert.equal(daily.used, 0, '服务端如实上报 0 消耗，不得回退成 5000-3000=2000');
+  assert.equal(daily.remaining, 3000);
+  assert.equal(q.used, 0, '顶层已用同口径');
+  assert.equal(q.remaining, 3100);
+  // 缺字段时仍按 dailyLimit - daily 倒推（旧路径不变）
+  const q2 = normalizePointsBalance({ data: { balance: 10500, dailyBalance: 3506, dailyLimitPoints: 5000 } });
+  assert.equal(q2.parts.find((p) => p.name === '每日赠送积分').used, 1494);
+});
+
 test('Loomy 积分查询：records 直接成功时只打一次接口', async () => {
   const { fetchLoomyPoints } = await import('../src/loomyClient.js');
   const calls = [];
