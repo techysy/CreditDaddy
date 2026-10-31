@@ -62,7 +62,7 @@ import { liveToAccount as mirasimLiveAccount, switchTo as mirasimSwitchTo, curre
 import { liveToAccount as catpawLiveAccount, switchTo as catpawSwitchTo, currentCatpawToken, detectCatpaw, terminateCatpaw } from './catpawLocal.js';
 import { liveToAccount as traeLiveAccount, detectTrae, switchTo as traeSwitchTo, snapshotLive as traeSnapshotLive } from './traeLocal.js';
 import { liveToAccount as minimaxLiveAccount, detectMiniMax, currentMiniMaxUid, currentMiniMaxToken, currentMiniMaxRecordKey } from './minimaxLocal.js';
-import { liveToAccount as loomyLiveAccount, hardSwitchLoomy, currentLoomyToken, currentLoomyUid, detectLoomy } from './loomyLocal.js';
+import { liveToAccount as loomyLiveAccount, hardSwitchLoomy, currentLoomyUid, detectLoomy } from './loomyLocal.js';
 import * as minimaxGateway from './minimaxGateway.js';
 import * as traeGateway from './traeGateway.js';
 import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl, autoClaimEnabled, autoClaimUntil, setAutoClaimEnabled, claimIntervalMin, setClaimIntervalMin, claimWindowMin, setClaimWindowMin } from './zcodeClient.js';
@@ -1110,18 +1110,7 @@ async function handleApi(req, res, url) {
     }
     // MiniMax 不做切换：客户端凭据只有一条路径派生的活动记录，且 refreshToken 轮换式一次性，
     // CreditDaddy 与客户端共用必然互抢（invalid_grant），切号能力已按用户决定移除。
-    if (target.provider === 'loomy') {
-      // 切换 = 把目标账号的 session/userid/phone 写进 auth-session.json，客户端下次启动应用。
-      // 走硬切换（先关客户端 + 写后复核），避免客户端退出清理回写旧登录把切换冲掉
-      try {
-        const r = await hardSwitchLoomy(target);
-        logger.info('DAEMON', r.alreadyActive ? 'Loomy 当前已是 {name}' : r.verified ? 'Loomy 已切换到 {name}(凭据已写入并重开客户端;客户端界面登录态以其内部存储为准,若仍显示旧账号需在客户端内退出重登)' : 'Loomy 已切换到 {name},但凭据复核未落定(疑似有进程回写)', { name: target.name || target.id });
-        return json(res, 200, { ok: true, ...r });
-      } catch (e) {
-        logger.warn('DAEMON', 'Loomy 切换到 {name} 失败:{err}', { name: target.name || target.id, err: e.message });
-        return json(res, e.loomyRunning ? 409 : 400, { error: e.message, code: e.loomyRunning ? 'LOOMY_RUNNING' : undefined });
-      }
-    }
+    // Loomy 的切换在上方 provider 链已处理；这里只剩 WorkBuddy 系
     if (!target.provider.startsWith('workbuddy')) return json(res, 400, { error: '只有 WorkBuddy / ZCode / mirasim / 妙手 / Trae / Loomy 账号支持切换' });
     // 先把客户端当前会话的最新 token 收回账号库，避免被覆盖后丢失
     const cur = readWorkbuddySessions().accounts.find((a) => a.current);
@@ -1928,7 +1917,6 @@ async function handleApi(req, res, url) {
       traeClient: { installed: traeDet.clientInstalled, signedIn: traeDet.signedIn, running: traeDet.running },
       minimaxCurrentUid: mmLiveUid,
       minimaxClient: (() => { const d = detectMiniMax(); return { installed: d.installed, signedIn: d.signedIn, running: d.running }; })(),
-      loomyCurrentToken: currentLoomyToken(),
       loomyCurrentUid: currentLoomyUid(),
       loomyClient: (() => { const d = detectLoomy(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       keyRequired: panelKeyRequired(),

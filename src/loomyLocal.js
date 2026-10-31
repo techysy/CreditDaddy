@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 
 const EXE_NAME = 'Loomy.exe';
 
@@ -123,11 +123,6 @@ export function terminateLoomy({ timeoutMs = 8000 } = {}) {
   return { closed: !loomyRunning(), running: loomyRunning() };
 }
 
-/** 当前客户端登录的 token（面板「客户端当前」标识用） */
-export function currentLoomyToken() {
-  try { return readCredential()?.session || null; } catch { return null; }
-}
-
 /** 当前客户端登录的用户 ID（面板「客户端当前」徽章按 uid 比对——publicAccount 不下发 token，面板侧只能比 uid） */
 export function currentLoomyUid() {
   try { return readCredential()?.userid || null; } catch { return null; }
@@ -155,29 +150,6 @@ export async function liveToAccount() {
   };
 }
 
-/**
- * 切换 Loomy 客户端当前登录账号。
- * @param {object} account 目标账号
- * @param {{ force?: boolean }} opts
- */
-export async function switchTo(account, { force = false } = {}) {
-  const cred = readCredential();
-  if (!cred) throw new Error('本机 Loomy 客户端没有可用的登录凭据文件（未安装或未登录过）');
-  if (account.token === cred.session) return { switched: false, alreadyActive: true };
-
-  if (!force && loomyRunning()) {
-    const err = new Error('Loomy 客户端正在运行，请先退出后再切换（或强制切换，切换后自动重新拉起客户端）');
-    err.loomyRunning = true;
-    throw err;
-  }
-  writeCredential({
-    session: account.token,
-    userid: account.uid || cred.userid,
-    phone: account.meta?.phone || cred.phone || '',
-  });
-  return { switched: true, alreadyActive: false };
-}
-
 const napAsync = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -185,6 +157,8 @@ const napAsync = (ms) => new Promise((r) => setTimeout(r, ms));
  * 「客户端没跑就直接写」的温和路径实测会被它回写冲掉，表现为「切了没生效」）。
  * 统一走：先杀客户端 → 写凭据 → 延时复核 → 发现被回写冲掉就再补写一次 → 报告是否落定。
  * 客户端重新打开时 restore() 无校验直接应用文件里的 session，落定即换号成功。
+ * 注意：Loomy 客户端界面登录态真源在其渲染层 localStorage（启动时反向推给主进程），
+ * 本函数落定的是主进程/opencode 侧的凭据；界面换号仍需在客户端内退出重登。
  */
 export async function hardSwitchLoomy(account) {
   if (!account?.token) throw new Error('目标账号缺少 session token');
@@ -201,7 +175,7 @@ export async function hardSwitchLoomy(account) {
   const t = terminateLoomy();
   const closedClient = wasRunning && t.running === false;
 
-  const next = { session: account.token, userid, phone: account.meta?.phone || cred?.phone || '' };
+  const next = { session: account.token, userid, phone: account.meta?.phone || '' };
   writeCredential(next);
   await napAsync(1200);
   let verified = readCredential()?.session === account.token;
@@ -211,36 +185,4 @@ export async function hardSwitchLoomy(account) {
     verified = readCredential()?.session === account.token;
   }
   return { switched: true, alreadyActive: false, closedClient, verified };
-}
-
-/** 终止 Loomy 客户端 */
-export function killLoomy() {
-  if (!loomyRunning()) return;
-  try {
-    execFileSync('taskkill.exe', ['/F', '/IM', EXE_NAME], { windowsHide: true, timeout: 10_000 });
-  } catch (err) {
-    console.warn('[LoomyLocal] taskkill failed:', err?.message || err);
-  }
-}
-
-/** 启动 Loomy 客户端 */
-export function launchLoomy() {
-  const exe = candidateClientPath();
-  if (!exe) throw new Error('未找到 Loomy.exe 安装路径');
-  const child = spawn(exe, [], { detached: true, stdio: 'ignore' });
-  child.unref();
-}
-
-/** 切换本地登录账号（可选自动重启客户端） */
-export async function switchLoomyAccount({ session, userid, phone = '' }, { restart = true } = {}) {
-  const wasRunning = loomyRunning();
-  if (wasRunning && restart) {
-    killLoomy();
-    await new Promise((r) => setTimeout(r, 800));
-  }
-  writeCredential({ session, userid, phone });
-  if (wasRunning && restart) {
-    await new Promise((r) => setTimeout(r, 500));
-    launchLoomy();
-  }
 }

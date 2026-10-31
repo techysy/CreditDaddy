@@ -49,6 +49,7 @@ A robustness audit across all 25 runtime files (concurrency / resource leaks / e
 ### 🌐 Other
 
 - Web-session site labels and product descriptions now include Doubao; language changelogs (en/ja/ko) synced.
+- **1.6.5 full code-review fixes (multi-agent review of the entire 9a056a0..HEAD diff, 9 findings each manually verified)**: ① three loomyClient endpoints (points / activation / invite) now check `res.ok` and reject non-JSON — an upstream 5xx/HTML error page can no longer be swallowed into "bind succeeded" or a fake "0 points"; ② the daily allowance no longer fabricates 5000 when the server explicitly reports 0 — zero-balance empty accounts return to the empty state (no more phantom "0/5000, used 5000"); ③ the ZCode hidden-activity silent skip is now scoped to known-list fallback entries (`known` marker) — a real preview-listed activity returning 1002 is still honestly recorded as failed; ④ `/api/status` no longer ships `loomyCurrentToken` (the live session token had no consumer; exposure narrows to the uid); ⑤ hard-switch no longer pairs the previous account's phone into the target account's credential; ⑥ removed the unreachable second Loomy branch in the switch route and loomyLocal dead exports (switchTo/killLoomy/launchLoomy/switchLoomyAccount/currentLoomyToken); ⑦ all Loomy UI strings now translated in all four locales (empty state / local-import hint / SMS login flow / switching warning — 15 strings) and one stale key removed. 366/366 tests.
 
 ---
 

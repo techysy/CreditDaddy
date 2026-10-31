@@ -77,6 +77,7 @@ Theme: Trae auto check-in fix (#38, prefer the device id registered at login) + 
 ### 🌐 其它
 
 - 网页会话站点 label 与产品描述补齐「豆包」；CHANGELOG.en 补 1.6.1 / 1.6.2 英文段（英文面板「更新日志」直接显示英文）。
+- **1.6.5 全量代码审查修复（对 9a056a0..HEAD 全 diff 的多代理审查，9 项发现逐条人工复核）**：① loomyClient 三处积分/激活/邀请码接口补 `res.ok` 与非 JSON 校验——上游 5xx/HTML 错误页不再被吞成「绑定成功」或「0 积分」；② 每日上限不再把服务端显式的 0 捏造成 5000，零余额空号恢复 empty 口径（不再有「0/5000 已用 5000」幻影额度）；③ ZCode 隐形活动静默跳过收窄到已知清单兜底项（`known` 标记）——preview 列表里的真实活动返回 1002 仍如实记失败；④ `/api/status` 停发 `loomyCurrentToken`（活跃会话 token 无消费方，暴露面收敛为 uid）；⑤ 硬切换不再把旧账号手机号配进目标账号凭据；⑥ 删除切换路由里不可达的第二个 Loomy 分支及 loomyLocal 死导出（switchTo/killLoomy/launchLoomy/switchLoomyAccount/currentLoomyToken）；⑦ Loomy 全部界面字符串补齐四语翻译（空态/本机导入提示/SMS 登录流/切换警示 15 条）并移除失效键。366/366 测试。
 
 ---
 

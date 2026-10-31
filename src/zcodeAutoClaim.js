@@ -62,7 +62,7 @@ export async function zcodeAutoClaim(account) {
     // preview 为空 ≠ 无事可做：服务端偶尔把活动从列表里藏起来（2026-10-30 WEEKEND BUILD
     // 实测 preview 返回空但 claim 按 planId 直接可领）。把已知清单合成伪 plan 走同一条
     // 领取链路：1001/1002（不存在/已结束）在 catch 里静默跳过，不进卡片。
-    plans = ZCODE_KNOWN_CLAIM_PLANS.map((k) => ({ planId: k.planId, name: k.name || k.planId, description: '', priority: 0, grants: [] }));
+    plans = ZCODE_KNOWN_CLAIM_PLANS.map((k) => ({ planId: k.planId, name: k.name || k.planId, description: '', priority: 0, grants: [], known: true }));
   }
 
   const claims = [];
@@ -92,8 +92,9 @@ export async function zcodeAutoClaim(account) {
         snoozeAt = Math.max(snoozeAt, Number(new Date(e.nextAt)) || 0);
       }
       if (e.code !== 3007 && e.code !== 3001) {
-        // 1001/1002 = 已知清单里的活动不存在/已结束：静默跳过（不进卡片、不算失败）
-        if (e.code === 1001 || e.code === 1002) continue;
+        // 1001/1002 = 已知清单兜底里的活动不存在/已结束：静默跳过（不进卡片、不算失败）。
+        // 只对 known 兜底项生效——preview 列表里的真实活动若返回 1002 仍要如实记失败
+        if ((e.code === 1001 || e.code === 1002) && plan.known === true) continue;
         claims.push({ plan: planName, ok: false, message: e.message });
                 logger.warn('ZCODE-CLAIM', '{label} 领取「{plan}」失败:{err}', { label, plan: planName, err: e.message });
         continue;

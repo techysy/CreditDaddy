@@ -73,6 +73,18 @@ test('preview 为空且已知清单已领过（1003）：按已领口径', async
   } finally { globalThis.fetch = realFetch; }
 });
 
+test('preview 列表里的真实活动返回 1002：如实记失败（静默跳过只限已知清单兜底）', async () => {
+  mockFetch({ plans: [PLAN] });
+  claimBehaviors = [{ code: 1002, msg: '活动已结束' }];
+  try {
+    const r = await zcodeAutoClaim(account);
+    assert.equal(r.status, 'failed');
+    assert.equal(r.claims.length, 1);
+    assert.equal(r.claims[0].plan, PLAN.name);
+    assert.equal(r.claims[0].ok, false);
+  } finally { globalThis.fetch = realFetch; }
+});
+
 test('免验证码直接领取成功', async () => {
   mockFetch();
   claimBehaviors = [{ code: 0, data: { plan: { name: 'ZCode Weekend Build' } } }];

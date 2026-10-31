@@ -122,11 +122,15 @@ export function normalizePointsBalance(data) {
   const hasAny = d && typeof d === 'object' && Object.keys(d).length > 0;
   const permanent = num(d.balance ?? d.permanentPoints ?? d.currentBalance ?? d.longTermPoints);
   const daily = num(d.dailyBalance ?? d.dailyPoints ?? d.dailyGiftPoints);
-  const dailyLimit = num(d.dailyLimitPoints ?? d.dailyLimit ?? d.daily_limit) || (hasAny ? 5000 : 0);
+  // 每日上限：服务端显式给了就用它的值（哪怕是 0）；没给才按客户端文案口径缺省 5000——
+  // 且只在账号确实有积分活动时缺省，零余额空号不再被捏造出「0/5000 已用 5000」的幻影额度
+  const limitRaw = d.dailyLimitPoints ?? d.dailyLimit ?? d.daily_limit;
+  const hasLimit = limitRaw !== undefined && limitRaw !== null && limitRaw !== '';
+  const dailyLimit = hasLimit ? num(limitRaw) : ((permanent > 0 || daily > 0) ? 5000 : 0);
   const total = permanent + daily;
   const parts = [];
   if (permanent > 0) parts.push({ name: '永久积分', total: permanent, used: 0, remaining: permanent, expiresAt: null, recurring: false, unit: '积分' });
-  if (daily > 0 || (hasAny && dailyLimit > 0)) {
+  if (daily > 0 || dailyLimit > 0) {
     const dailyUsed = num(d.dailyConsumedPoints) || Math.max(0, dailyLimit - daily);
     parts.push({ name: '每日赠送积分', total: dailyLimit, used: dailyUsed, remaining: daily, expiresAt: null, recurring: true, unit: '积分' });
   }
@@ -157,12 +161,17 @@ async function pointsRecordsCall(base, token) {
     err.transient = true;
     throw err;
   }
-  if (res.status === 401 || res.status === 403) {
-    const err = new Error('Loomy 积分接口鉴权失败');
-    err.auth = true;
-    throw err;
+  const text = await res.text().catch(() => '');
+  let data = null;
+  if (text) { try { data = JSON.parse(text); } catch { data = null; } }
+  // 会话失效的业务码放行给上层（first-login 重试 / 如实报错），其余 HTTP/解析失败都要显性报错，
+  // 绝不让 5xx/HTML 错误页被吞成「空余额」
+  if (data?.code === '100002' || data?.code === '020002') return data;
+  if (!res.ok) {
+    throw new Error(`Loomy 积分接口 HTTP ${res.status}: ${(data?.desc || data?.message || text.slice(0, 120) || '').trim()}`);
   }
-  return res.json().catch(() => ({}));
+  if (!data) throw new Error(`Loomy 积分接口返回了非 JSON 数据 (HTTP ${res.status})`);
+  return data;
 }
 
 /** 积分档案初始化（客户端登录后必调的 first-login，幂等）。尽力而为，失败交给余额重试暴露。 */
@@ -234,12 +243,18 @@ export async function fetchLoomyActivation(account) {
     err.transient = true;
     throw err;
   }
-  const data = await res.json().catch(() => ({}));
+  const text = await res.text().catch(() => '');
+  let data = null;
+  if (text) { try { data = JSON.parse(text); } catch { data = null; } }
   if (data?.code === '100002' || data?.code === '020002') {
     const err = new Error('Loomy session 已失效，请重新登录');
     err.auth = true;
     throw err;
   }
+  if (!res.ok) {
+    throw new Error(`Loomy 激活状态查询 HTTP ${res.status}: ${(data?.desc || data?.message || text.slice(0, 120) || '').trim()}`);
+  }
+  if (!data) throw new Error(`Loomy 激活状态查询返回了非 JSON 数据 (HTTP ${res.status})`);
   if (data?.code && !LOOMY_POINTS_OK_CODES.has(data.code)) {
     throw new Error(data.desc || data.message || `Loomy 激活状态查询错误 (${data.code})`);
   }
@@ -266,12 +281,18 @@ export async function bindLoomyInviteCode(account, code) {
     err.transient = true;
     throw err;
   }
-  const data = await res.json().catch(() => ({}));
+  const text = await res.text().catch(() => '');
+  let data = null;
+  if (text) { try { data = JSON.parse(text); } catch { data = null; } }
   if (data?.code === '100002' || data?.code === '020002') {
     const err = new Error('Loomy session 已失效，请重新登录');
     err.auth = true;
     throw err;
   }
+  if (!res.ok) {
+    throw new Error(`Loomy 邀请码绑定 HTTP ${res.status}: ${(data?.desc || data?.message || text.slice(0, 120) || '').trim()}`);
+  }
+  if (!data) throw new Error(`Loomy 邀请码绑定返回了非 JSON 数据 (HTTP ${res.status})`);
   if (data?.code && !LOOMY_POINTS_OK_CODES.has(data.code)) {
     const err = new Error(data.desc || data.message || `邀请码绑定失败 (${data.code})`);
     err.serverCode = data.code;
