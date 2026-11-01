@@ -13,7 +13,7 @@
 ## [1.6.5] (正式版，内容曾以 1.6.3 名义出过测试包)
 
 本版主题:**讯飞 Loomy 产品线（短信直登 / 本机凭据导入 / 多账号硬切换 / 积分与邀请码 / 10Router 同步）+ ZCode 隐形活动兜底（WEEKEND BUILD）+ Trae 自动签到修复与 fnOS 统一网关入口（#38 / #39）+ 全量代码审查清零**。
-Theme: Trae auto check-in fix (#38, prefer the device id registered at login) + fnOS unified-gateway entry (#39, public HTTPS / Tunnel access no longer blank) + full robustness-audit hardening.
+Theme: **iFlytek Loomy product line (SMS direct login / local credential import / multi-account hard switching / points & invite codes / 10Router sync) + ZCode hidden-activity fallback (WEEKEND BUILD) + Trae auto check-in fix and fnOS unified-gateway entry (#38 / #39) + full code review cleared**.
 
 > **发布状态 / 版本号说明**：本版内容曾以 1.6.3 名义分发过本地测试包（2026-10-28，飞书群文件 `CreditDaddy-Win-Setup-1.6.3.exe`）；此前误发到 npm 的 `creditdaddy@1.6.3`（已挂 deprecation）因 npm 同版本号不可重发而**永久作废**——正式发版（tag / GitHub Release / npm）**跳过 1.6.3 / 1.6.4 用 1.6.5**，避免同一版本号在两条渠道指向两个不同的东西（2026-10-29 用户拍板）。
 
