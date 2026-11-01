@@ -6,7 +6,7 @@ English changelog — recent releases translated. For the full history in Chines
 
 ## [1.6.5] (formal release; earlier content was test-distributed as 1.6.3)
 
-Theme: **Trae auto check-in fix (#38, prefer the device id registered at login) + fnOS unified-gateway entry (#39, public HTTPS / Tunnel access no longer blank) + full robustness-audit hardening**.
+Theme: **iFlytek Loomy product line (SMS direct login / local credential import / multi-account hard switching / points & invite codes / 10Router sync) + ZCode hidden-activity fallback (WEEKEND BUILD) + Trae auto check-in fix and fnOS unified-gateway entry (#38 / #39) + full code review cleared**.
 
 > **Release status / version numbering**: this content was test-distributed as 1.6.3 (2026-10-28, Feishu group file `CreditDaddy-Win-Setup-1.6.3.exe`). The mistakenly published npm package `creditdaddy@1.6.3` (deprecated) is **permanently abandoned** — npm never allows republishing the same version — so the formal release (tag / GitHub Release / npm) **skips 1.6.3 / 1.6.4 and lands on 1.6.5**, keeping one version number from meaning two different things on two channels (decided 2026-10-29).
 
