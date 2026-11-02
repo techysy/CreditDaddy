@@ -1825,5 +1825,6 @@
   "\n切换会先关闭并重新打开 Loomy 客户端。注意：客户端界面的登录态存在其内部存储，若重开后仍显示旧账号，需在客户端内「退出登录」后重新登录。": "\nSwitching closes and reopens the Loomy client. Note: the client UI keeps its login state in its own storage — if it still shows the old account after reopening, log out inside the client and sign in again.",
   "本机未安装 Loomy 客户端，无法切换（切换是把登录写入客户端凭据，由客户端应用）": "Loomy client is not installed on this machine; cannot switch (switching writes the login into the client credential for the client to apply)",
   "Loomy 客户端仅支持 Windows，本平台无法切换": "The Loomy client is Windows-only; switching is not possible on this platform",
-  "调度轮读取配置失败,跳过本轮:{err}": "Scheduler round failed to read config, skipping this round: {err}"
+  "调度轮读取配置失败,跳过本轮:{err}": "Scheduler round failed to read config, skipping this round: {err}",
+  "无法切换账号：目标账号为 WorkBuddy 5.6+ 加密凭据，但未能获取客户端解密密钥": "Cannot switch account: the target account uses WorkBuddy 5.6+ encrypted credentials, but the client decryption key could not be obtained"
 }

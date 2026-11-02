@@ -383,6 +383,7 @@ const platform = () => `${process.platform}-${process.arch === 'arm64' ? 'arm64'
  * 活动过期后条目留在表里无害（claim 返回 1002 跳过）；新活动出现时在此追加一行。
  */
 export const ZCODE_KNOWN_CLAIM_PLANS = [
+  { planId: 'zcode-v3-start-plan-1102', name: 'ZCODE GLOBAL BUILD' },
   { planId: 'zcode-v3-start-plan-1030-wk', name: 'ZCODE WEEKEND BUILD' },
 ];
 

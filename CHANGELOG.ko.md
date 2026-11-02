@@ -6,8 +6,15 @@
 
 ## [Unreleased]
 
+- **ZCode 신규 활동 「GLOBAL BUILD」 폴백 수록 및 한도 초과 처리**:
+  - 11월 신규 활동 `zcode-v3-start-plan-1102`(ZCODE GLOBAL BUILD · 300,000,000 GLM-5.3-Flash Token)를 수록. 서버의 `preview` 목록에서는 숨겨져 있지만 폴백 목록을 통해 직접 `claim` 호출로 수령 가능;
+  - 실측 확인: 당일 명액이 모두 소진된 경우 서버가 `1005 今日领取名额已用完(exceed quota limit)`를 반환(클라이언트에서는 "操作失败，请稍后重试"로 표시), 이미 수령한 계정은 `1003 该套餐已经领取过`를 반환합니다.
+- **WorkBuddy 5.6+ 암호화($wbEncrypted) 봉투 복호화 및 5.8+ 전화번호 복원**:
+  - ① **$wbEncrypted 로컬 복호화**: WorkBuddy 5.6+의 필드 레벨 at-rest 암호화(AES-256-GCM 및 AAD 서명을 포함한 `$wbEncrypted` 봉투) 지원. 공식 WorkBuddy Electron 런타임(`ELECTRON_RUN_AS_NODE=1`)을 통해 스토리지 바인딩 키를 추출하고 메모리 캐싱 및 60초 장애 대기를 적용하여 토큰 등 민감 필드를 안전하게 복호화(5.6+ 클라이언트 계정을 전혀 수확하지 못하던 문제 해결);
+  - ② **실제 전화번호 복원**: WorkBuddy 5.8+가 `account.phoneNumber`를 마스킹(`135****6735`)하지만, access_token의 JWT payload claims(`preferred_username` / `phone_number` / `mobile`)에서 마스킹되지 않은 휴대폰 번호를 자동 추출;
+  - ③ **계정 전환 쓰기 암호화 보호**: 기존 세션이 `$wbEncrypted` 구조인 경우 전환 시 암호화 봉투로 다시 패키징하여 5.6+ 클라이언트의 로딩 예외 방지;
+  - ④ **클라이언트 탐지 후보 확장**: `WorkBuddyAI.exe`, `CodeBuddy CN.exe` 및 macOS 대응 경로 보완. 테스트 375/375.
 - **릴리스 후 재검토 수정(v1.6.2..HEAD 35개 커밋 멀티에이전트 심사, 10건 모두 수동 확인)**: ① daemon 크래시 경로——10R 사용량 동기화 setInterval이 경화된 loadConfig(읽기 실패 시 throw하도록 변경)를 가드 없이 호출, 백신 순간 잠금 EPERM에 daemon 전체가 죽을 수 있었음.이번 라운드는 catch 후 스킵. ② `.bak` 퇴로 자기파괴——주 파일 손상 후 .bak에서 복구한 뒤 첫 저장에서 아직 손상된 주 파일 내용을 .bak에 되써버림; 주 파일이 JSON 파싱 불가하면 .bak를 건드리지 않음. ③ Trae 동일 기기 다중 계정 디바이스 번호 회귀——#38 이후 attempt=0이 일률적으로 meta.deviceId 우선, 동일 기기 가져오기 N개 계정의 deviceId가 같아 두 번째 계정부터 매일 9074. traePrimaryIds(기기번호별 첫 계정만 인정) 신규, 비선두 계정은 파생호 강제(#28 분리 복원). ④ 패널 한도 신선도——loadQuotas 배치 가드가 await 앞에 있어(항상 참) 구배치가 새 live 수동갱신을 덮음; await 후 재판정. ⑤ webSessionOnly 푸시가 채널 제외 무시——무료 한도 페이지가 자체 source 목록으로 quotaPushDisabledProviders를 우회해 사용자가 해제한 채널을 재푸시; 이제 제외 존중. ⑥ Loomy 전환 두 곳——대상 userid 없으면 이전 자격증명 userid를 빌리지 않음(새 session에 남의 신원 매칭·배지 오점); 클라이언트 미설치 시 LOOMY_NOT_INSTALLED로 성실 보고(이전엔 가짜 쓰기+가짜 성공). ⑦ Loomy 포인트 총액——total=영구+매일잔여라 게이지가 항상 가득; total을 용량 기준(영구+매일 상한)으로. ⑧ 게이트웨이 계정삭제 잔재——forgetAccount가 weights는 지웠지만 진행 중 weightInflight는 그대로, 느린 상위 갱신이 삭제된 계정 가중치를 Map에 되씀(2s 상한이 막으려던 바로 그 경로); 양 게이트웨이 보완. ⑨ macOS qodercli 구성요소 선택(PR #44 후속)——사전순→버전순(1.2.10 > 1.2.9); 후보는 statSync().isFile() 통과만 사용,잘못된 항목 스킵. ⑩ 정리: 무료풀 사이트 카드 warn 렌더 보충, 패널 강제전환 목록에서 죽은 코드 LOOMY_RUNNING 제거, hasAny 죽은 변수·4개 언어 사전을 닿지 않는的字면 `\n` 키 삭제, ja '現在前不可' 깨짐 수정. 테스트 370/370.
-- 【예정·양측】MiniMax 체크인 배지의 10Router 소비측(10R#77): external-quota 화이트리스트가 `checkinToday` / `streakDays` 통과 +「오늘 서명」배지; CD 출구는 1.6.0에 이미 전달됨.
 
 ---
 

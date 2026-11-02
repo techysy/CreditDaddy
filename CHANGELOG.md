@@ -6,8 +6,15 @@
 
 ## [Unreleased]
 
+- **ZCode 新活动「GLOBAL BUILD」兜底收录与名额满拦截**：
+  - 收录 11 月新活动 `zcode-v3-start-plan-1102`（ZCODE GLOBAL BUILD · 300,000,000 GLM-5.3-Flash Token）。服务端已隐蔽该活动（`preview` 不返回），但通过兜底清单可直接调用 `claim` 领取；
+  - 实测确认：名额抢光时服务端返回 `1005 今日领取名额已用完（exceed quota limit）`，在客户端内点领取会提示「操作失败，请稍后重试」；已有账号已领过则返回 `1003 该套餐已经领取过`；
+- **WorkBuddy 5.6+ 静态加密（$wbEncrypted）信封解密与 5.8+ 手机号还原**：
+  - ① **$wbEncrypted 本地解密**：支持 WorkBuddy 5.6+ 的字段级 at-rest 加密（`$wbEncrypted` 信封：内含 AES-256-GCM 密文与 AAD 签名）。调用官方 WorkBuddy Electron 运行时（`ELECTRON_RUN_AS_NODE=1`）提取存储绑定密钥，内存缓存且 60s 失败退避，安全解密 token 等敏感字段，彻底解决 5.6+ 客户端账号完全无法收割的问题；
+  - ② **真实手机号还原**：WorkBuddy 5.8+ 会对 `account.phoneNumber` 掩码脱敏（如 `135****6735`），现自动从 access_token 的 JWT payload claims（`preferred_username` / `phone_number` / `mobile`）中提取未脱敏的大陆手机号；
+  - ③ **切号写盘加密保护**：若原会话是 `$wbEncrypted` 结构，写回时自动重新封包为加密信封，防止 5.6+ 客户端加载异常；
+  - ④ **客户端探测扩展**：补齐 `WorkBuddyAI.exe`、`CodeBuddy CN.exe` 及 macOS 对应候选。测试 375/375。
 - **1.6.5 发布后复审修复（对 v1.6.2..HEAD 全部 35 提交 + 跨 #38 边界的 10 项发现逐条复核）**：① **daemon 崩溃路径**——10R 用量同步调度器的 setInterval 回调直读 loadConfig（鲁棒性审计把「读失败回默认值」改成了「读失败抛错」，但没有兜异常），杀软瞬时占用配置文件的 EPERM 会掀翻整个 daemon；现在调度轮 catch 跳过本轮。② **`.bak` 退路毁于一旦**——主文件损坏从 .bak 恢复后，第一次保存把仍损坏的主文件内容写进 .bak；现在主文件 JSON 不可解析时 .bak 不动。③ **Trae 同机多账号设备号回归**——#38 让 attempt=0 一律优先 meta.deviceId，但同机导入的 N 个账号 deviceId 相同：第二个号起天天 9074。新增 traePrimaryIds（每个设备号只认首账号）由签到循环传入，非首账号强制派生号（#28 的分离语义恢复）。④ **面板额度过期覆盖**——loadQuotas 的批次守卫在 await 之前判、恒为真，旧批次的快照仍会盖掉用户刚点的手动 live 刷新；改为 await 之后重判。⑤ **webSessionOnly 推送无视渠道排除**——免费额度页「同步到 10Router」自带 source 清单，绕过了 quotaPushDisabledProviders 过滤，把用户专门取消勾选（10R 已有同源连接）的渠道又推回去；现在同样尊重排除清单。⑥ **Loomy 切换两枚**——目标账号缺 userid 时不再借用旧凭据的 userid（会把新 session 配上别人的身份、徽章亮错卡）；未安装 Loomy 客户端时如实报 LOOMY_NOT_INSTALLED（此前非 Windows/未装环境下 mkdir+假写入+假「成功」，与 WorkBuddy 同款死路）。⑦ **Loomy 积分总额口径**——total=永久+每日剩余 让进度条恒满看不见 used 段；total 改容量口径（永久+每日上限）。⑧ **网关删号残留**——forgetAccount 清了 weights 却没清在途的 weightInflight，慢上游刷新落地后把已删账号的权重写回 Map（正是 2s 封顶要防的黑洞路径）；两个网关都补在途清理。⑨ **macOS qodercli 组件选取（PR #44 跟进）**——目录排序改版本排序（1.2.10 > 1.2.9）；候选项必须 statSync().isFile() 存在才用，坏条目跳过而不是选中即 ENOENT。⑩ 清理：面板站点卡 warn 补渲染、hardSwitch 后死码 LOOMY_RUNNING 从面板强切清单摘除、loomyClient hasAny 死变量与四语字典不可达字面 `\n` 键删除、ja「現在前不可」乱码修正。370/370 测试。
-- 【已排期·双侧】MiniMax 签到徽章 10Router 消费侧（10R#77）：external-quota 白名单放行 `checkinToday` / `streakDays` + 卡面「今日已签」徽章；CD 出口已随 1.6.0 发出。
 
 ---
 

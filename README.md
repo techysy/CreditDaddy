@@ -4,7 +4,7 @@
 
 # CreditDaddy
 
-**AI 编程工具多账号本地管理 + 每日积分自动领取（领鸡蛋）助手：Qoder · WorkBuddy · ZCode · mirasim · 妙手 · Trae · MiniMax · ModelScope · 豆包，集成 10Router 额度总览、用量同步与网页会话额度卡（Token Harbor / 小米 MiMo / River / ModelScope 魔搭 / LongCat）**
+**AI 编程工具多账号本地管理 + 每日积分自动领取（领鸡蛋）助手：Qoder · WorkBuddy · ZCode · mirasim · 妙手 · Trae · MiniMax · ModelScope · 豆包 Doubao · 讯飞 Loomy，集成 10Router 额度总览、用量同步与网页会话额度卡（Token Harbor / 小米 MiMo / River / ModelScope 魔搭 / LongCat）**
 
 [![Release](https://img.shields.io/github/v/release/techysy/CreditDaddy?label=%E7%89%88%E6%9C%AC&color=2563eb)](https://github.com/techysy/CreditDaddy/releases/latest)
 [![CI](https://img.shields.io/github/actions/workflow/status/techysy/CreditDaddy/ci.yml?branch=main&label=CI)](https://github.com/techysy/CreditDaddy/actions/workflows/ci.yml)

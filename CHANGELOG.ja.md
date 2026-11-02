@@ -6,8 +6,15 @@
 
 ## [Unreleased]
 
+- **ZCode 新アクティビティ「GLOBAL BUILD」兜底収録と枠上限対応**：
+  - 11 月の新アクティビティ `zcode-v3-start-plan-1102`（ZCODE GLOBAL BUILD · 300,000,000 GLM-5.3-Flash Token）を収録。上流の `preview` リストからは非表示ですが、兜底リストにより直接 `claim` で取得可能；
+  - 実測検証：本日の枠が終了した場合は上流が `1005 今日领取名额已用完（exceed quota limit）` を返し（公式クライアント上は「操作失败，请稍后重试」と表示）、取得済みの場合は `1003 该套餐已经领取过` を返します。
+- **WorkBuddy 5.6+ 暗号化（$wbEncrypted）復号と 5.8+ 電話番号復元**：
+  - ① **$wbEncrypted ローカル復号**：WorkBuddy 5.6+ のフィールド級 at-rest 暗号化（AES-256-GCM + AAD 署名の `$wbEncrypted` エンベロープ）に対応。公式 WorkBuddy の Electron ランタイム（`ELECTRON_RUN_AS_NODE=1`）経由でストレージバインディングから鍵を取得、メモリキャッシュと 60 秒障害待機を組み、token などの機密フィールドを安全に復号（5.6+ クライアントでアカウントが一切取得できない問題を解消）；
+  - ② **実電話番号の復元**：WorkBuddy 5.8+ は `account.phoneNumber` をマスク表示（`135****6735`）しますが、access_token の JWT payload（`preferred_username` / `phone_number` / `mobile`）からマスク前の携帯番号を自動抽出；
+  - ③ **アカウント切替時の暗号化保護**：元セッションが `$wbEncrypted` 構造の場合、書込時に再び暗号化エンベロープに封入して 5.6+ クライアントの読み込み異常を防止；
+  - ④ **クライアント探測の拡充**：`WorkBuddyAI.exe`、`CodeBuddy CN.exe` および macOS 対応候補を補完。テスト 375/375。
 - **リリース後レビュー修正（v1.6.2..HEAD の 35 コミットをマルチエージェント審査、10 件すべて人工確認）**：① daemon クラッシュ経路——10R 用量同期の setInterval が硬化後の loadConfig（読取失敗で throw するようになった）を無ガードで呼んでおり、杀毒ソフトの瞬間ロックで daemon 全体が落ち得た。本轮 catch でスキップに。② `.bak` 退路の自己破壊——主ファイル破損を .bak から復旧した後の初回保存で、まだ壊れている主ファイル内容が .bak に書き戻されていた。主ファイルが JSON パース不能なら .bak を動かさない。③ Trae 同机多账号设备号回归——#38 后 attempt=0 一律优先 meta.deviceId，但同机导入的 N 账号 deviceId 相同，第二号起天天 9074。新增 traePrimaryIds（每设备号只认首账号）经签到循环传入，非首号强制派生号（#28 的分离语义恢复）。④ 面板额度过期覆盖——loadQuotas 批次守卫在 await 前判（恒真），旧批次仍会盖掉手动 live 刷新；改为 await 后重判。⑤ webSessionOnly 推送无视渠道排除——免费额度页的「10Router へ同期」自建 source 清单绕过了 quotaPushDisabledProviders，把用户取消勾选的渠道又推回去；现在同样尊重排除。⑥ Loomy 切替两处——目标无 userid 时不再借用旧凭据 userid（新 session 配上他人身份、徽章亮错卡）；客户端未安装时如实报 LOOMY_NOT_INSTALLED（此前假写入+假成功，与 WorkBuddy 同款死路）。⑦ Loomy 积分总额——total=永久+每日剩余导致进度条恒满；total 改为容量口径（永久+每日上限）。⑧ 网关删号残留——forgetAccount 清了 weights 未清在途 weightInflight，慢上游刷新把已删账号权重写回 Map（正是 2s 封顶要防的路径）；两网关均已补。⑨ macOS qodercli 组件选取（PR #44 跟进）——字典序改版本序（1.2.10 > 1.2.9）；候选必须 statSync().isFile()，坏条目跳过。⑩ 清理：免费池站点卡 warn 补渲染、面板强切清单摘除死码 LOOMY_RUNNING、hasAny 死变量与四语字典不可达字面 `\n` 键删除、ja 乱码修正。测试 370/370。
-- 【予定済み・両側】MiniMax チェックインバッジの 10Router 消費側（10R#77）：external-quota ホワイトリストが `checkinToday` / `streakDays` を通過 +「本日済み」バッジ；CD 出口は 1.6.0 で既に配信済み。
 
 ---
 

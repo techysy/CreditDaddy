@@ -51,6 +51,7 @@ export function inspectToken(token) {
     uid: typeof c.sub === 'string' ? c.sub : null,
     expiresAt: Number.isFinite(c.exp) ? new Date(c.exp * 1000).toISOString() : null,
     name: c.name || c.preferred_username || c.nickname || null,
+    phone: [c.phone_number, c.phoneNumber, c.mobile, c.preferred_username].map((v) => String(v == null ? '' : v).trim()).find((v) => /^1\d{10}$/.test(v)) || null,
   };
 }
 
