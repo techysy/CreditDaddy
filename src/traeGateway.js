@@ -58,6 +58,12 @@ export function forgetAccount(id) {
   dead.delete(id);
   weights.delete(id);
   swrr.delete(id);
+  // 在途的权重刷新 resolve 后会把 id 写回 weights——清掉 inflight 句柄，
+  // 让它落地时发现 Map 里已无自己（weightRefresh 的 finally 只删「仍是自己」的条目），
+  // 否则删号后残留条目永不回收（无界增长泄漏）
+  const inflight = weightInflight.get(id);
+  weightInflight.delete(id);
+  if (inflight) inflight.catch(() => {}).then(() => { weights.delete(id); swrr.delete(id); });
 }
 
 // ── 账号轮换状态（进程内） ──

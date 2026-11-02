@@ -160,12 +160,24 @@ const napAsync = (ms) => new Promise((r) => setTimeout(r, ms));
  * 注意：Loomy 客户端界面登录态真源在其渲染层 localStorage（启动时反向推给主进程），
  * 本函数落定的是主进程/opencode 侧的凭据；界面换号仍需在客户端内退出重登。
  */
-export async function hardSwitchLoomy(account) {
+export async function hardSwitchLoomy(account, { requireClient = true } = {}) {
   if (!account?.token) throw new Error('目标账号缺少 session token');
+  // 非 Windows / 未安装客户端：写凭据是死路（凭据文件路径是虚构的、客户端不存在），
+  // 不能报「切换成功」——与 WorkBuddy 的 WORKBUDDY_NOT_INSTALLED 同款边界。
+  // requireClient=false 仅供测试注入（非 Windows 环境验证写入/复核逻辑）
+  if (requireClient && !candidateClientPath()) {
+    const err = new Error(process.platform === 'win32'
+      ? '本机未安装 Loomy 客户端，无法切换（切换是把登录写入客户端凭据，由客户端应用）'
+      : 'Loomy 客户端仅支持 Windows，本平台无法切换');
+    err.loomyNotInstalled = true;
+    throw err;
+  }
   const cred = readCredential();
   // 凭据文件缺失（未装过客户端 / 用户在客户端里退出登录把它清空）不该挡切换——
-  // 目标账号的 session/userid/phone 在账号库里齐全，直接写就是
-  const userid = account.uid || cred?.userid;
+  // 目标账号的 session/userid/phone 在账号库里齐全，直接写就是。
+  // userid 只认目标账号自己的：回退到旧凭据的 userid 会把目标 session 配上别人的身份，
+  // 徽章（按 uid 比对）会亮在刚切走的账号上
+  const userid = account.uid;
   if (!userid) throw new Error('目标账号缺少 userid，无法写入 Loomy 凭据（请重新登录该账号后再切换）');
   if (cred && account.token === cred.session) {
     return { switched: false, alreadyActive: true, closedClient: false, verified: true };

@@ -39,6 +39,9 @@ test('Loomy 积分口径：normalizePointsBalance 映射永久/每日赠送（re
   const q = normalizePointsBalance({ data: { balance: 10500, dailyBalance: 3506, dailyLimitPoints: 5000, dailyConsumedPoints: 1494, list: [], total: 0 } });
   assert.equal(q.unit, '积分');
   assert.equal(q.remaining, 14006);
+  // 总额是容量口径（永久 + 每日上限），进度条才有 used 段；remaining 是余额口径
+  assert.equal(q.total, 15500);
+  assert.equal(q.used, 1494);
   const names = q.parts.map((p) => p.name);
   assert.ok(names.includes('永久积分'));
   assert.ok(names.includes('每日赠送积分'));
@@ -183,12 +186,12 @@ test('hardSwitchLoomy：写入凭据并复核落定；已活跃时不动文件',
   const prev = process.env.LOOMY_CREDENTIAL_FILE;
   process.env.LOOMY_CREDENTIAL_FILE = fixture;
   try {
-    const r = await hardSwitchLoomy({ token: 'b'.repeat(32), uid: 'uid-b', meta: { phone: '18700009058' } });
+    const r = await hardSwitchLoomy({ token: 'b'.repeat(32), uid: 'uid-b', meta: { phone: '18700009058' } }, { requireClient: false });
     assert.equal(r.switched, true);
     assert.equal(r.verified, true, '写入后延时复核应落定（无回写者时一次通过）');
     assert.equal(readCredential().session, 'b'.repeat(32));
     assert.equal(readCredential().userid, 'uid-b');
-    const again = await hardSwitchLoomy({ token: 'b'.repeat(32) });
+    const again = await hardSwitchLoomy({ token: 'b'.repeat(32), uid: 'uid-b' }, { requireClient: false });
     assert.equal(again.alreadyActive, true);
     assert.equal(again.switched, false);
   } finally {
@@ -207,7 +210,7 @@ test('hardSwitchLoomy：凭据文件缺失（客户端内退出登录清空）�
   const prev = process.env.LOOMY_CREDENTIAL_FILE;
   process.env.LOOMY_CREDENTIAL_FILE = fixture;
   try {
-    const r = await hardSwitchLoomy({ token: 'c'.repeat(32), uid: 'uid-c', meta: { phone: '18700009058' } });
+    const r = await hardSwitchLoomy({ token: 'c'.repeat(32), uid: 'uid-c', meta: { phone: '18700009058' } }, { requireClient: false });
     assert.equal(r.switched, true);
     assert.equal(r.verified, true);
     assert.equal(readCredential().session, 'c'.repeat(32));
@@ -217,4 +220,35 @@ test('hardSwitchLoomy：凭据文件缺失（客户端内退出登录清空）�
     if (prev === undefined) delete process.env.LOOMY_CREDENTIAL_FILE; else process.env.LOOMY_CREDENTIAL_FILE = prev;
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('hardSwitchLoomy：目标无 uid 拒绝切换——绝不借用旧凭据的 userid 配新 session', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { hardSwitchLoomy, readCredential } = await import('../src/loomyLocal.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loomy-sw-nouid-'));
+  const fixture = path.join(dir, 'auth-session.json');
+  fs.writeFileSync(fixture, JSON.stringify({ session: 'a'.repeat(32), userid: 'uid-a', phone: '13100003656', updatedAt: 1 }));
+  const prev = process.env.LOOMY_CREDENTIAL_FILE;
+  process.env.LOOMY_CREDENTIAL_FILE = fixture;
+  try {
+    await assert.rejects(
+      () => hardSwitchLoomy({ token: 'd'.repeat(32), meta: {} }, { requireClient: false }),
+      /缺少 userid/);
+    // 复核失败路径不得留下半写凭据：旧身份必须原样
+    assert.equal(readCredential().session, 'a'.repeat(32));
+    assert.equal(readCredential().userid, 'uid-a');
+  } finally {
+    if (prev === undefined) delete process.env.LOOMY_CREDENTIAL_FILE; else process.env.LOOMY_CREDENTIAL_FILE = prev;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('hardSwitchLoomy：未装客户端时报 LOOMY_NOT_INSTALLED 而非假成功', async () => {
+  const { hardSwitchLoomy, candidateClientPath } = await import('../src/loomyLocal.js');
+  if (candidateClientPath()) return;   // 本机真有客户端（开发机常态）：守卫不触发，跳过本用例
+  await assert.rejects(
+    () => hardSwitchLoomy({ token: 'e'.repeat(32), uid: 'uid-e' }, { requireClient: true }),
+    (e) => e.loomyNotInstalled === true);
 });

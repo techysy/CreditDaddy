@@ -2855,6 +2855,7 @@ function renderFreePool() {
       + '</div>'
       + '<div style="display:flex;align-items:center;gap:6px">' + btn + pasteBtn + clearBtn + eyeBtn + '</div>'
       + '</div>'
+      + warn
       + hint
       + '</div>'
       + accRows
@@ -3437,10 +3438,15 @@ async function loadQuotas(ids, opts) {
   const worker = async () => {
     while (queue.length && run === quotaRun) {
       const id = queue.shift();
-      const runAtFetch = run;   // fetch 期间可能有新一轮 loadQuotas 进来（如卡片点「刷新」走 live）
-      try { if (runAtFetch === quotaRun) state.quotas[id] = (await api('/api/accounts/' + encodeURIComponent(id) + '/quota' + (live ? '?live=1' : ''))).quota; }
-      catch (e) { if (runAtFetch === quotaRun) state.quotas[id] = { error: e.message }; }
-      if (runAtFetch === quotaRun) render();
+      // fetch 期间可能有新一轮 loadQuotas 进来（如卡片点「刷新」走 live）：
+      // 守卫必须在 await **之后**重判——await 前判恒为真，旧批次的结果会盖掉新 live 值
+      let quota = null, err = null;
+      try { quota = (await api('/api/accounts/' + encodeURIComponent(id) + '/quota' + (live ? '?live=1' : ''))).quota; }
+      catch (e) { err = e; }
+      if (run !== quotaRun) continue;   // 已被新一轮取代：丢弃本条，不写不渲染
+      if (err) state.quotas[id] = { error: err.message };
+      else state.quotas[id] = quota;
+      render();
     }
   };
   await Promise.all([worker(), worker(), worker()]);
@@ -3617,7 +3623,9 @@ async function onCardClick(e) {
       let r;
       try { r = await doSwitch(false); }
       catch (err) {
-        if (err.code !== 'ZCODE_RUNNING' && err.code !== 'MIRASIM_RUNNING' && err.code !== 'CATPAW_RUNNING' && err.code !== 'TRAE_RUNNING' && err.code !== 'QODER_RUNNING' && err.code !== 'LOOMY_RUNNING') throw err;
+        // LOOMY_RUNNING 是死码：Loomy 走硬切换（总是先关再写），不会再回 409；
+        // LOOMY_NOT_INSTALLED 不在列——未装客户端时直接 toast 报错，不该诱导强制切换
+        if (err.code !== 'ZCODE_RUNNING' && err.code !== 'MIRASIM_RUNNING' && err.code !== 'CATPAW_RUNNING' && err.code !== 'TRAE_RUNNING' && err.code !== 'QODER_RUNNING') throw err;
         if (!(await uiConfirm(err.message + T('\n\n仍要强制切换吗？强制切换会先关闭客户端再写入登录，重新打开客户端即为新账号。'), client + T(' 正在运行'), T('关闭并强制切换')))) return;
         r = await doSwitch(true);
       }

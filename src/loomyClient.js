@@ -119,7 +119,6 @@ export async function verifyLoomyAccount(account) {
 export function normalizePointsBalance(data) {
   const d = data?.data || data || {};
   const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-  const hasAny = d && typeof d === 'object' && Object.keys(d).length > 0;
   const permanent = num(d.balance ?? d.permanentPoints ?? d.currentBalance ?? d.longTermPoints);
   const daily = num(d.dailyBalance ?? d.dailyPoints ?? d.dailyGiftPoints);
   // 每日上限：服务端显式给了就用它的值（哪怕是 0）；没给才按客户端文案口径缺省 5000——
@@ -127,7 +126,10 @@ export function normalizePointsBalance(data) {
   const limitRaw = d.dailyLimitPoints ?? d.dailyLimit ?? d.daily_limit;
   const hasLimit = limitRaw !== undefined && limitRaw !== null && limitRaw !== '';
   const dailyLimit = hasLimit ? num(limitRaw) : ((permanent > 0 || daily > 0) ? 5000 : 0);
-  const total = permanent + daily;
+  // 总额 = 永久 + 每日上限（容量口径），remaining = 永久 + 每日剩余（余额口径）——
+  // 两者相等会让进度条恒满、used 段永远看不见（#审查）
+  const total = permanent + dailyLimit;
+  const remaining = permanent + daily;
   const parts = [];
   if (permanent > 0) parts.push({ name: '永久积分', total: permanent, used: 0, remaining: permanent, expiresAt: null, recurring: false, unit: '积分' });
   // 服务端上报的 dailyConsumedPoints 存在即直读（哪怕是 0——「今日确实没消耗」），
@@ -141,7 +143,7 @@ export function normalizePointsBalance(data) {
   return {
     total,
     used: dailyUsed,
-    remaining: total,
+    remaining,
     unit: '积分',
     plan: null,
     parts,

@@ -9,6 +9,7 @@ import { productOf, PROVIDER_LABEL } from './constants.js';
 import { startUsageSyncScheduler } from './tenrouter.js';
 import { refreshContext } from './accounts.js';
 import { zcodeAutoClaim } from './zcodeAutoClaim.js';
+import { traePrimaryIds } from './traeClient.js';
 import { clearQuotaMark } from './zcodeGateway.js';
 import {
   autoClaimEnabled, autoClaimUntil, enableAutoClaimFor, setAutoClaimEnabled,
@@ -252,6 +253,8 @@ async function runTickInner(opts) {
   const today = dayKey();
   const results = [];
   let deviceClaim = state?.deviceClaim?.day === today ? state.deviceClaim : null;
+  // Trae 同机多账号：真机 deviceId 只给每个设备的首账号（其余走派生号），按全量账号顺序定
+  const traePrimary = traePrimaryIds(allAccounts);
 
   for (const account of accounts) {
     const pTag = `[${PROVIDER_LABEL[account.provider] || account.provider}]`;
@@ -264,7 +267,7 @@ async function runTickInner(opts) {
         continue;
       }
 
-      const ctx = refreshContext(account, (message) => logger.info('CHECKIN', '{label}:{msg}', { label, msg: message }));
+      const ctx = { ...refreshContext(account, (message) => logger.info('CHECKIN', '{label}:{msg}', { label, msg: message })), traePrimaryIds: traePrimary };
       let outcome = await productImpl(account.provider).checkin(account, ctx);
       outcome = { accountId: account.id, account: label, provider: account.provider, ...outcome };
       if (account.provider === 'qoder' && outcome.risk) {

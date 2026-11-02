@@ -83,11 +83,16 @@ async function saveConfig(c) {
   fs.mkdirSync(dataDir(), { recursive: true, mode: 0o700 });
   const { atomicWrite } = await import('./store.js');
   const file = FILE();
-  // 同 saveAccounts：写前留一份 .bak，主文件损坏（断电半写/杀软截断）时 loadConfig 有路可回
+  // 同 saveAccounts：写前留一份 .bak，主文件损坏（断电半写/杀软截断）时 loadConfig 有路可回。
+  // 只有主文件本身可解析时才允许它覆盖 .bak——否则「从 .bak 恢复后第一次保存」会把
+  // 仍损坏的主文件内容写进 .bak，把唯一的退路也毁掉
   try {
     const existing = fs.readFileSync(file, 'utf8');
-    if (existing.trim().length > 2) await atomicWrite(file + '.bak', existing);
-  } catch { /* 主文件不存在/读不了就没有可备份的 */ }
+    if (existing.trim().length > 2) {
+      JSON.parse(existing);   // 抛 = 主文件是坏的，.bak 保持原样
+      await atomicWrite(file + '.bak', existing);
+    }
+  } catch { /* 主文件不存在/读不了/已损坏：没有可备份的，.bak 不动 */ }
   await atomicWrite(file, JSON.stringify(c, null, 2));
 }
 
@@ -358,7 +363,14 @@ export function startUsageSyncScheduler() {
   let lastSyncAt = 0;
   let lastPushAt = 0;
   const tick = () => {
-    const c = loadConfig();
+    // loadConfig 在读失败（杀软/同步盘瞬时占用、JSON 损坏且无备份）时会抛——
+    // setInterval 回调里的未捕获异常会直接干掉整个 daemon（无 uncaughtException 兜底），
+    // 跳过这一轮即可，下一轮再试
+    let c;
+    try { c = loadConfig(); } catch (e) {
+      logger.warn('10R', '调度轮读取配置失败,跳过本轮:{err}', { err: e.message });
+      return;
+    }
     if (!isConfigured(c)) return;
     const now = Date.now();
     // 1) 用量同步：每 1 小时一轮（需开启自动开关）

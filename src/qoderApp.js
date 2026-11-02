@@ -319,9 +319,17 @@ function qodercliRuntimeInfo(provider) {
   const homes = provider === 'qoder-cn' ? ['.qoder-cn', '.qoder'] : ['.qoder', '.qoder-cn'];
   for (const h of homes) {
     const bin = path.join(os.homedir(), h, '.bin');
-    let dirs = [];
-    try { dirs = fs.readdirSync(bin).filter((n) => n.startsWith(`runtime-info-darwin-${process.arch}`)); } catch {}
-    if (dirs.length) return path.join(bin, dirs.sort().pop());
+    let entries = [];
+    try { entries = fs.readdirSync(bin, { withFileTypes: true }).filter((n) => n.name.startsWith(`runtime-info-darwin-${process.arch}`)); } catch {}
+    if (!entries.length) continue;
+    // 版本排序（1.2.10 > 1.2.9，字典序会反）；目录形态时拼组件名，文件形态直接用；
+    // 必须 exists 校验——升级残留的旧条目/坏条目不能静默选中
+    const ver = (name) => name.split('-').slice(-1)[0].split('.').map((x) => Number(x) || 0);
+    const cmp = (a, b) => { const va = ver(a), vb = ver(b); for (let i = 0; i < Math.max(va.length, vb.length); i++) { if ((va[i] || 0) !== (vb[i] || 0)) return (va[i] || 0) - (vb[i] || 0); } return 0; };
+    for (const e of entries.sort((a, b) => cmp(b.name, a.name))) {
+      const p = e.isDirectory() ? path.join(bin, e.name, RUNTIME_INFO_EXE) : path.join(bin, e.name);
+      try { if (fs.statSync(p).isFile()) return p; } catch { /* 坏条目跳过，试下一个 */ }
+    }
   }
   return null;
 }

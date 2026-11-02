@@ -52,14 +52,32 @@ function seeded(uid, salt, n) {
   return out.slice(0, n);
 }
 
+/**
+ * 同机多账号的设备分离（issue #28）：同一个真机 deviceId 只能给「该设备的首账号」用
+ * （服务端按设备限每日一领，第二个号起必吃 9074）。首账号按账号顺序定，与签到轮顺序一致。
+ * 返回 Set<accountId>；调用方对非首账号不得传 storedDeviceId（走派生号）。
+ */
+export function traePrimaryIds(accounts) {
+  const seen = new Set();
+  const primary = new Set();
+  for (const a of accounts || []) {
+    if (!a || a.provider !== 'trae') continue;
+    const dev = String(a.meta?.deviceId || '').trim();
+    if (!dev || seen.has(dev)) continue;
+    seen.add(dev);
+    primary.add(a.id);
+  }
+  return primary;
+}
+
 export function traeDevice(uid, storedDeviceId, attempt = 0) {
   // 首选**登录时注册的真机号**（meta.deviceId，本机导入时从 storage.json 抓的）：
   // 服务端大概率把「号-设备」绑在登录时注册的那台上——陌生设备号打接口吃 9074
   //（issue #31 报告者实测派生号一律被拒、同一时刻真机号可领；本机实测同现象：
   // 导入首日派生号签到成功，之后每天 9074，重试换派生号 3 轮也全拒）。
-  // attempt>0 才走派生：多账号同机时真机号只有一个，第二个账号起服务端按设备限
-  // 每日一领会拒（issue #28，TraeTools 的「设备码切换」本质就是给每号换独立设备码），
-  // 此时轮换派生号，至少有一个号能落在服务端风控放行的窗口里。
+  // 注意：同机导入的 N 个账号 meta.deviceId 相同（traeLocal 导入时盖同一个值）——
+  // 真机号只能给该设备的首账号（见 traePrimaryIds），其余账号由调用方传 null 走派生，
+  // 否则第二个号起每天 9074（issue #28 的回归）。attempt>0 一律轮换派生号。
   if (attempt === 0 && storedDeviceId && /^\d{8,}$/.test(String(storedDeviceId))) {
     const m = seeded(`${uid}`, 'market:0', 16);
     m[6] = (m[6] & 0x0f) | 0x40;
@@ -118,12 +136,13 @@ function findField(obj, key, depth = 0) {
   return undefined;
 }
 
-/** 统一 POST → { status, body }；401 / code 1001 抛 auth 错误（凭据失效）。attempt 透传给设备派生（9074 轮换重试用） */
-async function post(url, account, body = {}, attempt = 0) {
+/** 统一 POST → { status, body }；401 / code 1001 抛 auth 错误（凭据失效）。attempt 透传给设备派生（9074 轮换重试用）。
+ *  storedDeviceId 显式传 null = 强制走派生号（同机非首账号，见 traePrimaryIds）；缺省读 account.meta.deviceId */
+async function post(url, account, body = {}, attempt = 0, storedDeviceId) {
   const jwt = account.token;
   if (!jwt) throw new Error('账号缺少 Trae 登录 token（请到 Trae 客户端登录后用「本机导入」同步）');
   const uid = account.uid || uidFromJwt(jwt);
-  const dev = traeDevice(uid || 'anonymous', account.meta?.deviceId, attempt);
+  const dev = traeDevice(uid || 'anonymous', storedDeviceId !== undefined ? storedDeviceId : account.meta?.deviceId, attempt);
   const res = await fetchJsonRace(url, {
     method: 'POST',
     headers: traeHeaders(jwt, dev),
@@ -233,9 +252,12 @@ export async function checkinTrae(account, ctx = {}) {
   const uid = account.uid || uidFromJwt(account.token || '');
   const label = account.name || account.id;
   const base = { accountId: account.id, account: label, provider: 'trae' };
+  // 同机多账号：真机号只给该 deviceId 的首账号（ctx.traePrimaryIds 由签到循环按全量
+  // trae 账号算好），非首账号强制派生号——否则第二个号起每天 9074（issue #28）
+  const devArg = (!ctx.traePrimaryIds || ctx.traePrimaryIds.has(account.id)) ? undefined : null;
   let r;
   try {
-    r = await post(STATUS_URL, account);
+    r = await post(STATUS_URL, account, {}, 0, devArg);
   } catch (e) {
     if (authDead(e)) throw e;
     return { ...base, status: 'failed', message: e.message, uid };
@@ -251,7 +273,7 @@ export async function checkinTrae(account, ctx = {}) {
     // 注册的设备号。因此重试时**轮换派生设备号**（attempt 递增），退避 + 换号双管齐下；
     // 重试耗尽归 failed（不写签到 memo，下一轮还试）
     if (r.code === 9074) {
-      return finalizeClaim(await claimWithRetry(ctx, (i) => post(CLAIM_URL, account, {}, i)), base, uid, TRAE_DEFAULT_DAILY_CREDITS);
+      return finalizeClaim(await claimWithRetry(ctx, (i) => post(CLAIM_URL, account, {}, i, devArg)), base, uid, TRAE_DEFAULT_DAILY_CREDITS);
     }
     return { ...base, status: 'failed', message: withCode(r.message || `code ${r.code}`, r.code), uid };
   }
@@ -264,7 +286,7 @@ export async function checkinTrae(account, ctx = {}) {
   // claim 接口有时只返回 { code: 0, message: "success" } 而不包含 credits 字段，作为 fallback 避免 +0
   const expectedCredits = Number(findField(r.body, 'credits') ?? findField(r.body, 'extra_credits')) || TRAE_DEFAULT_DAILY_CREDITS;
 
-  return finalizeClaim(await claimWithRetry(ctx, (i) => post(CLAIM_URL, account, {}, i)), base, uid, expectedCredits);
+  return finalizeClaim(await claimWithRetry(ctx, (i) => post(CLAIM_URL, account, {}, i, devArg)), base, uid, expectedCredits);
 }
 
 /**

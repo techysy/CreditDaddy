@@ -78,6 +78,11 @@ export function forgetAccount(id) {
   dead.delete(id);
   weights.delete(id);
   if (stickyId === id) stickyId = null;
+  // 在途权重刷新 resolve 后会把 id 写回 weights——清掉 inflight 句柄并在其落地后补删，
+  // 否则删号后残留条目永不回收（无界增长泄漏）
+  const inflight = weightInflight.get(id);
+  weightInflight.delete(id);
+  if (inflight) inflight.catch(() => {}).then(() => { weights.delete(id); });
 }
 
 function markCooling(id, ms = ACCOUNT_COOLING_MS) {

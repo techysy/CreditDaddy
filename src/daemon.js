@@ -1047,7 +1047,7 @@ async function handleApi(req, res, url) {
         return json(res, 200, { ok: true, ...r });
       } catch (e) {
         logger.warn('DAEMON', 'Loomy 切换到 {name} 失败:{err}', { name: target.name || target.id, err: e.message });
-        return json(res, e.loomyRunning ? 409 : 400, { error: e.message, code: e.loomyRunning ? 'LOOMY_RUNNING' : undefined });
+        return json(res, e.loomyNotInstalled ? 409 : 400, { error: e.message, code: e.loomyNotInstalled ? 'LOOMY_NOT_INSTALLED' : undefined });
       }
     }
     if (target.provider === 'qoder' || target.provider === 'qoder-cn') {
@@ -1793,8 +1793,12 @@ async function handleApi(req, res, url) {
       // 「同步到 10Router」的口径，不被本机凭据线（如 minimax）搭车
       if (body?.webSessionOnly === true) {
         const accounts = await loadAccounts();
-        const wsAccounts = accounts.filter((a) => a.meta?.cookieSiteId || a.provider === 'tokenharbor');
-        const sources = new Set(['tokenharbor']);   // tokenharbor 单一 source（聚合卡），无账号也可能要清旧卡
+        // 用户显式取消勾选的渠道（10R 已有同源连接防重复卡）在这里同样要尊重——
+        // pushQuotaCards 的 disabled 过滤只在无 onlySources 时生效，本分支自带 source 清单
+        const trCfg = tenrouter.loadConfig();
+        const disabled = Array.isArray(trCfg.quotaPushDisabledProviders) ? trCfg.quotaPushDisabledProviders : [];
+        const wsAccounts = accounts.filter((a) => (a.meta?.cookieSiteId || a.provider === 'tokenharbor') && !disabled.includes(a.provider));
+        const sources = new Set(disabled.includes('tokenharbor') ? [] : ['tokenharbor']);   // tokenharbor 单一 source（聚合卡），无账号也可能要清旧卡
         for (const a of wsAccounts) {
           if (a.provider === 'xiaomi-mimo' || a.meta?.cookieSiteId === 'xiaomi-mimo') {
             const { buildXiaomiMimoQuotaPayload } = await import('./xiaomiMimoClient.js');
