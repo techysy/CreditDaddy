@@ -4,7 +4,10 @@
 
 ---
 
-## [Unreleased]
+## [1.6.6] (2026-11-03)
+
+本版主题:**WorkBuddy 5.6+ 加密凭据收割（对标 WorkDaddy 适配：$wbEncrypted 信封解密 / 5.8+ 手机号还原 / 切号加密写盘）+ ZCode GLOBAL BUILD 新活动兜底（3 亿 GLM-5.3-Flash）+ 1.6.5 发布后全量复审修复（v1.6.2..HEAD 35 提交 10 项发现）**.
+Theme: **WorkBuddy 5.6+ encrypted-credential harvesting (WorkDaddy-style: $wbEncrypted envelope decryption / 5.8+ phone recovery / encrypted switch write-back) + ZCode GLOBAL BUILD activity fallback (300M GLM-5.3-Flash) + post-release full review fixes (35 commits, 10 findings)**.
 
 - **ZCode 新活动「GLOBAL BUILD」兜底收录与名额满拦截**：
   - 收录 11 月新活动 `zcode-v3-start-plan-1102`（ZCODE GLOBAL BUILD · 300,000,000 GLM-5.3-Flash Token）。服务端已隐蔽该活动（`preview` 不返回），但通过兜底清单可直接调用 `claim` 领取；

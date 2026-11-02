@@ -4,7 +4,9 @@
 
 ---
 
-## [Unreleased]
+## [1.6.6] (2026-11-03)
+
+テーマ:**WorkBuddy 5.6+ 暗号化認証情報の取得（WorkDaddy 式：$wbEncrypted エンベロープ復号 / 5.8+ 電話番号復元 / 切替時暗号化書込）+ ZCode GLOBAL BUILD 新アクティビティ兜底（3 億 GLM-5.3-Flash）+ 1.6.5 リリース後全量レビュー修正（35 コミット 10 件）**.
 
 - **ZCode 新アクティビティ「GLOBAL BUILD」兜底収録と枠上限対応**：
   - 11 月の新アクティビティ `zcode-v3-start-plan-1102`（ZCODE GLOBAL BUILD · 300,000,000 GLM-5.3-Flash Token）を収録。上流の `preview` リストからは非表示ですが、兜底リストにより直接 `claim` で取得可能；

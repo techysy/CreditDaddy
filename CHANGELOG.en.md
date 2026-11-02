@@ -4,7 +4,9 @@ English changelog — recent releases translated. For the full history in Chines
 
 ---
 
-## [Unreleased]
+## [1.6.6] (2026-11-03)
+
+Theme: **WorkBuddy 5.6+ encrypted-credential harvesting (WorkDaddy-style: $wbEncrypted envelope decryption / 5.8+ phone recovery / encrypted switch write-back) + ZCode GLOBAL BUILD activity fallback (300M GLM-5.3-Flash) + post-release full review fixes (35 commits, 10 findings)**.
 
 - **ZCode new activity "GLOBAL BUILD" fallback inclusion and quota limit handling**:
   - Added new November activity `zcode-v3-start-plan-1102` (ZCODE GLOBAL BUILD · 300,000,000 GLM-5.3-Flash Tokens). While hidden from `billing/preview` by upstream, it can be claimed directly via the fallback list;

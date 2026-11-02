@@ -4,7 +4,9 @@
 
 ---
 
-## [Unreleased]
+## [1.6.6] (2026-11-03)
+
+테마:**WorkBuddy 5.6+ 암호화 자격증명 수확(WorkDaddy 방식: $wbEncrypted 봉투 복호화 / 5.8+ 전화번호 복원 / 전환 시 암호화 쓰기) + ZCode GLOBAL BUILD 신규 활동 폴백(3억 GLM-5.3-Flash) + 1.6.5 릴리스 후 전량 재검토 수정(35 커밋 10건)**.
 
 - **ZCode 신규 활동 「GLOBAL BUILD」 폴백 수록 및 한도 초과 처리**:
   - 11월 신규 활동 `zcode-v3-start-plan-1102`(ZCODE GLOBAL BUILD · 300,000,000 GLM-5.3-Flash Token)를 수록. 서버의 `preview` 목록에서는 숨겨져 있지만 폴백 목록을 통해 직접 `claim` 호출로 수령 가능;
