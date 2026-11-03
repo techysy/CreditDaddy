@@ -4,7 +4,9 @@ English changelog — recent releases translated. For the full history in Chines
 
 ---
 
-## [1.6.6] (2026-11-03)
+## [1.6.7] (2026-11-03)
+
+> **1.6.6 withdrawal notice**: 1.6.6 was released earlier the same day (tag / GitHub Release / npm) but pulled within hours — the newly added WorkBuddy key-extraction `spawnSync` froze the desktop shell into a "Not Responding" white screen (reported by a user). With the user's decision, the same content plus the white-screen cure ships as **1.6.7** — this release fully replaces 1.6.6; all 1.6.6 users should upgrade.
 
 Theme: **WorkBuddy 5.6+ encrypted-credential harvesting (WorkDaddy-style: $wbEncrypted envelope decryption / 5.8+ phone recovery / encrypted switch write-back) + ZCode GLOBAL BUILD activity fallback (300M GLM-5.3-Flash) + post-release full review fixes (35 commits, 10 findings)**.
 

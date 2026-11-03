@@ -4,7 +4,11 @@
 
 ---
 
-## [1.6.6] (2026-11-03)
+## [1.6.7] (2026-11-03)
+
+> **1.6.6 撤版说明**：1.6.6 曾于同日早间发布（tag / GitHub Release / npm），因新引入的 WorkBuddy 取钥 `spawnSync` 缺陷导致桌面壳「未响应」白屏（网友实测卡首页），**发布后数小时内整体下架**（GitHub tag + Release 删除、npm 1.6.6 挂 deprecation 指向 1.6.7）。经用户拍板以 **1.6.7 重新发布同一批内容 + 白屏根治修复**——本版即原 1.6.6 的完整替代，请所有 1.6.6 用户升级。
+
+本版主题:**WorkBuddy 5.6+ 加密凭据收割（对标 WorkDaddy 适配：$wbEncrypted 信封解密 / 5.8+ 手机号还原 / 切号加密写盘）+ ZCode GLOBAL BUILD 新活动兜底（3 亿 GLM-5.3-Flash）+ 1.6.5 发布后全量复审修复（v1.6.2..HEAD 35 提交 10 项发现）**.
 
 本版主题:**WorkBuddy 5.6+ 加密凭据收割（对标 WorkDaddy 适配：$wbEncrypted 信封解密 / 5.8+ 手机号还原 / 切号加密写盘）+ ZCode GLOBAL BUILD 新活动兜底（3 亿 GLM-5.3-Flash）+ 1.6.5 发布后全量复审修复（v1.6.2..HEAD 35 提交 10 项发现）**.
 Theme: **WorkBuddy 5.6+ encrypted-credential harvesting (WorkDaddy-style: $wbEncrypted envelope decryption / 5.8+ phone recovery / encrypted switch write-back) + ZCode GLOBAL BUILD activity fallback (300M GLM-5.3-Flash) + post-release full review fixes (35 commits, 10 findings)**.
