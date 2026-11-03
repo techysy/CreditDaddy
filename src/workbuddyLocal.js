@@ -66,14 +66,35 @@ let masterKeyFailAt = 0;
 const KEY_RETRY_MS = 60000;
 
 /**
+ * 仅解析客户端可执行文件路径，不读会话、不解密——避免
+ * detectWorkbuddy → readWorkbuddySessions → decryptSessionJson → getWorkbuddyMasterKey → detectWorkbuddy 递归。
+ * clientPath === null 表示调用方明确声明「无客户端」（不触发探测）；undefined 表示自动探测。
+ */
+export function resolveWorkbuddyClientPath(clientPath) {
+  if (clientPath === null) return null;
+  if (clientPath !== undefined) return clientPath;
+  return findWorkbuddyClientPath();
+}
+
+/** macOS .app bundle → Contents/MacOS/<可执行文件>；其他路径原样返回。 */
+export function resolveWorkbuddySpawnExecutable(clientPath) {
+  if (!clientPath || typeof clientPath !== 'string') return clientPath || null;
+  if (!/\.app[\\/]*$/i.test(clientPath)) return clientPath;
+  const bundle = clientPath.replace(/[\\/]+$/, '');
+  const exeName = path.basename(bundle).replace(/\.app$/i, '');
+  return path.join(bundle, 'Contents', 'MacOS', exeName);
+}
+
+/**
  * 经 WorkBuddy 官方 Electron（ELECTRON_RUN_AS_NODE=1）子进程调用原生存储绑定提取密钥。
  * 内存缓存，失败 60s 内退避；绝不写盘，绝不写日志。
  */
 export function getWorkbuddyMasterKey(clientPath) {
   if (cachedMasterKey) return cachedMasterKey;
   if (masterKeyFailAt && Date.now() - masterKeyFailAt < KEY_RETRY_MS) return null;
-  const exe = clientPath || detectWorkbuddy().clientPath;
+  const exe = resolveWorkbuddyClientPath(clientPath);
   if (!exe) return null;
+  const spawnExe = resolveWorkbuddySpawnExecutable(exe);
 
   try {
     const code = [
@@ -81,7 +102,7 @@ export function getWorkbuddyMasterKey(clientPath) {
       "const p = JSON.parse(b.loggerGet());",
       "if (p && typeof p.atRestSecretKey === 'string') process.stdout.write(p.atRestSecretKey);",
     ].join('\n');
-    const r = cp.spawnSync(exe, ['-e', code], {
+    const r = cp.spawnSync(spawnExe, ['-e', code], {
       env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
       timeout: 5000,
       encoding: 'utf8',
@@ -107,7 +128,15 @@ export function resetMasterKeyCacheForTest(key = null) {
 /** 深度解密 JSON 中的 $wbEncrypted 信封，返回包含明文的浅拷贝/深拷贝 */
 export function decryptSessionJson(session, clientPath) {
   if (!session || typeof session !== 'object') return session;
-  let key = null;
+  let key;
+  let keyResolved = false;
+  const resolveKey = () => {
+    if (!keyResolved) {
+      key = getWorkbuddyMasterKey(clientPath);
+      keyResolved = true;
+    }
+    return key;
+  };
   const clone = JSON.parse(JSON.stringify(session));
 
   const walk = (node) => {
@@ -118,10 +147,10 @@ export function decryptSessionJson(session, clientPath) {
     }
     for (const [k, v] of Object.entries(node)) {
       if (isWbEncrypted(v)) {
-        if (!key) key = getWorkbuddyMasterKey(clientPath);
-        if (key) {
+        const decryptedKey = resolveKey();
+        if (decryptedKey) {
           try {
-            node[k] = openEnvelope(v, key);
+            node[k] = openEnvelope(v, decryptedKey);
           } catch {
             /* 解密失败保留原信封 */
           }
@@ -201,7 +230,7 @@ export function sessionToAccount(rawSession, source, clientPath) {
  */
 export function readWorkbuddySessions(options = {}) {
   const dir = options.dir || workbuddyAuthDir();
-  const clientPath = options.clientPath !== undefined ? options.clientPath : detectWorkbuddy().clientPath;
+  const clientPath = resolveWorkbuddyClientPath(options.clientPath);
   const out = { dir, accounts: [], errors: [] };
   let names = [];
   try { names = fs.readdirSync(dir); } catch { return out; }
@@ -254,6 +283,16 @@ const CLIENT_CANDIDATES = process.platform === 'win32'
       ]
     : [];
 
+function findWorkbuddyClientPath() {
+  for (const cand of CLIENT_CANDIDATES) {
+    const p = process.platform === 'win32' && Array.isArray(cand)
+      ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), ...cand)
+      : cand;
+    try { if (fs.existsSync(p)) return p; } catch { /* 下一个候选 */ }
+  }
+  return null;
+}
+
 /**
  * 本机 WorkBuddy / CodeBuddy 客户端探测（面板「客户端：未安装」提示与切换拦截用）。
  * Linux / NAS 没有已知安装路径，退而用「凭据目录里有会话文件」判定——
@@ -263,13 +302,7 @@ export function detectWorkbuddy() {
   const dir = workbuddyAuthDir();
   let dirExists = false;
   try { dirExists = fs.statSync(dir).isDirectory(); } catch { /* 未安装 / 从未登录 */ }
-  let clientPath = null;
-  for (const cand of CLIENT_CANDIDATES) {
-    const p = process.platform === 'win32' && Array.isArray(cand)
-      ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), ...cand)
-      : cand;
-    try { if (fs.existsSync(p)) { clientPath = p; break; } } catch { /* 下一个候选 */ }
-  }
+  const clientPath = resolveWorkbuddyClientPath();
   const sessions = dirExists ? readWorkbuddySessions({ dir, clientPath }) : { accounts: [] };
   return {
     dir,
