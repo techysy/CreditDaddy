@@ -119,7 +119,7 @@ export async function pollWorkbuddyLogin(data) {
       auth: data.token,
     }
     : { auth: data.token };
-  const input = sessionToAccount(session, '浏览器登录');
+  const input = await sessionToAccount(session, '浏览器登录');
   if (!input) throw new Error('WorkBuddy 返回的 token 无法识别（签发方不是 CodeBuddy / WorkBuddy）');
   if (!account) delete input.meta.session;
   input.source = 'browser';

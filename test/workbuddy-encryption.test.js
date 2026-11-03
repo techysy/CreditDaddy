@@ -44,7 +44,7 @@ test('buildEnvelopeAAD & sealEnvelope / openEnvelope：加解密往返保持内�
   assert.equal(decrypted, plaintext);
 });
 
-test('decryptSessionJson：递归解密 session 中的加密字段，不影响明文字段', () => {
+test('decryptSessionJson：递归解密 session 中的加密字段，不影响明文字段', async () => {
   const dummyKey = crypto.createHash('sha256').update('test-secret-key-32', 'utf8').digest();
   resetMasterKeyCacheForTest(dummyKey);
 
@@ -63,7 +63,7 @@ test('decryptSessionJson：递归解密 session 中的加密字段，不影响�
     },
   };
 
-  const decrypted = decryptSessionJson(rawSession);
+  const decrypted = await decryptSessionJson(rawSession);
   assert.equal(decrypted.account.phoneNumber, '13912345678');
   assert.equal(decrypted.auth.accessToken, 'my-access-token');
   assert.equal(decrypted.auth.refreshToken, 'plain-refresh-token');
@@ -71,7 +71,7 @@ test('decryptSessionJson：递归解密 session 中的加密字段，不影响�
   resetMasterKeyCacheForTest(null);
 });
 
-test('sessionToAccount：支持 $wbEncrypted 格式，且手机号脱敏时从 JWT payload 恢复真实手机号', () => {
+test('sessionToAccount：支持 $wbEncrypted 格式，且手机号脱敏时从 JWT payload 恢复真实手机号', async () => {
   const dummyKey = crypto.createHash('sha256').update('test-secret-key-32', 'utf8').digest();
   resetMasterKeyCacheForTest(dummyKey);
 
@@ -91,7 +91,7 @@ test('sessionToAccount：支持 $wbEncrypted 格式，且手机号脱敏时从 J
     },
   };
 
-  const acc = sessionToAccount(rawSession, 'WorkBuddy 当前登录');
+  const acc = await sessionToAccount(rawSession, 'WorkBuddy 当前登录');
   assert.ok(acc, '应成功解析出账号');
   assert.equal(acc.uid, 'user-wb-1');
   assert.equal(acc.token, jwt);
@@ -101,13 +101,22 @@ test('sessionToAccount：支持 $wbEncrypted 格式，且手机号脱敏时从 J
   resetMasterKeyCacheForTest(null);
 });
 
-test('writeWorkbuddySession：原模板为 $wbEncrypted 时写回重新封包为加密信封', () => {
+test('sessionToAccount：加密会话 + 密钥不可用 → 返回 null（不同步阻塞、不抛异常）', async () => {
+  // 模拟取钥失败：clientPath 指向一个不存在的 exe，取钥 60s 退避后返回 null
+  const sealedToken = sealEnvelope('opaque-token', crypto.createHash('sha256').update('other-key', 'utf8').digest());
+  const rawSession = {
+    account: { uid: 'locked-1', nickname: '加密账号' },
+    auth: { accessToken: sealedToken, refreshToken: 'r', domain: 'www.codebuddy.cn' },
+  };
+  const rec = await sessionToAccount(rawSession, 'test', path.join(os.tmpdir(), 'nonexistent-electron.exe'));
+  assert.equal(rec, null, '解不开的加密会话应如实返回 null，而不是挂起或崩溃');
+});
+
+test('writeWorkbuddySession：原模板为 $wbEncrypted 时写回重新封包为加密信封', async () => {
   const dummyKey = crypto.createHash('sha256').update('test-secret-key-32', 'utf8').digest();
   resetMasterKeyCacheForTest(dummyKey);
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-local-test-'));
-  const authDir = path.join(tmpDir, 'auth');
-  fs.mkdirSync(authDir, { recursive: true });
 
   const sealedOrigToken = sealEnvelope('orig-token', dummyKey, { suite: 1 });
   const targetAccount = {
@@ -128,11 +137,10 @@ test('writeWorkbuddySession：原模板为 $wbEncrypted 时写回重新封包为
 
   const oldEnv = process.env.LOCALAPPDATA;
   // 覆盖 auth 目录为临时目录
-  const origAuthDir = path.join(tmpDir, 'CodeBuddyExtension', 'Data', 'Public', 'auth');
   process.env.LOCALAPPDATA = tmpDir;
 
   try {
-    const res = writeWorkbuddySession(targetAccount);
+    const res = await writeWorkbuddySession(targetAccount);
     assert.ok(fs.existsSync(res.file));
     const written = JSON.parse(fs.readFileSync(res.file, 'utf8'));
     assert.equal(isWbEncrypted(written.auth.accessToken), true, '写回的文件中 accessToken 应保持为加密信封');

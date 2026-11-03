@@ -8,6 +8,7 @@
 
 テーマ:**WorkBuddy 5.6+ 暗号化認証情報の取得（WorkDaddy 式：$wbEncrypted エンベロープ復号 / 5.8+ 電話番号復元 / 切替時暗号化書込）+ ZCode GLOBAL BUILD 新アクティビティ兜底（3 億 GLM-5.3-Flash）+ 1.6.5 リリース後全量レビュー修正（35 コミット 10 件）**.
 
+- **【1.6.6 緊急修正】WorkBuddy の鍵取得を非同期化——デスクトップシェル「応答なし」白画面を根治（ユーザー実測）**：1.6.6 初版の getWorkbuddyMasterKey は **spawnSync** で WorkBuddy Electron 子プロセスを起動して復号鍵を取得——同期呼び出しのため Node のイベントループを最大 5 秒ブロック。デスクトップシェルは daemon を **Electron メインプロセス内**で動かすため、/api/status（パネル起動 + 30 秒ポーリング）→ currentWorkbuddyUid() → 暗号化セッション復号 → 200MB のクライアントプロセスを同期的に起動、メッセージポンプ停止 → Windows が「応答なし」判定 → 白画面（起動時に 60 秒失敗バックオフへ当たれば必ず再現）。全チェーンを非同期化：鍵取得は spawn（Promise + in-flight 重複排除 + 5 秒タイムアウト）、decryptSessionJson / sessionToAccount / readWorkbuddySessions / currentWorkbuddyUid / writeWorkbuddySession を全て async、detectWorkbuddy.signedIn は純ファイル判定（復号しない）。復号不能なセッションは null を正直に返す（ハングもクラッシュもなし）。ローカル実測：detect 1ms / 3 アカウント取得 5ms。テスト 376/376（「鍵不通でもブロックしない」回帰を追加）。
 - **ZCode 新アクティビティ「GLOBAL BUILD」兜底収録と枠上限対応**：
   - 11 月の新アクティビティ `zcode-v3-start-plan-1102`（ZCODE GLOBAL BUILD · 300,000,000 GLM-5.3-Flash Token）を収録。上流の `preview` リストからは非表示ですが、兜底リストにより直接 `claim` で取得可能；
   - 実測検証：本日の枠が終了した場合は上流が `1005 今日领取名额已用完（exceed quota limit）` を返し（公式クライアント上は「操作失败，请稍后重试」と表示）、取得済みの場合は `1003 该套餐已经领取过` を返します。

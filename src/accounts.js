@@ -173,8 +173,8 @@ export function refreshContext(account, log) {
       if (account.provider.startsWith('workbuddy')) {
         const { currentWorkbuddyUid, writeWorkbuddySession } = await import('./workbuddyLocal.js');
         try {
-          if (account.uid && currentWorkbuddyUid() === account.uid) {
-            writeWorkbuddySession(account);
+          if (account.uid && await currentWorkbuddyUid() === account.uid) {
+            await writeWorkbuddySession(account);
             log?.('已同步新 token 到 WorkBuddy 客户端');
           }
         } catch (e) { log?.('同步到 WorkBuddy 客户端失败：' + e.message); }

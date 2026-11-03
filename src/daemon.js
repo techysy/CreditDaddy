@@ -1113,7 +1113,7 @@ async function handleApi(req, res, url) {
     // Loomy 的切换在上方 provider 链已处理；这里只剩 WorkBuddy 系
     if (!target.provider.startsWith('workbuddy')) return json(res, 400, { error: '只有 WorkBuddy / ZCode / mirasim / 妙手 / Trae / Loomy 账号支持切换' });
     // 先把客户端当前会话的最新 token 收回账号库，避免被覆盖后丢失
-    const cur = readWorkbuddySessions().accounts.find((a) => a.current);
+    const cur = (await readWorkbuddySessions()).accounts.find((a) => a.current);
     if (cur && cur.uid !== target.uid) {
       const { file: _f, fileTime: _t, current: _c, ...rec } = cur;
       await addAccount(rec, { trusted: true }).catch((e) => logger.warn('DAEMON', '同步 WorkBuddy 当前会话失败:{err}', { err: e.message }));
@@ -1125,7 +1125,7 @@ async function handleApi(req, res, url) {
       if (!wbDet.installed) {
         return json(res, 400, { error: '本机未安装 WorkBuddy / CodeBuddy 客户端，无法切换（切换是把登录写入客户端凭据，由客户端应用；可先安装客户端后在本机导入再切换）', code: 'WORKBUDDY_NOT_INSTALLED' });
       }
-      const r = writeWorkbuddySession(target);
+      const r = await writeWorkbuddySession(target);
       logger.info('DAEMON', 'WorkBuddy 已切换到 {name}', { name: target.name || target.id });
       return json(res, 200, { ok: true, file: r.file, previousUid: r.previousUid });
     } catch (e) {
@@ -1630,7 +1630,7 @@ async function handleApi(req, res, url) {
       }, { source: c.source });
     }
     // 2) WorkBuddy 客户端：当前会话 + 历史会话
-    const wb = readWorkbuddySessions();
+    const wb = await readWorkbuddySessions();
     errors.push(...wb.errors);
     for (const c of wb.accounts) {
       const { file: _f, fileTime: _t, current, ...record } = c;
@@ -1904,7 +1904,7 @@ async function handleApi(req, res, url) {
       riskSource: riskIdentitySource(),
       umid: umidInfo(),
       platform: process.platform,
-      workbuddyCurrentUid: currentWorkbuddyUid(),
+      workbuddyCurrentUid: await currentWorkbuddyUid(),
       workbuddyClient: (() => { const d = detectWorkbuddy(); return { installed: d.installed, signedIn: d.signedIn, running: false }; })(),
       qoderCurrent: qoderCurrentIds(accounts, qoder),
       qoderCurrentToken: qoder.tokens,

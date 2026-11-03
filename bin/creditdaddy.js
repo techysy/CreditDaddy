@@ -313,7 +313,7 @@ async function main() {
       const { liveToAccount: traeLive } = await import('../src/traeLocal.js');
       const { addAccount } = await import('../src/accounts.js');
       const qa = await readQoderAppAccounts();
-      const wb = readWorkbuddySessions();
+      const wb = await readWorkbuddySessions();
       const skipped = [];
       let zAccount = null;
       try { zAccount = zcodeLive(); } catch (e) { skipped.push({ file: '~/.zcode/v2/credentials.json', error: e.message }); }

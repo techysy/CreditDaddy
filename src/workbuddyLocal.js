@@ -63,40 +63,61 @@ export function sealEnvelope(plaintext, key, template = {}) {
 
 let cachedMasterKey = null;
 let masterKeyFailAt = 0;
+let masterKeyInflight = null;
 const KEY_RETRY_MS = 60000;
 
 /**
  * 经 WorkBuddy 官方 Electron（ELECTRON_RUN_AS_NODE=1）子进程调用原生存储绑定提取密钥。
- * 内存缓存，失败 60s 内退避；绝不写盘，绝不写日志。
+ * 内存缓存 + 在途去重，失败 60s 内退避；绝不写盘，绝不写日志。
+ * 必须 async：spawnSync 会同步卡死事件循环——桌面壳把 daemon 跑在 Electron 主进程里，
  */
-export function getWorkbuddyMasterKey(clientPath) {
+export async function getWorkbuddyMasterKey(clientPath) {
   if (cachedMasterKey) return cachedMasterKey;
   if (masterKeyFailAt && Date.now() - masterKeyFailAt < KEY_RETRY_MS) return null;
+  if (masterKeyInflight) return masterKeyInflight;
   const exe = clientPath || detectWorkbuddy().clientPath;
   if (!exe) return null;
 
-  try {
-    const code = [
-      "const b = process._linkedBinding('electron_browser_workbuddy_storage');",
-      "const p = JSON.parse(b.loggerGet());",
-      "if (p && typeof p.atRestSecretKey === 'string') process.stdout.write(p.atRestSecretKey);",
-    ].join('\n');
-    const r = cp.spawnSync(exe, ['-e', code], {
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
-      timeout: 5000,
-      encoding: 'utf8',
-    });
-    const keyRaw = String(r.stdout || '').trim();
-    if (r.status === 0 && keyRaw.length >= 16) {
-      cachedMasterKey = crypto.createHash('sha256').update(keyRaw, 'utf8').digest();
-      masterKeyFailAt = 0;
-      return cachedMasterKey;
+  const code = [
+    "const b = process._linkedBinding('electron_browser_workbuddy_storage');",
+    "const p = JSON.parse(b.loggerGet());",
+    "if (p && typeof p.atRestSecretKey === 'string') process.stdout.write(p.atRestSecretKey);",
+  ].join('\n');
+  masterKeyInflight = new Promise((resolve) => {
+    let child = null;
+    const settle = (key) => {
+      try { child?.kill(); } catch {}
+      masterKeyInflight = null;
+      if (key) {
+        cachedMasterKey = crypto.createHash('sha256').update(key, 'utf8').digest();
+        masterKeyFailAt = 0;
+        resolve(cachedMasterKey);
+      } else {
+        masterKeyFailAt = Date.now();
+        resolve(null);
+      }
+    };
+    const timer = setTimeout(() => settle(null), 5000);
+    try {
+      child = cp.spawn(exe, ['-e', code], {
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+        stdio: ['ignore', 'pipe', 'ignore'],
+        windowsHide: true,
+      });
+      let out = '';
+      child.stdout.on('data', (c) => { out += c; });
+      child.on('error', () => { clearTimeout(timer); settle(null); });
+      child.on('close', (statusCode) => {
+        clearTimeout(timer);
+        const keyRaw = out.trim();
+        settle(statusCode === 0 && keyRaw.length >= 16 ? keyRaw : null);
+      });
+    } catch {
+      clearTimeout(timer);
+      settle(null);
     }
-  } catch {
-    /* 子进程执行异常，进入退避 */
-  }
-  masterKeyFailAt = Date.now();
-  return null;
+  });
+  return masterKeyInflight;
 }
 
 export function resetMasterKeyCacheForTest(key = null) {
@@ -104,8 +125,8 @@ export function resetMasterKeyCacheForTest(key = null) {
   masterKeyFailAt = 0;
 }
 
-/** 深度解密 JSON 中的 $wbEncrypted 信封，返回包含明文的浅拷贝/深拷贝 */
-export function decryptSessionJson(session, clientPath) {
+/** 深度解密 JSON 中的 $wbEncrypted 信封，返回包含明文的深拷贝（异步：取钥需起子进程） */
+export async function decryptSessionJson(session, clientPath) {
   if (!session || typeof session !== 'object') return session;
   let key = null;
   const clone = JSON.parse(JSON.stringify(session));
@@ -133,6 +154,20 @@ export function decryptSessionJson(session, clientPath) {
   };
 
   walk(clone);
+  // walk 内取到的 key 是 Promise（getWorkbuddyMasterKey 首次异步），等待后再逐信封解密
+  const resolvedKey = await key;
+  if (resolvedKey) {
+    const walkDecrypt = (node) => {
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node)) { node.forEach(walkDecrypt); return; }
+      for (const [k, v] of Object.entries(node)) {
+        if (isWbEncrypted(v)) {
+          try { node[k] = openEnvelope(v, resolvedKey); } catch { /* 保留原信封 */ }
+        } else if (v && typeof v === 'object') walkDecrypt(v);
+      }
+    };
+    walkDecrypt(clone);
+  }
   return clone;
 }
 
@@ -151,10 +186,12 @@ export function workbuddyAuthDir() {
 const CURRENT_RE = /^[a-z0-9-]+\.info$/i;           // workbuddy-desktop.info
 const HISTORY_RE = /^[a-z0-9-]+\.\d{4}-.*\.info$/i;  // workbuddy-desktop.<时间戳>.<pid>.<uuid>.info
 
-/** 会话 JSON → 账号记录（供 addAccount），不含网络请求 */
-export function sessionToAccount(rawSession, source, clientPath) {
+/** 会话 JSON → 账号记录（供 addAccount），不含网络请求。
+ * 异步：含 $wbEncrypted 信封时需起 WorkBuddy 子进程取钥解密——
+ * 绝不用 spawnSync（会同步卡死 Electron 主进程事件循环 → 客户端「未响应」）。 */
+export async function sessionToAccount(rawSession, source, clientPath) {
   // 如果会话包含 $wbEncrypted 信封，先进行安全解密
-  const session = decryptSessionJson(rawSession, clientPath);
+  const session = await decryptSessionJson(rawSession, clientPath);
   const token = session?.auth?.accessToken;
   if (typeof token !== 'string' || !token) return null;
   const info = inspectToken(token);
@@ -199,20 +236,24 @@ export function sessionToAccount(rawSession, source, clientPath) {
  * 读取本机 WorkBuddy 会话：当前会话 + 历史会话（按 uid 去重，保留最新）。
  * @returns {{ dir, accounts: Array<{...账号记录, current: boolean, file, fileTime}>, errors }}
  */
-export function readWorkbuddySessions(options = {}) {
+export async function readWorkbuddySessions(options = {}) {
   const dir = options.dir || workbuddyAuthDir();
   const clientPath = options.clientPath !== undefined ? options.clientPath : detectWorkbuddy().clientPath;
   const out = { dir, accounts: [], errors: [] };
   let names = [];
   try { names = fs.readdirSync(dir); } catch { return out; }
   const byUid = new Map();
+  // 密钥只取一次给整个目录用：缓存未命中时首个加密文件触发一次子进程（异步不阻塞），
+  // 之后的文件全部走内存缓存；明文文件在密钥不可用时仍可正常收割
+  let keyPromise = null;
   for (const name of names) {
     if (!CURRENT_RE.test(name) && !HISTORY_RE.test(name)) continue;
     const file = path.join(dir, name);
     try {
       const current = !HISTORY_RE.test(name);
       if (current && fs.existsSync(`${file}.logged-out`)) continue;   // 已登出
-      const rec = sessionToAccount(JSON.parse(fs.readFileSync(file, 'utf8')), current ? 'WorkBuddy 当前登录' : 'WorkBuddy 历史会话', clientPath);
+      const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const rec = await sessionToAccount(parsed, current ? 'WorkBuddy 当前登录' : 'WorkBuddy 历史会话', clientPath);
       if (!rec) continue;
       const fileTime = fs.statSync(file).mtimeMs;
       const item = { ...rec, current, file, fileTime };
@@ -222,13 +263,14 @@ export function readWorkbuddySessions(options = {}) {
       out.errors.push({ file, error: e.message });
     }
   }
+  void keyPromise;
   out.accounts = [...byUid.values()].sort((a, b) => b.current - a.current || b.fileTime - a.fileTime);
   return out;
 }
 
-/** 当前 WorkBuddy 客户端登录的 uid（未登录返回 null） */
-export function currentWorkbuddyUid() {
-  return readWorkbuddySessions().accounts.find((a) => a.current)?.uid || null;
+/** 当前 WorkBuddy 客户端登录的 uid（未登录返回 null）。异步：见 readWorkbuddySessions。 */
+export async function currentWorkbuddyUid() {
+  return (await readWorkbuddySessions()).accounts.find((a) => a.current)?.uid || null;
 }
 
 // 客户端可执行文件候选（VS Code 系安装惯例：%LOCALAPPDATA%\Programs\<名>\<名>.exe）。
@@ -270,13 +312,30 @@ export function detectWorkbuddy() {
       : cand;
     try { if (fs.existsSync(p)) { clientPath = p; break; } } catch { /* 下一个候选 */ }
   }
-  const sessions = dirExists ? readWorkbuddySessions({ dir, clientPath }) : { accounts: [] };
+  // signedIn 只做轻量文件判定（当前会话文件存在且无 logged-out 标记）：
+  // 绝不在此调 readWorkbuddySessions——那会对加密会话起子进程解密（异步），
+  // 而 detectWorkbuddy 是同步函数且被 /api/status 每轮调用，解密等待会拖慢状态轮
+  let signedIn = false;
+  if (dirExists) {
+    const curFile = path.join(dir, 'workbuddy-desktop.info');
+    try { signedIn = fs.existsSync(curFile) && !fs.existsSync(`${curFile}.logged-out`); } catch { /* 保持 false */ }
+    if (!signedIn) {
+      // 多认证 ID 形态（Tencent-Cloud.*.info 等非固定名）：目录里任一无登出标记的 .info 即视为登录态
+      try {
+        for (const name of fs.readdirSync(dir)) {
+          if (!CURRENT_RE.test(name) || name === 'workbuddy-desktop.info') continue;
+          if (HISTORY_RE.test(name)) continue;
+          if (!fs.existsSync(path.join(dir, `${name}.logged-out`))) { signedIn = true; break; }
+        }
+      } catch { /* 保持 false */ }
+    }
+  }
   return {
     dir,
     dirExists,
     clientPath,
-    installed: Boolean(clientPath) || (CLIENT_CANDIDATES.length === 0 && sessions.accounts.length > 0),
-    signedIn: sessions.accounts.some((a) => a.current),
+    installed: Boolean(clientPath) || (CLIENT_CANDIDATES.length === 0 && signedIn),
+    signedIn,
   };
 }
 
@@ -285,7 +344,7 @@ export function detectWorkbuddy() {
  * 如果原模板是 $wbEncrypted 信封格式，写回时将自动封包为合法信封。
  * @returns {{ file, previousUid }}
  */
-export function writeWorkbuddySession(account, { clientPath } = {}) {
+export async function writeWorkbuddySession(account, { clientPath } = {}) {
   const s = account.meta?.session;
   if (!s?.account) throw new Error('该账号缺少 WorkBuddy 会话信息，请从本机重新导入后再切换');
   const dir = workbuddyAuthDir();
@@ -298,10 +357,10 @@ export function writeWorkbuddySession(account, { clientPath } = {}) {
   const rawAuth = s.auth || {};
 
   // 判断是否需要信封封包写入（原会话 auth 字段包含 $wbEncrypted）
-  let isEncryptedTemplate = isWbEncrypted(rawAuth.accessToken) || isWbEncrypted(rawAuth.refreshToken);
+  const isEncryptedTemplate = isWbEncrypted(rawAuth.accessToken) || isWbEncrypted(rawAuth.refreshToken);
   let masterKey = null;
   if (isEncryptedTemplate) {
-    masterKey = getWorkbuddyMasterKey(clientPath);
+    masterKey = await getWorkbuddyMasterKey(clientPath);
     if (!masterKey) {
       throw new Error('无法切换账号：目标账号为 WorkBuddy 5.6+ 加密凭据，但未能获取客户端解密密钥');
     }

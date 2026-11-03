@@ -304,9 +304,9 @@ test('WorkBuddy token 按签发方识别国内版 / 国际版', () => {
   assert.equal(wbClient.apiHost({ provider: 'workbuddy', token: fakeJwt({ iss: 'https://copilot.tencent.com/auth' }), meta: {} }), 'www.codebuddy.cn');
 });
 
-test('WorkBuddy 会话文件 → 账号记录（保留会话以便切换）', () => {
+test('WorkBuddy 会话文件 → 账号记录（保留会话以便切换）', async () => {
   const token = fakeJwt({ iss: 'https://www.workbuddy.cn/auth/realms/copilot', sub: 'u-1', exp: 1790000000 });
-  const rec = wbLocal.sessionToAccount({
+  const rec = await wbLocal.sessionToAccount({
     account: { uid: 'u-1', nickname: '小明', phoneNumber: '13800001234', enterpriseId: '' },
     auth: { accessToken: token, refreshToken: 'r-1', expiresAt: 1790000000000, domain: 'www.workbuddy.cn', tokenType: 'Bearer' },
     accounts: [{ uid: 'u-1' }],
@@ -519,20 +519,20 @@ test('切换 WorkBuddy 账号：写入当前会话并清除登出标记', async 
     await fs.writeFile(cur, JSON.stringify({ account: { uid: 'A', nickname: 'A' }, auth: { accessToken: tokA, refreshToken: 'rA', domain: 'www.codebuddy.cn' }, accounts: [] }));
     await fs.writeFile(path.join(dir, 'workbuddy-desktop.2026-08-01T00-00-00-000Z.1.x.info'),
       JSON.stringify({ account: { uid: 'B', nickname: 'B' }, auth: { accessToken: tokB, refreshToken: 'rB', domain: 'www.codebuddy.cn' }, accounts: [] }));
-    const found = wbLocal.readWorkbuddySessions();
+    const found = await wbLocal.readWorkbuddySessions();
     assert.deepEqual(found.accounts.map((a) => [a.uid, a.current]), [['A', true], ['B', false]]);
-    assert.equal(wbLocal.currentWorkbuddyUid(), 'A');
+    assert.equal(await wbLocal.currentWorkbuddyUid(), 'A');
 
     await fs.writeFile(cur + '.logged-out', 'x');
     const target = store.normalizeAccountInput(found.accounts[1]);
-    const r = wbLocal.writeWorkbuddySession(target);
+    const r = await wbLocal.writeWorkbuddySession(target);
     assert.equal(r.previousUid, 'A');
     const written = JSON.parse(await fs.readFile(cur, 'utf8'));
     assert.equal(written.account.uid, 'B');
     assert.equal(written.auth.accessToken, tokB);
     assert.equal(written.auth.refreshToken, 'rB');
     await assert.rejects(fs.access(cur + '.logged-out'), '登出标记应被清除');
-    assert.equal(wbLocal.currentWorkbuddyUid(), 'B');
+    assert.equal(await wbLocal.currentWorkbuddyUid(), 'B');
   } finally {
     Object.assign(process.env, saved);
     for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k];

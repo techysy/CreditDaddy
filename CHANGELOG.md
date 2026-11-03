@@ -9,6 +9,7 @@
 本版主题:**WorkBuddy 5.6+ 加密凭据收割（对标 WorkDaddy 适配：$wbEncrypted 信封解密 / 5.8+ 手机号还原 / 切号加密写盘）+ ZCode GLOBAL BUILD 新活动兜底（3 亿 GLM-5.3-Flash）+ 1.6.5 发布后全量复审修复（v1.6.2..HEAD 35 提交 10 项发现）**.
 Theme: **WorkBuddy 5.6+ encrypted-credential harvesting (WorkDaddy-style: $wbEncrypted envelope decryption / 5.8+ phone recovery / encrypted switch write-back) + ZCode GLOBAL BUILD activity fallback (300M GLM-5.3-Flash) + post-release full review fixes (35 commits, 10 findings)**.
 
+- **【1.6.6 紧急修复】WorkBuddy 取钥改异步——根治桌面壳「未响应」白屏（网友实测卡首页）**：1.6.6 初版的 `getWorkbuddyMasterKey` 用 **`spawnSync`** 起 WorkBuddy Electron 子进程取解密密钥——同步调用把整个 Node 事件循环卡住最长 5 秒，而桌面壳把 daemon 跑在 **Electron 主进程内**：`/api/status`（面板首屏 + 30 秒轮询）→ `currentWorkbuddyUid()` → 加密会话解密 → 同步起 200MB 的客户端进程，主进程消息泵停摆 → Windows 判「未响应」→ 窗口白屏（首屏撞上 60 秒失败退避窗口时必然复现）。现已全链路异步化：取钥改 `spawn`（Promise + 在途去重 + 5s 超时）、`decryptSessionJson` / `sessionToAccount` / `readWorkbuddySessions` / `currentWorkbuddyUid` / `writeWorkbuddySession` 全部 async、`detectWorkbuddy` 的 `signedIn` 改纯文件判定（不再触发解密）；解不开的加密会话如实返回 null 不挂起不崩溃。本机实测 detect 1ms / 收割 3 账号 5ms。376/376 测试（新增「密钥不可用不阻塞」回归）。
 - **ZCode 新活动「GLOBAL BUILD」兜底收录与名额满拦截**：
   - 收录 11 月新活动 `zcode-v3-start-plan-1102`（ZCODE GLOBAL BUILD · 300,000,000 GLM-5.3-Flash Token）。服务端已隐蔽该活动（`preview` 不返回），但通过兜底清单可直接调用 `claim` 领取；
   - 实测确认：名额抢光时服务端返回 `1005 今日领取名额已用完（exceed quota limit）`，在客户端内点领取会提示「操作失败，请稍后重试」；已有账号已领过则返回 `1003 该套餐已经领取过`；

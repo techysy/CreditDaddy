@@ -8,6 +8,7 @@
 
 테마:**WorkBuddy 5.6+ 암호화 자격증명 수확(WorkDaddy 방식: $wbEncrypted 봉투 복호화 / 5.8+ 전화번호 복원 / 전환 시 암호화 쓰기) + ZCode GLOBAL BUILD 신규 활동 폴백(3억 GLM-5.3-Flash) + 1.6.5 릴리스 후 전량 재검토 수정(35 커밋 10건)**.
 
+- **【1.6.6 긴급 수정】WorkBuddy 키 추출을 비동기화——데스크톱 셸 "응답 없음" 백색 화면 근본 해결(사용자 실측)**：1.6.6 초기版의 getWorkbuddyMasterKey는 **spawnSync**로 WorkBuddy Electron 자식 프로세스를 띄워 복호화 키를 가져왔습니다——동기 호출이 Node 이벤트 루프를 최대 5초 잠급니다. 데스크톱 셸은 daemon을 **Electron 메인 프로세스 안에서** 구동하므로, /api/status(패널 부팅 + 30초 폴링) → currentWorkbuddyUid() → 암호화 세션 복호화 → 200MB 클라이언트 프로세스를 동기 실행하면서 메시지 펌프가 멈추고 → Windows가 "응답 없음" 판정 → 백색 화면(부팅이 60초 실패 백오프 창에 걸리면 반드시 재현). 전 체인을 비동기화: 키 추출은 spawn(Promise + in-flight 중복 제거 + 5초 타임아웃), decryptSessionJson / sessionToAccount / readWorkbuddySessions / currentWorkbuddyUid / writeWorkbuddySession 모두 async, detectWorkbuddy.signedIn은 순수 파일 판정(복호화 안 함). 복호화 불가 세션은 null을 정직히 반환(행탁·크래시 없음). 로컬 실측: detect 1ms / 3계정 수확 5ms. 테스트 376/376(「키 불통 시에도 블록하지 않음」 회귀 추가).
 - **ZCode 신규 활동 「GLOBAL BUILD」 폴백 수록 및 한도 초과 처리**:
   - 11월 신규 활동 `zcode-v3-start-plan-1102`(ZCODE GLOBAL BUILD · 300,000,000 GLM-5.3-Flash Token)를 수록. 서버의 `preview` 목록에서는 숨겨져 있지만 폴백 목록을 통해 직접 `claim` 호출로 수령 가능;
   - 실측 확인: 당일 명액이 모두 소진된 경우 서버가 `1005 今日领取名额已用完(exceed quota limit)`를 반환(클라이언트에서는 "操作失败，请稍后重试"로 표시), 이미 수령한 계정은 `1003 该套餐已经领取过`를 반환합니다.
