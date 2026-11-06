@@ -402,19 +402,40 @@ npm test
 
 ### 贡献者致谢
 
+**多次反馈 / 代码合入的官方贡献者：**
+
 <p>
   <a href="https://github.com/techysy" title="techysy — 主要维护者"><img src="https://github.com/techysy.png?size=80" width="48" height="48" alt="techysy" /></a>
-  <a href="https://github.com/fioew" title="fioew — issue 反馈"><img src="https://github.com/fioew.png?size=80" width="48" height="48" alt="fioew" /></a>
-  <a href="https://github.com/iMissNan" title="iMissNan — issue 反馈"><img src="https://github.com/iMissNan.png?size=80" width="48" height="48" alt="iMissNan" /></a>
-  <a href="https://github.com/JinsFoni" title="JinsFoni — issue 反馈"><img src="https://github.com/JinsFoni.png?size=80" width="48" height="48" alt="JinsFoni" /></a>
-  <a href="https://github.com/zeonseoi" title="zeonseoi — issue 反馈"><img src="https://github.com/zeonseoi.png?size=80" width="48" height="48" alt="zeonseoi" /></a>
-  <a href="https://github.com/rua-aaa" title="rua-aaa — issue 反馈"><img src="https://github.com/rua-aaa.png?size=80" width="48" height="48" alt="rua-aaa" /></a>
-  <a href="https://github.com/Osinglehh" title="Osinglehh — issue 反馈"><img src="https://github.com/Osinglehh.png?size=80" width="48" height="48" alt="Osinglehh" /></a>
-  <a href="https://github.com/JacksonJiangxh" title="JacksonJiangxh — issue 反馈"><img src="https://github.com/JacksonJiangxh.png?size=80" width="48" height="48" alt="JacksonJiangxh" /></a>
-  <a href="https://github.com/juyou1" title="juyou1 — issue 反馈"><img src="https://github.com/juyou1.png?size=80" width="48" height="48" alt="juyou1" /></a>
+  <a href="https://github.com/gmplout" title="gmplout — 累计 4 个 issue（MiniMax 签到推送 / 隐私脱敏 RFC / 组合开关 RFC / 工具结果图片）"><img src="https://github.com/gmplout.png?size=80" width="48" height="48" alt="gmplout" /></a>
+  <a href="https://github.com/iMissNan" title="iMissNan — 累计 3 个 issue（zcode 修复 / 网关 Prompt 注入 / 隐私泄露）"><img src="https://github.com/iMissNan.png?size=80" width="48" height="48" alt="iMissNan" /></a>
+  <a href="https://github.com/fenixggg" title="fenixggg — 累计 3 个 issue（凭据解密互递归崩溃等）"><img src="https://github.com/fenixggg.png?size=80" width="48" height="48" alt="fenixggg" /></a>
+  <a href="https://github.com/muzimu217" title="muzimu217 — 2 个 issue + PR #44（CodeArts 签到 / 点数口径 / 安装路径探测）"><img src="https://github.com/muzimu217.png?size=80" width="48" height="48" alt="muzimu217" /></a>
+  <a href="https://github.com/snower" title="snower — issue #47 + PR #50（凭据解密互递归定位）"><img src="https://github.com/snower.png?size=80" width="48" height="48" alt="snower" /></a>
+  <a href="https://github.com/535408248-oss" title="535408248-oss — 累计 2 个 issue 反馈"><img src="https://github.com/535408248-oss.png?size=80" width="48" height="48" alt="535408248-oss" /></a>
+  <a href="https://github.com/sola237" title="sola237 — 累计 2 个 issue 反馈"><img src="https://github.com/sola237.png?size=80" width="48" height="48" alt="sola237" /></a>
+  <a href="https://github.com/cantinzing" title="cantinzing — 累计 2 个 issue 反馈"><img src="https://github.com/cantinzing.png?size=80" width="48" height="48" alt="cantinzing" /></a>
+  <a href="https://github.com/ma3252788" title="ma3252788 — 累计 2 个 issue 反馈"><img src="https://github.com/ma3252788.png?size=80" width="48" height="48" alt="ma3252788" /></a>
 </p>
 
-<sub>名单由 issue 与 PR 的反馈者及协同项目汇总，头像取自 GitHub 公开个人信息；若有遗漏请随时提 issue 补充。</sub>
+**单次反馈（issue / PR）：**
+
+- [fioew](https://github.com/fioew) — #1
+- [JinsFoni](https://github.com/JinsFoni) — #3
+- [zeonseoi](https://github.com/zeonseoi) — #4
+- [rua-aaa](https://github.com/rua-aaa) — #5
+- [Osinglehh](https://github.com/Osinglehh) — #6 Workbuddy 国际端网址反馈
+- [juyou1](https://github.com/juyou1) — #9 Qoder 国际版签到诉求
+- [akahoz94](https://github.com/akahoz94) — PR #10
+- [laojichao](https://github.com/laojichao) — #16 Linux 客户端诉求
+- [paynetsang](https://github.com/paynetsang) — #17
+- [AJMstr](https://github.com/AJMstr) — #25
+- [emo3o](https://github.com/emo3o) — #34
+- [panxuewen0101](https://github.com/panxuewen0101) — #39 fnOS 窗口自定义 URL 提案
+- [BrethofAI](https://github.com/BrethofAI) — PR #36
+- [JacksonJiangxh](https://github.com/JacksonJiangxh) — 群内反馈
+
+<sub>多次反馈/代码合入进致谢墙，单次反馈列入名单；头像取自 GitHub 公开个人信息；若有遗漏请随时提 issue 补充。</sub>
+
 
 ---
 
