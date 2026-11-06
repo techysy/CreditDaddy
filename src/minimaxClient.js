@@ -1,21 +1,44 @@
 /**
  * MiniMax Code 服务端 API 客户端 — 用户信息、额度查询、每日签到与 Token 续期。
  *
- * 官方标准端点：
- *   - 用户资料：GET https://agent.minimax.cn/matrix/api/v1/user/profile
- *   - 额度查询：POST https://agent.minimax.cn/matrix/api/v1/commerce/get_membership_info
- *   - 签到状态：GET https://agent.minimax.cn/minimax-cloud/api/v1/signin/status?timezone_offset=28800&is_desktop=1&client=desktop
- *   - 签到领取：POST https://agent.minimax.cn/minimax-cloud/api/v1/signin/claim?timezone_offset=28800&is_desktop=1&client=desktop
- *   - Token 续期：POST https://account.minimax.cn/oauth2/token
+ * 双渠道（issue #54）：国内 / 国际同协议同 client（mcode-public），只换域名——
+ *   CN   https://agent.minimax.cn + https://account.minimax.cn（官方客户端 NEXT_PUBLIC_LOCALE=zh）
+ *   Intl https://agent.minimax.io + https://account.minimax.io（NEXT_PUBLIC_LOCALE=en）
+ * 端点实证：@mavis/oauth-core/dist/endpoint-config.js 的 ACCOUNT_ORIGINS（2026-11-07 从
+ * 官方客户端 app.asar 拆包），与本机 ~/.minimax/auth/prod/<region>/mcode-public/ 布局互证。
+ *
+ * 官方标准端点（CN，intl 同路径）：
+ *   - 用户资料：GET {agent}/matrix/api/v1/user/profile
+ *   - 额度查询：POST {agent}/matrix/api/v1/commerce/get_membership_info
+ *   - 签到状态：GET {agent}/minimax-cloud/api/v1/signin/status?timezone_offset=28800&is_desktop=1&client=desktop
+ *   - 签到领取：POST {agent}/minimax-cloud/api/v1/signin/claim?timezone_offset=28800&is_desktop=1&client=desktop
+ *   - Token 续期：POST {account}/oauth2/token
  *
  * 补全模型网关端点：
- *   - Anthropic 兼容端点：POST https://agent.minimax.cn/mavis/api/v1/llm/v1/messages
+ *   - Anthropic 兼容端点：POST {agent}/mavis/api/v1/llm/v1/messages
  */
 
 import { fetchJsonRace } from './zcodeClient.js';
 import { withRefreshDedupe, refreshFpDead } from './refreshGuard.js';
 import { FETCH_TIMEOUT_MS } from './constants.js';
 
+/** MiniMax 渠道档位：cn（国内，agent.minimax.cn）/ global（国际，agent.minimax.io） */
+export const MINIMAX_FLAVORS = {
+  cn: { agent: 'https://agent.minimax.cn', account: 'https://account.minimax.cn' },
+  global: { agent: 'https://agent.minimax.io', account: 'https://account.minimax.io' },
+};
+
+/** 账号档位判定：provider 为 minimax-global 或 meta.minimaxFlavor 标记的走国际线，其余国内 */
+export function minimaxFlavorOf(account) {
+  if (account?.provider === 'minimax-global') return 'global';
+  return account?.meta?.minimaxFlavor === 'global' ? 'global' : 'cn';
+}
+
+function basesOf(account) {
+  return MINIMAX_FLAVORS[minimaxFlavorOf(account)] || MINIMAX_FLAVORS.cn;
+}
+
+// 兼容旧引用（网关 / minimaxLocal 等按 CN 域名直连的地方）；新代码请用 basesOf(account)
 export const MINIMAX_AGENT_BASE = 'https://agent.minimax.cn';
 export const MINIMAX_ACCOUNT_BASE = 'https://account.minimax.cn';
 export const MINIMAX_MESSAGES_URL = `${MINIMAX_AGENT_BASE}/mavis/api/v1/llm/v1/messages`;
@@ -25,6 +48,21 @@ export const MEMBERSHIP_URL = `${MINIMAX_AGENT_BASE}/matrix/api/v1/commerce/get_
 export const SIGNIN_STATUS_URL = `${MINIMAX_AGENT_BASE}/minimax-cloud/api/v1/signin/status?timezone_offset=28800&is_desktop=1&client=desktop`;
 export const SIGNIN_CLAIM_URL = `${MINIMAX_AGENT_BASE}/minimax-cloud/api/v1/signin/claim?timezone_offset=28800&is_desktop=1&client=desktop`;
 export const TOKEN_REFRESH_URL = `${MINIMAX_ACCOUNT_BASE}/oauth2/token`;
+
+/** 按账号档位解析各端点（CN / 国际只差域名，路径完全一致） */
+export function minimaxEndpointsOf(account) {
+  const { agent, account: accountBase } = basesOf(account);
+  return {
+    agent,
+    account: accountBase,
+    messagesUrl: `${agent}/mavis/api/v1/llm/v1/messages`,
+    profileUrl: `${agent}/matrix/api/v1/user/profile`,
+    membershipUrl: `${agent}/matrix/api/v1/commerce/get_membership_info`,
+    signinStatusUrl: `${agent}/minimax-cloud/api/v1/signin/status?timezone_offset=28800&is_desktop=1&client=desktop`,
+    signinClaimUrl: `${agent}/minimax-cloud/api/v1/signin/claim?timezone_offset=28800&is_desktop=1&client=desktop`,
+    tokenRefreshUrl: `${accountBase}/oauth2/token`,
+  };
+}
 
 /** 时间戳宽容转换（口径同 traeClient.iso）：≤1e11 视为秒，否则视为毫秒；0/无效 → null */
 function isoMs(v) {
@@ -47,7 +85,7 @@ function authHeaders(token) {
  * @param {string} refreshToken
  * @returns {Promise<{accessToken: string, refreshToken: string, expiresIn: number}>}
  */
-export async function refreshMiniMaxToken(refreshToken) {
+export async function refreshMiniMaxToken(refreshToken, { flavor = 'cn' } = {}) {
   if (!refreshToken) throw new Error('缺少 refreshToken');
   const form = new URLSearchParams();
   form.set('grant_type', 'refresh_token');
@@ -56,7 +94,7 @@ export async function refreshMiniMaxToken(refreshToken) {
   form.set('scope', 'agent.default');
   form.set('audience', 'agent-backend');
 
-  const res = await fetchJsonRace(TOKEN_REFRESH_URL, {
+  const res = await fetchJsonRace(MINIMAX_FLAVORS[flavor].account + '/oauth2/token', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -117,7 +155,7 @@ export function refreshAccountToken(account, ctx = {}) {
     } catch {}
     ctx.log?.('MiniMax token 已过期，正在自动刷新…');
     try {
-      const refreshed = await refreshMiniMaxToken(a.refreshToken);
+      const refreshed = await refreshMiniMaxToken(a.refreshToken, { flavor: minimaxFlavorOf(a) });
       const expiresAt = new Date(Date.now() + refreshed.expiresIn * 1000).toISOString();
       const creds = {
         token: refreshed.accessToken,
@@ -166,8 +204,8 @@ export function refreshAccountToken(account, ctx = {}) {
 /**
  * 获取用户信息
  */
-export async function fetchMiniMaxProfile(token) {
-  const res = await fetchJsonRace(PROFILE_URL, {
+export async function fetchMiniMaxProfile(token, { flavor = 'cn' } = {}) {
+  const res = await fetchJsonRace(MINIMAX_FLAVORS[flavor].agent + '/matrix/api/v1/user/profile', {
     headers: authHeaders(token),
     timeoutMs: FETCH_TIMEOUT_MS,
   });
@@ -206,8 +244,9 @@ export async function verifyMiniMaxAccount(account) {
  * 查询额度 (quota)
  */
 export async function fetchMiniMaxQuota(account, ctx = {}) {
+  const { membershipUrl } = minimaxEndpointsOf(account);
   return withMiniMaxAuth(account, async (token) => {
-    const res = await fetchJsonRace(MEMBERSHIP_URL, {
+    const res = await fetchJsonRace(membershipUrl, {
       method: 'POST',
       headers: {
         ...authHeaders(token),
@@ -292,9 +331,10 @@ export function normalizeMiniMaxQuota(data) {
  * @returns {Promise<{checkedToday: boolean, streakDays: number, points: number, bonusPoints: number}|null>}
  */
 export async function fetchMiniMaxCheckinStatus(account, ctx = {}) {
+  const { signinStatusUrl } = minimaxEndpointsOf(account);
   try {
     return await withMiniMaxAuth(account, async (token) => {
-      const statusRes = await fetchJsonRace(SIGNIN_STATUS_URL, {
+      const statusRes = await fetchJsonRace(signinStatusUrl, {
         headers: authHeaders(token),
         timeoutMs: FETCH_TIMEOUT_MS,
       });
@@ -319,9 +359,10 @@ export async function fetchMiniMaxCheckinStatus(account, ctx = {}) {
  * 每日自动签到 (checkin)
  */
 export async function checkinMiniMax(account, ctx = {}) {
+  const { signinStatusUrl, signinClaimUrl } = minimaxEndpointsOf(account);
   return withMiniMaxAuth(account, async (token) => {
     // 1. 查询签到状态
-    const statusRes = await fetchJsonRace(SIGNIN_STATUS_URL, {
+    const statusRes = await fetchJsonRace(signinStatusUrl, {
       headers: authHeaders(token),
       timeoutMs: FETCH_TIMEOUT_MS,
     });
@@ -350,7 +391,7 @@ export async function checkinMiniMax(account, ctx = {}) {
     }
 
     // 2. 发起签到 claim
-    const claimRes = await fetchJsonRace(SIGNIN_CLAIM_URL, {
+    const claimRes = await fetchJsonRace(signinClaimUrl, {
       method: 'POST',
       headers: authHeaders(token),
       timeoutMs: FETCH_TIMEOUT_MS,

@@ -359,6 +359,24 @@ async function reprobeCookieAccount(site, a) {
       logger.info('COOKIE-SITE', '{name} 就地重探通过（{balance} USD）', { name: site.name, balance: bal.balance });
       return finish({ id: a.id, name: a.name, ok: true, identity: null, balance: bal.balance, quotaSnapshot: { used: 0, total: bal.balance, isCreditBalance: true, at: now } });
     }
+    if (site.id === 'lingxi') {
+      // 灵犀（issue #53）：任务列表 + 余额一次拿全，重探 = 刷新签到状态与灵点快照
+      const { fetchLingxiStatus } = await import('./lingxiClient.js');
+      const st = await fetchLingxiStatus(cookie).catch((e) => ({ auth: false, code: e?.message || 'network' }));
+      if (!st.auth) return finish({ id: a.id, name: a.name, ok: false, error: '灵犀会话已失效，请重新登录捕获' });
+      await withAccounts((list) => {
+        const hit = list.find((x) => x.id === a.id);
+        if (!hit) return;
+        hit.meta = {
+          ...(hit.meta || {}),
+          cookieSiteSession: { cookie, capturedAt: hit.meta?.cookieSiteSession?.capturedAt || now },
+          ...(Number.isFinite(st.balance) ? { quotaSnapshot: { used: 0, total: st.balance, isCreditBalance: true, at: now } } : {}),
+        };
+        hit.updatedAt = now;
+      });
+      logger.info('COOKIE-SITE', '{name} 就地重探通过（签到{signed}，灵点 {balance}）', { name: site.name, signed: st.checkedIn ? '已签' : '未签', balance: Number.isFinite(st.balance) ? st.balance : '—' });
+      return finish({ id: a.id, name: a.name, ok: true, identity: null, balance: Number.isFinite(st.balance) ? st.balance : null, quotaSnapshot: Number.isFinite(st.balance) ? { used: 0, total: st.balance, isCreditBalance: true, at: now } : null });
+    }
     if (site.id === 'doubao') {
       // 豆包（issue #32）：detail 接口一次拿全（会话有效性 + 签到状态 + 累计点数），
       // 重探 = 刷新额度快照；无 10R 同步（豆包不推外部配额卡，错误文案不再误导）
@@ -736,7 +754,7 @@ async function handleApi(req, res, url) {
       // 单位标注：各家余额单位互异（Token / USD / CNY / 魔粒 / 积分）且都不是「积分」
       // 口径——带 unit 返回，面板 creditSum 按 unit 有无决定是否计入「剩余积分」合计
       //（有单位 = 不同量纲，不相加）。HTML 探针站（tokenharbor）是百分比，同样排除。
-      const UNIT_BY_SITE = { 'xiaomi-mimo': 'CNY', 'river': 'USD', 'longcat': 'Token', 'modelscope': '魔粒' };
+      const UNIT_BY_SITE = { 'xiaomi-mimo': 'CNY', 'river': 'USD', 'longcat': 'Token', 'modelscope': '魔粒', 'lingxi': '灵点' };
       const unit = UNIT_BY_SITE[site.id] || (hasTotal ? '' : '%');
       return json(res, 200, { quota: {
         total: hasTotal ? total : 100,
@@ -1434,6 +1452,30 @@ async function handleApi(req, res, url) {
       }
     }
 
+    // WPS 灵犀（issue #53）：任务列表接口即探测（带 cookie 返 200 data.tasks[]，未登录 401）。
+    // 签到状态 + 灵点余额一步拿全；无独立身份接口，单例账号（kdocs 会话即身份）。
+    let lxStatus = null;
+    if (site.id === 'lingxi') {
+      try {
+        const { fetchLingxiStatus } = await import('./lingxiClient.js');
+        if (!cookie) {
+          logger.warn('COOKIE-SITE', '{name} 未读到会话 cookie', { name: site.name });
+          return json(res, 400, { error: '未读到 WPS 灵犀登录会话，请在登录窗完成登录后再关闭' });
+        }
+        lxStatus = await fetchLingxiStatus(cookie);
+        if (!lxStatus.auth) {
+          logger.warn('COOKIE-SITE', '{name} 任务列表探测被拒:{code}', { name: site.name, code: lxStatus.code });
+          return json(res, 401, { error: '会话不可用，请重新登录该站点后再捕获（探测 401/403）' });
+        }
+        identity = null;   // 无稳定身份端点：单例（同 kdocs 账号一行）
+        quotaSnapshot = { used: 0, total: Number(lxStatus.balance) || 0, isCreditBalance: true };
+        logger.info('COOKIE-SITE', '{name} 探测通过（签到{signed}，灵点 {balance}）', { name: site.name, signed: lxStatus.checkedIn ? '已签' : '未签', balance: Number.isFinite(lxStatus.balance) ? lxStatus.balance : '—' });
+      } catch (lxErr) {
+        logger.warn('COOKIE-SITE', '{name} 任务列表抓取异常:{err}', { name: site.name, err: lxErr.message });
+        return json(res, 502, { error: '探测站点失败：' + (lxErr.message || '') });
+      }
+    }
+
     const ih = identityHashOf(mimoUserId || riverSession?.user?.id || msSession?.id || lcSession?.userId || identity);
     const quotaMeta = quotaSnapshot ? { quotaSnapshot: { ...quotaSnapshot, at: now } } : {};
     const cred = riverSession ? riverSession.accessToken : cookie;   // 落盘的凭据主体
@@ -1526,6 +1568,9 @@ async function handleApi(req, res, url) {
             } else if (site.id === 'longcat') {
               const { buildLongcatQuotaPayload } = await import('./longcatClient.js');
               src = buildLongcatQuotaPayload(target).source;
+            } else if (site.id === 'lingxi') {
+              const { buildLingxiQuotaPayload } = await import('./lingxiClient.js');
+              src = buildLingxiQuotaPayload(target).source;
             }
             if (src) await tenrouter.pushQuotaCards({ onlySources: [src] });
           }
@@ -1699,10 +1744,16 @@ async function handleApi(req, res, url) {
       if (tr) addRecord(tr, { source: 'Trae 当前登录', current: true, ...(tr.meta?.isIntl ? { intlWarning: '检测到 Trae 国际版客户端（trae.ai）——CreditDaddy 的 Trae 线仅支持国内版（api.trae.cn），导入后额度与签到不可用' } : {}) });
     } catch (e) { errors.push({ file: 'TRAE/User/globalStorage/storage.json', error: e.message }); }
     // 7) MiniMax 客户端：读取 ~/.minimax 凭据当前登录
+    // 7) MiniMax 客户端：读取 ~/.minimax 凭据当前登录（国内 cn / 国际 en 两目录独立，#54——
+    //    各自可能登录不同账号，都要收割；没有对应目录时 liveToAccount 返回 null）
     try {
-      const mm = await minimaxLiveAccount();
+      const mm = await minimaxLiveAccount('cn');
       if (mm) addRecord(mm, { source: 'MiniMax 当前登录', current: true });
-    } catch (e) { errors.push({ file: '~/.minimax/auth/.../auth.json', error: e.message }); }
+    } catch (e) { errors.push({ file: '~/.minimax/auth/prod/cn/.../auth.json', error: e.message }); }
+    try {
+      const mmg = await minimaxLiveAccount('global');
+      if (mmg) addRecord(mmg, { source: 'MiniMax 国际版当前登录', current: true });
+    } catch (e) { errors.push({ file: '~/.minimax/auth/prod/en/.../auth.json', error: e.message }); }
     // 8) 讯飞 Loomy 客户端：读取 Public\Loomy\userData\auth-session.json 当前登录
     try {
       const lm = await loomyLiveAccount();
@@ -1927,9 +1978,10 @@ async function handleApi(req, res, url) {
     }
     // 妙手凭据文件只存 token：当前登录按 token 对齐账号库，避免每轮状态都打网关查 uid
     const cpToken = currentCatpawToken();
-    const mmToken = currentMiniMaxToken();
-    const mmRecKey = currentMiniMaxRecordKey();
-    // 1) token match；2) record-key match (token 轮换时仍稳定);3) uid-cache fallback
+    // MiniMax 国内/国际客户端凭据目录独立（~/.minimax/auth/prod/<cn|en>/），各自可能登录不同账号——
+    // 按 token / record-key / uid-cache 三层对齐，分别得出两个当前 uid
+    const mmToken = currentMiniMaxToken('cn');
+    const mmRecKey = currentMiniMaxRecordKey('cn');
     let mmLiveUid = null;
     if (mmToken) {
       mmLiveUid = accounts.find((a) => a.provider === 'minimax' && a.token === mmToken)?.uid;
@@ -1940,11 +1992,26 @@ async function handleApi(req, res, url) {
       const byRec = accounts.filter((a) => a.provider === 'minimax' && a.meta?.authRecordKey === mmRecKey);
       if (byRec.length === 1) mmLiveUid = byRec[0].uid;
       else if (byRec.length > 1) {
-        const mmCachedUid = currentMiniMaxUid();
+        const mmCachedUid = currentMiniMaxUid('cn');
         mmLiveUid = byRec.find((a) => a.uid === mmCachedUid)?.uid || null;
       }
     }
-    if (!mmLiveUid) mmLiveUid = currentMiniMaxUid();
+    if (!mmLiveUid) mmLiveUid = currentMiniMaxUid('cn');
+    const mmgToken = currentMiniMaxToken('global');
+    const mmgRecKey = currentMiniMaxRecordKey('global');
+    let mmgLiveUid = null;
+    if (mmgToken) {
+      mmgLiveUid = accounts.find((a) => a.provider === 'minimax-global' && a.token === mmgToken)?.uid;
+    }
+    if (!mmgLiveUid && mmgRecKey) {
+      const byRecG = accounts.filter((a) => a.provider === 'minimax-global' && a.meta?.authRecordKey === mmgRecKey);
+      if (byRecG.length === 1) mmgLiveUid = byRecG[0].uid;
+      else if (byRecG.length > 1) {
+        const mmgCachedUid = currentMiniMaxUid('global');
+        mmgLiveUid = byRecG.find((a) => a.uid === mmgCachedUid)?.uid || null;
+      }
+    }
+    if (!mmgLiveUid) mmgLiveUid = currentMiniMaxUid('global');
     const traeDet = detectTrae();
     // 国内/国际 WorkBuddy 桌面端与 CodeBuddy IDE 各自独立登录，四个当前 uid 全量下发，
     // 面板按账号档位对齐徽章（此前只下发国内 WorkBuddy + CN IDE，国际版账号永远点不亮）
@@ -1990,7 +2057,8 @@ async function handleApi(req, res, url) {
       traeCurrentUid: traeDet.uid,
       traeClient: { installed: traeDet.clientInstalled, signedIn: traeDet.signedIn, running: traeDet.running },
       minimaxCurrentUid: mmLiveUid,
-      minimaxClient: (() => { const d = detectMiniMax(); return { installed: d.installed, signedIn: d.signedIn, running: d.running }; })(),
+      minimaxGlobalCurrentUid: mmgLiveUid,
+      minimaxClient: (() => { const d = detectMiniMax('cn'); return { installed: d.installed, signedIn: d.signedIn, running: d.running }; })(),
       loomyCurrentUid: currentLoomyUid(),
       loomyClient: (() => { const d = detectLoomy(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       keyRequired: panelKeyRequired(),
@@ -2227,7 +2295,7 @@ export async function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
         if (!cfg.endpoint || !cfg.key) return json(res, 503, { error: '未配置 10Router 地址与虚拟 key' });
         // 已排除的渠道不回源（10R 端不该再留着这张卡——留给用户侧删卡；这里只拒绝刷新）
         const disabled = Array.isArray(cfg.quotaPushDisabledProviders) ? cfg.quotaPushDisabledProviders : [];
-        const sourceFamily = /^(minimax-free|xiaomi-mimo|river|modelscope|longcat|tokenharbor)-/.exec(source);
+        const sourceFamily = /^(minimax-free|xiaomi-mimo|river|modelscope|longcat|tokenharbor|lingxi)-/.exec(source);
         const familyProvider = sourceFamily ? sourceFamily[1] : (source === 'tokenharbor' ? 'tokenharbor' : null);
         if (familyProvider && disabled.includes(familyProvider)) {
           return json(res, 410, { error: '该渠道的额度卡推送已关闭（CreditDaddy 账号管理弹窗可重新开启）' });

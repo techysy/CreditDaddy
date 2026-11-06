@@ -17,6 +17,7 @@ import { fetchCatpawQuota, fetchCatpawProfile } from './catpawClient.js';
 import { fetchTraeQuota, checkinTrae, verifyTraeAccount } from './traeClient.js';
 import { fetchMiniMaxQuota, checkinMiniMax, verifyMiniMaxAccount } from './minimaxClient.js';
 import { fetchDoubaoStatus, checkinDoubao } from './doubaoClient.js';
+import { checkinLingxi, fetchLingxiQuota } from './lingxiClient.js';
 import { fetchLoomyQuota, verifyLoomyAccount } from './loomyClient.js';
 /** 从 userinfo 响应中挑一个可读的显示名 */
 export function displayNameFrom(ui) {
@@ -193,6 +194,7 @@ const PRODUCTS = {
     // 本机导入账号刷新前会重读 ~/.minimax auth.json 对齐客户端最新 refreshToken；
     // ctx.onRefresh 回写账号库后，这里再安全回写 auth.json（仅客户端未运行时，见 minimaxLocal.writeMiniMaxAuth）。
     // device 登录账号自持独立凭据链（无 meta.authRecordKey），writeMiniMaxAuth 对其 no-op，不与本机客户端互斥。
+    // 国际版（minimax-global，#54）同协议同实现，仅域名不同——minimaxClient 按账号档位选端点。
     checkin: (account, ctx = {}) => checkinMiniMax(account, wrapMiniMaxRefresh(account, ctx)),
     quota: (account, ctx = {}) => fetchMiniMaxQuota(account, wrapMiniMaxRefresh(account, ctx)),
     verify: (account) => verifyMiniMaxAccount(account),
@@ -230,6 +232,15 @@ const PRODUCTS = {
         empty: st.totalAmount === 0 && !st.checkin,
       };
     },
+  },
+  lingxi: {
+    label: 'WPS 灵犀',
+    // 网页会话捕获线（issue #53）：凭据是 lingxi.kdocs.cn 会话 cookie（meta.cookieSiteSession.cookie）。
+    // 每日签到 +100 灵点（七天一轮第七天 200）；灵点只能在灵犀界面消费，官方无 API——
+    // 额度 = 灵点余额（独立口径，unit '灵点' 不进剩余积分合计）。claim 前必查任务状态
+    // （幂等性提案者未验证，claimed 时绝不盲打 POST）。
+    checkin: (account) => checkinLingxi(account),
+    quota: (account) => fetchLingxiQuota(account),
   },
   loomy: {
     label: '讯飞 Loomy',

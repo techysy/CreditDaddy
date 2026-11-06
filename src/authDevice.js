@@ -129,6 +129,7 @@ const FLOWS = {
   'zcode-bigmodel': { start: startZcodeLogin, poll: pollZcodeLogin },
   'zcode-zai': { start: startZcodeLogin, poll: pollZcodeLogin },
   minimax: { start: startMiniMaxLogin, poll: pollMiniMaxLogin },
+  'minimax-global': { start: (kind) => startMiniMaxLogin('global'), poll: pollMiniMaxLogin },
 };
 export const LOGIN_KINDS = Object.keys(FLOWS);
 const KIND_LABEL = { 'zcode-bigmodel': 'ZCode（BigModel）', 'zcode-zai': 'ZCode（Z.ai）' };

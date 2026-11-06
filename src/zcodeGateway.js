@@ -139,6 +139,7 @@ export function __resetForTests() {
   stats.lastCallAt = null;
   stats.calls = 0;
   stats.lastAccount = null;
+  stats.recentAccounts = [];
 }
 function markDead(account) {
   dead.set(account.id, credFingerprint(account));
@@ -228,7 +229,12 @@ async function unavailableReason() {
 let captchaCache = null; // { param, region, at }
 
 // 调用统计（进程内）：面板「10Router 已接入」活标签的数据源
-const stats = { lastCallAt: null, calls: 0, lastAccount: null };
+const stats = { lastCallAt: null, calls: 0, lastAccount: null, recentAccounts: [] };
+const RECENT_ACCOUNTS_MAX = 4;   // 面板「接口使用中」徽标的覆盖范围：最近服役过的前 N 个号
+function recordRecentAccount(label) {
+  if (!label) return;
+  stats.recentAccounts = [label, ...stats.recentAccounts.filter((x) => x !== label)].slice(0, RECENT_ACCOUNTS_MAX);
+}
 
 // 额度打标：0 额度账号不再轮换（额度缓存 10 分钟，到期自动重探；
 // 1005/1113 失败时也会即时探测确认——剩余>0 视为瞬时错误继续用）
@@ -672,6 +678,7 @@ export async function handleGateway(req, res) {
         // 真 Message（非流式）——原样转发
         logger.debug('ZCODE-GW', '{label} 补全成功 ({status})', { label, status: upstream.status });
         stats.lastAccount = label;
+        recordRecentAccount(label);
         cooling.delete(account.id);
         resetCoolingStreak(account.id);
         touchSticky(sessionId, account.id);   // 会话粘住这个号，后续轮不再跳
@@ -681,6 +688,7 @@ export async function handleGateway(req, res) {
       }
       logger.debug('ZCODE-GW', '{label} 补全成功 ({status})', { label, status: upstream.status });
       stats.lastAccount = label;
+      recordRecentAccount(label);
       cooling.delete(account.id);
       resetCoolingStreak(account.id);
       touchSticky(sessionId, account.id);   // 会话粘住这个号，后续轮不再跳
@@ -784,6 +792,7 @@ export async function gatewayStatus() {
       lastCallAt: stats.lastCallAt,
       calls: stats.calls,
       lastAccount: stats.lastAccount,
+      recentAccounts: stats.recentAccounts,
     },
     exhausted: all
       .filter((a) => isQuotaExhausted(a.id))

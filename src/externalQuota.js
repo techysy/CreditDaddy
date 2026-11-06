@@ -305,7 +305,9 @@ export async function runQuotaPush({ endpoint, key, accounts, fetchImpl, onlySou
   };
 
   // 0. minimax-free（单账号单卡，minimax-code 同款单值卡：带签到徽章）
-  const mmAccounts = (accounts || []).filter((a) => a.provider === 'minimax' && (a.token || a.refreshToken));
+  //    国内（minimax）与国际（minimax-global，#54）都推免费线卡——10R 的 minimax-free 挂 CD 网关
+  //    的免费体验线，订阅线额度卡由账号连接（#55 OAuth 通道）的同名认领接管，两者不冲突
+  const mmAccounts = (accounts || []).filter((a) => (a.provider === 'minimax' || a.provider === 'minimax-global') && (a.token || a.refreshToken));
   if (mmAccounts.length) {
     // 一次性清理：按账号单卡（6ebcc52）之前的版本把全部账号聚在 source「minimax-free」
     // 一张多行卡上；升级用户的那张旧卡没人再推（也不该再推），不删会挂到 7 天 TTL 自然过期，
@@ -515,6 +517,47 @@ export async function runQuotaPush({ endpoint, key, accounts, fetchImpl, onlySou
         }
       }
       const { payload } = buildLongcatQuotaPayload(a, liveData);
+      try {
+        assertScalarOnly(payload, source);
+        const r = await pushOne({ endpoint, key, source, payload, fetchImpl, refreshUrl: await rurl(source) });
+        results.push({ source, status: 'ok', entries: r.entries });
+        logger.info('10R', '额度卡已推送：{source}（{n} 行）', { source, n: r.entries ?? (Object.keys(payload.quotas || {}).length || 0) });
+      } catch (e) {
+        results.push({ source, status: 'failed', error: e.message });
+        logger.warn('10R', '额度卡推送失败 {source}:{err}', { source, err: e.message });
+      }
+    }
+  }
+
+  // 6. WPS 灵犀（issue #53：灵点余额卡）——kdocs 会话 cookie 读任务列表/余额接口；
+  //    单值储值卡（灵点只在灵犀界面消费，官方无 API，10R 卡仅展示余额数字）。
+  const lxAccounts = (accounts || []).filter((a) => (a.provider === 'lingxi' || a.meta?.cookieSiteId === 'lingxi') && (a.token || a.meta?.cookieSiteSession?.cookie));
+  if (lxAccounts.length) {
+    const { fetchLingxiStatus, buildLingxiQuotaPayload } = await import('./lingxiClient.js');
+    for (const a of lxAccounts) {
+      const { source } = buildLingxiQuotaPayload(a);
+      if (only && !only.includes(source)) continue;
+      const skipDead = !only && deadSkip(a);
+      let liveData = null;
+      if (skipDead) {
+        liveData = { error: '会话已失效（后台低频重试等待中，跳过本轮 live 拉取）', authInvalid: true };
+      } else {
+        try {
+          const cookie = a.meta?.cookieSiteSession?.cookie || a.token;
+          const st = await fetchLingxiStatus(cookie, { fetchImpl });
+          if (st.auth) {
+            liveData = { balance: st.balance };
+            if (Number.isFinite(st.balance)) {
+              persistLive(a, { quotaSnapshot: { used: 0, total: st.balance, isCreditBalance: true, at: new Date().toISOString() } });
+            }
+          } else liveData = liveError({ authExpired: true, error: '会话已失效' });
+          probeMark(a, st.auth, st.code);
+        } catch (err) {
+          liveData = { error: err.message };
+          probeMark(a, false, err.message);
+        }
+      }
+      const { payload } = buildLingxiQuotaPayload(a, liveData);
       try {
         assertScalarOnly(payload, source);
         const r = await pushOne({ endpoint, key, source, payload, fetchImpl, refreshUrl: await rurl(source) });

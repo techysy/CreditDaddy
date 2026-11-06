@@ -35,7 +35,7 @@ export const WEB_USAGE_PATH = '/api/v2/me/usages/big_model_credits';
 export const JOB_TOKEN_EXCHANGE_PATH = '/api/v1/jobToken/exchange';
 
 // 账号的 provider = 产品 + 区域。新增产品时在此登记，并在 providers.js 挂上对应实现。
-export const PROVIDERS = ['qoder', 'qoder-cn', 'workbuddy', 'workbuddy-intl', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'tokenharbor', 'xiaomi-mimo', 'river', 'modelscope', 'longcat', 'doubao', 'loomy'];
+export const PROVIDERS = ['qoder', 'qoder-cn', 'workbuddy', 'workbuddy-intl', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'minimax-global', 'tokenharbor', 'xiaomi-mimo', 'river', 'modelscope', 'longcat', 'doubao', 'loomy', 'lingxi'];
 export const PROVIDER_LABEL = {
   qoder: 'Qoder 国际版',
   'qoder-cn': 'Qoder 国内版',
@@ -45,7 +45,8 @@ export const PROVIDER_LABEL = {
   mirasim: 'mirasim',
   catpaw: '妙手',
   trae: 'Trae',
-  minimax: 'MiniMax',
+  minimax: 'MiniMax 国内版',
+  'minimax-global': 'MiniMax 国际版',
   tokenharbor: 'Token Harbor',
   'xiaomi-mimo': '小米 MiMo',
   river: 'River AI',
@@ -53,6 +54,7 @@ export const PROVIDER_LABEL = {
   longcat: 'LongCat',
   doubao: '豆包',
   loomy: '讯飞 Loomy',
+  lingxi: 'WPS 灵犀',
 };
 /** provider → 产品线（qoder / workbuddy / zcode / mirasim / catpaw / trae / minimax / tokenharbor / xiaomi-mimo / river） */
 export const productOf = (provider) => {
@@ -62,7 +64,7 @@ export const productOf = (provider) => {
   if (p === 'mirasim') return 'mirasim';
   if (p === 'catpaw') return 'catpaw';
   if (p.startsWith('trae')) return 'trae';
-  if (p === 'minimax') return 'minimax';
+  if (p === 'minimax' || p === 'minimax-global') return 'minimax';
   if (p === 'tokenharbor') return 'tokenharbor';
   if (p === 'xiaomi-mimo') return 'xiaomi-mimo';
   if (p === 'river') return 'river';
@@ -70,6 +72,7 @@ export const productOf = (provider) => {
   if (p === 'longcat') return 'longcat';
   if (p === 'doubao') return 'doubao';
   if (p === 'loomy') return 'loomy';
+  if (p === 'lingxi') return 'lingxi';
   return 'qoder';
 };
 /** provider 是否国内版 */

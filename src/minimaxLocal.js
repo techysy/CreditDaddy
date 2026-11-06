@@ -1,10 +1,12 @@
 /**
  * MiniMax Code 本机客户端探测与凭据自动读取。
  *
- * MiniMax Code 客户端文件路径：
+ * MiniMax Code 客户端文件路径（namespace = auth/<buildEnv>/<region>/<clientId>，
+ * region 由客户端语言版决定：国内版 zh→cn、国际版 en→en，见 @mavis/oauth-core namespace.js）：
  *   - 配置与模型: ~/.minimax/config.yaml
- *   - 凭据存储: ~/.minimax/auth/prod/cn/mcode-public/auth.json
- *   - 凭据状态: ~/.minimax/auth/prod/cn/mcode-public/auth-state.json
+ *   - 凭据存储（国内）: ~/.minimax/auth/prod/cn/mcode-public/auth.json
+ *   - 凭据存储（国际）: ~/.minimax/auth/prod/en/mcode-public/auth.json（#54）
+ *   - 凭据状态: 同目录 auth-state.json
  *   - 可执行程序（Windows）: %LOCALAPPDATA%\Programs\MiniMax Code\MiniMax Code.exe
  */
 
@@ -18,20 +20,25 @@ export function minimaxHome() {
   return process.env.MINIMAX_HOME || path.join(os.homedir(), '.minimax');
 }
 
-export function minimaxAuthPath() {
-  return path.join(minimaxHome(), 'auth', 'prod', 'cn', 'mcode-public', 'auth.json');
+/** flavor → 官方客户端的 region 目录名（zh 构建写 cn，en 构建写 en） */
+function regionDirOf(flavor) {
+  return flavor === 'global' ? 'en' : 'cn';
 }
 
-export function minimaxAuthStatePath() {
-  return path.join(minimaxHome(), 'auth', 'prod', 'cn', 'mcode-public', 'auth-state.json');
+export function minimaxAuthPath(flavor = 'cn') {
+  return path.join(minimaxHome(), 'auth', 'prod', regionDirOf(flavor), 'mcode-public', 'auth.json');
+}
+
+export function minimaxAuthStatePath(flavor = 'cn') {
+  return path.join(minimaxHome(), 'auth', 'prod', regionDirOf(flavor), 'mcode-public', 'auth-state.json');
 }
 
 export function minimaxConfigPath() {
   return path.join(minimaxHome(), 'config.yaml');
 }
 
-export function minimaxUidCachePath() {
-  const authDir = path.dirname(minimaxAuthPath());
+export function minimaxUidCachePath(flavor = 'cn') {
+  const authDir = path.dirname(minimaxAuthPath(flavor));
   return path.join(authDir, 'uid-cache.json');
 }
 
@@ -61,28 +68,28 @@ function writeJson(file, data) {
  * 「客户端当前」——这正是「客户端明明没登录却显示已登录」的来源，所以读的时候必须
  * 与当前 record 集合求交集，不能无条件回落。
  */
-function readUidCache() {
-  return readJson(minimaxUidCachePath()) || {};
+function readUidCache(flavor = 'cn') {
+  return readJson(minimaxUidCachePath(flavor)) || {};
 }
 
 /** 写入 uid 缓存，并顺手丢掉 auth.json 里已经不存在的 record（防止缓存无限膨胀 / 陈旧） */
-function writeUidCache(recordKey, uid) {
+function writeUidCache(recordKey, uid, flavor = 'cn') {
   if (!recordKey || !uid) return;
   try {
-    const cache = readUidCache();
+    const cache = readUidCache(flavor);
     if (cache[recordKey] === String(uid)) return;
     cache[recordKey] = String(uid);
-    const live = liveRecordKeys();
+    const live = liveRecordKeys(flavor);
     if (live) for (const k of Object.keys(cache)) if (!live.has(k)) delete cache[k];
-    writeJson(minimaxUidCachePath(), cache);
+    writeJson(minimaxUidCachePath(flavor), cache);
   } catch {
     // 缓存写失败不影响调用方
   }
 }
 
 /** auth.json 里当前仍有 accessToken 的 recordKey 集合；读不到（文件缺失/损坏）返回 null */
-function liveRecordKeys() {
-  const authData = readJson(minimaxAuthPath());
+function liveRecordKeys(flavor = 'cn') {
+  const authData = readJson(minimaxAuthPath(flavor));
   if (!authData?.records) return null;
   return new Set(Object.keys(authData.records).filter((k) => authData.records[k]?.accessToken));
 }
@@ -116,9 +123,9 @@ export function minimaxRunning() {
 /**
  * 检测本机 MiniMax 客户端安装与登录状态
  */
-export function detectMiniMax() {
+export function detectMiniMax(flavor = 'cn') {
   const exe = minimaxExePath();
-  const authFile = minimaxAuthPath();
+  const authFile = minimaxAuthPath(flavor);
   const exists = Boolean(exe || fs.existsSync(authFile));
   const authData = readJson(authFile);
   const records = authData?.records || {};
@@ -134,10 +141,10 @@ export function detectMiniMax() {
 }
 
 /**
- * 从本机 ~/.minimax 读取当前登录凭据，组装为账号记录
+ * 从本机 ~/.minimax 读取当前登录凭据，组装为账号记录（flavor: 'cn' / 'global'，#54）
  */
-export async function liveToAccount() {
-  const authFile = minimaxAuthPath();
+export async function liveToAccount(flavor = 'cn') {
+  const authFile = minimaxAuthPath(flavor);
   const authData = readJson(authFile);
   if (!authData?.records) return null;
 
@@ -148,19 +155,19 @@ export async function liveToAccount() {
 
   let profile = null;
   try {
-    profile = await fetchMiniMaxProfile(record.accessToken);
+    profile = await fetchMiniMaxProfile(record.accessToken, { flavor });
   } catch {
     // profile 失败不影响返回基础账号信息
   }
 
   // auth.json 的记录没有稳定 uid 字段，token 又高频轮换，profile 偶发失败时无处可查 ——
   // 用 recordKey 把 uid 记住，供 currentMiniMaxUid 离线比对（见 minimaxUidCachePath 注释）。
-  const uid = profile?.userId || record.subject || record.accountId || readUidCache()[recordKey] || null;
-  if (uid) writeUidCache(recordKey, uid);
+  const uid = profile?.userId || record.subject || record.accountId || readUidCache(flavor)[recordKey] || null;
+  if (uid) writeUidCache(recordKey, uid, flavor);
   const name = profile?.name || (uid ? `MiniMax_${String(uid).slice(-6)}` : 'MiniMax Code');
 
   return {
-    provider: 'minimax',
+    provider: flavor === 'global' ? 'minimax-global' : 'minimax',
     token: record.accessToken,
     refreshToken: record.refreshToken || null,
     expiresAt: record.expiresAtMs ? new Date(record.expiresAtMs).toISOString() : null,
@@ -173,23 +180,25 @@ export async function liveToAccount() {
       // 该账号刷新前就会去 auth.json 重读 refreshToken（可能会被别的账号的链顶掉）、
       // 刷新后还会回写 auth.json。本机导入/浏览器登录混用时曾因此让两个账号共用同一条链
       // 互相作废，故这里只留来源标记，链的绑定交给 alignMiniMaxFromLocal 按 uid 判断。
+      // 本机导入的链绑定另见 alignMiniMaxFromLocal（按 uid + authRecordKey 双校验）。
       clientId: record.clientId,
       scopes: record.scopes,
       capturedAt: new Date().toISOString(),
+      ...(flavor === 'global' ? { minimaxFlavor: 'global' } : {}),
     },
   };
 }
 
 /**
- * 获取当前登录的 UID。
+ * 获取当前登录的 UID（flavor: 'cn' 国内 / 'global' 国际——两版客户端的凭据目录独立）。
  * 优先用 record 自带字段；没有则按 recordKey 命中 uid 缓存（token 会轮换，uid 不会）。
  *
  * records 为空（客户端从未登录 / 已登出）时一律返回 null——绝不回落到缓存。
  * 回落的代价是：客户端登出后 uid 缓存还留着，面板会继续把那个旧账号标成
  * 「客户端当前」，看起来像登出没生效。
  */
-export function currentMiniMaxUid() {
-  const authFile = minimaxAuthPath();
+export function currentMiniMaxUid(flavor = 'cn') {
+  const authFile = minimaxAuthPath(flavor);
   const authData = readJson(authFile);
   if (!authData?.records) return null;
   const recordKey = Object.keys(authData.records).find((k) => authData.records[k]?.accessToken);
@@ -197,14 +206,14 @@ export function currentMiniMaxUid() {
   const record = authData.records[recordKey];
   const own = record?.subject || record?.accountId;
   if (own) return String(own);
-  return readUidCache()[recordKey] || null;
+  return readUidCache(flavor)[recordKey] || null;
 }
 
 /**
  * 获取当前登录记录的稳定 key（token 轮换时保持不变，可跨账号库匹配）
  */
-export function currentMiniMaxRecordKey() {
-  const authFile = minimaxAuthPath();
+export function currentMiniMaxRecordKey(flavor = 'cn') {
+  const authFile = minimaxAuthPath(flavor);
   const authData = readJson(authFile);
   if (!authData?.records) return null;
   return Object.keys(authData.records).find((k) => authData.records[k]?.accessToken) || null;
@@ -213,8 +222,8 @@ export function currentMiniMaxRecordKey() {
 /**
  * 获取当前登录的 Token（用于比对当前登录账号）
  */
-export function currentMiniMaxToken() {
-  const authFile = minimaxAuthPath();
+export function currentMiniMaxToken(flavor = 'cn') {
+  const authFile = minimaxAuthPath(flavor);
   const authData = readJson(authFile);
   if (!authData?.records) return null;
   const record = Object.values(authData.records).find((r) => r?.accessToken);
@@ -224,10 +233,11 @@ export function currentMiniMaxToken() {
 /**
  * 读取指定 record（刷新前对齐本机客户端最新 refreshToken 用）。
  * recordKey 见 liveToAccount 写入的 meta.authRecordKey。
+ * flavor 决定读哪个客户端目录（cn / en），账号按 meta.minimaxFlavor 对齐。
  */
-export function readMiniMaxRecord(recordKey) {
+export function readMiniMaxRecord(recordKey, flavor = 'cn') {
   if (!recordKey) return null;
-  const authData = readJson(minimaxAuthPath());
+  const authData = readJson(minimaxAuthPath(flavor));
   return authData?.records?.[recordKey] || null;
 }
 
@@ -244,14 +254,15 @@ export function readMiniMaxRecord(recordKey) {
 export function alignMiniMaxFromLocal(account, log) {
   const key = account?.meta?.authRecordKey;
   if (!key) return false;
+  const flavor = account?.meta?.minimaxFlavor === 'global' ? 'global' : 'cn';
   try {
     // 归属校验：本机客户端同一时刻只登录一个账号，auth.json 里那条 record 属于**它**，
     // 不一定属于调用方这个账号。若两个账号（如「本机导入」与「浏览器登录」）因为历史原因
     // 挂了同一个 authRecordKey，不校验就会拿别人的链去刷新——两个账号共用一次性 refreshToken，
     // 必然互相作废（invalid_grant）。uid 对不上就认定不是本账号的链，直接跳过对齐。
-    const rec = readMiniMaxRecord(key);
+    const rec = readMiniMaxRecord(key, flavor);
     if (!rec?.refreshToken || rec.refreshToken === account.refreshToken) return false;
-    const recUid = rec.subject || rec.accountId || readUidCache()[key] || null;
+    const recUid = rec.subject || rec.accountId || readUidCache(flavor)[key] || null;
     if (recUid && account.uid && String(recUid) !== String(account.uid)) {
       log?.('本机客户端当前登录的是另一个 MiniMax 账号，跳过凭据对齐（避免两条链互相作废）');
       return false;
@@ -279,7 +290,8 @@ export function writeMiniMaxAuth(account) {
   const key = account?.meta?.authRecordKey;
   if (!key) return false;
   if (minimaxRunning()) return false;
-  const authFile = minimaxAuthPath();
+  const flavor = account?.meta?.minimaxFlavor === 'global' ? 'global' : 'cn';
+  const authFile = minimaxAuthPath(flavor);
   const authData = readJson(authFile);
   const rec = authData?.records?.[key];
   if (!rec) return false;

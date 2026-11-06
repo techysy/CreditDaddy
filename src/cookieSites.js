@@ -170,6 +170,20 @@ export const COOKIE_SITES = [
     entryOnly: true,       // 只出「打开豆包」按钮，无会话捕获 / 无探测 / 无账号行
     hint: '在豆包客户端（或网页）登录后捕获会话，CD 只读展示体验额度与每日签到状态（+200/天）；签到请在「打开豆包」里手动完成——活动在客户端内，CD 不代签；仅个人账号可参与（飞书企业号被排除），凭据只存本机。'
   },
+  {
+    id: 'lingxi',
+    name: 'WPS 灵犀',
+    provider: 'lingxi',
+    label: 'WPS 灵犀',
+    loginUrl: 'https://lingxi.kdocs.cn',
+    homeUrl: 'https://lingxi.kdocs.cn',
+    // 探测 = 任务列表接口本身（issue #53，提案者 2026-11-06 实测）：带会话 cookie 返 200
+    // 含 data.tasks[]；未登录 401/403。签到状态在这里读（daily_check_in 的 status）。
+    verify: 'api',
+    cookieUrls: ['https://lingxi.kdocs.cn', 'https://www.kdocs.cn'],
+    accountName: 'WPS 灵犀',
+    hint: '登录 lingxi.kdocs.cn 后自动抓取每日签到状态与灵点余额（每天 100 灵点，七天一轮第七天 200）；CD 每日自动签到 + 推送 10Router 出余额卡，Cookie 只存本机（约 300+ 天有效期）。',
+  },
   // ⚠ 码道 CodeArts（issue #40）已于 2026-10-30 撤下，不再提供：
   //   华为云控制台会话受闲置超时 + WAF 指印（HWWAFSESID / browserCheckResult）绑定，
   //   浏览器里能靠 SPA 持续续期，本机无法续 —— 实测新鲜会话当日内即失效（网关回登录页），

@@ -14,7 +14,7 @@
 
 import { fetchJsonRace } from './zcodeClient.js';
 import { loadAccounts, loadSettings, saveSettings } from './store.js';
-import { refreshMiniMaxToken, refreshAccountToken, fetchMiniMaxQuota, MINIMAX_MESSAGES_URL } from './minimaxClient.js';
+import { refreshMiniMaxToken, refreshAccountToken, fetchMiniMaxQuota, minimaxEndpointsOf, minimaxFlavorOf } from './minimaxClient.js';
 import { clearRefreshDead, __resetRefreshGuardForTests } from './refreshGuard.js';
 import { refreshContext } from './accounts.js';
 import { gatewayHostSuggestion } from './tenrouter.js';
@@ -198,7 +198,7 @@ const STICKY_MARGIN_ABS = 50;    // 且绝对差超过 50 积分
  * 拉黑/冷却在挂载时剔除；扭转主力粘性见上方说明。
  */
 async function rotationQueue() {
-  const all = (await loadAccounts()).filter((a) => a.provider === 'minimax');
+  const all = (await loadAccounts()).filter((a) => a.provider === 'minimax' || a.provider === 'minimax-global');
   const now = Date.now();
   const candidates = [];
   for (const a of all) {
@@ -228,7 +228,7 @@ async function rotationQueue() {
 }
 
 async function unavailableReason() {
-  const all = (await loadAccounts()).filter((a) => a.provider === 'minimax');
+  const all = (await loadAccounts()).filter((a) => a.provider === 'minimax' || a.provider === 'minimax-global');
   if (!all.length) return '没有 MiniMax 账号：请在 MiniMax Code 登录后在面板进行本机导入，或粘贴 Token 添加';
   const now = Date.now();
   const n = { dead: 0, cooling: 0, noToken: 0 };
@@ -352,6 +352,8 @@ export async function handleGateway(req, res) {
     let upstream;
 
     let activeToken = account.token;
+    // 按账号档位选上游域名（国内 agent.minimax.cn / 国际 agent.minimax.io，协议同形）
+    const upstreamUrl = minimaxEndpointsOf(account).messagesUrl;
     const sendUpstream = async (tok) => {
       const headers = {
         'Content-Type': 'application/json',
@@ -359,7 +361,7 @@ export async function handleGateway(req, res) {
         Authorization: tok.startsWith('Bearer ') ? tok : `Bearer ${tok}`,
         'anthropic-version': '2023-06-01',
       };
-      return fetchJsonRace(MINIMAX_MESSAGES_URL, {
+      return fetchJsonRace(upstreamUrl, {
         method: 'POST',
         headers,
         body: rawBody,
@@ -481,7 +483,7 @@ export async function handleGateway(req, res) {
 
 export async function gatewayStatus() {
   const enabled = await gatewayEnabled();
-  const all = (await loadAccounts()).filter((a) => a.provider === 'minimax');
+  const all = (await loadAccounts()).filter((a) => a.provider === 'minimax' || a.provider === 'minimax-global');
   const now = Date.now();
   const settings = await loadSettings();
 

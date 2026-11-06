@@ -2,15 +2,18 @@
  * MiniMax Code 浏览器登录 — 官方 OAuth 设备码授权（RFC 8628 + S256 PKCE），
  * 与客户端「扫码登录」同一协议，任何浏览器 / 桌面版隐私窗口都能完成，无需 zcode:// 式本地回调。
  *
- *   1. POST https://account.minimax.cn/oauth2/device/code
+ *   1. POST {account}/oauth2/device/code
  *      {client_id:mcode-public, scope:agent.default, audience:agent-backend,
  *       code_challenge:<S256>, code_challenge_method:S256}
  *      → {device_code, user_code, verification_uri_complete, expires_in:300, interval:3}
- *   2. 用户在浏览器打开 verification_uri_complete（account.minimax.cn/oauth-authorize?user_code=…）登录授权
- *   3. POST https://account.minimax.cn/oauth2/token
+ *   2. 用户在浏览器打开 verification_uri_complete（account.minimax.(cn|io)/oauth-authorize?user_code=…）登录授权
+ *   3. POST {account}/oauth2/token
  *      {grant_type:urn:ietf:params:oauth:grant-type:device_code, device_code, client_id, code_verifier}
  *      → 未授权时 400 authorization_pending / slow_down（继续等）；授权后 200
  *        {access_token, refresh_token, expires_in, …}
+ *
+ * 双渠道（issue #54）：CN 用 account.minimax.cn，国际（minimax-global）用 account.minimax.io
+ * （@mavis/oauth-core endpoint-config ACCOUNT_ORIGINS 实证，协议 / client 完全一致）。
  *
  * 与「本机导入」的关键区别：设备码登录拿到的是**独立 loginEpoch** 的一条新 refresh token 链，
  * 不与本机 ~/.minimax 客户端共用凭据，因此 CreditDaddy 自行刷新不会作废客户端的 token（消除轮换互斥）。
@@ -20,10 +23,8 @@
 import crypto from 'node:crypto';
 import { fetchJsonRace } from './zcodeClient.js';
 import { FETCH_TIMEOUT_MS } from './constants.js';
-import { MINIMAX_ACCOUNT_BASE, fetchMiniMaxProfile } from './minimaxClient.js';
+import { MINIMAX_FLAVORS, fetchMiniMaxProfile } from './minimaxClient.js';
 
-const DEVICE_CODE_URL = `${MINIMAX_ACCOUNT_BASE}/oauth2/device/code`;
-const TOKEN_URL = `${MINIMAX_ACCOUNT_BASE}/oauth2/token`;
 const CLIENT_ID = 'mcode-public';
 const SCOPE = 'agent.default';
 const AUDIENCE = 'agent-backend';
@@ -48,11 +49,12 @@ async function postForm(url, fields) {
   return { res, body, text };
 }
 
-/** 发起设备码授权，返回浏览器授权地址与轮询参数 */
-export async function startMiniMaxLogin() {
+/** 发起设备码授权，返回浏览器授权地址与轮询参数（flavor: 'cn' 国内 / 'global' 国际） */
+export async function startMiniMaxLogin(flavor = 'cn') {
+  const accountBase = MINIMAX_FLAVORS[flavor]?.account || MINIMAX_FLAVORS.cn.account;
   const verifier = base64Url(crypto.randomBytes(32));
   const challenge = base64Url(crypto.createHash('sha256').update(verifier).digest());
-  const { res, body, text } = await postForm(DEVICE_CODE_URL, {
+  const { res, body, text } = await postForm(accountBase + '/oauth2/device/code', {
     client_id: CLIENT_ID, scope: SCOPE, audience: AUDIENCE,
     code_challenge: challenge, code_challenge_method: 'S256',
   });
@@ -65,7 +67,7 @@ export async function startMiniMaxLogin() {
     url,
     expiresInMs: Math.max(60e3, (Number(body.expires_in) || 300) * 1000),
     intervalMs: Math.max(2000, (Number(body.interval) || 3) * 1000),
-    data: { deviceCode: body.device_code, verifier, userCode: body.user_code || null },
+    data: { deviceCode: body.device_code, verifier, userCode: body.user_code || null, flavor },
   };
 }
 
@@ -74,7 +76,9 @@ export async function startMiniMaxLogin() {
  * authorization_pending / slow_down 视为继续等待；其余错误抛出（终态失败）。
  */
 export async function pollMiniMaxLogin(data) {
-  const { res, body, text } = await postForm(TOKEN_URL, {
+  const flavor = data?.flavor === 'global' ? 'global' : 'cn';
+  const accountBase = MINIMAX_FLAVORS[flavor].account;
+  const { res, body, text } = await postForm(accountBase + '/oauth2/token', {
     grant_type: DEVICE_GRANT,
     device_code: data.deviceCode,
     client_id: CLIENT_ID,
@@ -98,7 +102,7 @@ export async function pollMiniMaxLogin(data) {
 
   // best-effort 取资料补全 uid / 昵称 / 邮箱；失败不阻断（uid 为空则按 token 去重）
   let profile = null;
-  try { profile = await fetchMiniMaxProfile(accessToken); } catch {}
+  try { profile = await fetchMiniMaxProfile(accessToken, { flavor }); } catch {}
 
   const uid = profile?.userId || null;
   const name = profile?.name || (uid ? `MiniMax_${String(uid).slice(-6)}` : null);
@@ -106,7 +110,7 @@ export async function pollMiniMaxLogin(data) {
   return {
     status: 'ok',
     input: {
-      provider: 'minimax',
+      provider: flavor === 'global' ? 'minimax-global' : 'minimax',
       token: accessToken,
       refreshToken,
       expiresAt,

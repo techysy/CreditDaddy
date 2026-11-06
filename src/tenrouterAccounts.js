@@ -21,6 +21,8 @@ export const TENROUTER_PROVIDER_MAP = {
   'qoder-cn': 'qoder-cn',
   workbuddy: 'codebuddy-cn',
   'workbuddy-intl': 'codebuddy-intl',
+  minimax: 'minimax-code',             // #55：MiniMax 国内订阅线 → 10R minimax-code
+  'minimax-global': 'minimax-code-global',   // #55：MiniMax 国际订阅线 → 10R minimax-code-global
   tokenharbor: 'tokenharbor-free',   // #23：会话 cookie 只喂「额度监控卡」(freeTier,不走路由);tokenharbor 钱包卡留给 sk- 运输 key
   loomy: 'loomy',
   // zcode → glm：等 zcode 反代就绪后补一行（同步流程已就绪，无需改代码）
@@ -159,7 +161,7 @@ export async function syncAccountsTo10r({ endpoint, key, adminPassword, accounts
     if (!groups.has(target)) groups.set(target, []);
     groups.get(target).push(a);
   }
-  if (!groups.size) throw new Error('没有可同步的账号（qoder / WorkBuddy 系列支持；zcode 待反代就绪后支持）');
+  if (!groups.size) throw new Error('没有可同步的账号（qoder / WorkBuddy / MiniMax / Loomy 系列）；zcode 待反代就绪后支持');
 
   let channel = 'apikey';
   let cookie = null;
