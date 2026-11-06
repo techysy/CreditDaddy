@@ -4,6 +4,10 @@
 
 ---
 
+## [1.7.1] (2026-11-06)
+
+- **Loomy「我的邀请码」**：账号卡新增查看本账号专属邀请码的入口（协议自 Loomy 客户端 app.asar 逆向：`GET /api/v1/invitation-codes`）——弹窗列出每个邀请码、使用进度（如 1/20 名额，用完标橙）、一键复制邀请码或分享文案（客户端同款文案）；生产端实测字段为 `{inviteCode, usedCount, maxUses, status}`，与客户端 bundle 的 `{code, usedCount, limit}` 不同，归一化兼容两种形状；列表为空时按客户端同款先 first-login 初始化积分档案再重查。
+
 ## [1.7.0] (2026-11-06)
 
 本版主题:**新增 CodeBuddy IDE 产品线（双档位凭据收割 / SQLite 加解密 / 多账号切换）+ WorkBuddy 双客户端切号重写（国内/国际独立会话、$wbEncrypted 写盘加密封包、无会话合成兜底）+ ZCode 活动领取改版（marketing/touch 真源 + 激活事件上报、废弃硬编码兜底清单）+ 独立更新窗 + 切号体验（自动拉起客户端 / 导航灰角标 / 国际版徽章全亮）**.

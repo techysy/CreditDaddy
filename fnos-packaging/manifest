@@ -1,5 +1,5 @@
 appname               = creditdaddy
-version = 1.7.0
+version = 1.7.1
 display_name          = CreditDaddy
 desc                    = Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae / MiniMax / ModelScope / 豆包 Doubao / 讯飞 Loomy 多账号本地管理 + 每日积分自动签到 + 10Router 集成与网页会话捕获（面板端口 47860）
 platform              = x86

@@ -974,6 +974,16 @@
   </div>
 </div>
 
+<!-- Loomy 我的邀请码 -->
+<div class="mask" id="m-my-invite">
+  <div class="modal sm" style="width:480px">
+    <div class="modal-title"><span data-i18n="我的邀请码">我的邀请码</span><button class="close" data-close>✕</button></div>
+    <div class="hint" id="my-invite-hint" style="white-space:pre-wrap"></div>
+    <div id="my-invite-list" style="margin-top:10px;display:flex;flex-direction:column;gap:8px"></div>
+    <div class="hint" style="margin-top:10px" data-i18n="好友用邀请码注册并登录后，双方各得 +5000 永久积分（每个邀请码名额有限，用完即止）。">好友用邀请码注册并登录后，双方各得 +5000 永久积分（每个邀请码名额有限，用完即止）。</div>
+  </div>
+</div>
+
 <!-- ZCode 自动领取计划 -->
 <div class="mask" id="m-zac">
   <div class="modal sm">
@@ -1097,6 +1107,8 @@ const I = {
   github: svg('<path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65S8.93 17.38 9 18v4"/><path d="M9 18c-4.51 2-5-2-7-2"/>'),
   credit: svg('<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>'),
   gift: svg('<rect x="3" y="8" width="18" height="4"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8s1-5 4.5-5a2.5 2.5 0 0 1 0 5"/>'),
+  // 我的邀请码：用户+分享角标（Lucide user-plus 变体）——与「填邀请码」的礼物图标区分
+  invite: svg('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>'),
   tune: svg('<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/>'),
   // 齿轮：面板设置（比「推子」更通用地表达“设置”）
   settings: svg('<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>'),
@@ -1831,6 +1843,7 @@ function cardHtml(a) {
     + '</div><div class="ops">'
     + (a.product === 'zcode' ? T('<button class="icon-btn" data-act="claim" title="活动领取（billing/preview → claim，可能需过一次验证码）">') + I.gift + '</button>' : '')
     + (a.product === 'loomy' ? T('<button class="icon-btn" data-act="invite" title="填写邀请码（绑定后 +5000 永久积分，每号仅一次）">') + I.gift + '</button>' : '')
+    + (a.product === 'loomy' ? T('<button class="icon-btn" data-act="my-invite" title="我的邀请码（查看本账号的专属邀请码与使用进度，复制分享）">') + I.invite + '</button>' : '')
     + (canCheckin && a.provider !== 'workbuddy-intl' ? '<button class="icon-btn' + (state.busy[a.id] ? ' busy' : '') + '" data-act="checkin" title="' + T('立即领取') + '">' + (state.busy[a.id] ? I.refresh : I.play) + '</button>' : '')
     + (a.qoderWebDead ? '<button class="icon-btn" data-act="webrenew" title="' + T('网页会话已失效——打开登录窗口重新授权，关闭窗口时自动补 cookie（API token 不受影响）') + '">' + I.swap + '</button>' : '')
     + (a.canSwitch && !isCurrent && st.cls !== 'fail' ? (a.codebuddyIdeFlavor ? '<button class="icon-btn" data-act="switch" title="' + esc(T('切换 CodeBuddy IDE 到此账号')) + '">' + I.swap + '</button>' : T('<button class="icon-btn" data-act="switch" title="切换 ') + (CLIENT_LABEL[a.product] ? T(CLIENT_LABEL[a.product]) : prodLabel(a.product)) + T(' 客户端到此账号">') + I.swap + '</button>') : '')
@@ -3703,6 +3716,61 @@ async function loomyInvite(id) {
     loadQuotas([id], { live: true }).then(render);   // 绑定后永久积分 +5000，立即刷新卡片
   } catch (e) { toast(e.message, false); }
 }
+
+/** 我的邀请码：拉本账号的专属邀请码列表，逐码复制 / 复制分享文案（协议同 Loomy 客户端「邀请有礼」页） */
+async function loomyMyInvite(id) {
+  const a = state.accounts.find((x) => x.id === id);
+  if (!a) return;
+  const listEl = $('my-invite-list');
+  const hintEl = $('my-invite-hint');
+  listEl.innerHTML = '<div class="empty" style="padding:18px">…</div>';
+  hintEl.textContent = T('正在查询 {name} 的邀请码…', { name: a.name || id });
+  openModal('m-my-invite');
+  let codes = [];
+  try {
+    const r = await api('/api/accounts/' + encodeURIComponent(id) + '/loomy/my-invite-codes');
+    codes = (r && r.codes) || [];
+    if (r && r.initialized) hintEl.textContent = T('首次查询已初始化积分档案，以下是 {name} 的邀请码：', { name: a.name || id });
+    else hintEl.textContent = T('{name} 的邀请码（{n} 个）：', { name: a.name || id, n: codes.length });
+  } catch (e) {
+    listEl.innerHTML = '';
+    hintEl.textContent = e.message;
+    return;
+  }
+  if (!codes.length) {
+    listEl.innerHTML = '<div class="empty" style="padding:18px">' + T('该账号还没有可分享的邀请码（新账号需先产生积分记录后再试）') + '</div>';
+    return;
+  }
+  const shareText = (code) => T('快来认识我的工作好搭子 Loomy，比龙虾🦞更易上手、更好用！快去 https://loomy.xunfei.cn/download 下载安装，输入我的专属邀请码 {code} 即可开启体验～', { code });
+  const copy = async (text, okMsg) => {
+    try { await navigator.clipboard.writeText(text); toast(okMsg, true); }
+    catch {
+      // 非安全上下文（http 远程访问）没有 clipboard API：退回选中输入框的 document.execCommand
+      const tmp = document.createElement('textarea');
+      tmp.value = text; tmp.style.position = 'fixed'; tmp.style.opacity = '0';
+      document.body.appendChild(tmp); tmp.select();
+      try { document.execCommand('copy'); toast(okMsg, true); } catch { toast(T('复制失败，请手动复制'), false); }
+      tmp.remove();
+    }
+  };
+  listEl.innerHTML = codes.map((c) => {
+    const full = c.status === 'exhausted' || (c.limit > 0 && c.usedCount >= c.limit);
+    return '<div style="display:flex;align-items:center;gap:8px;border:1px solid var(--border-subtle);border-radius:10px;padding:8px 10px">'
+      + '<span style="font-weight:700;font-size:15px;letter-spacing:1px;flex:0 0 auto;font-variant-numeric:tabular-nums">' + esc(c.code) + '</span>'
+      + '<span style="flex:1;min-width:0;font-size:12px;' + (full ? 'color:var(--warn)' : 'color:var(--text-3)') + '">'
+      + T('{used}/{limit} 名额', { used: c.usedCount, limit: c.limit > 0 ? c.limit : '∞' }) + (full ? T('（已用完）') : '') + '</span>'
+      + '<button class="btn" style="padding:4px 10px;font-size:12px" data-code="' + esc(c.code) + '" data-kind="code"' + (full ? ' disabled' : '') + '>' + T('复制邀请码') + '</button>'
+      + '<button class="btn" style="padding:4px 10px;font-size:12px" data-code="' + esc(c.code) + '" data-kind="share"' + (full ? ' disabled' : '') + '>' + T('复制分享文案') + '</button>'
+      + '</div>';
+  }).join('');
+  listEl.querySelectorAll('button[data-code]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const code = btn.dataset.code;
+      copy(btn.dataset.kind === 'share' ? shareText(code) : code,
+        btn.dataset.kind === 'share' ? T('分享文案已复制') : T('邀请码已复制:{code}', { code }));
+    });
+  });
+}
 async function onCardClick(e) {
   const btn = e.target.closest('[data-act]');
   if (!btn) return;
@@ -3721,6 +3789,7 @@ async function onCardClick(e) {
   }
   if (act === 'quota') { loadQuotas([id], { live: true }).then(render); return; }
   if (act === 'invite') return loomyInvite(id);
+  if (act === 'my-invite') return loomyMyInvite(id);
   if (act === 'claim') return openClaim(id);
   if (act === 'switch') {
     const a = state.accounts.find((x) => x.id === id);

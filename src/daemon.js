@@ -822,6 +822,27 @@ async function handleApi(req, res, url) {
       return json(res, e.auth ? 401 : 400, { error: e.message });
     }
   }
+  // Loomy 我的邀请码列表：GET /api/v1/invitation-codes（协议逆向自客户端 points-service.queryInvitationCodes）。
+  // 列表为空时按客户端同款兜底先调 first-login 初始化积分档案再重查（新号可能还没建档）
+  const loomyMyInviteMatch = p.match(/^\/api\/accounts\/([\w-]+)\/loomy\/my-invite-codes$/);
+  if (loomyMyInviteMatch && method === 'GET') {
+    const accounts = await loadAccounts();
+    const account = accounts.find((a) => a.id === loomyMyInviteMatch[1] && a.provider === 'loomy');
+    if (!account) return json(res, 404, { error: 'Loomy 账号不存在' });
+    try {
+      const { fetchLoomyMyInviteCodes, fetchLoomyFirstLogin } = await import('./loomyClient.js');
+      let codes = await fetchLoomyMyInviteCodes(account);
+      let initialized = false;
+      if (!codes.length) {
+        try { await fetchLoomyFirstLogin(account); initialized = true; } catch { /* 建档失败如实返回空列表 */ }
+        if (initialized) codes = await fetchLoomyMyInviteCodes(account);
+      }
+      return json(res, 200, { ok: true, codes, initialized });
+    } catch (e) {
+      logger.warn('DAEMON', 'Loomy {name} 邀请码查询失败:{err}', { name: account.name, err: e.message });
+      return json(res, e.auth ? 401 : 502, { error: e.message });
+    }
+  }
   // 网络出口偏好（全局——Qoder/ZCode/cookie 探测等全部出口都走它）：默认「直连优先、代理兜底」，
   // 可切「代理优先、直连兜底」；代理地址可面板配置（存 zcode-net.json，0600；键名 zcode 前缀是历史遗留）
   // 自动领取开启时附带 1 小时时限（autoClaimUntil），到期调度器自动关闭并停止轮询

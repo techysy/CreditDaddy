@@ -4,6 +4,10 @@ English changelog — recent releases translated. For the full history in Chines
 
 ---
 
+## [1.7.1] (2026-11-06)
+
+- **Loomy "My invite codes"**: new per-account entry to view this account's own invite codes (protocol reverse-engineered from the Loomy client app.asar: `GET /api/v1/invitation-codes`) — a dialog lists every code, its usage progress (e.g. 1/20 slots, orange when exhausted), and one-click copy of the code or the share text (same text as the client). The production API was measured to return `{inviteCode, usedCount, maxUses, status}` while the client bundle parses `{code, usedCount, limit}` — both shapes are normalized, wire format wins. When the list is empty the daemon follows the client's own fallback: first-login to initialize the points profile, then re-query.
+
 ## [1.7.0] (2026-11-06)
 
 Theme: **New CodeBuddy IDE product line (dual-flavor credential harvesting / SQLite crypto / multi-account switching) + WorkBuddy dual-client switch rewrite (CN/INTL independent sessions, $wbEncrypted sealed write-back, synthesized-session fallback) + ZCode claim rework (marketing/touch as the real source + activation-event reporting, hardcoded fallback list retired) + standalone update window + switching polish (auto-relaunch client, gray nav badges, INTL badges for all four clients)**.

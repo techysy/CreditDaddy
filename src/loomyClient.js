@@ -181,6 +181,12 @@ async function pointsRecordsCall(base, token) {
 }
 
 /** 积分档案初始化（客户端登录后必调的 first-login，幂等）。尽力而为，失败交给余额重试暴露。 */
+export async function fetchLoomyFirstLogin(account) {
+  const token = sessionOf(account);
+  if (!token) throw new Error('账号缺少 session token');
+  await pointsFirstLogin(pointsBaseOf(account), token);
+}
+
 async function pointsFirstLogin(base, token) {
   try {
     await fetch(`${base}/api/v1/points/first-login`, {
@@ -266,6 +272,58 @@ export async function fetchLoomyActivation(account) {
   }
   const d = data?.data || {};
   return { activated: Boolean(d.activated), appliedInvitationCode: d.appliedInvitationCode || null };
+}
+
+/**
+ * 我的邀请码列表：GET /api/v1/invitation-codes → data.data.list[]（协议逆向自客户端
+ * points-service.queryInvitationCodes + 设置页「邀请有礼」，2026-11-06 从 app.asar 实证）。
+ * 客户端 bundle 里按 {code, usedCount, limit} 解析，但生产端实测（2026-11-06）字段是
+ * {inviteCode, usedCount, maxUses, status}——两种形状都归一化，以实测 wire 为准。
+ * 客户端在列表为空时会先调 first-login 初始化积分档案再重查（新号可能还没建档）。
+ */
+export async function fetchLoomyMyInviteCodes(account) {
+  const token = sessionOf(account);
+  if (!token) throw new Error('账号缺少 session token');
+  let res;
+  try {
+    res = await fetch(`${pointsBaseOf(account)}/api/v1/invitation-codes`, {
+      method: 'GET',
+      headers: { token },
+      signal: AbortSignal.timeout(12000),
+    });
+  } catch (e) {
+    const err = new Error(`Loomy 邀请码查询网络失败: ${e.message}`);
+    err.transient = true;
+    throw err;
+  }
+  const text = await res.text().catch(() => '');
+  let data = null;
+  if (text) { try { data = JSON.parse(text); } catch { data = null; } }
+  if (data?.code === '100002' || data?.code === '020002') {
+    const err = new Error('Loomy session 已失效，请重新登录');
+    err.auth = true;
+    throw err;
+  }
+  if (!res.ok) {
+    throw new Error(`Loomy 邀请码查询 HTTP ${res.status}: ${(data?.desc || data?.message || text.slice(0, 120) || '').trim()}`);
+  }
+  if (!data) throw new Error(`Loomy 邀请码查询返回了非 JSON 数据 (HTTP ${res.status})`);
+  if (data?.code && !LOOMY_POINTS_OK_CODES.has(data.code)) {
+    throw new Error(data.desc || data.message || `Loomy 邀请码查询错误 (${data.code})`);
+  }
+  const list = Array.isArray(data?.data?.list) ? data.data.list : [];
+  return list
+    .map((x) => {
+      const limit = Number(x?.maxUses ?? x?.limit) || 0;
+      return {
+        id: String(x?.id ?? x?.inviteCode ?? x?.code ?? ''),
+        code: String(x?.inviteCode || x?.code || '').trim(),
+        usedCount: Number(x?.usedCount) || 0,
+        limit,
+        status: String(x?.status || '').trim(),
+      };
+    })
+    .filter((x) => x.code);
 }
 
 /** 绑定邀请码：POST /api/v1/points/activation {inviteCode} → 服务端 +5000 永久积分（每号一次） */
