@@ -4,6 +4,36 @@
 
 ---
 
+## [1.7.0] (2026-11-06)
+
+本版主题:**新增 CodeBuddy IDE 产品线（双档位凭据收割 / SQLite 加解密 / 多账号切换）+ WorkBuddy 双客户端切号重写（国内/国际独立会话、$wbEncrypted 写盘加密封包、无会话合成兜底）+ ZCode 活动领取改版（marketing/touch 真源 + 激活事件上报、废弃硬编码兜底清单）+ 独立更新窗 + 切号体验（自动拉起客户端 / 导航灰角标 / 国际版徽章全亮）**.
+Theme: **New CodeBuddy IDE product line (dual-flavor credential harvesting / SQLite crypto / multi-account switching) + WorkBuddy dual-client switch rewrite (CN/INTL independent sessions, $wbEncrypted sealed write-back, synthesized-session fallback) + ZCode claim rework (marketing/touch as the real source + activation-event reporting, hardcoded fallback list retired) + standalone update window + switching polish (auto-relaunch client, gray nav badges, INTL badges for all four clients)**.
+
+- **新增 CodeBuddy IDE 产品线（issue #51）**：CodeBuddy IDE（国内 CodeBuddy CN / 国际 CodeBuddy）与 WorkBuddy 账号体系同源（token 由同一 realm 签发），额度 / 签到 / 10Router 推送全量复用既有链路；本版补齐它自己那套存储的读写——
+  - **凭据收割**：读 `%APPDATA%\(CodeBuddy CN|CodeBuddy)\User\globalStorage\state.vscdb`（SQLite ItemTable 的 `secret://…` 行），Chromium Safe Storage v10 加解密（Windows：Local State `os_crypt.encrypted_key` → DPAPI → AES-256-GCM；macOS：Keychain Safe Storage → PBKDF2 → AES-128-CBC）。全 async、只在显式导入 / 切换时调用（DPAPI 要起子进程，1.6.6 白屏铁律：绝不进 `/api/status` 状态轮询）；
+  - **多账号切换**：写前强制备份 `state.vscdb.bak-<时间戳>`；upsert 而非裸 UPDATE（IDE 装了但从未登录时 secret 行不存在，裸 UPDATE 影响 0 行不报错 → 「假成功」）；修复 upsert 键 / 值参数反转（真 secret 行从未被写中的缺陷）；
+  - **无原生快照的账号**（token / 10R 导入）动态合成完整 IDE 会话（`buildCodeBuddyIdeSession`，对齐 workbuddy-switch 规范）后写盘，同样可切。
+- **WorkBuddy 双客户端切号重写**：
+  - 国内 WorkBuddy 与国际 WorkBuddyAI 是两个独立客户端（auth id 不同、会话文件两份、可同时各登录一个号）：`writeWorkbuddySession` 按账号档位写入对应文件（国际档同时落国际与国内两份）；新增 `currentWorkbuddyUids()` 一次读取分档返回国内 / 国际两个当前 uid；
+  - `$wbEncrypted` 信封写盘：目标文件为加密模板时，token / refreshToken / 昵称用官方运行时提取的 masterKey 重新封包（keyId 契合原文件），对齐国际客户端连昵称都加密的形态；
+  - 缺 `meta.session` 的账号合成完整会话后写盘（`buildWorkbuddySession`：域名按档位、手机号脱敏）——纯 token 导入的账号也能直接切客户端；
+  - 自定义安装路径发现（issue #46）：注册表 Uninstall 键 → 进程路径两路兜底，daemon 启动时异步预热；`detectWorkbuddy` 保持同步零子进程（1.6.6 白屏教训）。
+- **面板切号体验与徽章**：
+  - 修复「选什么都能切到 CodeBuddy IDE」——uiDialog 承诺把 `'alt'` 强转 `true`，切换目标选择逻辑失效；
+  - WorkBuddy 页新增「全部 / WorkBuddy / CodeBuddy IDE」客户端过滤段：过滤激活时切号直接定向对应客户端，不再每次弹「选择切换目标」；
+  - 切号成功后 800ms 自动拉起对应客户端（ZCode 同款），WorkBuddy / WorkBuddyAI / CodeBuddy CN / CodeBuddy 四个 exe 按档位精确选择；
+  - 国际版当前账号徽章修复：`/api/status` 下发四个当前 uid（WorkBuddy 国内 / 国际、CodeBuddy IDE CN / 国际），面板按账号档位对齐点亮；token 刷新后的客户端回写同步也覆盖双端；
+  - 导航标签：账号数从主题色大胶囊改为图标右侧灰色小胶囊，激活标签底色改半透明；头部菜单加宽 + flex 分配修复按钮溢出。
+- **ZCode 活动领取改版（2026-11-04 真机实测）**：
+  - 活动发现改 `marketing/touch` 真源（官方客户端的活动投放数据源，隐藏活动可见），与 `billing/preview` 两路合并；**废弃硬编码兜底清单**（`ZCODE_KNOWN_CLAIM_PLANS` 清空占位）——活动 ID 一换代硬编码必失效（1102 → gb-1104 实测）；
+  - 新增激活事件上报（`app_launch` / `app_daily_active`，移植自 zcode-switch claim.rs）：不上报激活事件时 preview 恒空、claim 被当非活跃端拒绝——这正是「只能在官方客户端里领」的根因；
+  - 验证码 region 端点（按出口 IP 下发 cn/sgp）强制直连（`directOnly`），避免代理出口把 region 发错导致验证恒失败。
+- **独立更新窗**：检查更新 / 下载 / 安装移入独立无边框小窗（`update-window.html` + 白名单 preload），与主窗口完全隔离——主窗口卡死或未加载时更新通道仍可用；顺带修复「取消下载」死按钮（AbortController 此前从未赋值）。
+- **10Router 同步标记**：所有经 CreditDaddy 同步的 10R 连接统一携带 `creditDaddySync: true`（apikey 与 OAuth 两通道）；配合 10Router 侧同批改动，CodeBuddy 连接也能亮「CD Sync」来源徽章（qoder 网页会话 `creditDaddyWebSession` 语义不变）。
+- 杂项：daemon 新增 `/assets/providers/` 产品图标静态路由与图标资源文件；测试 389/389（新增 codebuddy-ide、workbuddy-custom-path 两套，cookiesites / tenrouter / smoke 断言随同步标记更新）。
+
+---
+
 ## [1.6.7] (2026-11-03)
 
 > **1.6.6 撤版说明**：1.6.6 曾于同日早间发布（tag / GitHub Release / npm），因新引入的 WorkBuddy 取钥 `spawnSync` 缺陷导致桌面壳「未响应」白屏（网友实测卡首页），**发布后数小时内整体下架**（GitHub tag + Release 删除、npm 1.6.6 挂 deprecation 指向 1.6.7）。经用户拍板以 **1.6.7 重新发布同一批内容 + 白屏根治修复**——本版即原 1.6.6 的完整替代，请所有 1.6.6 用户升级。

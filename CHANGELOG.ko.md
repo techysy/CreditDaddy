@@ -4,6 +4,35 @@
 
 ---
 
+## [1.7.0] (2026-11-06)
+
+테마:**신규 CodeBuddy IDE 제품 라인(양쪽 플레이버 자격증명 수확 / SQLite 암호화 / 다중 계정 전환) + WorkBuddy 듀얼 클라이언트 전환 재작성(국내/국제 독립 세션, $wbEncrypted 봉투 쓰기, 세션 합성 폴백) + ZCode 활동 수령 개편(marketing/touch 진짜 소스 + 활성화 이벤트 보고, 하드코딩 폴백 목록 폐기) + 독립 업데이트 창 + 전환 UX 개선(클라이언트 자동 실행 / 내비 회색 배지 / 국제판 배지 전부 점등)**.
+
+- **신규 CodeBuddy IDE 제품 라인(issue #51)**：CodeBuddy IDE(국내 CodeBuddy CN / 국제 CodeBuddy)는 WorkBuddy와 계정 체계가 동일(토큰이 같은 realm에서 발급)하여 잔액 / 출석 / 10Router 푸시는 기존 경로를 그대로 재사용. 이번 버전은 자체 저장소의 읽기/쓰기를 추가——
+  - **자격증명 수확**：`%APPDATA%\(CodeBuddy CN|CodeBuddy)\User\globalStorage\state.vscdb`(SQLite ItemTable의 `secret://…` 행)를 Chromium Safe Storage v10으로 복호화(Windows: Local State `os_crypt.encrypted_key` → DPAPI → AES-256-GCM / macOS: Keychain Safe Storage → PBKDF2 → AES-128-CBC). 전부 async이며 명시적 가져오기 / 전환 시에만 호출(DPAPI는 자식 프로세스를 띄우므로 1.6.6 백색 화면 철칙대로 `/api/status` 폴링에는 절대 넣지 않음)；
+  - **다중 계정 전환**：쓰기 전에 반드시 `state.vscdb.bak-<타임스탬프>` 백업. 벌 UPDATE 대신 upsert(IDE는 설치됐지만 로그인한 적 없으면 secret 행이 없어 벌 UPDATE는 0행 영향 + 오류 없음 → "가짜 성공")；upsert 키/값 인수가 뒤바뀌던 결함 수정(진짜 secret 행이 한 번도 기록되지 않았음)；
+  - **네이티브 스냅샷이 없는 계정**(토큰 / 10R 가져오기)은 `buildCodeBuddyIdeSession`으로 완전한 IDE 세션을 동적 합성해 기록(workbuddy-switch 사양 준수).
+- **WorkBuddy 듀얼 클라이언트 전환 재작성**：
+  - 국내 WorkBuddy와 국제 WorkBuddyAI는 별개 클라이언트(auth ID도 세션 파일도 별개, 동시에 각 1계정 로그인 가능)：`writeWorkbuddySession`은 계정 플레이버에 맞는 파일에 기록(국제 계정은 국제/국내 두 파일 모두 기록). 신규 `currentWorkbuddyUids()`는 한 번의 읽기로 국내/국제 현재 uid를 반환；
+  - `$wbEncrypted` 봉투 기록: 대상 파일이 암호화 템플릿이면 토큰 / 리프레시 토큰 / 닉네임을 공식 런타임에서 추출한 masterKey로 재봉인(keyId는 원본 파일과 일치, 닉네임까지 암호화하는 국제 클라이언트 형태에 부합)；
+  - `meta.session`이 없는 계정은 세션을 합성해 기록(`buildWorkbuddySession`: 도메인은 플레이버별, 전화번호 마스킹)——순수 토큰 가져오기 계정도 클라이언트 전환 가능；
+  - 사용자 지정 설치 경로 발견(issue #46): 레지스트리 Uninstall 키 → 프로세스 경로 2단 폴백. daemon 시작 시 비동기 예열, `detectWorkbuddy`는 동기 · 제로 자식 프로세스 유지(1.6.6 백색 화면 교훈).
+- **패널 전환 UX와 배지**：
+  - "무엇을 골라도 CodeBuddy IDE로 전환되는" 버그 수정——uiDialog Promise가 `'alt'` 반환값을 `true`로 강제 변환해 전환 대상 선택 로직이 무효화되어 있었음；
+  - WorkBuddy 페이지에 "전체 / WorkBuddy / CodeBuddy IDE" 클라이언트 필터 추가: 필터 활성 시 전환 대상이 바로 확정되고 "전환 대상 선택" 대화상자가 뜨지 않음；
+  - 전환 성공 후 800ms에 해당 클라이언트 자동 실행(ZCode와 동일). WorkBuddy / WorkBuddyAI / CodeBuddy CN / CodeBuddy 네 개의 exe를 플레이버로 정확히 선택；
+  - 국제판 현재 계정 배지 수정: `/api/status`가 네 개의 현재 uid(WorkBuddy 국내/국제, CodeBuddy IDE CN/국제)를 내려주고 패널은 계정 플레이버로 대조. 토큰 갱신 후 클라이언트 기록도 양쪽 모두 커버；
+  - 내비 탭: 계정 수를 테마색 큰 캡슐에서 아이콘 오른쪽 작은 회색 캡슐로 변경, 활성 탭 배경은 반투명으로. 헤더 메뉴는 폭 확장 + flex 배분으로 버튼 넘침 해소.
+- **ZCode 활동 수령 개편(2026-11-04 실측)**：
+  - 활동 발견은 `marketing/touch` 진짜 소스로(공식 클라이언트가 활동 카드를 받는 곳, 숨겨진 활동도 보임). `billing/preview`와 병합. **하드코딩 폴백 목록 폐기**(`ZCODE_KNOWN_CLAIM_PLANS`는 빈 배열 호환 유지)——활동 ID는 세대교체마다 무효화됨(1102 → gb-1104 실측)；
+  - 활성화 이벤트 보고 추가(`app_launch` / `app_daily_active`, zcode-switch claim.rs에서 이식): 미보고 시 preview는 항상 비고, claim은 비활성 클라이언트로 거부——"공식 클라이언트에서만 수령 가능"의 근본 원인；
+  - 캡차 region 엔드포인트(출구 IP별로 cn/sgp 배포)는 강제 다이렉트 연결(`directOnly`)——프록시 출구가 region을 잘못 전달해 검증이 영원히 실패하는 것을 방지.
+- **독립 업데이트 창**: 업데이트 확인 / 다운로드 / 설치를 테두리 없는 독립 창(`update-window.html` + 화이트리스트 preload)으로 이동, 메인 창과 완전 분리——메인 창이 멈춰도 업데이트 경로는 산다. "다운로드 취소" 죽은 버튼(AbortController가 한 번도 대입되지 않았음)도 수정.
+- **10Router 동기화 마커**: CreditDaddy에서 동기화한 모든 10R 연결은 `creditDaddySync: true`를 가짐(apikey / OAuth 양 경로). 10Router 측 동일 배치 변경과 함께 CodeBuddy 연결도 "CD Sync" 출처 배지 점등(qoder 웹 세션 `creditDaddyWebSession` 의미는 불변).
+- 기타: daemon에 `/assets/providers/` 제품 아이콘 정적 라우트와 아이콘 자산 추가. 테스트 389/389(codebuddy-ide / workbuddy-custom-path 두 스위트 신규, cookiesites / tenrouter / smoke는 동기화 마커에 맞춰 갱신).
+
+---
+
 ## [1.6.7] (2026-11-03)
 
 > **1.6.6 철회 안내**: 1.6.6은 같은 날 오전에 릴리스(tag / GitHub Release / npm)되었으나, 새로 추가된 WorkBuddy 키 추출 spawnSync 결함으로 데스크톱 셸이 "응답 없음" 백색 화면에 빠지는 문제(사용자 실측)로 수 시간 내 전량 철수했습니다. 사용자 결정에 따라 동일 내용 + 백색 화면 근복 수정을 **1.6.7**로 재릴리스합니다——본 버전은 1.6.6의 완전한 대체이며, 모든 1.6.6 사용자는 업그레이드해야 합니다.

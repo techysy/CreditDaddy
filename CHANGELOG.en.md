@@ -4,6 +4,35 @@ English changelog — recent releases translated. For the full history in Chines
 
 ---
 
+## [1.7.0] (2026-11-06)
+
+Theme: **New CodeBuddy IDE product line (dual-flavor credential harvesting / SQLite crypto / multi-account switching) + WorkBuddy dual-client switch rewrite (CN/INTL independent sessions, $wbEncrypted sealed write-back, synthesized-session fallback) + ZCode claim rework (marketing/touch as the real source + activation-event reporting, hardcoded fallback list retired) + standalone update window + switching polish (auto-relaunch client, gray nav badges, INTL badges for all four clients)**.
+
+- **New CodeBuddy IDE product line (issue #51)**: CodeBuddy IDE (CN `CodeBuddy CN` / INTL `CodeBuddy`) shares the WorkBuddy account realm, so quota / check-in / 10Router push are fully reused; this release adds read/write for its own storage —
+  - **Credential harvesting**: reads `%APPDATA%\(CodeBuddy CN|CodeBuddy)\User\globalStorage\state.vscdb` (the `secret://…` row in SQLite ItemTable) with Chromium Safe Storage v10 crypto (Windows: Local State `os_crypt.encrypted_key` → DPAPI → AES-256-GCM; macOS: Keychain Safe Storage → PBKDF2 → AES-128-CBC). Fully async, invoked only on explicit import / switch (DPAPI spawns a subprocess — the 1.6.6 white-screen rule: never in the `/api/status` polling path);
+  - **Multi-account switching**: mandatory `state.vscdb.bak-<timestamp>` backup before writes; upsert instead of bare UPDATE (when the IDE is installed but never signed in, the secret row does not exist and a bare UPDATE silently affects 0 rows → fake success); fixed an inverted key/value parameter pair so the real secret row is actually written;
+  - **Accounts without a native snapshot** (token / 10Router imports) get a complete IDE session synthesized on the fly (`buildCodeBuddyIdeSession`, aligned with the workbuddy-switch spec) and switch just the same.
+- **WorkBuddy dual-client switch rewrite**:
+  - Domestic WorkBuddy and international WorkBuddyAI are two independent clients (different auth IDs, two session files, one login each at the same time): `writeWorkbuddySession` now writes the file matching the account's flavor (INTL accounts write both the INTL and CN files); new `currentWorkbuddyUids()` returns the CN / INTL current UIDs in one read;
+  - `$wbEncrypted` envelope write-back: when the target file uses the encrypted template, tokens / refresh token / nickname are re-sealed with the masterKey extracted via the official runtime (keyId matching the original file), matching the INTL client that encrypts even nicknames;
+  - Accounts lacking `meta.session` get a synthesized session (`buildWorkbuddySession`: domain per flavor, masked phone) — pure token imports can switch the client too;
+  - Custom install path discovery (issue #46): registry Uninstall keys → running-process paths as fallbacks, pre-warmed asynchronously at daemon start; `detectWorkbuddy` stays synchronous with zero subprocesses (1.6.6 white-screen lesson).
+- **Panel switching UX and badges**:
+  - Fixed "every choice switched to CodeBuddy IDE" — the uiDialog promise coerced the `'alt'` return value to `true`, breaking the switch-target choice;
+  - The WorkBuddy page gains an "All / WorkBuddy / CodeBuddy IDE" client filter: with a filter active, switching targets that client directly without the target-choice dialog;
+  - After a successful switch the matching client auto-relaunches after 800ms (same as ZCode), picking precisely among the four executables WorkBuddy / WorkBuddyAI / CodeBuddy CN / CodeBuddy by flavor;
+  - Fixed international current-account badges: `/api/status` now reports four current UIDs (WorkBuddy CN / INTL, CodeBuddy IDE CN / INTL) and the panel matches by account flavor; the token-refresh write-back also covers both clients;
+  - Nav tabs: account counts went from a theme-colored pill to a small gray pill beside the icon, the active tab uses a translucent background; the header menu was widened with flex distribution to stop button overflow.
+- **ZCode claim rework (bench-verified 2026-11-04)**:
+  - Activity discovery now uses the real `marketing/touch` source (where the official client gets its activity deliveries, hidden activities included), merged with `billing/preview`; the **hardcoded fallback list is retired** (`ZCODE_KNOWN_CLAIM_PLANS` left as an empty placeholder) — any hardcoded activity ID dies at the next rotation (1102 → gb-1104 observed);
+  - New activation-event reporting (`app_launch` / `app_daily_active`, ported from zcode-switch claim.rs): without it, preview stays empty and claim is rejected as an inactive client — the root cause of "claimable only inside the official client";
+  - The captcha region endpoint (serves cn/sgp by egress IP) now forces direct connection (`directOnly`) so a proxy egress can't misreport the region and fail verification forever.
+- **Standalone update window**: check / download / install moved into a frameless standalone window (`update-window.html` + whitelist preload), fully isolated from the main window — the update channel keeps working when the main window is stuck or not loaded; also fixed the dead "cancel download" button (AbortController was never assigned).
+- **10Router sync marker**: every connection synced from CreditDaddy now carries `creditDaddySync: true` (both apikey and OAuth channels); together with the matching 10Router change, CodeBuddy connections can light the "CD Sync" origin badge (the qoder web-session `creditDaddyWebSession` semantics are unchanged).
+- Misc: the daemon gained a `/assets/providers/` static route with product icon assets; 389/389 tests (new codebuddy-ide and workbuddy-custom-path suites; cookiesites / tenrouter / smoke assertions updated for the sync marker).
+
+---
+
 ## [1.6.7] (2026-11-03)
 
 > **1.6.6 withdrawal notice**: 1.6.6 was released earlier the same day (tag / GitHub Release / npm) but pulled within hours — the newly added WorkBuddy key-extraction `spawnSync` froze the desktop shell into a "Not Responding" white screen (reported by a user). With the user's decision, the same content plus the white-screen cure ships as **1.6.7** — this release fully replaces 1.6.6; all 1.6.6 users should upgrade.

@@ -4,6 +4,35 @@
 
 ---
 
+## [1.7.0] (2026-11-06)
+
+テーマ:**新製品ライン CodeBuddy IDE 追加（両フレーバーの認証情報取得 / SQLite 暗号化 / マルチアカウント切替）+ WorkBuddy デュアルクライアント切替の書き直し（国内 / 国際の独立セッション、$wbEncrypted 暗号化書込、セッション合成フォールバック）+ ZCode アクティビティ受取の改修（marketing/touch を真のソースに + アクティブ化イベント報告、ハードコード フォールバックリスト廃止）+ 独立アップデートウィンドウ + 切替 UX 改善（クライアント自動起動 / ナビ灰色バッジ / 国際版バッジも全点灯）**.
+
+- **新製品ライン CodeBuddy IDE（issue #51）**：CodeBuddy IDE（国内 CodeBuddy CN / 国際 CodeBuddy）は WorkBuddy とアカウント基盤が同一（トークンは同じ realm が発行）のため、残高 / 簽到 / 10Router 連携は既存経路をそのまま流用。本版では独自ストレージの読み書きを追加——
+  - **認証情報の取得**：`%APPDATA%\(CodeBuddy CN|CodeBuddy)\User\globalStorage\state.vscdb`（SQLite ItemTable の `secret://…` 行）を Chromium Safe Storage v10 で復号（Windows：Local State `os_crypt.encrypted_key` → DPAPI → AES-256-GCM / macOS：Keychain Safe Storage → PBKDF2 → AES-128-CBC）。全て非同期で、明示的な取り込み / 切替時のみ呼び出し（DPAPI は子プロセスを起動するため、1.6.6 白画面の教訓どおり `/api/status` ポーリングには絶対に入れない）；
+  - **マルチアカウント切替**：書き込み前に必ず `state.vscdb.bak-<タイムスタンプ>` をバックアップ。裸 UPDATE ではなく upsert（IDE はインストール済みだが未ログインの場合 secret 行が存在せず、裸 UPDATE は 0 行影響でエラーも出ず「偽成功」になる）；upsert のキー / 値引数が逆だった欠陥を修正（本来の secret 行が一度も書かれていなかった）；
+  - **ネイティブスナップショットのないアカウント**（トークン / 10R 取り込み）は `buildCodeBuddyIdeSession` で完全な IDE セッションを動的合成してから書き込む（workbuddy-switch 仕様に準拠）。
+- **WorkBuddy デュアルクライアント切替の書き直し**：
+  - 国内 WorkBuddy と国際 WorkBuddyAI は別クライアント（auth ID もセッションファイルも別、同時に各 1 アカウントずつログイン可能）：`writeWorkbuddySession` はアカウントのフレーバーに応じて対応ファイルに書き込む（国際アカウントは国際 / 国内の両方に書き込み）。新規 `currentWorkbuddyUids()` は 1 回の読み取りで国内 / 国際の現在 uid を返す；
+  - `$wbEncrypted` エンベロープ書込：先が暗号化テンプレートのファイルなら、トークン / リフレッシュトークン / ニックネームを公式ランタイム由来の masterKey で再封入（keyId は元ファイルに一致。ニックネームまで暗号化する国際クライアントの形態に整合）；
+  - `meta.session` を欠くアカウントはセッションを合成してから書き込み（`buildWorkbuddySession`：ドメインはフレーバー別、電話番号はマスク）——トークン取り込みだけのアカウントでもクライアント切替が可能；
+  - カスタムインストールパスの発見（issue #46）：レジストリ Uninstall キー → プロセスパスの 2 段フォールバック。daemon 起動時に非同期で予熱し、`detectWorkbuddy` は同期・ゼロ子プロセスを維持（1.6.6 白画面の教訓）。
+- **パネルの切替 UX とバッジ**：
+  - 「何を選んでも CodeBuddy IDE に切替される」不具合を修正——uiDialog の Promise が `'alt'` 戻り値を `true` に強制変換し、切替先の選択ロジックが効いていなかった；
+  - WorkBuddy ページに「すべて / WorkBuddy / CodeBuddy IDE」のクライアントフィルタを追加：フィルタ選択中は切替先が直接確定し、「切替先を選択」ダイアログは出ない；
+  - 切替成功後 800ms で対応クライアントを自動起動（ZCode と同じ挙動）。WorkBuddy / WorkBuddyAI / CodeBuddy CN / CodeBuddy の 4 つの exe をフレーバーで正確に選択；
+  - 国際版の「現在のアカウント」バッジを修正：`/api/status` が 4 つの現在 uid（WorkBuddy 国内 / 国際、CodeBuddy IDE CN / 国際）を返し、パネルはアカウントのフレーバーで照合。トークン更新後のクライアント書き戻しも両クライアントをカバー；
+  - ナビタブ：アカウント数をテーマ色の大きなカプセルからアイコン右横の小さな灰色カプセルに変更、アクティブタブの背景は半透明に。ヘッダーメニューは幅拡張 + flex 配分でボタンあふれを解消。
+- **ZCode アクティビティ受取の改修（2026-11-04 実機検証）**：
+  - アクティビティの発見は `marketing/touch` の真のソースに（公式クライアントがアクティビティカードを受け取る場所で、非表示アクティビティも見える）。`billing/preview` と統合。**ハードコード フォールバックリストは廃止**（`ZCODE_KNOWN_CLAIM_PLANS` は空配列のまま互換維持）——アクティビティ ID は世代交代ですぐ無効化される（1102 → gb-1104 を実測）；
+  - アクティブ化イベント報告を追加（`app_launch` / `app_daily_active`、zcode-switch claim.rs から移植）：未報告では preview が常に空で、claim は非アクティブクライアントとして拒否——「公式クライアントでしか受け取れない」根本原因；
+  - キャプチャ region エンドポイント（出口 IP 別に cn/sgp を配信）は強制ダイレクト接続（`directOnly`）——プロキシ出口が region を誤認識して検証が永遠に失敗するのを防ぐ。
+- **独立アップデートウィンドウ**：更新確認 / ダウンロード / インストールを枠なしの独立ウィンドウ（`update-window.html` + ホワイトリスト preload）に移し、メインウィンドウと完全分離——メインウィンドウが固まっても更新経路は生きている。「ダウンロード取消」の死んだボタン（AbortController が一度も代入されていなかった）も修正。
+- **10Router 同期マーカー**：CreditDaddy から同期した全 10R 接続が `creditDaddySync: true` を持つ（apikey / OAuth 両経路）。10Router 側の同批変更と合わせて、CodeBuddy 接続でも「CD Sync」出所バッジが点灯（qoder ウェブセッションの `creditDaddyWebSession` 意味は不変）。
+- その他：daemon に `/assets/providers/` 製品アイコンの静的ルートとアイコン資産を追加。テスト 389/389（codebuddy-ide / workbuddy-custom-path の 2 スイートを追加、cookiesites / tenrouter / smoke は同期マーカーに合わせて更新）。
+
+---
+
 ## [1.6.7] (2026-11-03)
 
 > **1.6.6 提供取り下げについて**：1.6.6 は同日早朝にリリース（tag / GitHub Release / npm）しましたが、新規追加の WorkBuddy 鍵取得 spawnSync がデスクトップシェルを「応答なし」白画面に凍結させる欠陥（ユーザー実測）のため、数時間以内に全体撤去しました。ユーザーの決定により、同一内容 + 白画面根治修正を **1.6.7** として再リリースします——本版は 1.6.6 の完全な代替です。全 1.6.6 ユーザーはアップグレードしてください。
