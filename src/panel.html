@@ -2908,7 +2908,8 @@ function renderFreePool() {
     const fmtBalanceText = (acc) => {
       const v = acc.quota?.total
         ?? acc.mimoBalance?.balance ?? acc.riverBalance?.balanceUsd
-        ?? acc.msBalance?.amount ?? acc.longcatPacks?.packs?.reduce((s2, p) => s2 + (Number(p.remaining) || 0), 0);
+        ?? acc.msBalance?.amount ?? acc.longcatPacks?.packs?.reduce((s2, p) => s2 + (Number(p.remaining) || 0), 0)
+        ?? acc.lingxiPacks?.packs?.reduce((s2, p) => s2 + (Number(p.balance) || 0), 0);
       if (!Number.isFinite(v)) return '—';
       if (site.id === 'xiaomi-mimo') return '¥ ' + Number(v).toFixed(2);
       if (site.id === 'river') return '$ ' + Number(v).toFixed(2);
@@ -2956,6 +2957,17 @@ function renderFreePool() {
             ? '<span class="dim" style="font-size:11px">' + T('（') + packs.length + T(' 个资源包）') + '</span>'
             : '';
           return '<span class="pill ok" style="font-weight:600">' + T('Token 余额 ') + Number(bal).toLocaleString() + '</span>' + detail;
+        }
+      }
+      if (site.id === 'lingxi') {
+        // 智点余额 + 资源包数（issue #53：与 LongCat「N 个资源包」同款呈现）
+        const bal = acc.quota?.total ?? acc.lingxiPacks?.packs?.reduce((s2, p) => s2 + (Number(p.balance) || 0), 0);
+        if (Number.isFinite(bal)) {
+          const packs = acc.lingxiPacks?.packs;
+          const detail = Array.isArray(packs) && packs.length
+            ? '<span class="dim" style="font-size:11px">' + T('（') + packs.length + T(' 个资源包 · 至 ') + esc((packs.map((p) => p.expireAt).filter(Boolean).sort()[0] || '').slice(0, 10)) + T(' 到期）') + '</span>'
+            : '';
+          return '<span class="pill ok" style="font-weight:600">' + T('智点余额 ') + Number(bal).toLocaleString() + '</span>' + detail;
         }
       }
       if (site.id === 'tokenharbor') {

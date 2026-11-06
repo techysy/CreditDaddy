@@ -1269,6 +1269,7 @@ async function handleApi(req, res, url) {
             riverBalance: a.meta?.riverBalance || null,
             msBalance: a.meta?.msBalance || null,
             longcatPacks: a.meta?.longcatPacks || null,
+            lingxiPacks: a.meta?.lingxiPacks || null,   // 智点资源包快照（issue #53）
             lastProbe: a.meta?.lastProbe || null,   // 呼吸灯数据源：ok / warn / dead + 失败原因
           }));
         const latest = rows.reduce((t, r) => (r.capturedAt && (!t || r.capturedAt > t) ? r.capturedAt : t), null);
