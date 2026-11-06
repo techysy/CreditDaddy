@@ -596,7 +596,7 @@ window.initAliyunCaptcha({
     else console.log('ZCAP:INTERACTIVE');
   },
   success:(p)=>console.log('ZCAP:OK:'+(typeof p==='string'?p:(p&&p.captchaVerifyParam)||'')),
-  fail:()=>console.log('ZCAP:INTERACTIVE'),
+  fail:(p)=>{const tp=(p&&(typeof p.captchaVerifyParam==='string'?p.captchaVerifyParam:(typeof p.CaptchaVerifyParam==='string'?p.CaptchaVerifyParam:'')))||'';if(tp&&((p.success===true&&p.verifyResult===true)||(p.verifyCode==='T006')))console.log('ZCAP:OK:'+tp);else console.log('ZCAP:INTERACTIVE');},
   onError:()=>console.log('ZCAP:ERR'),
 });
 <\/script></body>`;

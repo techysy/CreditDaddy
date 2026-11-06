@@ -110,8 +110,19 @@ export async function zcodeAutoClaim(account) {
     try {
       const cfg = await fetchCaptchaConfig();
       if (!cfg.enabled || !cfg.sceneId) throw new Error('验证码配置不可用');
+      // 每次领取的 captchaVerifyParam 是一次性的：3007 重试必须重新过一遍验证，
+      // 复用旧 param 会触发服务端 F008（重复 certifyId）判定，永远过不了
       const { captchaParam, region } = await captchaProvider(cfg);
-      const r2 = await claimPlan(account, plan.planId, { captchaParam, region });
+      let r2;
+      try {
+        r2 = await claimPlan(account, plan.planId, { captchaParam, region });
+      } catch (e3) {
+        // 服务端偶尔在「param 正确但会话抖动」时仍回 3007：换一份新验证码再试一次（共两轮）
+        if (e3.code !== 3007 && e3.code !== 3001) throw e3;
+        logger.debug('ZCODE-CLAIM', '{label}「{plan}」首轮验证码被拒,换新验证码重试', { label, plan: planName });
+        const retry = await captchaProvider(cfg);
+        r2 = await claimPlan(account, plan.planId, { captchaParam: retry.captchaParam, region: retry.region || cfg.region || '' });
+      }
       claims.push({ plan: planName, via: 'captcha', ok: true, startsAt: r2?.startsAt || null });
       anySuccess = true;
             logger.info('ZCODE-CLAIM', '{label} 已领取「{plan}」(静默验证码){grants}', { label, plan: planName, grants: grantsText(plan) ? ':' + grantsText(plan) : '' });
@@ -119,9 +130,11 @@ export async function zcodeAutoClaim(account) {
       if (e2.code === 1005 && e2.nextAt) {
         snoozeAt = Math.max(snoozeAt, Number(new Date(e2.nextAt)) || 0);
       }
+      // 3007 在换新验证码重试后仍失败：大概率是服务端对该账号的投放只在官方客户端生效
+      //（claim 前置校验比验证码本身更严），如实带原始报错引导用户去客户端
       needManual = true;
       claims.push({ plan: planName, ok: false, needManual: true, message: e2.message });
-            logger.warn('ZCODE-CLAIM', '{label}「{plan}」验证码未完成:{err}(可在面板手动领取)', { label, plan: planName, err: e2.message });
+            logger.warn('ZCODE-CLAIM', '{label}「{plan}」验证码未完成:{err}(可在面板手动领取或到官方客户端领取)', { label, plan: planName, err: e2.message });
     }
   }
   // 1005 名额已满 → 按服务端 ends_at 将本账号挂进跳过窗口，下一轮自动轮询在该时间点前不再空打
@@ -141,8 +154,12 @@ export async function zcodeAutoClaim(account) {
   // 已知清单全部不可领（1001/1002 静默跳过）时 claims 为空：无事发生，不留痕迹
   if (!claims.length) return null;
   const names = claims.filter((c) => c.ok && !c.already).map((c) => c.plan);
-  const status = names.length ? 'checked-in'
+  // partial：部分领到、部分失败/需手动——不能整体记成功（面板徽章会掩盖未领到的活动），
+  // 也不能整体记失败（领到的活动明明已到账）
+  const status = names.length && claims.some((c) => !c.ok) ? 'partial'
+    : names.length ? 'checked-in'
     : claims.every((c) => c.already) ? 'already'
+    : claims.some((c) => c.ok) ? 'partial'
     : 'failed';
   // 到账时间：新领的活动若带 effective_at（当天稍晚才进余额），把时间写进消息——
   // 否则面板只显示「待生效」，用户无法判断是没领上还是要等。
@@ -158,10 +175,12 @@ export async function zcodeAutoClaim(account) {
   };
   const starts = claims.filter((c) => c.ok && c.startsAt && new Date(c.startsAt).getTime() > Date.now());
   const startsText = starts.length ? `（${fmtAt(starts[0].startsAt)} 到账）` : '';
-  const message = status === 'checked-in'
+  const message = status === 'checked-in' || status === 'partial'
     ? `已领取：${names.join('、')}${claims.some((c) => c.via === 'captcha') ? '（静默验证码）' : ''}${startsText}`
+      + (needManual ? `；另有 ${claims.filter((c) => c.needManual).length} 个活动需要验证码，请在面板手动领取` : '')
     : status === 'already' ? '活动均已领取过'
-    : needManual ? `有 ${claims.filter((c) => c.needManual).length} 个活动需要验证码，请在面板手动领取`
-    : `领取失败：${claims.filter((c) => !c.ok).map((c) => c.message).filter(Boolean)[0] || '未知错误'}`;
+    : needManual
+      ? `有 ${claims.filter((c) => c.needManual).length} 个活动需要验证码，请在面板手动领取（打开「活动领取」完成人机验证）；若仍报验证码失败，请在官方 ZCode 客户端内领取——服务端对该账号的投放可能只在客户端生效`
+      : `领取失败：${claims.filter((c) => !c.ok).map((c) => c.message).filter(Boolean)[0] || '未知错误'}`;
   return { status, message, claims };
 }

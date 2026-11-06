@@ -149,6 +149,56 @@ test('需要验证码：提供者静默通过后重试成功（验证码头透�
   } finally { globalThis.fetch = realFetch; }
 });
 
+test('3007 后换新验证码重试成功：param 一次性，每次 claim 前重新过验证（防 F008 重复判定）', async () => {
+  mockFetch();
+  const seenParams = [];
+  claimBehaviors = [
+    { code: 3007, assertHeaders: (h) => seenParams.push(h['X-Aliyun-Captcha-Verify-Param']) },
+    { code: 3007, assertHeaders: (h) => seenParams.push(h['X-Aliyun-Captcha-Verify-Param']) },
+    { code: 0, data: { plan: { name: 'ZCode Weekend Build' } }, assertHeaders: (h) => seenParams.push(h['X-Aliyun-Captcha-Verify-Param']) },
+  ];
+  let call = 0;
+  setZcodeCaptchaProvider(async () => ({ captchaParam: 'CAP-' + (++call), region: 'cn' }));
+  try {
+    const r = await zcodeAutoClaim(account);
+    assert.equal(r.status, 'checked-in');
+    assert.equal(claimCalls, 3, '3007 两次后第三次成功');
+    // 第 1 次 claim 是不带验证码的直试（无验证码头），第 2/3 次各用一份全新 param
+    assert.equal(seenParams[0], undefined, '首轮直试不带验证码头');
+    assert.equal(seenParams[1], 'CAP-1');
+    assert.equal(seenParams[2], 'CAP-2', '重试必须换新 param，不能复用被拒的那份');
+  } finally { globalThis.fetch = realFetch; }
+});
+
+test('换新验证码重试后仍 3007：如实记需手动（投放可能只在官方客户端生效）', async () => {
+  mockFetch();
+  claimBehaviors = [{ code: 3007 }, { code: 3007 }, { code: 3007 }];
+  let call = 0;
+  setZcodeCaptchaProvider(async () => ({ captchaParam: 'CAP-' + (++call), region: 'cn' }));
+  try {
+    const r = await zcodeAutoClaim(account);
+    assert.equal(r.status, 'failed');
+    assert.equal(r.claims[0].needManual, true);
+    assert.match(r.message, /手动领取/);
+    assert.equal(claimCalls, 3, '自动重试封顶两轮验证码，不无限撞');
+  } finally { globalThis.fetch = realFetch; }
+});
+
+test('部分成功（一个活动成功、另一个需要验证码）：status=partial 并计入已领取', async () => {
+  mockFetch({ plans: [{ ...PLAN, plan_id: 'p1' }, { ...PLAN, plan_id: 'p2', name: 'P2 活动' }] });
+  claimBehaviors = [
+    { code: 0, data: { plan: { name: 'ZCode Weekend Build' } } },   // p1 直试成功
+    { code: 3007 }, { code: 3007 }, { code: 3007 },                 // p2：直试 + 验证码两轮全拒
+  ];
+  setZcodeCaptchaProvider(async () => ({ captchaParam: 'CAP-X', region: 'cn' }));
+  try {
+    const r = await zcodeAutoClaim(account);
+    assert.equal(r.status, 'partial', '有成功有需手动时不再整体记失败');
+    assert.match(r.message, /已领取：ZCode Weekend Build/);
+    assert.match(r.message, /1 个活动需要验证码/);
+  } finally { globalThis.fetch = realFetch; }
+});
+
 test('已领取过（1003）按已领口径处理', async () => {
   mockFetch();
   claimBehaviors = [{ code: 1003 }];

@@ -170,7 +170,7 @@ function runZcodeTick(accountIds, { force = false } = {}) {
         try {
           const outcome = await zcodeAutoClaim(account);
           if (!outcome) continue;
-          if (outcome.status === 'checked-in') {
+          if (outcome.status === 'checked-in' || outcome.status === 'partial') {
             claimedIds.push(account.id);
             await clearQuotaMark(account.id);
           }

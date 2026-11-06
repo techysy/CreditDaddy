@@ -547,6 +547,24 @@ export async function reportActivationEvents(account) {
         body,
         timeoutMs: 10_000,
       });
+      // 自动轮询每 ~2 分钟打一次上报，服务端会限频（429）：退避 3 秒重试一次，
+      // 仍 429 则如实返回失败（不阻塞 preview 查询，只是活动列表可能拿不到）
+      if (res.status === 429) {
+        await new Promise((r) => setTimeout(r, 3000));
+        const res2 = await fetchJsonRace(EVENT_REPORT_URL, {
+          method: 'POST',
+          headers: { ...(await zaiHeaders(token, deviceMid)), 'Content-Type': 'application/json' },
+          body,
+          timeoutMs: 10_000,
+        });
+        const text2 = await res2.text();
+        let v2;
+        try { v2 = JSON.parse(text2); } catch { v2 = { code: res2.status }; }
+        if (Number(v2?.code ?? -1) !== 0) {
+          return { reported: false, userId, error: `激活事件 ${element} 上报限频（HTTP 429）` };
+        }
+        continue;
+      }
       const text = await res.text();
       let v;
       try { v = JSON.parse(text); } catch { v = { code: res.status }; }

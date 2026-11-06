@@ -1646,6 +1646,7 @@ function statusOf(a) {
       const fresh = r && r.at && Date.now() - new Date(r.at).getTime() < 26 * 3600e3;
       if (r && fresh && r.status === 'checked-in') return { cls: 'ok', text: T('已领取'), msg: r.message };
       if (r && fresh && r.status === 'already') return { cls: 'ok', text: T('已领过'), msg: r.message };
+      if (r && fresh && r.status === 'partial') return { cls: 'ok', text: T('部分领取'), msg: r.message, err: true };
       if (r && fresh && r.status === 'failed') return { cls: 'fail', text: T('领取失败'), msg: r.message, err: true };
     }
     return { cls: '', text: '', msg: '' };
@@ -4115,7 +4116,13 @@ function runCaptcha(cfg) {
           } else interactive();
         },
         success: (param) => finish(typeof param === 'string' ? param : param && param.captchaVerifyParam),
-        fail: (p) => interactive(p),
+        fail: (p) => {
+          // 官方客户端行为：fail 事件若 success+verifyResult=true 或 verifyCode=T006，
+          // 参数里已带合法 captchaVerifyParam（terminal_pass）——直接当成功用，不再强制人工弹窗
+          const tp = p && (typeof p.captchaVerifyParam === 'string' ? p.captchaVerifyParam : (typeof p.CaptchaVerifyParam === 'string' ? p.CaptchaVerifyParam : '')) || '';
+          if (tp && ((p.success === true && p.verifyResult === true) || p.verifyCode === 'T006')) finish(tp);
+          else interactive(p);
+        },
         onError: (p) => interactive(p),
       });
     } catch (e) { reject(e); }
@@ -4149,9 +4156,23 @@ async function doClaim(i) {
   $('claim-status').textContent = T('领取中…');
   claimState.results = claimState.results || {};
   try {
-    const r = await api('/api/accounts/' + encodeURIComponent(claimState.accountId) + '/zcode/claim', {
-      json: { planId: pl.planId, captchaParam, region },
-    });
+    let r;
+    try {
+      r = await api('/api/accounts/' + encodeURIComponent(claimState.accountId) + '/zcode/claim', {
+        json: { planId: pl.planId, captchaParam, region },
+      });
+    } catch (e0) {
+      // 3007/3001 且原本带过验证码：param 是一次性的，被拒后必须换新验证码重试一轮
+      //（官方 SDK 语义同款；复用旧 param 会触发服务端 F008 重复判定）
+      if ((e0.code === 3007 || e0.code === 3001) && captchaParam && claimState.captcha && claimState.captcha.enabled) {
+        $('claim-status').textContent = T('验证码被拒，换新验证码重试…');
+        captchaParam = await runCaptcha(claimState.captcha);
+        region = claimState.captcha.region || '';
+        r = await api('/api/accounts/' + encodeURIComponent(claimState.accountId) + '/zcode/claim', {
+          json: { planId: pl.planId, captchaParam, region },
+        });
+      } else throw e0;
+    }
     // 领到后不关弹窗：已知活动常有多张（GLOBAL BUILD + WEEKEND BUILD…），
     // 卡片就地打「已领取」并保持可继续领下一张；额度在后台静默刷新
     claimState.results[i] = { status: 'ok' };
