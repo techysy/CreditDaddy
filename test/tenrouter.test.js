@@ -406,7 +406,9 @@ test('账号同步：apikey 通道 qoder 新建连接挂上网页会话；缺会
     assert.equal(psd1.creditDaddyWebSession.userId, 'u-1');
 
     const b2 = m.calls.find((c) => JSON.parse(c.init.body).name === '没会话');
-    assert.equal(JSON.parse(b2.init.body).providerSpecificData, undefined, '无会话时不发送 providerSpecificData');
+    const psd2 = JSON.parse(b2.init.body).providerSpecificData;
+    assert.equal(psd2.creditDaddySync, true, '无会话也带 CD 同步标记（10R 徽章据此区分来源）');
+    assert.equal(psd2.creditDaddyWebSession, undefined, '无会话时不带网页会话');
 
     // apikey 通道拿不到逐账号探测结果，本地缺会话的账号必须在摘要里点名
     assert.match(r.summary, /未带网页会话 1/);

@@ -117,10 +117,44 @@ test('Loomy 积分查询：100002 时按客户端协议补 first-login 后重试
   } finally { globalThis.fetch = realFetch; }
 });
 
-test('ZCode 已知活动兜底清单包含 WEEKEND BUILD', async () => {
+test('ZCode 不再依赖硬编码活动 ID——兜底清单必须为空', async () => {
+  // 2026-11-04 定论：活动 ID 会换代（1102 → gb-1104），硬编码必然过期，
+  // 正确来源是 marketing/touch 的 deliveries（见 fetchMarketingClaimPlans）。
+  // 这条用例防止有人再把 planId 写回清单里。
   const { ZCODE_KNOWN_CLAIM_PLANS } = await import('../src/zcodeClient.js');
-  assert.ok(Array.isArray(ZCODE_KNOWN_CLAIM_PLANS) && ZCODE_KNOWN_CLAIM_PLANS.length >= 1);
-  assert.ok(ZCODE_KNOWN_CLAIM_PLANS.some((p) => p.planId === 'zcode-v3-start-plan-1030-wk'));
+  assert.ok(Array.isArray(ZCODE_KNOWN_CLAIM_PLANS), '必须是数组');
+  assert.equal(ZCODE_KNOWN_CLAIM_PLANS.length, 0, '不得再硬编码任何活动 ID');
+});
+
+test('marketing/touch 投放解析：递归收集 claim_zcode_plan 的 plan_id 与权益', async () => {
+  // 直接测解析器（网络层用 node:http，globalThis.fetch 的 mock 覆盖不到，故不做端到端 mock）
+  const { collectClaimActions, collectPlanMeta } = await import('../src/zcodeClient.js');
+  const delivery = {
+    campaign_id: 'c1', resource_position: 'banner',
+    banner: {
+      buttons: [
+        { action: { type: 'close' } },
+        { action: { type: 'claim_zcode_plan', args: { plan_id: 'zcode-v3-start-plan-gb-1104' } } },
+      ],
+      background: { args: { zcode_plan: {
+        plan_id: 'zcode-v3-start-plan-gb-1104', name: 'ZCODE GLOBAL BUILD', priority: 111,
+        entitlements: [{ show_name: 'GLM-5.3-Flash', grant_units: 300000000, period: 'one_time' }],
+      } } },
+    },
+    success_popup: {
+      hero: { args: { zcode_plan: { plan_id: 'zcode-v3-start-plan-gb-1104', name: 'ZCODE GLOBAL BUILD' } } },
+    },
+  };
+  const ids = new Set();
+  const metas = new Map();
+  collectClaimActions(delivery, ids);
+  collectPlanMeta(delivery, metas);
+  assert.deepEqual([...ids], ['zcode-v3-start-plan-gb-1104'], '应递归找到 claim_zcode_plan 的 plan_id');
+  const meta = metas.get('zcode-v3-start-plan-gb-1104');
+  assert.ok(meta, '应收集到 zcode_plan 元数据');
+  assert.equal(meta.name, 'ZCODE GLOBAL BUILD');
+  assert.ok(meta.grants.join('').includes('GLM-5.3-Flash'), '应带出权益名称');
+  assert.ok(meta.grants.join('').includes('亿'), '应把 3 亿 token 格式化');
 });
 
 test('Loomy 邀请码：激活状态映射 + 绑定参数校验与成功路径', async () => {

@@ -117,6 +117,8 @@ export function buildExportPayload(accounts, { provider, product } = {}) {
       providerSpecificData: {
         authMethod: a.token.startsWith('pt-') ? 'pat' : 'device',
         userId: a.uid || null,
+        // CreditDaddy 同步来源标记：10R 连接行据此亮「CD Sync」徽章（CodeBuddy 等无网页会话的连接也可见）
+        creditDaddySync: true,
         // Qoder 网页会话随账号一起同步：10Router 的逐资源包明细接口只认这个 Cookie
         // （openapi 只有聚合值）。userId 供接收方核对会话归属，防止张冠李戴。
         ...(a.meta?.qoderWebSession?.cookie && String(a.provider).startsWith('qoder')

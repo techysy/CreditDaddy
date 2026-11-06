@@ -129,8 +129,12 @@ export function buildConnPayload(a, target) {
   const body = { provider: target, apiKey: a.token, name: connName(a) };
   const qc = a.meta?.qoderWebSession?.cookie && String(a.provider).startsWith('qoder') ? a.meta.qoderWebSession : null;
   const sc = a.meta?.cookieSiteSession?.cookie ? a.meta.cookieSiteSession : null;
-  if (qc) body.providerSpecificData = { userId: a.uid || null, creditDaddyWebSession: { cookie: qc.cookie, capturedAt: qc.capturedAt || null, userId: a.uid || null } };
-  else if (sc) body.providerSpecificData = { userId: null, creditDaddyWebSession: { cookie: sc.cookie, capturedAt: sc.capturedAt || null, userId: null } };
+  // creditDaddySync：所有经 CreditDaddy 同步的连接都带标记，10R 连接行据此亮「CD Sync」徽章
+  //（此前只有 qoder 网页会话带 creditDaddyWebSession，CodeBuddy 等连接在 10R 上看不出同步来源）
+  const psd = { creditDaddySync: true, userId: a.uid || null };
+  if (qc) psd.creditDaddyWebSession = { cookie: qc.cookie, capturedAt: qc.capturedAt || null, userId: a.uid || null };
+  else if (sc) psd.creditDaddyWebSession = { cookie: sc.cookie, capturedAt: sc.capturedAt || null, userId: null };
+  body.providerSpecificData = psd;
   return body;
 }
 

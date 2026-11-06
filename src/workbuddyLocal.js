@@ -268,9 +268,22 @@ export async function readWorkbuddySessions(options = {}) {
   return out;
 }
 
-/** 当前 WorkBuddy 客户端登录的 uid（未登录返回 null）。异步：见 readWorkbuddySessions。 */
+/**
+ * 国内/国际两个桌面端各自的当前登录 uid（未登录的档位为 null）。
+ * 两者是独立会话文件（workbuddy-desktop.info / workbuddy-desktop-ai.info），可同时各有一个 current；
+ * 会话归属按 provider 区分（workbuddy=国内 realm 签发 / workbuddy-intl=国际 realm）。
+ */
+export async function currentWorkbuddyUids() {
+  const accounts = (await readWorkbuddySessions()).accounts;
+  return {
+    cn: accounts.find((a) => a.current && a.provider !== 'workbuddy-intl')?.uid || null,
+    intl: accounts.find((a) => a.current && a.provider === 'workbuddy-intl')?.uid || null,
+  };
+}
+
+/** 当前国内版 WorkBuddy 客户端登录的 uid（国际版用 currentWorkbuddyUids().intl）。异步：见 readWorkbuddySessions。 */
 export async function currentWorkbuddyUid() {
-  return (await readWorkbuddySessions()).accounts.find((a) => a.current)?.uid || null;
+  return (await currentWorkbuddyUids()).cn;
 }
 
 // 客户端可执行文件候选（VS Code 系安装惯例：%LOCALAPPDATA%\Programs\<名>\<名>.exe）。
@@ -296,10 +309,68 @@ const CLIENT_CANDIDATES = process.platform === 'win32'
       ]
     : [];
 
+// ── 自定义安装路径发现（issue #46） ──
+// 客户端装在 D:/E: 盘或自定义目录时，CLIENT_CANDIDATES 的固定路径全部落空，面板误判「未安装」
+// 并硬拦切换。这里按「注册表 Uninstall 键 → 进程路径」两路兜底。
+//
+// ⚠️ 性能铁律（1.6.6 白屏事故）：detectWorkbuddy 是**同步函数**且被 /api/status 每轮调用，
+// 绝不能在里面 spawn 子进程（spawnSync 起 PowerShell/reg 会卡住 Electron 主进程消息泵）。
+// 因此这里只做**零子进程**的注册表文件级读取：直接解析 NTUSER.DAT / SOFTWARE hive 不可行，
+// 所以改走「持久缓存 + 异步预热」——异步发现结果写进模块级缓存，detectWorkbuddy 只读缓存。
+let discoveredClientPath = null;   // 异步发现到的自定义安装路径（进程内缓存）
+let discoverPromise = null;        // 在途去重
+
+/** 异步预热：注册表 / 进程探测（唯一允许起子进程的地方，且绝不阻塞调用方）。
+ * 契约：**永远返回 Promise**（已发现 / 非 win32 时 resolve 现状）——调用方都挂 .catch，
+ * 返回 null/undefined 会在 NAS 与已预热的 Windows 机器上直接 TypeError（1.7.0 审计发现）。 */
+export function warmWorkbuddyClientPath() {
+  if (process.platform !== 'win32' || discoveredClientPath) return Promise.resolve(discoveredClientPath);
+  if (discoverPromise) return discoverPromise;
+  discoverPromise = (async () => {
+    try {
+      // ① 注册表 Uninstall 键：DisplayIcon / InstallLocation 指向真实安装目录
+      const out = await new Promise((resolve) => {
+        cp.execFile('reg', ['query', 'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall', '/s', '/f', 'WorkBuddy', '/d'],
+          { encoding: 'utf8', windowsHide: true, timeout: 4000, maxBuffer: 2 * 1024 * 1024 },
+          (err, stdout) => resolve(err ? '' : String(stdout)));
+      });
+      let hits = String(out).match(/DisplayIcon\s+REG_SZ\s+([^\r\n]+)/gi) || [];
+      // CodeBuddy 是另一个产品名，再查一次
+      const out2 = await new Promise((resolve) => {
+        cp.execFile('reg', ['query', 'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall', '/s', '/f', 'CodeBuddy', '/d'],
+          { encoding: 'utf8', windowsHide: true, timeout: 4000, maxBuffer: 2 * 1024 * 1024 },
+          (err, stdout) => resolve(err ? '' : String(stdout)));
+      });
+      hits = hits.concat(String(out2).match(/DisplayIcon\s+REG_SZ\s+([^\r\n]+)/gi) || []);
+      for (const line of hits) {
+        // DisplayIcon 常见值：D:\Apps\WorkBuddy\WorkBuddy.exe / "...\WorkBuddy.exe",0
+        const raw = line.replace(/^DisplayIcon\s+REG_SZ\s+/i, '').trim().replace(/^"(.*)"(?:,\d+)?$/, '$1').replace(/,\d+$/, '');
+        if (/\.exe$/i.test(raw) && fs.existsSync(raw)) { discoveredClientPath = raw; return; }
+      }
+      // ② 运行中的进程路径（客户端已启动但注册表没写 DisplayIcon 的情况）
+      const ps = await new Promise((resolve) => {
+        cp.execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command',
+          "Get-Process -Name 'WorkBuddy','WorkBuddyAI','CodeBuddy*' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path -Unique"],
+          { encoding: 'utf8', windowsHide: true, timeout: 4000 },
+          (err, stdout) => resolve(err ? '' : String(stdout)));
+      });
+      for (const line of String(ps).split(/\r?\n/)) {
+        const p = line.trim();
+        if (/\.exe$/i.test(p) && fs.existsSync(p)) { discoveredClientPath = p; return; }
+      }
+    } catch { /* 探测失败只是保持「未发现」，不影响既有候选路径判定 */ }
+  })().finally(() => { discoverPromise = null; });
+  return discoverPromise;
+}
+
+/** 测试用：注入/清除自定义安装路径缓存 */
+export function _setDiscoveredClientPathForTest(p) { discoveredClientPath = p || null; }
+
 /**
  * 本机 WorkBuddy / CodeBuddy 客户端探测（面板「客户端：未安装」提示与切换拦截用）。
  * Linux / NAS 没有已知安装路径，退而用「凭据目录里有会话文件」判定——
  * 会话文件只有客户端登录后才写，纯 Token 导入的机器不会产生。
+ * 同步、零子进程：自定义路径由 warmWorkbuddyClientPath() 异步预热进缓存（issue #46）。
  */
 export function detectWorkbuddy() {
   const dir = workbuddyAuthDir();
@@ -311,6 +382,10 @@ export function detectWorkbuddy() {
       ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), ...cand)
       : cand;
     try { if (fs.existsSync(p)) { clientPath = p; break; } } catch { /* 下一个候选 */ }
+  }
+  // 固定候选全落空时用异步发现的路径（自定义盘符 / 目录，issue #46）
+  if (!clientPath && discoveredClientPath) {
+    try { if (fs.existsSync(discoveredClientPath)) clientPath = discoveredClientPath; } catch { /* ignore */ }
   }
   // signedIn 只做轻量文件判定（当前会话文件存在且无 logged-out 标记）：
   // 绝不在此调 readWorkbuddySessions——那会对加密会话起子进程解密（异步），
@@ -340,56 +415,151 @@ export function detectWorkbuddy() {
 }
 
 /**
+ * 构造 WorkBuddy 会话对象（当账号缺少 native session 时动态合成完整会话）
+ */
+export function buildWorkbuddySession(account) {
+  const isIntl = account.provider === 'workbuddy-intl';
+  const domain = account.meta?.domain || (isIntl ? 'www.codebuddy.ai' : 'www.codebuddy.cn');
+  const uid = String(account.uid || '');
+  const nickname = account.name || account.meta?.phone || 'User';
+  const phone = account.meta?.phone ? String(account.meta.phone) : '';
+  const phoneMasked = phone ? phone.slice(0, 3) + '****' + phone.slice(-4) : '';
+  const accessToken = String(account.token || '');
+  const refreshToken = String(account.refreshToken || '');
+  const expiresAt = account.expiresAt ? new Date(account.expiresAt).getTime() : Date.now() + 30 * 86400e3;
+  const now = Date.now();
+
+  const origAccount = account.meta?.session?.account || {};
+  const accountObj = {
+    uid,
+    nickname,
+    uin: origAccount.uin || '',
+    type: origAccount.type || 'personal',
+    lastLogin: true,
+    isCreator: false,
+    isAdmin: false,
+    pluginEnabled: true,
+    deployStatus: { statusCode: 0, statusMsg: '', detailMsg: '' },
+    accountType: '',
+    sso: { domain: '', domainModifiedTimes: 0 },
+    idp: '',
+    areaInfoComplete: false,
+    oneidAccountId: '',
+    isCurrentOneIdEnterprise: false,
+    isCurrentOneIdPersonal: true,
+    isFirstLogin: false,
+    phoneNumber: origAccount.phoneNumber || phoneMasked || phone,
+    wechatOpenId: origAccount.wechatOpenId || '',
+    mpOpenId: origAccount.mpOpenId || '',
+    logOutEnable: false,
+  };
+
+  const authObj = {
+    accessToken,
+    refreshToken,
+    tokenType: 'Bearer',
+    sessionState: account.meta?.session?.auth?.sessionState || '',
+    scope: 'acr offline_access profile basic roles email web-origins',
+    domain,
+    lastRefreshTime: now,
+    expiresAt,
+    expiresIn: Math.round((expiresAt - now) / 1000),
+    refreshExpiresIn: 5183999,
+    refreshExpiresAt: expiresAt + 30 * 86400e3,
+  };
+
+  return {
+    account: accountObj,
+    auth: authObj,
+    accounts: [accountObj],
+    allAccounts: [accountObj],
+  };
+}
+
+/**
  * 把账号写成 WorkBuddy 当前会话（切换账号）。需要账号带有导入时保存的会话信息。
  * 如果原模板是 $wbEncrypted 信封格式，写回时将自动封包为合法信封。
+ * 若无保存过的会话信息，则用账号凭据动态合成完整会话。
+ * 对国际版（workbuddy-intl）与国内版（workbuddy）自动分流并双写（workbuddy-desktop.info 与 workbuddy-desktop-ai.info），
+ * 确保 WorkBuddy（国内端）与 WorkBuddyAI（国际端）均能实时应用切换。
  * @returns {{ file, previousUid }}
  */
 export async function writeWorkbuddySession(account, { clientPath } = {}) {
-  const s = account.meta?.session;
+  const s = account.meta?.session?.account ? account.meta.session : buildWorkbuddySession(account);
   if (!s?.account) throw new Error('该账号缺少 WorkBuddy 会话信息，请从本机重新导入后再切换');
   const dir = workbuddyAuthDir();
   fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, 'workbuddy-desktop.info');
+
+  const isIntlAccount = account.provider === 'workbuddy-intl' || s.auth?.domain?.includes('.ai');
+  const primaryFileName = isIntlAccount ? 'workbuddy-desktop-ai.info' : 'workbuddy-desktop.info';
+  const primaryFile = path.join(dir, primaryFileName);
   let previousUid = null;
-  try { previousUid = JSON.parse(fs.readFileSync(file, 'utf8'))?.account?.uid || null; } catch {}
+  try { previousUid = JSON.parse(fs.readFileSync(primaryFile, 'utf8'))?.account?.uid || null; } catch {}
 
   const ms = (iso) => (iso ? new Date(iso).getTime() : undefined);
   const rawAuth = s.auth || {};
 
-  // 判断是否需要信封封包写入（原会话 auth 字段包含 $wbEncrypted）
-  const isEncryptedTemplate = isWbEncrypted(rawAuth.accessToken) || isWbEncrypted(rawAuth.refreshToken);
-  let masterKey = null;
-  if (isEncryptedTemplate) {
-    masterKey = await getWorkbuddyMasterKey(clientPath);
-    if (!masterKey) {
-      throw new Error('无法切换账号：目标账号为 WorkBuddy 5.6+ 加密凭据，但未能获取客户端解密密钥');
-    }
+  // 获取加密主密钥（若目标环境或模板需要加密）
+  let masterKey = await getWorkbuddyMasterKey(clientPath);
+
+  // 待写入的文件列表：国际版优先写 workbuddy-desktop-ai.info 并兼顾 workbuddy-desktop.info；国内版写 workbuddy-desktop.info
+  const targetFiles = isIntlAccount
+    ? ['workbuddy-desktop-ai.info', 'workbuddy-desktop.info']
+    : ['workbuddy-desktop.info'];
+
+  for (const fileName of targetFiles) {
+    const file = path.join(dir, fileName);
+    let isEncryptedTemplate = isWbEncrypted(rawAuth.accessToken) || isWbEncrypted(rawAuth.refreshToken);
+    let templateEnv = {};
+
+    // 检查目标文件现有模板是否加密
+    try {
+      const existing = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (isWbEncrypted(existing.auth?.accessToken)) {
+        isEncryptedTemplate = true;
+        templateEnv = JSON.parse(Buffer.from(existing.auth.accessToken.envelope, 'base64').toString('utf8'));
+      }
+    } catch {}
+
+    const keyId = templateEnv.keyId || (masterKey ? crypto.createHash('sha256').update(masterKey).digest('hex').slice(0, 16) : '9127dea1b44020a7');
+    const sealOpts = { suite: 1, keyId };
+
+    const accessPayload = isEncryptedTemplate && masterKey
+      ? sealEnvelope(account.token, masterKey, sealOpts)
+      : account.token;
+
+    const refreshVal = account.refreshToken || rawAuth.refreshToken;
+    const refreshPayload = isEncryptedTemplate && masterKey && refreshVal
+      ? sealEnvelope(refreshVal, masterKey, sealOpts)
+      : refreshVal;
+
+    // 国际端 workbuddy-desktop-ai.info 中的 nickname 也是加密字段，写入时需同步封包
+    const nickVal = account.name || s.account.nickname || 'User';
+    const nickPayload = fileName.includes('-ai') && masterKey
+      ? sealEnvelope(nickVal, masterKey, sealOpts)
+      : nickVal;
+
+    const session = {
+      account: {
+        ...s.account,
+        nickname: nickPayload,
+      },
+      auth: {
+        ...s.auth,
+        accessToken: accessPayload,
+        refreshToken: refreshPayload,
+        expiresAt: ms(account.expiresAt) ?? s.auth?.expiresAt,
+        lastRefreshTime: Date.now(),
+      },
+      accounts: s.accounts || [],
+      ...(Array.isArray(s.allAccounts) ? { allAccounts: s.allAccounts } : {}),
+    };
+
+    const tmp = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(session, null, 2), { mode: 0o600 });
+    fs.renameSync(tmp, file);
+    try { fs.unlinkSync(`${file}.logged-out`); } catch {}
   }
 
-  const accessPayload = isEncryptedTemplate
-    ? sealEnvelope(account.token, masterKey, isWbEncrypted(rawAuth.accessToken) ? JSON.parse(Buffer.from(rawAuth.accessToken.envelope, 'base64').toString('utf8')) : {})
-    : account.token;
-
-  const refreshVal = account.refreshToken || rawAuth.refreshToken;
-  const refreshPayload = isEncryptedTemplate && refreshVal
-    ? sealEnvelope(refreshVal, masterKey, isWbEncrypted(rawAuth.refreshToken) ? JSON.parse(Buffer.from(rawAuth.refreshToken.envelope, 'base64').toString('utf8')) : {})
-    : refreshVal;
-
-  const session = {
-    account: s.account,
-    auth: {
-      ...s.auth,
-      accessToken: accessPayload,
-      refreshToken: refreshPayload,
-      expiresAt: ms(account.expiresAt) ?? s.auth?.expiresAt,
-      lastRefreshTime: Date.now(),
-    },
-    accounts: s.accounts || [],
-    ...(Array.isArray(s.allAccounts) ? { allAccounts: s.allAccounts } : {}),
-  };
-  const tmp = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(session, null, 2), { mode: 0o600 });
-  fs.renameSync(tmp, file);
-  try { fs.unlinkSync(`${file}.logged-out`); } catch {}
-  return { file, previousUid };
+  return { file: primaryFile, previousUid };
 }

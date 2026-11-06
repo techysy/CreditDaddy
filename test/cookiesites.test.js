@@ -67,7 +67,7 @@ test('verifySiteCookie：探测按浏览器形头发送（裸 UA 会拿到空壳
   assert.equal(seen['Cookie'], 'alive=1');
 });
 
-test('buildConnPayload：tokenharbor 按通用形状挂会话；qoder 老形状不回归；无会话不带字段', () => {
+test('buildConnPayload：tokenharbor 按通用形状挂会话；qoder 老形状不回归；无会话仅带 CD 同步标记', () => {
   const th = { id: 'x1', provider: 'tokenharbor', token: 'a=b; c=d', name: 'Token Harbor 网页会话', meta: { cookieSiteSession: { cookie: 'a=b; c=d', capturedAt: '2026-10-11T00:00:00Z' } } };
     const p1 = buildConnPayload(th, 'tokenharbor-free');
   assert.equal(p1.provider, 'tokenharbor-free');
@@ -78,9 +78,13 @@ test('buildConnPayload：tokenharbor 按通用形状挂会话；qoder 老形状�
   const p2 = buildConnPayload(q, 'qoder');
   assert.equal(p2.providerSpecificData.creditDaddyWebSession.cookie, 's=1');
   assert.equal(p2.providerSpecificData.userId, 'u123');
+  assert.equal(p2.providerSpecificData.creditDaddySync, true);
 
+  // 无网页会话的连接（CodeBuddy 等）也带同步标记，10R 徽章据此区分「CD Sync / Native」
   const plain = { id: 'x3', provider: 'workbuddy', token: 't', name: 'W' };
-  assert.equal(buildConnPayload(plain, 'codebuddy-cn').providerSpecificData, undefined);
+  const p3 = buildConnPayload(plain, 'codebuddy-cn');
+  assert.equal(p3.providerSpecificData.creditDaddySync, true);
+  assert.equal(p3.providerSpecificData.creditDaddyWebSession, undefined);
 });
 
 test('tokenharbor 账号不落入 Qoder 页签（productOf 守卫，面板列表隔离）', () => {

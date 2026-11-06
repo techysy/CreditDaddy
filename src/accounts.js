@@ -171,9 +171,11 @@ export function refreshContext(account, log) {
       });
       log?.('token 已刷新');
       if (account.provider.startsWith('workbuddy')) {
-        const { currentWorkbuddyUid, writeWorkbuddySession } = await import('./workbuddyLocal.js');
+        const { currentWorkbuddyUids, writeWorkbuddySession } = await import('./workbuddyLocal.js');
         try {
-          if (account.uid && await currentWorkbuddyUid() === account.uid) {
+          // 国内/国际桌面端是两个独立会话文件，任一侧正在登录该账号都要同步新 token
+          const uids = await currentWorkbuddyUids();
+          if (account.uid && (uids.cn === account.uid || uids.intl === account.uid)) {
             await writeWorkbuddySession(account);
             log?.('已同步新 token 到 WorkBuddy 客户端');
           }

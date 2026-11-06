@@ -13,7 +13,7 @@
 
 import { logger } from './logger.js';
 import { t } from './i18n.js';
-import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, ZCODE_KNOWN_CLAIM_PLANS } from './zcodeClient.js';
+import { fetchClaimPlans, claimPlan, fetchCaptchaConfig } from './zcodeClient.js';
 import { withAccounts } from './store.js';
 
 // 额满（1005）时消费服务端 nextAt（plan.ends_at）：
@@ -59,10 +59,10 @@ export async function zcodeAutoClaim(account) {
     return null;
   }
   if (!plans.length) {
-    // preview 为空 ≠ 无事可做：服务端偶尔把活动从列表里藏起来（2026-10-30 WEEKEND BUILD
-    // 实测 preview 返回空但 claim 按 planId 直接可领）。把已知清单合成伪 plan 走同一条
-    // 领取链路：1001/1002（不存在/已结束）在 catch 里静默跳过，不进卡片。
-    plans = ZCODE_KNOWN_CLAIM_PLANS.map((k) => ({ planId: k.planId, name: k.name || k.planId, description: '', priority: 0, grants: [], known: true }));
+    // 没有可领活动就如实返回 null（不落卡片、不报错）。
+    // fetchClaimPlans 已经把 billing/preview 与 marketing/touch 两路合并过，
+    // 空结果就是服务端真的没投放——不再拿硬编码 planId 去撞（会随活动换代失效）。
+    return null;
   }
 
   const claims = [];

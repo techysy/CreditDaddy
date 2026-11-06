@@ -16,6 +16,7 @@ import {
   claimIntervalMin, claimWindowMin,
   warmZcodeAppVersion,
 } from './zcodeClient.js';
+import { warmWorkbuddyClientPath } from './workbuddyLocal.js';
 import { logger } from './logger.js';
 import { t as tr } from './i18n.js';
 
@@ -375,6 +376,9 @@ export async function startScheduler() {
   startUsageSyncScheduler();
   startWebSessionWatch();
   warmZcodeAppVersion();
+  // WorkBuddy 自定义安装路径发现（issue #46）：注册表 / 进程探测要起子进程，
+  // 只能在这里异步预热一次；detectWorkbuddy 本身保持同步零子进程（1.6.6 白屏教训）。
+  warmWorkbuddyClientPath().catch(() => {});
   if (await autoCheckinEnabled()) {
     scheduleTick();
     setTimeout(() => {

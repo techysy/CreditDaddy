@@ -304,8 +304,11 @@ function combineSignals({ wallSignal, connectSignal, external }) {
  *     跑几分钟，不能因为「连接快、生成慢」被误杀。
  * 不传 connectMs 时退回单段 timeoutMs（旧行为，所有既有调用方不受影响）。
  */
-export async function fetchJsonRace(url, { method = 'GET', headers = {}, body = null, timeoutMs = 15000, connectMs = null, signal = null, preferProxy = false, redirect = 'manual' } = {}) {
-  const useProxy = Boolean(effectiveProxy()) && !proxyBypass(url);
+export async function fetchJsonRace(url, { method = 'GET', headers = {}, body = null, timeoutMs = 15000, connectMs = null, signal = null, preferProxy = false, redirect = 'manual', directOnly = false } = {}) {
+  // directOnly：强制直连、永不走代理。用于「响应按来源 IP 变化」的端点
+  //（client/configs 的验证码 region 按出口 IP 下发 cn/sgp，region 与场景不匹配 → 验证恒失败）。
+  // 集中出口仍归这里管：不设代理时行为不变，双路聚合报错也照常（issue #31 的教训不回退）。
+  const useProxy = !directOnly && Boolean(effectiveProxy()) && !proxyBypass(url);
   const twoPhase = Number.isFinite(connectMs) && connectMs > 0 && connectMs < timeoutMs;
   // 超时信号必须每次尝试各建一个：共用一个的话，代理优先模式下第一条路吃完 timeoutMs，
   // 兜底那条就对着已触发的 signal 发请求，必定瞬间失败——「代理优先」就此形同虚设
@@ -377,15 +380,186 @@ const CLAIM_FAIL = {
 const platform = () => `${process.platform}-${process.arch === 'arm64' ? 'arm64' : process.arch === 'x64' ? 'x64' : process.arch}`;
 
 /**
- * 已知活动兜底清单：服务端偶尔把活动从 billing/preview 里藏起来（2026-10-30 WEEKEND BUILD
- * 实测 preview 返回空 plans，但 claim 按 planId 直接可领、免验证码）。preview 查不到时
- * 逐个试这里的 planId：1001/1002（不存在/已结束）当没有，1003 按已领口径，0 即领取成功。
- * 活动过期后条目留在表里无害（claim 返回 1002 跳过）；新活动出现时在此追加一行。
+ * 已知活动兜底清单（**仅作最后兜底**，正常路径不依赖它）。
+ *
+ * ⚠️ 教训（2026-11-04）：曾经把这里当成主路径，结果活动一换 ID 就全废——
+ * 用户看到的是「活动已结束」+「打开验证码也没用」，功能形同虚设。
+ * 真正的解法是 billing/preview 之前先上报激活事件（见 reportActivationEvents），
+ * 服务端才会把这个客户端当活跃端并下发活动列表。
+ *
+ * **2026-11-04 最终定论：这个清单已彻底废弃，只留空数组占位。**
+ * 真机实测证明活动 ID 会换（1102 → gb-1104），任何硬编码都必然过期；
+ * 而正确来源是 `/api/v1/marketing/touch` 的 deliveries——官方客户端就是从那里拿 plan_id 的。
+ * 见 fetchMarketingClaimPlans()。留着空数组只是为了让旧的调用方不用改。
  */
-export const ZCODE_KNOWN_CLAIM_PLANS = [
-  { planId: 'zcode-v3-start-plan-1102', name: 'ZCODE GLOBAL BUILD' },
-  { planId: 'zcode-v3-start-plan-1030-wk', name: 'ZCODE WEEKEND BUILD' },
-];
+export const ZCODE_KNOWN_CLAIM_PLANS = [];
+
+// ── 活动发现：marketing/touch（官方客户端的真实来源） ──
+// 服务端把活动卡投放放在这里，billing/preview 对隐藏活动返回空。
+// deliveries[].banner.buttons[].action = { type:'claim_zcode_plan', args:{ plan_id } }
+// 同一条 delivery 的 args.zcode_plan 里带完整权益（name / grant_units / effective_at / ends_at）。
+// 2026-11-04 真机实测：preview 空、marketing/touch 返回 plan_id = zcode-v3-start-plan-gb-1104。
+const MARKETING_TOUCH_URL = 'https://zcode.z.ai/api/v1/marketing/touch';
+
+/** 递归收集一个对象里所有 claim_zcode_plan 动作的 plan_id */
+export function collectClaimActions(node, out) {
+  if (!node || typeof node !== 'object') return;
+  if (Array.isArray(node)) { node.forEach((x) => collectClaimActions(x, out)); return; }
+  if (node.type === 'claim_zcode_plan' && node.args && typeof node.args.plan_id === 'string') {
+    out.add(node.args.plan_id.trim());
+  }
+  for (const v of Object.values(node)) collectClaimActions(v, out);
+}
+
+/** 递归找 zcode_plan 元数据（name / grant_units / 时间） */
+export function collectPlanMeta(node, out) {
+  if (!node || typeof node !== 'object') return;
+  if (Array.isArray(node)) { node.forEach((x) => collectPlanMeta(x, out)); return; }
+  const zp = node.zcode_plan;
+  if (zp && typeof zp === 'object' && typeof zp.plan_id === 'string') {
+    const id = zp.plan_id.trim();
+    if (id && !out.has(id)) {
+      const grants = (Array.isArray(zp.entitlements) ? zp.entitlements : []).map((e) => {
+        const units = Number(e.grant_units) || 0;
+        const shown = units >= 1e8 ? +(units / 1e8).toFixed(1) + '亿' : units >= 1e4 ? +(units / 1e4).toFixed(1) + '万' : String(units);
+        return `${e.show_name || '额度'} · ${shown} Token（一次性）`;
+      });
+      out.set(id, {
+        name: zp.name || id,
+        description: '',
+        grants,
+        priority: Number(zp.priority) || 0,
+        startsAt: Number(zp.starts_at) || null,
+        endsAt: Number(zp.ends_at) || null,
+      });
+    }
+  }
+  for (const v of Object.values(node)) collectPlanMeta(v, out);
+}
+
+/**
+ * 从 marketing/touch 发现可领取的活动（含隐藏活动）。
+ * 这是官方客户端的真实数据源，比 billing/preview 更可靠——preview 对隐藏活动返回空。
+ *
+ * @returns {Promise<Array<{planId,name,description,grants,priority,source}>>}
+ */
+export async function fetchMarketingClaimPlans(account) {
+  const mid = ensureVirtualDeviceMid(account);
+  const ids = new Set();
+  const metas = new Map();
+  let lastErr = null;
+  // 三个候选 token 里只有一个是 billing 权限的（真机实测 token#1 有效），逐个试
+  for (const t of candidateTokens(account)) {
+    try {
+      const res = await fetchJsonRace(`${MARKETING_TOUCH_URL}?seq=${Date.now() % 1_000_000}`, {
+        headers: await zaiHeaders(t, mid),
+        timeoutMs: FETCH_TIMEOUT_MS,
+      });
+      const text = await res.text();
+      let v;
+      try { v = JSON.parse(text); } catch { continue; }
+      if (Number(v?.code) !== 0) { lastErr = v?.msg || `code ${v?.code}`; continue; }
+      const deliveries = v?.data?.deliveries;
+      if (!Array.isArray(deliveries) || !deliveries.length) continue;
+      for (const d of deliveries) {
+        collectClaimActions(d, ids);
+        collectPlanMeta(d, metas);
+      }
+      if (ids.size) break;   // 拿到就停，不必再试其它 token
+    } catch (e) { lastErr = e.message; }
+  }
+  if (!ids.size) return { plans: [], error: lastErr };
+  const plans = [...ids].map((id) => {
+    const m = metas.get(id) || {};
+    return {
+      planId: id,
+      name: m.name || id,
+      description: m.description || '',
+      grants: m.grants || [],
+      priority: m.priority || 0,
+      startsAt: m.startsAt,
+      endsAt: m.endsAt,
+      source: 'marketing',
+    };
+  });
+  plans.sort((a, b) => b.priority - a.priority);
+  return { plans, error: null };
+}
+
+// ── 激活事件上报（活动领取的前置条件） ──
+// 移植自 zcode-switch（MIT）claim.rs 的 report_activation_events。
+// 服务端按「活跃客户端」判定活动资格：不上报 app_launch / app_daily_active 时，
+// billing/preview 恒返回空 plans，claim 也会被当成非活跃端拒绝。
+// 这就是「只能在官方客户端里领」的根因——官方客户端启动时天天在报这些事件。
+const EVENT_REPORT_URL = 'https://zcode.z.ai/api/v1/event/report';
+const ACTIVATION_EVENTS = ['app_launch', 'app_daily_active'];
+const SCREEN_RESOLUTION = '2560x1440';
+
+/** 从凭据里取遥测用的 user_id（oauth:<provider>:user_info 解密后的 id / user_id） */
+function telemetryUserId(account) {
+  const creds = account?.meta?.credentials || {};
+  const secret = defaultSecret(os.homedir());
+  const provider = (safeDecrypt(creds['oauth:active_provider'], secret) || 'zai').trim() || 'zai';
+  const raw = creds[`oauth:${provider}:user_info`];
+  if (typeof raw !== 'string' || !raw) return null;
+  try {
+    const info = JSON.parse(safeDecrypt(raw, secret) || raw);
+    const pick = (k) => { const v = info?.[k]; return typeof v === 'string' && v.trim() ? v.trim() : null; };
+    return pick('id') || pick('user_id') || null;
+  } catch { return null; }
+}
+
+/**
+ * 上报激活事件（活动领取前调用）。
+ * 返回 { reported: boolean, userId, error? }——失败不阻塞领取，只是 preview 可能拿不到活动。
+ */
+export async function reportActivationEvents(account) {
+  const userId = telemetryUserId(account);
+  if (!userId) return { reported: false, userId: null, error: '凭据里没有 user_info，无法上报激活事件' };
+  const deviceMid = ensureVirtualDeviceMid(account);
+  const ver = await zcodeAppVersion();
+  const token = claimToken(account);
+  const osCategory = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'macos' : 'linux';
+  const osVersion = os.release();
+  for (const element of ACTIVATION_EVENTS) {
+    const body = {
+      event_id: crypto.randomUUID(),
+      client_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai',
+      client_language: 'zh-CN',
+      element_name: element,
+      event_region: 'app',
+      event_type: 'view',
+      event_text: '',
+      event_extra_detail: {},
+      user_id: userId,
+      screen_resolution: SCREEN_RESOLUTION,
+      app_version: ver,
+      device_os_category: osCategory,
+      device_os_version: osVersion,
+      device_mid: deviceMid,
+      mac_id: '',
+      marketing_params: '{}',
+    };
+    try {
+      const res = await fetchJsonRace(EVENT_REPORT_URL, {
+        method: 'POST',
+        headers: { ...(await zaiHeaders(token, deviceMid)), 'Content-Type': 'application/json' },
+        body,
+        timeoutMs: 10_000,
+      });
+      const text = await res.text();
+      let v;
+      try { v = JSON.parse(text); } catch { v = { code: res.status }; }
+      const code = Number(v?.code ?? -1);
+      if (code !== 0) {
+        return { reported: false, userId, error: `激活事件 ${element} 上报被拒（code ${code}${v?.msg ? '：' + v.msg : ''}）` };
+      }
+    } catch (e) {
+      return { reported: false, userId, error: `激活事件 ${element} 上报失败：${e.message}` };
+    }
+  }
+  return { reported: true, userId };
+}
 
 export async function zaiHeaders(token, deviceMid) {
   const ver = await zcodeAppVersion();
@@ -649,21 +823,87 @@ export async function fetchZcodeQuota(account) {
 
 // ── 活动领取 ──
 
-/** 可领取的活动列表。账户当前没有可领活动时返回 []（不是错误）。 */
+/**
+ * 可领取的活动列表。账户当前没有可领活动时返回 []（不是错误）。
+ *
+ * ⚠️ 顺序很重要：必须**先上报激活事件**（app_launch / app_daily_active）再查 preview。
+ * 服务端按「活跃客户端」判定活动资格——不上报时 preview 恒返回空 plans，
+ * 于是只能靠硬编码 planId 撞运气，活动一换 ID 就全废（2026-11-04 实践教训）。
+ * 移植自 zcode-switch（MIT）claim.rs：claim_refresh 里 report_activation_events → preview_plans。
+ */
 export async function fetchClaimPlans(account) {
   const token = claimToken(account);
-  const v = await getJson(
-    `${BILLING_PREVIEW_URL}?app_version=${await zcodeAppVersion()}&platform=${platform()}`,
-    await zaiHeaders(token, ensureVirtualDeviceMid(account)),
-  );
-  if (v?.code !== 0) throw new Error(v?.msg || v?.message || `查询活动列表失败（code ${v?.code}）`);
-  return { plans: normalizePlans(v), serverTime: v?.data?.server_time ? new Date(v.data.server_time * 1000).toISOString() : null };
+  // 激活事件失败不阻塞查询（服务端偶尔抖动），但要让调用方知道结果用于诊断
+  const activation = await reportActivationEvents(account).catch((e) => ({ reported: false, error: e.message }));
+
+  // 两路合并取并集：
+  //   preview       —— 公开活动（非隐藏）
+  //   marketing/touch —— 投放活动（含隐藏活动，官方客户端用的就是这个）
+  // 只靠 preview 会导致「客户端有卡、我们空」，2026-11-04 实测正是此情况。
+  let previewPlans = [];
+  let serverTime = null;
+  let previewErr = null;
+  try {
+    const v = await getJson(
+      `${BILLING_PREVIEW_URL}?app_version=${await zcodeAppVersion()}&platform=${platform()}`,
+      await zaiHeaders(token, ensureVirtualDeviceMid(account)),
+    );
+    if (v?.code === 0) {
+      previewPlans = normalizePlans(v);
+      serverTime = v?.data?.server_time ? new Date(v.data.server_time * 1000).toISOString() : null;
+    } else previewErr = v?.msg || v?.message || `code ${v?.code}`;
+  } catch (e) { previewErr = e.message; }
+
+  const marketing = await fetchMarketingClaimPlans(account).catch((e) => ({ plans: [], error: e.message }));
+
+  const byId = new Map();
+  for (const p of [...previewPlans, ...(marketing.plans || [])]) {
+    if (!p?.planId) continue;
+    const prev = byId.get(p.planId);
+    // 同一活动两路都有时，营销侧的权益信息更全（带 grant_units / 生效时间），优先保留
+    if (!prev || (p.grants || []).length > (prev.grants || []).length) byId.set(p.planId, p);
+  }
+  const plans = [...byId.values()].sort((a, b) => (b.priority || 0) - (a.priority || 0));
+
+  // 两路都失败才算真失败；任一路有结果就返回（空列表 = 确实没有可领活动）
+  if (!plans.length && previewErr && marketing.error) {
+    throw new Error(previewErr || marketing.error);
+  }
+  return {
+    plans,
+    serverTime,
+    activation,
+    diagnostics: {
+      preview: { count: previewPlans.length, error: previewErr },
+      marketing: { count: (marketing.plans || []).length, error: marketing.error },
+    },
+  };
 }
 
 /** 验证码配置（无需登录）。当前服务端未下发时返回 { enabled: false }。 */
 export async function fetchCaptchaConfig() {
   // 公开端点：不带任何鉴权头（空 token 会生成畸形的 "Authorization: Bearer "，被上游判为 3001）
-  const v = await getJson(CLIENT_CONFIGS_URL);
+  //
+  // ⚠️ 这个请求**必须直连**，不能走代理：服务端按来源 IP 下发验证码区域
+  // （国内 IP → region:"cn"，海外 IP → region:"sgp"）。而阿里云验证码的场景是在
+  // cn 场景签发的，region 与场景不匹配时人机验证永远无法通过 → claim 恒 3007。
+  // 2026-11-04 实测：经新加坡出口拿到 region:"sgp"，直连拿到 region:"cn"。
+  // directOnly 走集中出口的直连路（不再裸 fetch 绕过传输层——1.7.0 审计发现）；
+  // 直连不可达时才退回带代理的统一出口，至少还能拿到一份配置。
+  // 注意 fetchJsonRace 返回 Response，必须先 text() 再 parse——
+  // 直接把 Response 当 JSON 用会让 `v.code` 恒 undefined → 配置永远判失败（本文件 1.7.0 回归）。
+  let v;
+  try {
+    const res = await fetchJsonRace(CLIENT_CONFIGS_URL, {
+      headers: { Accept: 'application/json' },
+      timeoutMs: FETCH_TIMEOUT_MS,
+      directOnly: true,
+    });
+    const text = await res.text();
+    try { v = JSON.parse(text); } catch { v = { code: res.status, msg: text.slice(0, 120) }; }
+  } catch {
+    v = await getJson(CLIENT_CONFIGS_URL);
+  }
   if (v?.code !== 0) throw new Error('获取验证码配置失败');
   const c = v?.data?.configs?.captcha || {};
   return {

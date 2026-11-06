@@ -238,7 +238,19 @@ export function publicAccount(a) {
     qoderWebDead: String(a.provider).startsWith('qoder')
       ? (meta.qoderWebDead?.at || null)
       : null,
-    canSwitch: Boolean(meta.session?.account || meta.credentials || meta.qoderAuth || a.provider === 'catpaw' || a.provider === 'trae' || a.provider === 'loomy'),
+    codebuddyIdeFlavor: meta.codebuddyIdeFlavor || null,
+    canSwitch: Boolean(
+      meta.session?.account ||
+      meta.credentials ||
+      meta.qoderAuth ||
+      meta.codebuddyIdeFlavor ||
+      (a.provider.startsWith('workbuddy') && Boolean(a.token)) ||
+      a.provider === 'catpaw' ||
+      a.provider === 'trae' ||
+      a.provider === 'loomy'
+    ),
+    canSwitchWorkbuddyClient: Boolean(meta.session?.account || (a.provider.startsWith('workbuddy') && Boolean(a.token))),
+    canSwitchCodebuddyIde: Boolean(a.provider.startsWith('workbuddy') && Boolean(a.token)),
     verified: a.verified ?? null,
     createdAt: a.createdAt,
     lastCheckin: a.lastCheckin,

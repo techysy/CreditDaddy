@@ -32,6 +32,10 @@ contextBridge.exposeInMainWorld('creditdaddy', {
   openMiniMaxClient: () => ipcRenderer.invoke('open-minimax-client'),
   /** 打开本机 Loomy 客户端 @returns {Promise<{ok: boolean, error?: string}>} */
   openLoomyClient: () => ipcRenderer.invoke('open-loomy-client'),
+  /** 打开本机 WorkBuddy 客户端（flavor: 'cn' 国内版 WorkBuddy / 'intl' 国际版 WorkBuddyAI）@returns {Promise<{ok: boolean, error?: string}>} */
+  openWorkbuddyClient: (flavor) => ipcRenderer.invoke('open-workbuddy-client', String(flavor || 'cn')),
+  /** 打开本机 CodeBuddy IDE（flavor: 'cn' 国内版 CodeBuddy CN / 'intl' 国际版 CodeBuddy）@returns {Promise<{ok: boolean, error?: string}>} */
+  openCodebuddyIdeClient: (flavor) => ipcRenderer.invoke('open-codebuddy-ide-client', String(flavor || 'cn')),
   /** 重启 CreditDaddy 应用 @returns {Promise<{ok: boolean, error?: string}>} */
   restartApp: () => ipcRenderer.invoke('app-restart'),
   /** 简要更新日志（解析随包 CHANGELOG.md 的最近几个版本） */
@@ -41,9 +45,10 @@ contextBridge.exposeInMainWorld('creditdaddy', {
     state: () => ipcRenderer.invoke('update-state'),
     check: () => ipcRenderer.invoke('update-check'),
     install: () => ipcRenderer.invoke('update-install'),
+    /** 打开独立更新窗（主窗口卡死时这条通道仍可用） */
+    openWindow: () => ipcRenderer.invoke('update-open-window'),
     openReleases: () => ipcRenderer.invoke('update-open-releases'),
     onState: (cb) => { const l = (_e, s) => cb(s); ipcRenderer.on('update:state', l); return () => ipcRenderer.removeListener('update:state', l); },
-    onOpen: (cb) => { const l = () => cb(); ipcRenderer.on('update:open', l); return () => ipcRenderer.removeListener('update:open', l); },
     onChangelogOpen: (cb) => { const l = () => cb(); ipcRenderer.on('changelog:open', l); return () => ipcRenderer.removeListener('changelog:open', l); },
   },
   /** 打开外部 URL（捐赠按钮） */

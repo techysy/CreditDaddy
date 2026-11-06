@@ -7,7 +7,6 @@ import path from 'node:path';
 process.env.CREDITDADDY_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'creditdaddy-zac-'));
 
 const { zcodeAutoClaim, setZcodeCaptchaProvider } = await import('../src/zcodeAutoClaim.js');
-const { ZCODE_KNOWN_CLAIM_PLANS } = await import('../src/zcodeClient.js');
 
 const account = {
   id: 'acc-1',
@@ -25,12 +24,16 @@ let claimCalls;
 let claimBehaviors;
 const realFetch = globalThis.fetch;
 
-function mockFetch({ plans = [PLAN], captchaCfg = { enabled: true, sceneId: 's', region: 'cn', prefix: 'p' } } = {}) {
+function mockFetch({ plans = [PLAN], captchaCfg = { enabled: true, sceneId: 's', region: 'cn', prefix: 'p' }, deliveries = [] } = {}) {
   claimCalls = 0;
   claimBehaviors = [...(claimBehaviors || [])];
   globalThis.fetch = async (url, opts) => {
     if (url.includes('/billing/preview')) return jsonRes({ code: 0, data: { plans, server_time: 1 } });
     if (url.includes('/client/configs')) return jsonRes({ code: 0, data: { configs: { captcha: captchaCfg } } });
+    // 激活上报：永远成功（与本批用例关注点无关）
+    if (url.includes('/event/report')) return jsonRes({ code: 0 });
+    // 活动投放：默认空；需要时由用例传入 deliveries
+    if (url.includes('/marketing/touch')) return jsonRes({ code: 0, data: { deliveries } });
     if (url.includes('/billing/claim')) {
       claimCalls++;
       const behavior = claimBehaviors.length ? claimBehaviors.shift() : { code: 0 };
@@ -46,28 +49,46 @@ beforeEach(() => {
   setZcodeCaptchaProvider(null);
 });
 
-test('无可领活动：preview 为空且已知清单全部过期（1002）返回 null', async () => {
-  mockFetch({ plans: [] });
-  claimBehaviors = ZCODE_KNOWN_CLAIM_PLANS.map(() => ({ code: 1002, msg: '活动已结束' }));
+test('无可领活动：preview 与投放都为空时返回 null（不再用硬编码 planId 去撞）', async () => {
+  mockFetch({ plans: [], deliveries: [] });
   try {
     assert.equal(await zcodeAutoClaim(account), null);
+    assert.equal(claimCalls, 0, '没有活动就不该发起任何 claim 请求');
   } finally { globalThis.fetch = realFetch; }
 });
 
-test('preview 为空但已知清单可领：兜底领取隐藏活动', async () => {
-  mockFetch({ plans: [] });
+test('投放活动（隐藏活动）：从 marketing/touch 发现 plan_id 并领取', async () => {
+  // 真机实测：GLOBAL BUILD 在 preview 里看不到，只在 marketing/touch 的 deliveries 里下发
+  const deliveries = [{
+    campaign_id: 'c1', resource_position: 'banner',
+    banner: {
+      buttons: [
+        { action: { type: 'close' } },
+        { action: { type: 'claim_zcode_plan', args: { plan_id: 'zcode-v3-start-plan-gb-1104' } } },
+      ],
+      // 真实投放里 plan 元数据挂在 background.args.zcode_plan 上（give 名称/权益/时间）
+      background: { args: { zcode_plan: {
+        plan_id: 'zcode-v3-start-plan-gb-1104', name: 'ZCODE GLOBAL BUILD', priority: 111,
+        entitlements: [{ show_name: 'GLM-5.3-Flash', grant_units: 300000000, period: 'one_time' }],
+      } } },
+    },
+  }];
+  mockFetch({ plans: [], deliveries });
   claimBehaviors = [{ code: 0, data: { plan: { name: 'ZCODE GLOBAL BUILD' } } }];
   try {
     const r = await zcodeAutoClaim(account);
     assert.equal(r.status, 'checked-in');
     assert.match(r.message, /ZCODE GLOBAL BUILD/);
-    assert.equal(r.claims[0].via, 'direct');
   } finally { globalThis.fetch = realFetch; }
 });
 
-test('preview 为空且已知清单已领过（1003）：按已领口径', async () => {
-  mockFetch({ plans: [] });
-  claimBehaviors = ZCODE_KNOWN_CLAIM_PLANS.map(() => ({ code: 1003 }));
+test('投放活动已领过（1003）：按已领口径', async () => {
+  const deliveries = [{
+    campaign_id: 'c1', resource_position: 'banner',
+    banner: { buttons: [{ action: { type: 'claim_zcode_plan', args: { plan_id: 'p-gb' } } }] },
+  }];
+  mockFetch({ plans: [], deliveries });
+  claimBehaviors = [{ code: 1003 }];
   try {
     const r = await zcodeAutoClaim(account);
     assert.equal(r.status, 'already');

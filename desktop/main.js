@@ -160,7 +160,8 @@ function setupAutoUpdate() {
           body: Tt('v{v} 已在后台下载完成，退出 CreditDaddy 时自动安装（也可在托盘菜单里立即重启更新）。', { v: info.version }),
           silent: true,
         });
-        n.on('click', () => showWin());
+        // 点通知直接开独立更新窗（不依赖主窗口——主窗卡死时这条通道仍可用）
+        n.on('click', () => openUpdateUi());
         n.show();
       } catch {}
     });
@@ -323,7 +324,17 @@ function trayUpdateLabel() {
   return Tt('检查更新…');
 }
 
-// ── 检查更新面板弹窗：主进程只管状态机，UI 全交给面板（与 CreditDaddy 同一套设计语言） ──
+// ── 检查更新：**独立无边框小窗**（update-window.html + preload-update.js） ──
+// 关键设计：更新流程完全不依赖主窗口。主窗口卡死 / 未加载 / 被销毁时，
+// 托盘菜单与系统通知仍能打开这个小窗完成检查、下载、安装——这正是 1.6.6
+// 白屏事故里用户唯一的自救通道（当时只能去 Releases 手动下载）。
+// 页面无 nodeIntegration（contextIsolation + sandbox + preload 白名单），
+// 文案全部由主进程 Tt() 渲染后 IPC 推送——单源，页面只做展示。
+const UPDATE_HTML = path.join(__dirname, 'update-window.html');
+const UPDATE_PRELOAD = path.join(__dirname, 'preload-update.js');
+let updateWin = null;
+let updateDlCtrl = null;   // 下载中的 AbortController（关窗 → abort，不留半截文件）
+
 let updateUi = { phase: 'idle' };   // idle | checking | latest | available | downloading | downloaded | unsupported | error
 function updateUiSupported() {
   return app.isPackaged && process.platform === 'win32' && !process.env.PORTABLE_EXECUTABLE_DIR;
@@ -338,9 +349,13 @@ function updateUiState() {
 }
 function pushUpdateUi(patch) {
   updateUi = { ...updateUi, ...patch };
-  try { if (win && !win.isDestroyed()) win.webContents.send('update:state', updateUiState()); } catch {}
+  const view = updateUiState();
+  try { if (updateWin && !updateWin.isDestroyed()) updateWin.webContents.send('update:win-state', view); } catch {}
+  // 主窗口若开着也同步一份（面板里的更新入口与更新窗状态一致）
+  try { if (win && !win.isDestroyed()) win.webContents.send('update:state', view); } catch {}
   return updateUi;
 }
+
 function publishFallbackState() {
   const rel = updateState.fallback;
   if (!rel) return;
@@ -412,23 +427,141 @@ async function updateUiPrimary() {
   const rel = updateState.fallback;
   if (updateUi.phase === 'available' && updateUi.via === 'github' && rel && !rel.installerPath) {
     pushUpdateUi({ phase: 'downloading', percent: null, mb: '0.0' });
+    // 关窗/取消 → abort：updateDlCtrl 此前从未赋值，「取消下载」是死按钮（1.7.0 审计发现）
+    updateDlCtrl = new AbortController();
+    const myCtrl = updateDlCtrl;
     try {
       const file = await downloadSetupInstaller(rel, (got, total) => {
         pushUpdateUi({ phase: 'downloading', percent: total ? Math.round((got / total) * 100) : null, mb: (got / 1048576).toFixed(1) });
-      });
+      }, myCtrl.signal);
       updateState.fallback = { ...rel, installerPath: file };
       refreshTrayMenu();
       pushUpdateUi({ phase: 'downloaded', version: rel.version, via: 'github' });
     } catch (e) {
-      pushUpdateUi({ phase: 'error', error: String((e && e.message) || e) });
+      // 用户主动取消不报错误态，回到 available 可再次下载
+      if (myCtrl.signal.aborted) pushUpdateUi({ phase: 'available', version: rel.version, via: 'github', rebuild: Boolean(rel.rebuild) });
+      else pushUpdateUi({ phase: 'error', error: String((e && e.message) || e) });
+    } finally {
+      if (updateDlCtrl === myCtrl) updateDlCtrl = null;
     }
   }
 }
-/** 托盘 / 系统通知入口：唤起主窗口并让面板打开更新弹窗 */
+/** 更新窗文案（静态部分一次性下发；带参数的正文在页面上做占位符替换） */
+function updateWindowStrings() {
+  return {
+    windowTitle: Tt('CreditDaddy 更新'),
+    checkingTitle: Tt('正在检查更新'),
+    checkingBody: Tt('正在向 GitHub Releases 查询最新版本…'),
+    latestTitle: Tt('已是最新版本'),
+    latestBody: Tt('当前 v{current} 已是最新版本。'),
+    availableTitle: Tt('发现新版本'),
+    availableBody: Tt('新版本 v{version}（当前 v{current}）可以下载安装。'),
+    rebuildTitle: Tt('发现同版本新构建'),
+    rebuildBody: Tt('检测到 v{version} 的新构建，可能包含修复，可直接下载安装。'),
+    downloadingTitle: Tt('正在下载更新'),
+    downloadingBody: Tt('下载完成后可直接安装，安装时 CreditDaddy 会先退出。'),
+    downloadedTitle: Tt('更新已就绪'),
+    downloadedBody: Tt('安装包已下载完成，点「立即安装」重启并完成更新。'),
+    unsupportedTitle: Tt('当前版本不支持应用内更新'),
+    unsupportedBody: Tt('开发模式 / 便携版 / 非 Windows 平台不支持应用内更新，请到 Releases 页面手动下载。'),
+    errorTitle: Tt('检查更新失败'),
+    sizeSuffix: Tt('（约 {mb} MB）'),
+    commitLabel: Tt('构建 {commit}'),
+    downloadInstall: Tt('下载并安装'),
+    openReleases: Tt('打开 Releases'),
+    installNow: Tt('立即安装'),
+    later: Tt('稍后'),
+    ok: Tt('好的'),
+    cancel: Tt('取消'),
+    close: Tt('关闭'),
+  };
+}
+
+/**
+ * 打开（或聚焦）独立更新窗。
+ * ⚠️ 这里刻意**不调用 showWin()**：主窗口卡死时正是要避开它。
+ */
+function openUpdateWindow() {
+  if (updateWin && !updateWin.isDestroyed()) {
+    try { updateWin.show(); updateWin.focus(); } catch {}
+    return;
+  }
+  updateWin = new BrowserWindow({
+    width: 420,
+    height: 360,
+    useContentSize: true,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    frame: false,                      // 页面内自定义标题栏（拖拽区 + 关闭按钮）
+    title: Tt('CreditDaddy 更新'),
+    autoHideMenuBar: true,
+    show: false,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0a0a0c' : '#f5f6f8',
+    // 更新窗不设 parent：主窗卡死/最小化到托盘时它仍可独立显示并操作
+    webPreferences: {
+      preload: UPDATE_PRELOAD,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  updateWin.once('ready-to-show', () => { try { if (updateWin && !updateWin.isDestroyed()) updateWin.show(); } catch {} });
+  // 本地 file 页面：外链/导航一律拦死（「打开 Releases」走主进程 shell.openExternal）
+  updateWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  updateWin.webContents.on('will-navigate', (e, url) => {
+    if (!String(url).startsWith('file://')) e.preventDefault();
+  });
+  updateWin.on('closed', () => {
+    if (updateDlCtrl) { try { updateDlCtrl.abort(); } catch {} updateDlCtrl = null; }
+    updateWin = null;
+  });
+  updateWin.loadFile(UPDATE_HTML).catch((e) => {
+    console.error('update window load failed:', e && e.message);
+    try { updateWin && updateWin.close(); } catch {}
+  });
+}
+
+// 更新窗页面 bootstrap：静态文案 + 当前状态（页面可能比状态推送晚加载完成）
+ipcMain.handle('update:win-bootstrap', (e) => {
+  if (!updateWin || updateWin.isDestroyed() || e.sender !== updateWin.webContents) return null;
+  return { strings: updateWindowStrings(), view: updateUiState() };
+});
+// 页面量好内容高度后回报，窗口按状态贴合（各态高度不同，宽度恒 420）
+ipcMain.on('update:win-fit', (e, height) => {
+  if (!updateWin || updateWin.isDestroyed() || e.sender !== updateWin.webContents) return;
+  const h = Math.max(220, Math.min(640, Math.ceil(Number(height) || 0)));
+  try { updateWin.setContentSize(420, h); } catch {}
+});
+ipcMain.on('update:win-action', (e, action) => {
+  if (!updateWin || updateWin.isDestroyed() || e.sender !== updateWin.webContents) return;
+  if (action === 'close') { try { updateWin.close(); } catch {} return; }
+  if (action === 'open-releases') {
+    try { shell.openExternal((daemonInfo.homepage || DEFAULT_HOMEPAGE) + '/releases'); } catch {}
+    return;
+  }
+  if (action === 'primary') { updateUiPrimary().catch(() => {}); return; }
+  // 下载中点「取消」：abort 掉在途下载（closed 处理器兜底关窗场景，这里显式处理点按钮场景）
+  if (action === 'cancel') {
+    if (updateDlCtrl) { try { updateDlCtrl.abort(); } catch {} updateDlCtrl = null; }
+    return;
+  }
+});
+
+/**
+ * 托盘 / 系统通知入口：**只开独立更新窗，不唤醒主窗口**。
+ * 主窗口未启动（--hidden 常驻）或已卡死时，这条路径依然可用。
+ */
 function openUpdateUi() {
-  showWin();
-  pushUpdateUi({});   // 先同步一次当前状态
-  try { if (win && !win.isDestroyed()) win.webContents.send('update:open'); } catch {}
+  openUpdateWindow();
+  pushUpdateUi({});   // 先同步一次当前状态（页面 bootstrap 也会补发，双保险）
+}
+
+/** 托盘 / 通知点击「检查更新」：开窗并立即跑一次检查 */
+function openUpdateUiAndCheck() {
+  openUpdateUi();
+  checkUpdateInteractiveUi().catch(() => {});
 }
 
 // 旧的原生对话框交互流程已由面板内更新弹窗取代（见 updateUi 状态机与 update:* IPC）
@@ -1454,10 +1587,12 @@ function registerAuthWindowIpc() {
       } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
     }
   });
-  // 检查更新：面板弹窗（状态查询 / 触发检查 / 主按钮动作 / 打开 Releases）
+  // 检查更新：独立更新窗（状态查询 / 触发检查 / 主按钮动作 / 打开 Releases）
   ipcMain.handle('update-state', () => updateUiState());
   ipcMain.handle('update-check', async () => { await checkUpdateInteractiveUi(); return updateUiState(); });
   ipcMain.handle('update-install', async () => { await updateUiPrimary(); return updateUiState(); });
+  // 面板「检查更新」入口 → 打开独立更新窗（不再用面板内弹窗：主窗口卡死时面板根本不可见）
+  ipcMain.handle('update-open-window', async () => { openUpdateUi(); await checkUpdateInteractiveUi(); return updateUiState(); });
   ipcMain.handle('update-open-releases', () => { try { shell.openExternal((daemonInfo.homepage || DEFAULT_HOMEPAGE) + '/releases'); } catch {} });
   // 打开外部 URL（捐赠按钮用）
   ipcMain.handle('shell-open-external', (_, url) => {
@@ -1622,6 +1757,42 @@ function registerAuthWindowIpc() {
       return { ok: false, error: Tt('未找到 Loomy 客户端可执行文件') };
     } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
   });
+  // WorkBuddy 切号后自动拉起：国内（WorkBuddy）/ 国际（WorkBuddyAI）是两个独立客户端，只拉目标档位
+  ipcMain.handle('open-workbuddy-client', async (_e, flavor) => {
+    try {
+      const os = require('node:os');
+      const fs = require('node:fs');
+      const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+      const names = String(flavor || 'cn') === 'intl' ? ['WorkBuddyAI'] : ['WorkBuddy'];
+      for (const n of names) {
+        const cand = path.join(local, 'Programs', n, n + '.exe');
+        if (process.platform === 'win32' && fs.existsSync(cand)) {
+          const err = await shell.openPath(cand);
+          if (!err) return { ok: true };
+          return { ok: false, error: err };
+        }
+      }
+      return { ok: false, error: Tt('未找到 WorkBuddy 客户端可执行文件') };
+    } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
+  });
+  // CodeBuddy IDE 切号后自动拉起：国内（CodeBuddy CN）/ 国际（CodeBuddy）两套独立安装
+  ipcMain.handle('open-codebuddy-ide-client', async (_e, flavor) => {
+    try {
+      const os = require('node:os');
+      const fs = require('node:fs');
+      const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+      const names = String(flavor || 'cn') === 'intl' ? ['CodeBuddy'] : ['CodeBuddy CN'];
+      for (const n of names) {
+        const cand = path.join(local, 'Programs', n, n + '.exe');
+        if (process.platform === 'win32' && fs.existsSync(cand)) {
+          const err = await shell.openPath(cand);
+          if (!err) return { ok: true };
+          return { ok: false, error: err };
+        }
+      }
+      return { ok: false, error: Tt('未找到 CodeBuddy IDE 客户端可执行文件') };
+    } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
+  });
 }
 
 function panelUrl() {
@@ -1764,7 +1935,7 @@ function refreshTrayMenu() {
     { label: Tt('项目主页（GitHub）'), click: () => shell.openExternal(daemonInfo.homepage) },
     { type: 'separator' },
     ...(autoUpdater
-      ? [{ label: trayUpdateLabel(), click: () => { openUpdateUi(); } }]
+      ? [{ label: trayUpdateLabel(), click: () => { openUpdateUiAndCheck(); } }]
       : []),
     { label: Tt('更新日志…'), click: () => openChangelogBrief() },
     { label: Tt('重启 CreditDaddy'), click: () => restartApp() },
