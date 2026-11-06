@@ -403,30 +403,30 @@ npm test
 ### 贡献者致谢
 
 <p>
-  <a href="https://github.com/techysy" title="techysy — 主要维护者"><img src="https://github.com/techysy.png?size=80" width="48" height="48" alt="techysy" /></a>
-  <a href="https://github.com/gmplout" title="gmplout — 累计 4 个 issue（MiniMax 签到推送 / 隐私脱敏 RFC / 组合开关 RFC / 工具结果图片）"><img src="https://github.com/gmplout.png?size=80" width="48" height="48" alt="gmplout" /></a>
-  <a href="https://github.com/iMissNan" title="iMissNan — 累计 3 个 issue（zcode 修复 / 网关 Prompt 注入 / 隐私泄露）"><img src="https://github.com/iMissNan.png?size=80" width="48" height="48" alt="iMissNan" /></a>
-  <a href="https://github.com/fenixggg" title="fenixggg — 累计 3 个 issue（凭据解密互递归崩溃等）"><img src="https://github.com/fenixggg.png?size=80" width="48" height="48" alt="fenixggg" /></a>
-  <a href="https://github.com/muzimu217" title="muzimu217 — 2 个 issue + PR #44（CodeArts 签到 / 点数口径 / 安装路径探测）"><img src="https://github.com/muzimu217.png?size=80" width="48" height="48" alt="muzimu217" /></a>
-  <a href="https://github.com/snower" title="snower — issue #47 + PR #50（凭据解密互递归定位）"><img src="https://github.com/snower.png?size=80" width="48" height="48" alt="snower" /></a>
-  <a href="https://github.com/535408248-oss" title="535408248-oss — 累计 2 个 issue 反馈"><img src="https://github.com/535408248-oss.png?size=80" width="48" height="48" alt="535408248-oss" /></a>
-  <a href="https://github.com/sola237" title="sola237 — 累计 2 个 issue 反馈"><img src="https://github.com/sola237.png?size=80" width="48" height="48" alt="sola237" /></a>
-  <a href="https://github.com/cantinzing" title="cantinzing — 累计 2 个 issue 反馈"><img src="https://github.com/cantinzing.png?size=80" width="48" height="48" alt="cantinzing" /></a>
-  <a href="https://github.com/ma3252788" title="ma3252788 — 累计 2 个 issue 反馈"><img src="https://github.com/ma3252788.png?size=80" width="48" height="48" alt="ma3252788" /></a>
-  <a href="https://github.com/fioew" title="fioew — #1 首个 issue 反馈"><img src="https://github.com/fioew.png?size=80" width="48" height="48" alt="fioew" /></a>
-  <a href="https://github.com/JinsFoni" title="JinsFoni — #3 issue 反馈"><img src="https://github.com/JinsFoni.png?size=80" width="48" height="48" alt="JinsFoni" /></a>
-  <a href="https://github.com/zeonseoi" title="zeonseoi — #4 issue 反馈"><img src="https://github.com/zeonseoi.png?size=80" width="48" height="48" alt="zeonseoi" /></a>
-  <a href="https://github.com/rua-aaa" title="rua-aaa — #5 issue 反馈"><img src="https://github.com/rua-aaa.png?size=80" width="48" height="48" alt="rua-aaa" /></a>
-  <a href="https://github.com/Osinglehh" title="Osinglehh — #6 Workbuddy 国际端网址反馈"><img src="https://github.com/Osinglehh.png?size=80" width="48" height="48" alt="Osinglehh" /></a>
-  <a href="https://github.com/juyou1" title="juyou1 — #9 Qoder 国际版签到诉求"><img src="https://github.com/juyou1.png?size=80" width="48" height="48" alt="juyou1" /></a>
-  <a href="https://github.com/akahoz94" title="akahoz94 — PR #10"><img src="https://github.com/akahoz94.png?size=80" width="48" height="48" alt="akahoz94" /></a>
-  <a href="https://github.com/laojichao" title="laojichao — #16 Linux 客户端诉求"><img src="https://github.com/laojichao.png?size=80" width="48" height="48" alt="laojichao" /></a>
-  <a href="https://github.com/paynetsang" title="paynetsang — #17 issue 反馈"><img src="https://github.com/paynetsang.png?size=80" width="48" height="48" alt="paynetsang" /></a>
-  <a href="https://github.com/AJMstr" title="AJMstr — #25 issue 反馈"><img src="https://github.com/AJMstr.png?size=80" width="48" height="48" alt="AJMstr" /></a>
-  <a href="https://github.com/emo3o" title="emo3o — #34 issue 反馈"><img src="https://github.com/emo3o.png?size=80" width="48" height="48" alt="emo3o" /></a>
-  <a href="https://github.com/panxuewen0101" title="panxuewen0101 — #39 fnOS 窗口自定义 URL 提案"><img src="https://github.com/panxuewen0101.png?size=80" width="48" height="48" alt="panxuewen0101" /></a>
-  <a href="https://github.com/BrethofAI" title="BrethofAI — PR #36"><img src="https://github.com/BrethofAI.png?size=80" width="48" height="48" alt="BrethofAI" /></a>
-  <a href="https://github.com/JacksonJiangxh" title="JacksonJiangxh — 群内反馈"><img src="https://github.com/JacksonJiangxh.png?size=80" width="48" height="48" alt="JacksonJiangxh" /></a>
+  <a href="https://github.com/techysy" title="techysy — 主要维护者"><img src="https://github.com/techysy.png?size=160" width="80" height="80" alt="techysy" /></a>
+  <a href="https://github.com/gmplout" title="gmplout — 累计 4 个 issue（MiniMax 签到推送 / 隐私脱敏 RFC / 组合开关 RFC / 工具结果图片）"><img src="https://github.com/gmplout.png?size=160" width="80" height="80" alt="gmplout" /></a>
+  <a href="https://github.com/iMissNan" title="iMissNan — 累计 3 个 issue（zcode 修复 / 网关 Prompt 注入 / 隐私泄露）"><img src="https://github.com/iMissNan.png?size=160" width="80" height="80" alt="iMissNan" /></a>
+  <a href="https://github.com/fenixggg" title="fenixggg — 累计 3 个 issue（凭据解密互递归崩溃等）"><img src="https://github.com/fenixggg.png?size=160" width="80" height="80" alt="fenixggg" /></a>
+  <a href="https://github.com/muzimu217" title="muzimu217 — 2 个 issue + PR #44（CodeArts 签到 / 点数口径 / 安装路径探测）"><img src="https://github.com/muzimu217.png?size=160" width="80" height="80" alt="muzimu217" /></a>
+  <a href="https://github.com/snower" title="snower — issue #47 + PR #50（凭据解密互递归定位）"><img src="https://github.com/snower.png?size=160" width="80" height="80" alt="snower" /></a>
+  <a href="https://github.com/535408248-oss" title="535408248-oss — 累计 2 个 issue 反馈"><img src="https://github.com/535408248-oss.png?size=160" width="80" height="80" alt="535408248-oss" /></a>
+  <a href="https://github.com/sola237" title="sola237 — 累计 2 个 issue 反馈"><img src="https://github.com/sola237.png?size=160" width="80" height="80" alt="sola237" /></a>
+  <a href="https://github.com/cantinzing" title="cantinzing — 累计 2 个 issue 反馈"><img src="https://github.com/cantinzing.png?size=160" width="80" height="80" alt="cantinzing" /></a>
+  <a href="https://github.com/ma3252788" title="ma3252788 — 累计 2 个 issue 反馈"><img src="https://github.com/ma3252788.png?size=160" width="80" height="80" alt="ma3252788" /></a>
+  <a href="https://github.com/fioew" title="fioew — #1 首个 issue 反馈"><img src="https://github.com/fioew.png?size=160" width="80" height="80" alt="fioew" /></a>
+  <a href="https://github.com/JinsFoni" title="JinsFoni — #3 issue 反馈"><img src="https://github.com/JinsFoni.png?size=160" width="80" height="80" alt="JinsFoni" /></a>
+  <a href="https://github.com/zeonseoi" title="zeonseoi — #4 issue 反馈"><img src="https://github.com/zeonseoi.png?size=160" width="80" height="80" alt="zeonseoi" /></a>
+  <a href="https://github.com/rua-aaa" title="rua-aaa — #5 issue 反馈"><img src="https://github.com/rua-aaa.png?size=160" width="80" height="80" alt="rua-aaa" /></a>
+  <a href="https://github.com/Osinglehh" title="Osinglehh — #6 Workbuddy 国际端网址反馈"><img src="https://github.com/Osinglehh.png?size=160" width="80" height="80" alt="Osinglehh" /></a>
+  <a href="https://github.com/juyou1" title="juyou1 — #9 Qoder 国际版签到诉求"><img src="https://github.com/juyou1.png?size=160" width="80" height="80" alt="juyou1" /></a>
+  <a href="https://github.com/akahoz94" title="akahoz94 — PR #10"><img src="https://github.com/akahoz94.png?size=160" width="80" height="80" alt="akahoz94" /></a>
+  <a href="https://github.com/laojichao" title="laojichao — #16 Linux 客户端诉求"><img src="https://github.com/laojichao.png?size=160" width="80" height="80" alt="laojichao" /></a>
+  <a href="https://github.com/paynetsang" title="paynetsang — #17 issue 反馈"><img src="https://github.com/paynetsang.png?size=160" width="80" height="80" alt="paynetsang" /></a>
+  <a href="https://github.com/AJMstr" title="AJMstr — #25 issue 反馈"><img src="https://github.com/AJMstr.png?size=160" width="80" height="80" alt="AJMstr" /></a>
+  <a href="https://github.com/emo3o" title="emo3o — #34 issue 反馈"><img src="https://github.com/emo3o.png?size=160" width="80" height="80" alt="emo3o" /></a>
+  <a href="https://github.com/panxuewen0101" title="panxuewen0101 — #39 fnOS 窗口自定义 URL 提案"><img src="https://github.com/panxuewen0101.png?size=160" width="80" height="80" alt="panxuewen0101" /></a>
+  <a href="https://github.com/BrethofAI" title="BrethofAI — PR #36"><img src="https://github.com/BrethofAI.png?size=160" width="80" height="80" alt="BrethofAI" /></a>
+  <a href="https://github.com/JacksonJiangxh" title="JacksonJiangxh — 群内反馈"><img src="https://github.com/JacksonJiangxh.png?size=160" width="80" height="80" alt="JacksonJiangxh" /></a>
 </p>
 
 <sub>名单由 issue 与 PR 的反馈者及协同项目汇总，头像取自 GitHub 公开个人信息；PR 合入者另见 GitHub Contributors 统计；若有遗漏请随时提 issue 补充。</sub>
