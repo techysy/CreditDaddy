@@ -299,6 +299,7 @@ async function reprobeCookieAccount(site, a) {
           cookieSiteSession: { cookie, capturedAt: hit.meta?.cookieSiteSession?.capturedAt || now },
           longcatPacks: longcatSnapshot(packs.packs),
           ...(lcSession ? { longcatSession: lcSession } : {}),
+          ...(lxSnapshot ? { lingxiPacks: lxSnapshot } : {}),
           quotaSnapshot: { used: 0, total: lcTotal, isCreditBalance: true, at: now },
         };
         if (lcSession?.userId) hit.uid = String(lcSession.userId);
@@ -1455,9 +1456,10 @@ async function handleApi(req, res, url) {
     // WPS 灵犀（issue #53）：任务列表接口即探测（带 cookie 返 200 data.tasks[]，未登录 401）。
     // 签到状态 + 灵点余额一步拿全；无独立身份接口，单例账号（kdocs 会话即身份）。
     let lxStatus = null;
+    let lxSnapshot = null;
     if (site.id === 'lingxi') {
       try {
-        const { fetchLingxiStatus } = await import('./lingxiClient.js');
+        const { fetchLingxiStatus, lingxiSnapshot } = await import('./lingxiClient.js');
         if (!cookie) {
           logger.warn('COOKIE-SITE', '{name} 未读到会话 cookie', { name: site.name });
           return json(res, 400, { error: '未读到 WPS 灵犀登录会话，请在登录窗完成登录后再关闭' });
@@ -1514,6 +1516,7 @@ async function handleApi(req, res, url) {
           ...(msSession ? { msSession, msBalance } : {}),
           ...(lcPacks ? { longcatPacks: longcatSnapshot(lcPacks) } : {}),
           ...(lcSession ? { longcatSession: lcSession } : {}),
+          ...(lxSnapshot ? { lingxiPacks: lxSnapshot } : {}),
         };
         if (lcSession?.userId) { hit.uid = String(lcSession.userId); autoName(hit); }
         hit.updatedAt = now;
@@ -1537,6 +1540,7 @@ async function handleApi(req, res, url) {
           ...(msSession ? { msSession, msBalance } : {}),
           ...(lcPacks ? { longcatPacks: longcatSnapshot(lcPacks) } : {}),
           ...(lcSession ? { longcatSession: lcSession } : {}),
+          ...(lxSnapshot ? { lingxiPacks: lxSnapshot } : {}),
           },
         });
         acc.verified = true;

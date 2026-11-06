@@ -56,11 +56,18 @@ function localDayKey(now = new Date()) {
 }
 
 /**
- * 任务面板：每日签到状态 + 灵点余额一次拿全。
+ * 任务面板：每日签到状态 + 智点余额/资源包一次拿全。
  * @param {string} cookie
  * @param {{ fetchImpl?: Function }} [opts]
- * @returns {Promise<{ auth: boolean, checkedIn?: boolean, reward?: number, streakDays?: number, balance?: number, raw?: object, code?: string }>}
+ * @returns {Promise<{ auth: boolean, checkedIn?: boolean, reward?: number, streakDays?: number,
+ *            balance?: number, packs?: Array, raw?: object, code?: string }>}
  *   auth=false = 会话失效；其余字段尽力而为（接口各自独立，某一路失败不带该字段）
+ *
+ * 余额接口实测形状（2026-11-07 本机实证）：
+ *   { data: { bonus_credits: [{balance, value, consumed, expire_time, effect_time, sku_key}],
+ *             purchased_credits: [...], total_bonus, total_purchased, total_balance, ... } }
+ *   —— 余额看 total_balance（兜底 total_bonus + total_purchased）；bonus_credits[] 是逐包资源
+ *   （活动赠送 +800 / 任务奖励 +100 各一行，带有效期），推 10R 按 LongCat 逐包明细出卡。
  */
 export async function fetchLingxiStatus(cookie, { fetchImpl } = {}) {
   const out = { auth: true };
@@ -86,18 +93,37 @@ export async function fetchLingxiStatus(cookie, { fetchImpl } = {}) {
   } catch (e) {
     return { auth: false, code: e?.message || 'network' };
   }
-  // 2) 灵点余额（旁路：失败不推翻 auth 判定）
+  // 2) 智点余额 + 资源包明细（旁路：失败不推翻 auth 判定）
   try {
     const r = await doFetch(LINGXI_BALANCE_URL, { cookie, fetchImpl });
     if (r.ok) {
       const text = await r.text();
       let data = null;
       try { data = JSON.parse(text); } catch { data = null; }
-      const bal = Number(data?.data?.total_credits ?? data?.data?.totalCredits ?? data?.data?.credits ?? data?.data?.balance);
+      const d = data?.data || {};
+      const bal = Number(d.total_balance ?? d.total_bonus);
       if (Number.isFinite(bal)) out.balance = bal;
+      // 逐包：活动赠送（bonus）+ 购买（purchased）合并，每包 {balance, value, consumed, expireAt, kind}
+      const rows = [...(Array.isArray(d.bonus_credits) ? d.bonus_credits : []), ...(Array.isArray(d.purchased_credits) ? d.purchased_credits : [])];
+      const packs = rows
+        .map((p, i) => ({
+          id: `${p?.sku_key || 'pack'}-${i}`,
+          balance: Number(p?.balance) || 0,
+          total: Number(p?.value) || 0,
+          consumed: Number(p?.consumed) || 0,
+          expireAt: p?.expire_time ? new Date(p.expire_time).toISOString() : null,
+          kind: p?.sku_key === 'ai_credits_grant' ? 'grant' : String(p?.sku_key || ''),
+        }))
+        .filter((p) => p.total > 0 || p.balance > 0);
+      if (packs.length) out.packs = packs;
     }
   } catch { /* 余额拿不到不阻断 */ }
   return out;
+}
+
+/** 资源包快照（进 meta.lingxiPacks，与 longcatPacks 同形） */
+export function lingxiSnapshot(packs) {
+  return { packs, at: new Date().toISOString() };
 }
 
 /**
@@ -207,7 +233,11 @@ export async function fetchLingxiQuota(account, ctx = {}) {
 }
 
 /**
- * 10Router 外部配额卡（灵点余额单值卡，与 xiaomi-mimo 同款形状）
+ * 10Router 外部配额卡：智点储值卡 + 逐包明细（与 LongCat 资源包卡同款纪律）。
+ *  - Balance 汇总行 = 全部包 balance 之和（isCreditBalance + summarizesDetail）；
+ *  - 逐包明细腿 = 每包一行（detailOnly，used=consumed、total=包总量、resetAt=包有效期），
+ *    活动赠送包带 giftPack 标记；0 余额包也出行（可见耗尽）；
+ *  - 拿不到任何包 → 单值余额卡兜底；连余额都拿不到 → message 状态卡。
  */
 export function buildLingxiQuotaPayload(account, liveData = null) {
   const uid = account.uid || identityHashOfLocal(account) || 'default';
@@ -225,23 +255,59 @@ export function buildLingxiQuotaPayload(account, liveData = null) {
     };
   }
 
-  const snap = account.meta?.quotaSnapshot;
-  let balance = Number(liveData?.balance);
+  // live 优先，快照兜底（非 live 且 >24h 由 ageTag 标注陈粮）
+  let packs = liveData?.packs;
   let ageTag = '';
-  if (!Number.isFinite(balance)) {
-    balance = Number(snap?.total);
-    ageTag = snapshotAgeTag(snap);
+  if (!Array.isArray(packs)) {
+    const snap = account.meta?.quotaSnapshot;
+    packs = account.meta?.lingxiPacks?.packs;
+    ageTag = snapshotAgeTag(snap ?? account.meta?.lingxiPacks);
   }
+  const active = (packs || []).filter((p) => p && Number.isFinite(Number(p.balance)));
+  const balance = active.length
+    ? active.reduce((s, p) => s + Math.max(0, Number(p.balance)), 0)
+    : Number(liveData?.balance);
 
   const payload = {
     provider: 'lingxi',
     label,
-    plan: t('灵点余额') + ageTag,
+    plan: t('智点余额') + ageTag,
   };
-  if (Number.isFinite(balance) && balance >= 0) {
+
+  if (active.length && balance > 0) {
+    const pct1 = (rem, tot) => (tot > 0 ? Math.max(0, Math.min(100, Math.round((rem / tot) * 1000) / 10)) : 0);
+    const totalAll = active.reduce((s, p) => s + Math.max(0, Number(p.total) || 0), 0);
+    const usedAll = active.reduce((s, p) => s + Math.max(0, Number(p.consumed) || 0), 0);
     payload.quotas = {
       Balance: {
-        name: t('灵点余额'),
+        name: `${t('剩余')} ${balance} (${t('智点')})`,
+        used: usedAll,
+        total: totalAll,
+        remainingPercentage: pct1(balance, totalAll),
+        displayRemaining: true,
+        isCreditBalance: true,
+        summarizesDetail: true,
+      },
+    };
+    for (const [i, p] of active.entries()) {
+      const kind = p.kind === 'grant' || (p.total > 0 && p.consumed === 0 && !Number.isFinite(p.consumed));
+      payload.quotas[`Pack${i + 1}`] = {
+        name: kind ? t('活动赠送包') : t('智点包'),
+        used: Math.max(0, Number(p.consumed) || 0),
+        total: Math.max(0, Number(p.total) || 0) || Math.max(0, Number(p.balance) || 0),
+        remainingPercentage: pct1(Math.max(0, Number(p.balance)), Math.max(0, Number(p.total) || 0) || Math.max(0, Number(p.balance) || 0)),
+        displayRemaining: true,
+        isCreditBalance: true,
+        ...(p.kind === 'grant' ? { giftPack: true } : {}),
+        detailOnly: true,
+        resetAt: p.expireAt || undefined,
+      };
+    }
+  } else if (Number.isFinite(balance) && balance >= 0) {
+    // 拿不到逐包（旧快照 / 接口半程失败）：单值余额卡兜底
+    payload.quotas = {
+      Balance: {
+        name: t('智点余额'),
         used: 0,
         total: Math.max(0, balance) || 0.000001,
         displayRemaining: true,
