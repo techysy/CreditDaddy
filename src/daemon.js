@@ -1160,7 +1160,7 @@ async function handleApi(req, res, url) {
       await warmWorkbuddyClientPath().catch(() => {});
       const wbDet = detectWorkbuddy();
       if (!wbDet.installed) {
-        return json(res, 400, { error: '本机未安装 WorkBuddy / CodeBuddy 客户端，无法切换（切换是把登录写入客户端凭据，由客户端应用；可先安装客户端后在本机导入再切换）', code: 'WORKBUDDY_NOT_INSTALLED' });
+        return json(res, 400, { error: '本机未安装 WorkBuddy 客户端，无法切换（切换是把登录写入客户端凭据，由客户端应用；可先安装客户端后在本机导入再切换）', code: 'WORKBUDDY_NOT_INSTALLED' });
       }
       const r = await writeWorkbuddySession(target);
       logger.info('DAEMON', 'WorkBuddy 已切换到 {name}', { name: target.name || target.id });

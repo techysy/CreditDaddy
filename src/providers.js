@@ -132,7 +132,7 @@ const PRODUCTS = {
     quota: (account, ctx) => fetchWorkbuddyQuota(account, ctx),
     verify: async (account) => {
       const info = inspectToken(account.token);
-      if (!info.provider) throw new Error('不是 WorkBuddy / CodeBuddy 的登录 token');
+      if (!info.provider) throw new Error('不是 WorkBuddy 的登录 token');
       if (info.provider !== account.provider) throw new Error(`token 属于${info.provider === 'workbuddy' ? '国内版' : '国际版'}，与所选版本不符`);
       return { uid: info.uid, name: info.name };
     },
