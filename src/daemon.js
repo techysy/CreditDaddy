@@ -1104,7 +1104,8 @@ async function handleApi(req, res, url) {
         logger.info('DAEMON', r.alreadyActive ? 'Qoder 当前已是 {name}' : 'Qoder 已切换到 {name}(重新打开 Qoder 生效)', { name: target.name || target.id });
         return json(res, 200, { ok: true, closedClient, ...r });
       } catch (e) {
-        return json(res, e.qoderRunning ? 409 : 400, { error: e.message, code: e.qoderRunning ? 'QODER_RUNNING' : undefined });
+        // staleAuth：快照过期（Qoder token 30 天不可续期）——写进去只会让客户端被登出，明说原因
+        return json(res, e.qoderRunning || e.staleAuth ? 409 : 400, { error: e.message, code: e.qoderRunning ? 'QODER_RUNNING' : e.staleAuth ? 'QODER_AUTH_STALE' : undefined });
       }
     }
     if (target.provider === 'trae') {

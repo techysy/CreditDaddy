@@ -387,6 +387,9 @@ function macKeychainPassword(service) {
 }
 
 const keyCache = new Map();
+let codecOverride = null;   // 测试注入：替代 safeStorageCodec（DPAPI 依赖真实用户上下文，测试绕开）
+/** 测试钩子：注入编解码器（切换写入路径用），传 null 恢复真实实现。 */
+export function _setCodecForTests(codec) { codecOverride = codec; }
 
 /**
  * 某个 Electron userData 目录对应的 safeStorage 编解码器。
@@ -517,6 +520,14 @@ export function terminateQoder({ timeoutMs = 8000 } = {}) {
 /**
  * 把本机 Qoder 客户端的登录换成目标账号（写回 auth.v1.dat）。
  * force：由调用方先 terminateQoder 再进来（运行中的 Qoder 退出时会把内存里的旧登录覆盖回文件）。
+ *
+ * ## ★ 过期快照必须拒绝写入（2026-11-07 用户实测）
+ *
+ * Qoder 设备流登录的 token 约 30 天且**没有续期通道**（上游对无签名的刷新调用一律
+ * 403 "Request discarded"，10router 同款结论），快照里的 expiresAt 一旦过了，客户端
+ * 读到就是死凭据：启动时判定无效 → 删掉 auth.v1.dat → 登录页。此前把过期快照照写
+ * 不误，用户看到的是「切换成功 → 重开客户端 → 被登出」的哑谜，还得手动重登。现在
+ * 写入前拦下，把真实原因说清楚；临期（<24h）照常切换但带 warn 让面板提示。
  */
 export async function switchTo(account, { force = false } = {}) {
   const auth = account.meta?.qoderAuth;
@@ -534,12 +545,24 @@ export async function switchTo(account, { force = false } = {}) {
       : `没检测到「${label}」客户端，请先安装并登录，然后到「添加账号 → 本机导入」导入`;
     throw new Error(`账号「${account.name || account.id}」的切换凭据已失效：${label}的登录文件不在了（${file}）。${hint}`);
   }
+  const expiresAtMs = Date.parse(auth.expiresAt || '');
+  let nearExpiryWarn = null;
+  if (Number.isFinite(expiresAtMs)) {
+    if (expiresAtMs <= Date.now()) {
+      const e = new Error(`账号「${account.name || account.id}」的登录快照已于 ${new Date(expiresAtMs).toLocaleString()} 过期，写进去只会让客户端被登出。Qoder 的设备登录 token 约 30 天且到期不可续期——请在 Qoder 客户端登录该账号后到「本机导入」重新导入，再切换。`);
+      e.staleAuth = true;
+      throw e;
+    }
+    if (expiresAtMs - Date.now() < 24 * 3600_000) {
+      nearExpiryWarn = `该账号的登录快照将于 ${new Date(expiresAtMs).toLocaleString()} 过期，届时需重新登录导入`;
+    }
+  }
   if (!force && qoderRunning()) {
     const e = new Error('Qoder 正在运行。切换会改写 Qoder 的登录文件，运行中的 Qoder 退出时会把旧登录写回去——退出后重试，或选择「关闭并强制切换」。');
     e.qoderRunning = true;
     throw e;
   }
-  const { encrypt, decrypt } = await safeStorageCodec(path.dirname(file), ['Qoder App', account.provider === 'qoder-cn' ? 'Qoder CN' : 'Qoder']);
+  const { encrypt, decrypt } = codecOverride || await safeStorageCodec(path.dirname(file), ['Qoder App', account.provider === 'qoder-cn' ? 'Qoder CN' : 'Qoder']);
   try {
     if (JSON.parse(decrypt(fs.readFileSync(file))).token === auth.token) {
       return { switched: false, alreadyActive: true };
@@ -551,5 +574,5 @@ export async function switchTo(account, { force = false } = {}) {
   const tmp = file + '.tmp';
   fs.writeFileSync(tmp, buf, { mode: 0o600 });
   fs.renameSync(tmp, file);
-  return { switched: true, alreadyActive: false };
+  return { switched: true, alreadyActive: false, warn: nearExpiryWarn };
 }
