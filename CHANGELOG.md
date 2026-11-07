@@ -4,15 +4,21 @@
 
 ---
 
-## [1.7.1] (2026-11-06)
+## [1.7.1] (2026-11-07)
 
 - **新增 MiniMax 国际版渠道 `minimax-global`（issue #54）**：与国内版同协议同 client（`mcode-public`，RFC 8628 + S256 PKCE 设备码授权），仅域名不同——`agent.minimax.io` + `account.minimax.io`（端点实证自官方客户端 `@mavis/oauth-core` 的 ACCOUNT_ORIGINS，本机 `~/.minimax/auth/prod/<cn|en>/mcode-public/` 布局互证）。签到 / 额度 / 设备码登录 / 本机导入（双目录收割）/ 本地网关（按账号档位选上游）/ 10Router 连接同步（`minimax-global` 线）全链路打通；面板 MiniMax 页分国际 / 国内版区段（此前 Trae / MiniMax 不分区段的特例删除）；`/api/status` 双线当前 uid（`minimaxCurrentUid` / `minimaxGlobalCurrentUid`）分点亮徽章。
 - **MiniMax 双线接入 10Router「连接」同步（issue #55）**：`TENROUTER_PROVIDER_MAP` 补 `minimax → minimax-code`、`minimax-global → minimax-code-global`；账号管理弹窗的 MiniMax 渠道从 `syncable: false` 翻为可同步，OAuth 通道（转移管线 provider 无关）原样适用；10R 侧每账号带 `creditDaddySync` 标记亮「CD Sync」徽章（10R 侧已就绪）；建议签到归属 10Router（其已原生支持 MiniMax 双线每日签到），CD 侧 minimax-free 免费网关线的签到维持 CD 内闭环避免双端重复。
 - **新增 WPS 灵犀渠道（issue #53）**：`lingxi.kdocs.cn` 会话 cookie 捕获（任务列表接口即探测）+ 每日自动签到（先查 `daily_check_in` 状态，available 才 POST claim——幂等性提案者未验证，绝不盲打；+100 灵点/天，七天一轮第七天 200）+ 灵点余额展示（独立「灵点」单位，不进剩余积分合计）+ 10Router 灵点余额卡（`lingxi-<hash>` 单值储值卡，与 xiaomi-mimo 同款形状）。凭据约 300+ 天有效期；灵点只能在灵犀界面消费（官方无 API），不做网关 / 对话补全。
-- **ZCode 网关「接口使用中」徽章覆盖最近服役账号**：会话粘滞（sticky）下「最近一次补全」往往不止一个号——网关新增 `recentAccounts`（去重、最新在前、封 4 个），徽章按集合点亮，不再漏掉仍在粘滞窗口内服役的账号（用户实测反馈）。
+- **「接口使用中」徽章加 30 分钟服役窗口（ZCode / MiniMax / Trae 三网关，用户实测反馈）**：徽章判定原本无时间衰减——ZCode 的 `recentAccounts` 只去重封顶、MiniMax/Trae 只看 `lastAccount`，调用过一次的号永久亮着，看不出当前实际谁在服役。现服役记录带时间戳，只亮近 30 分钟内真正服役过的号（与网关 30 分钟会话粘滞 TTL 对齐），tooltip 四语言同步改为「最近 30 分钟内服役过的账号」。
 - **产品线命名统一：WorkBuddy 页与全部文案只叫「WorkBuddy」（#54 讨论）**——CodeBuddy IDE 是同一渠道下的一个客户端切换目标（凭据同源），不是独立产品线；导航标签、页头标题、Token 下拉选项、空列表提示、token 粘贴占位符、切换拦截报错、token 校验报错及四语文案全部去掉「/ CodeBuddy」后缀（页内「WorkBuddy / CodeBuddy IDE」过滤段与 CodeBuddy IDE 切换目标名称保留，那是客户端名）。
 - **ZCode 活动领取健壮性（网友反馈「无法领取、还是只能客户端」）**：① captchaVerifyParam 一次性语义对齐官方客户端——3007/3001 被拒后自动换新验证码重试一轮（复用旧 param 会触发服务端 F008 重复 certifyId 判定），自动轮询与面板手动领取两条路都补齐；② 修复验证码 fail 事件丢参数——官方 SDK 在 `success+verifyResult=true` / `verifyCode=T006`（terminal pass）时 fail 回调里已带合法 param，桌面壳隐藏窗与面板 runCaptcha 现在直接采信，不再强制人工弹窗；③ 新增 `partial` 结果状态——部分活动领到、部分需验证码时不再整体记「领取失败」，徽章亮「部分领取」且消息同时带上已领名单与待手动数；④ 需手动的提示改为明确引导（面板「活动领取」完成人机验证 → 仍失败则到官方客户端领取——实测未投放账号 claim 恒 3007，属服务端投放前置校验而非验证码失败）；⑤ 激活事件上报对 429 限频退避 3 秒重试一次（自动轮询每 ~2 分钟打一次容易被限）。
 - **Loomy「我的邀请码」**：账号卡新增查看本账号专属邀请码的入口（协议自 Loomy 客户端 app.asar 逆向：`GET /api/v1/invitation-codes`）——弹窗列出每个邀请码、使用进度（如 1/20 名额，用完标橙）、一键复制邀请码或分享文案（客户端同款文案）；生产端实测字段为 `{inviteCode, usedCount, maxUses, status}`，与客户端 bundle 的 `{code, usedCount, limit}` 不同，归一化兼容两种形状；列表为空时按客户端同款先 first-login 初始化积分档案再重查。
+- **Trae 浏览器 OAuth 登录闭环（refreshToken 的来源）**：面板「添加账号 → 浏览器登录 → Trae 国内版」走官方客户端同款授权码 + PKCE(S256) + 本机回调全流程（协议经 workbuddy-switch / trae-api-proxy 两个独立逆向实现互证）。设备身份自造（每账号独立 deviceId/machineId/EC P-256 密钥对，授权 URL / 换票请求体三处同源防 20403，互不共享防 4017 风控），回调监听三条硬规矩照社区踩坑沉淀（端口跟 `auth_callback_url` 走、探测请求回 200+CORS、拒绝回调先于探测判定），换票主机白名单防 SSRF；回调解析按「剥路径 → 按 `&` 切 → 反复解码 → 首个 `=` 切分」容错二次编码。登录成功后账号带上 refreshToken，10R 侧自动续期随之打通；DeviceProof 刷新链待下一轮（私钥已持久化）。
+- **Trae 账号同步对接拆线后的 `trae-cn`（issue #56，真机实测通过后关闭）**：`TENROUTER_PROVIDER_MAP` 新增 `trae → trae-cn`，同步摘要点名跳过原因；国际版 Trae 账号（`meta.isIntl`）加防误推护栏——推到国内端点必吃 20101；JWT-only 载荷（无 refreshToken）经 OAuth 通道导入验证可用，refreshToken 随 OAuth 闭环落地自动带上。额度推送 payload 指名 `trae-cn` 的约定留待将来有 Trae 卡时落。
+- **修复面板每 30 秒卡死 4-5 秒（issue #57）**：`/api/status` 轮询里有 7 处同步 `tasklist` 探测（每次 700-900ms）阻塞 Electron 主进程。winProc 新增全量快照探测（10s TTL + 后台异步刷新），轮询路径全部改读共享快照；守卫 / 终止路径（switchTo 拒切、terminate 等待循环、凭据回写判断）按红线保留同步精确探针，防止运行中覆盖凭据。
+- **Qoder 切换拒绝过期登录快照（2026-11-07 实测）**：Qoder 设备流 token 约 30 天寿命且实测无续期通道（上游对无签名刷新一律 403 "Request discarded"，10Router 侧同样结论）。此前把过期快照写入客户端后，启动读到死凭据 → 判定无效 → 删登录文件 → 登录页，表现为「切完即被登出」。现 switchTo 写入前校验 `expiresAt`：过期的直接拒绝并说明原因（`QODER_AUTH_STALE`，面板提示重新登录 + 本机导入），临期 24h 内照常切换但带警告。
+- **「打开客户端」按版本选择 + Qoder 优先 Launcher**：Trae / Qoder 都有国内、国际两个客户端，此前 Trae 按固定顺序开 exe、Qoder 页压根没有入口。现在 Qoder 页补顶栏「打开客户端」（带运行状态灯）；双版本同装时点按钮弹三键选择（取消 / 国际版 / 国内版），单版本直开不啰嗦；`/api/status` 下发 `cnInstalled` / `intlInstalled` 供面板决策。Qoder 打开优先官方 Launcher（开始菜单同款入口，负责应用 `.qoder-versions` 待生效更新并启动真实当前版本），顶层老 exe 只兜底——修「按钮开的还是 0.2.5 旧版 + 版本警告横幅」；Trae 切号后自动重开按账号档位（`meta.isIntl`）选客户端。
+- **全局邮箱 / 手机号匿名**：面板所有名字与身份显示位统一脱敏——邮箱本地段前 2 后 2（`11****91@域名`，本地段 ≤4 字符退只留首字符防整段露出）、手机号前 3 后 3（`138****678`）。覆盖账号卡名字与账号行、仪表盘「客户端当前」、注意列表、10Router 额度卡、排序 chips、切号确认 / 邀请码弹窗、导入候选、会话失效横幅，tooltip 一并掩码堵漏（此前「账号」行悬停即见明文邮箱）；自定义备注名等非邮箱串不受影响，重命名编辑框仍显示真名。
 
 ## [1.7.0] (2026-11-06)
 
