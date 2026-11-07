@@ -104,7 +104,9 @@ async function refreshSnapshotAsync() {
  * 快照过期触发**异步**刷新；本调用永远不 spawn、不阻塞。冷快照返回 false。
  */
 export function procRunningCached(exes) {
-  if (process.platform !== 'win32') return false;
+  // 非 Windows 没有快照可探——但测试注入了假 tasklist 时要放行，否则注入式测试在
+  // Linux CI 上永远读到短路 false（win-proc.test.js 313/314 红的根因）
+  if (process.platform !== 'win32' && !tasklistForTests) return false;
   if (!snapshot.names || Date.now() - snapshot.at > SNAP_TTL_MS) {
     if (!inflight) inflight = refreshSnapshotAsync().finally(() => { inflight = null; });
     if (!snapshot.names) return false;   // 冷快照：本轮按「没在运行」，刷新落地后修正
