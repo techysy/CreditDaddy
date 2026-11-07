@@ -57,6 +57,7 @@ const SNAP_TTL_MS = 10_000;
 const snapshot = { names: null, at: 0 };   // Set<小写镜像名> / 生成时刻；names=null = 冷快照
 let inflight = null;
 let tasklistForTests = null;               // 测试注入：(args) => Buffer，替代真 tasklist
+let testMode = false;                      // 任一测试钩子被调用即置位：放行非 Windows 平台的平台短路（快照逻辑本身与平台无关）
 
 /** CSV 首列（镜像名，可能带空格/中文）→ 小写集合；其余行（INFO 提示等）自然落空。 */
 export function parseTasklistCsv(text) {
@@ -104,9 +105,10 @@ async function refreshSnapshotAsync() {
  * 快照过期触发**异步**刷新；本调用永远不 spawn、不阻塞。冷快照返回 false。
  */
 export function procRunningCached(exes) {
-  // 非 Windows 没有快照可探——但测试注入了假 tasklist 时要放行，否则注入式测试在
-  // Linux CI 上永远读到短路 false（win-proc.test.js 313/314 红的根因）
-  if (process.platform !== 'win32' && !tasklistForTests) return false;
+  // 非 Windows 没有快照可探——但测试模式下要放行，否则注入式测试在 Linux CI 上
+  // 永远读到短路 false（win-proc.test.js 313/314 红的根因；只看 tasklistForTests
+  // 会漏掉只 _setSnapshotForTests 的用例）
+  if (process.platform !== 'win32' && !testMode) return false;
   if (!snapshot.names || Date.now() - snapshot.at > SNAP_TTL_MS) {
     if (!inflight) inflight = refreshSnapshotAsync().finally(() => { inflight = null; });
     if (!snapshot.names) return false;   // 冷快照：本轮按「没在运行」，刷新落地后修正
@@ -116,15 +118,17 @@ export function procRunningCached(exes) {
 
 /** 测试钩子：注入快照内容与时刻（绕开真 tasklist）。 */
 export function _setSnapshotForTests(names, at = Date.now()) {
+  testMode = true;
   snapshot.names = new Set([].concat(names).map((n) => String(n).toLowerCase()));
   snapshot.at = at;
 }
 /** 测试钩子：注入 tasklist 输出（Buffer），替代真实进程查询。 */
-export function _setTasklistForTests(fn) { tasklistForTests = fn; }
+export function _setTasklistForTests(fn) { testMode = true; tasklistForTests = fn; }
 /** 测试钩子：清空快照与注入。 */
 export function _resetProcForTests() {
   snapshot.names = null;
   snapshot.at = 0;
   inflight = null;
   tasklistForTests = null;
+  testMode = false;
 }
