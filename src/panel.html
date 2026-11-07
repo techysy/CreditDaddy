@@ -1835,10 +1835,10 @@ function cardHtml(a) {
     + provBadges(a.provider, true, a.flavor)
     + (isCurrent ? '<span class="pill cur" title="' + esc(CLIENT_LABEL[a.product] ? T(CLIENT_LABEL[a.product]) : '') + T(' 客户端当前登录的账号">客户端当前</span>') : '')
     + (a.product === 'zcode' && isGatewayCurrent(a) ? (zgwAccountCount() > 1
-      ? T('<span class="pill gw" title="体验包接口最近一次补全用的账号（{n} 个 ZCode 账号按轮转分摊请求，每个请求换一个，与客户端登录无关）">接口使用中</span>', { n: zgwAccountCount() })
-      : T('<span class="pill gw" title="体验包接口最近一次补全用的账号（多账号时按轮转自动选择，与客户端登录无关）">接口使用中</span>')) : '')
-    + (a.product === 'minimax' && isMiniMaxGatewayCurrent(a) ? T('<span class="pill gw" title="本地接口最近一次补全用的账号（多账号时按轮换自动选择，与客户端登录无关）">接口使用中</span>') : '')
-    + (a.product === 'trae' && isTraeGatewayCurrent(a) ? T('<span class="pill gw" title="本地接口最近一次补全用的账号（多账号时按轮换自动选择，与客户端登录无关）">接口使用中</span>') : '')
+      ? T('<span class="pill gw" title="体验包接口最近 30 分钟内服役过的账号（{n} 个 ZCode 账号按轮转分摊请求，每个请求换一个，与客户端登录无关）">接口使用中</span>', { n: zgwAccountCount() })
+      : T('<span class="pill gw" title="体验包接口最近 30 分钟内服役过的账号（多账号时按轮转自动选择，与客户端登录无关）">接口使用中</span>')) : '')
+    + (a.product === 'minimax' && isMiniMaxGatewayCurrent(a) ? T('<span class="pill gw" title="本地接口最近 30 分钟内服役过的账号（多账号时按轮转自动选择，与客户端登录无关）">接口使用中</span>') : '')
+    + (a.product === 'trae' && isTraeGatewayCurrent(a) ? T('<span class="pill gw" title="本地接口最近 30 分钟内服役过的账号（多账号时按轮转自动选择，与客户端登录无关）">接口使用中</span>') : '')
     + (a.isPat ? '<span class="badge">PAT</span>' : '')
     + qoderWebBadge(a)
     + (a.verified === false ? T('<span class="pill fail">token 无效</span>') : '')
@@ -1875,8 +1875,8 @@ const isDone = (a) => {
 const ofProduct = (prod) => state.accounts.filter((a) => a.product === prod);
 const currentUidOf = (prod) => state.status && (prod === 'workbuddy' ? state.status.workbuddyCurrentUid : prod === 'zcode' ? state.status.zcodeCurrentUid : prod === 'catpaw' ? state.status.catpawCurrentUid : prod === 'trae' ? state.status.traeCurrentUid : null);
 /**
- * 接口使用中判定：最近服役过的账号集合（recentAccounts，最新在前、去重、封 4 个）。
- * 会话粘滞（sticky）下同一段会话始终打同一个号、新会话轮到下一个号——
+ * 接口使用中判定：近 30 分钟窗口内服役过的账号集合（网关侧 recentAccounts 已按窗口过滤，
+ * 最新在前、去重、封 4 个）。会话粘滞（sticky）下同一段会话始终打同一个号、新会话轮到下一个号——
  * 「最近服役」往往不止一个账号，只亮 lastAccount 会漏掉仍在粘滞窗口内服役的号（用户实测反馈）。
  */
 function isGatewayCurrent(a) {
@@ -1889,15 +1889,27 @@ function isGatewayCurrent(a) {
 function zgwAccountCount() {
   return state.accounts.filter((a) => a.product === 'zcode').length;
 }
+/** 「接口使用中」的窗口：只亮近 30 分钟内真正服役过的号（2026-11-07 用户反馈：
+ *  无时间衰减时调用过一次的号永远挂着徽章）。ZCode 的 recentAccounts 由网关侧按窗口过滤；
+ *  MiniMax / Trae 只有单槽 lastAccount，按 lastAccountAt 在面板侧卡窗口。 */
+const GW_RECENT_MS = 30 * 60_000;
+function gwRecentlyServed(st) {
+  if (!st || !st.lastAccount) return false;
+  // 老版 daemon 不带 lastAccountAt：维持旧口径亮着（面板与守护进程同包分发， skew 是瞬态）
+  if (typeof st.lastAccountAt !== 'number') return true;
+  return Date.now() - st.lastAccountAt <= (st.recentWindowMs || GW_RECENT_MS);
+}
 /** MiniMax 本地接口使用中判定 */
 function isMiniMaxGatewayCurrent(a) {
-  const last = state.mGatewayStats && state.mGatewayStats.lastAccount;
-  return Boolean(last) && (a.name === last || a.uid === last || a.id === last);
+  const st = state.mGatewayStats;
+  const last = st && st.lastAccount;
+  return Boolean(last) && (a.name === last || a.uid === last || a.id === last) && gwRecentlyServed(st);
 }
 /** Trae 本地接口使用中判定 */
 function isTraeGatewayCurrent(a) {
-  const last = state.tGatewayStats && state.tGatewayStats.lastAccount;
-  return Boolean(last) && (a.name === last || a.uid === last || a.id === last);
+  const st = state.tGatewayStats;
+  const last = st && st.lastAccount;
+  return Boolean(last) && (a.name === last || a.uid === last || a.id === last) && gwRecentlyServed(st);
 }
 
 // 客户端当前登录判定：WorkBuddy / mirasim / 妙手 / MiniMax 按 uid；ZCode 按 uid 或 email（早期导入的账号可能只存了其中一个）

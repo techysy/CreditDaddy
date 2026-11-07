@@ -139,7 +139,7 @@ export function __resetForTests() {
   stats.lastCallAt = null;
   stats.calls = 0;
   stats.lastAccount = null;
-  stats.recentAccounts = [];
+  recentEntries.length = 0;
 }
 function markDead(account) {
   dead.set(account.id, credFingerprint(account));
@@ -229,11 +229,38 @@ async function unavailableReason() {
 let captchaCache = null; // { param, region, at }
 
 // 调用统计（进程内）：面板「10Router 已接入」活标签的数据源
-const stats = { lastCallAt: null, calls: 0, lastAccount: null, recentAccounts: [] };
-const RECENT_ACCOUNTS_MAX = 4;   // 面板「接口使用中」徽标的覆盖范围：最近服役过的前 N 个号
-function recordRecentAccount(label) {
+const stats = { lastCallAt: null, calls: 0, lastAccount: null };
+const RECENT_ACCOUNTS_MAX = 4;   // 面板「接口使用中」徽标的覆盖范围：窗口内最近服役过的前 N 个号
+// 「接口使用中」只认近 30 分钟内真正服役过的号（2026-11-07 用户反馈：无时间衰减时
+// 调用过一次的号永远挂着徽章，四张卡全亮，看起来像只剩一个号在轮转）。
+const RECENT_WINDOW_MS = 30 * 60_000;
+const recentEntries = [];   // { label, at } 最新在前，按 label 去重（保留最新一次）
+function recordRecentAccount(label, at = Date.now()) {
   if (!label) return;
-  stats.recentAccounts = [label, ...stats.recentAccounts.filter((x) => x !== label)].slice(0, RECENT_ACCOUNTS_MAX);
+  recentEntries.unshift({ label, at });
+  const seen = new Set();
+  for (let i = recentEntries.length - 1; i >= 0; i--) {
+    if (seen.has(recentEntries[i].label)) recentEntries.splice(i, 1);
+    else seen.add(recentEntries[i].label);
+  }
+  if (recentEntries.length > 32) recentEntries.length = 32;
+}
+/** 窗口内的服役名单（最新在前、去重、封顶）：gatewayStatus.recentAccounts 的口径。 */
+export function recentLabelsInWindow(entries, now = Date.now(), windowMs = RECENT_WINDOW_MS, cap = RECENT_ACCOUNTS_MAX) {
+  const seen = new Set();
+  const out = [];
+  for (const e of entries) {
+    if (!e || typeof e.at !== 'number' || now - e.at > windowMs) continue;
+    if (seen.has(e.label)) continue;
+    seen.add(e.label);
+    out.push(e.label);
+    if (out.length >= cap) break;
+  }
+  return out;
+}
+/** 测试专用：注入指定时间的服役记录（控制窗口过滤的新旧）。 */
+export function _recordRecentForTests(label, at) {
+  recordRecentAccount(label, at);
 }
 
 // 额度打标：0 额度账号不再轮换（额度缓存 10 分钟，到期自动重探；
@@ -792,7 +819,9 @@ export async function gatewayStatus() {
       lastCallAt: stats.lastCallAt,
       calls: stats.calls,
       lastAccount: stats.lastAccount,
-      recentAccounts: stats.recentAccounts,
+      // 只回窗口内服役过的号（面板徽章口径）；recentWindowMs 让面板能对齐展示
+      recentAccounts: recentLabelsInWindow(recentEntries),
+      recentWindowMs: RECENT_WINDOW_MS,
     },
     exhausted: all
       .filter((a) => isQuotaExhausted(a.id))

@@ -81,6 +81,7 @@ export const stats = {
   lastCallAt: null,
   calls: 0,
   lastAccount: null,
+  lastAccountAt: null,   // 「接口使用中」徽章的 30 分钟窗口锚点（面板 gwRecentWindow 内才亮）
 };
 
 const MIN_WEIGHT = 1;
@@ -135,6 +136,7 @@ export function __resetForTests() {
   stats.lastCallAt = null;
   stats.calls = 0;
   stats.lastAccount = null;
+  stats.lastAccountAt = null;
 }
 
 async function accountWeight(a) {
@@ -549,6 +551,7 @@ export async function handleGateway(req, res) {
     }
 
     stats.lastAccount = label;
+    stats.lastAccountAt = Date.now();
       resetCoolingStreak(account.id);   // 成功一次即清零连续 429 计数
       logger.debug('TRAE-GW', '{label} 连接成功,开始流式输出 ({model})', { label, model: requestedModel });
 
@@ -788,6 +791,7 @@ export async function gatewayStatus() {
       lastCallAt: stats.lastCallAt,
       calls: stats.calls,
       lastAccount: stats.lastAccount,
+      lastAccountAt: stats.lastAccountAt,
     },
     accounts: all.length,
     // cooling 保持字符串数组（历史形状）；冷却细节走 coolingDetail（与 zcodeGateway 同款）

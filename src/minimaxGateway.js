@@ -61,6 +61,7 @@ export const stats = {
   lastCallAt: null,
   calls: 0,
   lastAccount: null,
+  lastAccountAt: null,   // 「接口使用中」徽章的 30 分钟窗口锚点（面板 gwRecentWindow 内才亮）
 };
 
 // 平滑加权轮询（SWRR）：剩余积分多的账号分到更多请求，而不是雨露均沾地 round-robin。
@@ -142,6 +143,7 @@ export function __resetForTests() {
   stats.lastCallAt = null;
   stats.calls = 0;
   stats.lastAccount = null;
+  stats.lastAccountAt = null;
   __resetRefreshGuardForTests();
 }
 
@@ -398,6 +400,7 @@ export async function handleGateway(req, res) {
 
     if (upstream.ok) {
       stats.lastAccount = label;
+      stats.lastAccountAt = Date.now();
       resetCoolingStreak(account.id);   // 成功一次即清零连续 429 计数
       logger.info('MINIMAX-GW', '{label} 补全成功 ({status})', { label, status: upstream.status });
       try {
@@ -496,6 +499,7 @@ export async function gatewayStatus() {
       lastCallAt: stats.lastCallAt,
       calls: stats.calls,
       lastAccount: stats.lastAccount,
+      lastAccountAt: stats.lastAccountAt,
     },
     accounts: all.length,
     // cooling 保持字符串数组（历史形状）；冷却细节走 coolingDetail（与 zcodeGateway 同款）

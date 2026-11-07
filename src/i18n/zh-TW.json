@@ -370,8 +370,6 @@
   "<span class=\"pill fail\" title=\"部分连接查询失败\">失败 ×": "<span class=\"pill fail\" title=\"部分連接查詢失敗\">失敗 ×",
   "<span class=\"pill fail\">已达上限</span>": "<span class=\"pill fail\">已達上限</span>",
   "<span class=\"pill fail\">token 无效</span>": "<span class=\"pill fail\">token 無效</span>",
-  "<span class=\"pill gw\" title=\"本地接口最近一次补全用的账号（多账号时按轮换自动选择，与客户端登录无关）\">接口使用中</span>": "<span class=\"pill gw\" title=\"本地接口最近一次補全用的賬號（多賬號時按輪換自動選擇，與客戶端登錄無關）\">接口使用中</span>",
-  "<span class=\"pill gw\" title=\"体验包接口最近一次补全用的账号（多账号时按轮换自动选择，与客户端登录无关）\">接口使用中</span>": "<span class=\"pill gw\" title=\"體驗包接口最近一次補全用的賬號（多賬號時按輪換自動選擇，與客戶端登錄無關）\">接口使用中</span>",
   "<span class=\"pill limited\">告急 ×": "<span class=\"pill limited\">告急 ×",
   "<span class=\"pill limited\">告急</span>": "<span class=\"pill limited\">告急</span>",
   "<span class=\"pill ok\">已导入</span>": "<span class=\"pill ok\">已導入</span>",
@@ -1785,8 +1783,6 @@
   "把本机 Qoder / WorkBuddy 账号推为 10Router 上游连接。": "把本機 Qoder / WorkBuddy 賬號推為 10Router 上游連接。",
   "填 10Router 面板密码，走 OAuth 通道（带 refreshToken 自动续期）；不填则按已保存的走": "填 10Router 面板密碼，走 OAuth 通道（帶 refreshToken 自動續期）；不填則按已保存的走",
   "同步账号中…": "同步賬號中…",
-  "<span class=\"pill gw\" title=\"体验包接口最近一次补全用的账号（{n} 个 ZCode 账号按轮转分摊请求，每个请求换一个，与客户端登录无关）\">接口使用中</span>": "<span class=\"pill gw\" title=\"體驗包介面最近一次補全用的帳號（{n} 個 ZCode 帳號按輪轉分攤請求，每個請求換一個，與客戶端登入無關）\">介面使用中</span>",
-  "<span class=\"pill gw\" title=\"体验包接口最近一次补全用的账号（多账号时按轮转自动选择，与客户端登录无关）\">接口使用中</span>": "<span class=\"pill gw\" title=\"體驗包介面最近一次補全用的帳號（多帳號時按輪轉自動選擇，與客戶端登入無關）\">介面使用中</span>",
   "<div class=\"z-row\"><span class=\"z-label\">客户端</span><span class=\"z-text\">本机未安装 WorkBuddy 客户端：Token 导入、额度读取与每日领取不受影响；但「切换账号」需要本机客户端（切换是写入客户端凭据由其应用）。请先安装并登录客户端，再「本机导入」。</span></div>": "<div class=\"z-row\"><span class=\"z-label\">客戶端</span><span class=\"z-text\">本機未安裝 WorkBuddy 客戶端：Token 導入、額度讀取與每日領取不受影響；但「切換賬號」需要本機客戶端（切換是寫入客戶端憑據由其應用）。請先安裝並登錄客戶端，再「本機導入」。</span></div>",
   "本机未安装 WorkBuddy 客户端，无法切换：切换是把登录写入客户端凭据，由客户端应用。请先安装客户端并登录，再「本机导入」。": "本機未安裝 WorkBuddy 客戶端，無法切換：切換是把登錄寫入客戶端憑據，由客戶端應用。請先安裝並登錄客戶端，再「本機導入」。",
   "{label} 429 限流,冷却 {dur}(连续第 {streak} 次)": "{label} 429 限流,冷卻 {dur}(連續第 {streak} 次)",
@@ -1961,5 +1957,8 @@
   "智点包": "智點包",
   " 个资源包 · 至 ": " 個資源包 · 至 ",
   "智点余额 ": "智點餘額 ",
-  "Trae 国内版": "Trae 國內版"
+  "Trae 国内版": "Trae 國內版",
+  "<span class=\"pill gw\" title=\"体验包接口最近 30 分钟内服役过的账号（{n} 个 ZCode 账号按轮转分摊请求，每个请求换一个，与客户端登录无关）\">接口使用中</span>": "<span class=\"pill gw\" title=\"體驗包介面最近 30 分鐘內服役過的賬號（{n} 個 ZCode 賬號按輪轉分攤請求，每個請求換一個，與客戶端登錄無關）\">介面使用中</span>",
+  "<span class=\"pill gw\" title=\"体验包接口最近 30 分钟内服役过的账号（多账号时按轮转自动选择，与客户端登录无关）\">接口使用中</span>": "<span class=\"pill gw\" title=\"體驗包介面最近 30 分鐘內服役過的賬號（多賬號時按輪轉自動選擇，與客戶端登錄無關）\">介面使用中</span>",
+  "<span class=\"pill gw\" title=\"本地接口最近 30 分钟内服役过的账号（多账号时按轮转自动选择，与客户端登录无关）\">接口使用中</span>": "<span class=\"pill gw\" title=\"本地介面最近 30 分鐘內服役過的賬號（多賬號時按輪轉自動選擇，與客戶端登錄無關）\">介面使用中</span>"
 }

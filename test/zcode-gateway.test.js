@@ -553,3 +553,30 @@ test('无会话标识（调用方没传 metadata）时纯轮转，不产生粘�
   assert.equal(new Set(used).size, 2, '无会话标识时应纯轮转（实际: ' + used.join(', ') + '）');
   assert.equal((await gw.gatewayStatus()).stickySessions, 0, '无会话标识不应产生粘滞');
 });
+
+test('接口使用中：recentAccounts 只回 30 分钟窗口内服役过的号（2026-11-07 用户反馈）', async () => {
+  gw.__resetForTests();
+  const now = Date.now();
+  gw._recordRecentForTests('窗口内号', now - 5 * 60_000);
+  gw._recordRecentForTests('窗口外号', now - 45 * 60_000);
+  const st = await gw.gatewayStatus();
+  assert.deepEqual(st.stats.recentAccounts, ['窗口内号'], '45 分钟前服役的号不该再亮「接口使用中」');
+  assert.equal(st.stats.recentWindowMs, 30 * 60_000, '窗口长度随状态带出，面板对齐展示');
+});
+
+test('接口使用中：真实补全成功后进窗口；同号重复服役去重不膨胀', async () => {
+  await resetState();
+  zauto.setZcodeCaptchaProvider(null);
+  await seedAccount('a1', '服役号');
+  upstreamQueue.push({ status: 200, sse: true, body: sseBody() });
+  const res = captureRes();
+  await gw.handleGateway(fakeReq('POST', '{"model":"glm-5.3-flash","messages":[]}'), res);
+  assert.equal(res.status, 200, res.body);
+  // 同一号第二次服役：去重保留最新时间戳，名单不膨胀
+  upstreamQueue.push({ status: 200, sse: true, body: sseBody() });
+  const res2 = captureRes();
+  await gw.handleGateway(fakeReq('POST', '{"model":"glm-5.3-flash","messages":[]}'), res2);
+  assert.equal(res2.status, 200, res2.body);
+  const st = await gw.gatewayStatus();
+  assert.deepEqual(st.stats.recentAccounts, ['服役号']);
+});
