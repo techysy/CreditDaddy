@@ -658,6 +658,9 @@
         </div>
         <div class="actions">
           <button class="btn primary" id="btn-checkin"></button>
+          <span id="q-actions" style="display:none">
+            <button class="btn" id="qt-open" style="display:none"></button>
+          </span>
           <span id="z-actions" style="display:none">
             <button class="btn" id="zt-ac"></button>
             <button class="btn" id="zt-gw"></button>
@@ -1322,8 +1325,19 @@ function fmtTime(iso) {
 }
 function mask(s) {
   if (!s) return '';
-  if (s.includes('@')) { const [u, d] = s.split('@'); return (u.length > 2 ? u.slice(0, 2) + '***' : u + '*') + '@' + d; }
+  // 邮箱：本地段前 2 后 2（11****91@域名）——只留后 1 容易重名；本地段太短（≤4）时后 2 会盖住
+  // 整段或与前 2 重叠，退到只留首字符
+  if (s.includes('@')) { const at = s.indexOf('@'); const u = s.slice(0, at); return (u.length > 4 ? u.slice(0, 2) + '****' + u.slice(-2) : u.slice(0, 1) + '****') + s.slice(at); }
   return s.length > 10 ? s.slice(0, 6) + '…' + s.slice(-4) : s;
+}
+// 名字类显示位用：只对邮箱形字符串掩码，备注名等非邮箱字符串原样返回
+function maskName(s) {
+  const str = String(s || '');
+  return str.includes('@') ? mask(str) : str;
+}
+// 手机号：前 3 后 3
+function maskPhone(p) {
+  return (typeof p === 'string' && p.length >= 7) ? p.slice(0, 3) + '****' + p.slice(-3) : (p || '');
 }
 
 let toastTimer = null;
@@ -1826,12 +1840,12 @@ function creditHtml(a) {
 function cardHtml(a) {
   const st = statusOf(a);
   const ex = expiryCell(a);
-  const ident = a.email || a.phone || (a.uid ? 'UID ' + a.uid.slice(0, 8) : a.tokenMasked);
+  const ident = a.email || maskPhone(a.phone) || (a.uid ? 'UID ' + a.uid.slice(0, 8) : a.tokenMasked);
   const isCurrent = isClientCurrent(a);
   const canCheckin = CHECKIN_PRODUCTS.has(a.product);
   return '<div class="card" draggable="true" data-id="' + esc(a.id) + '">'
     + '<div class="row1"><div class="name-group">'
-    + T('<span class="name" data-act="rename" title="点击修改备注名">') + esc(a.name || T('(未命名)')) + '</span>'
+    + T('<span class="name" data-act="rename" title="点击修改备注名">') + esc(maskName(a.name) || T('(未命名)')) + '</span>'
     + provBadges(a.provider, true, a.flavor)
     + (isCurrent ? '<span class="pill cur" title="' + esc(CLIENT_LABEL[a.product] ? T(CLIENT_LABEL[a.product]) : '') + T(' 客户端当前登录的账号">客户端当前</span>') : '')
     + (a.product === 'zcode' && isGatewayCurrent(a) ? (zgwAccountCount() > 1
@@ -1854,7 +1868,7 @@ function cardHtml(a) {
     + T('<button class="icon-btn del" data-act="del" title="删除（点两次确认）">') + I.trash + '</button>'
     + '</div></div>'
     + '<div class="meta">'
-    + '<div class="mi"><span class="lbl">' + T('账号') + '</span><span class="val" title="' + esc(a.email || a.phone || a.uid || '') + '">' + esc(a.phone && !a.email ? ident : mask(ident)) + '</span></div>'
+    + '<div class="mi"><span class="lbl">' + T('账号') + '</span><span class="val" title="' + esc(a.phone && !a.email ? ident : mask(ident)) + '">' + esc(a.phone && !a.email ? ident : mask(ident)) + '</span></div>'
     + '<div class="mi right"><span class="lbl">' + (ex.isPlan ? T('套餐到期') : ex.isAuto ? T('凭据状态') : T('有效期至')) + '</span>'
     + '<span class="val' + (ex.warn ? ' warn' : '') + '" title="' + esc(ex.title || '') + '">' + esc(ex.label) + '</span></div>'
     + '</div>'
@@ -1980,6 +1994,7 @@ function creditSum(list) {
 
 function render() {
   $('z-actions').style.display = 'none';   // 兜底：切到仪表盘 / 10Router / 免费额度池 时 renderProd 不跑，先藏起来
+  $('q-actions').style.display = 'none';
   $('t-actions').style.display = 'none';
   $('m-actions').style.display = 'none';
   $('w-actions').style.display = 'none';
@@ -2068,6 +2083,16 @@ function renderProd() {
     if (canOpen) {
       $('zt-open').innerHTML = dot(zc.running === true, true) + T('打开客户端');
       $('zt-open').title = zc.running ? T('ZCode 客户端运行中，点我唤到前台') : T('ZCode 客户端未运行，点我启动');
+    }
+  }
+  $('q-actions').style.display = prod === 'qoder' ? 'contents' : 'none';
+  if (prod === 'qoder') {
+    const qc = (state.status && state.status.qoderClient) || {};
+    const canOpen = qc.installed && window.creditdaddy && typeof window.creditdaddy.openQoderClient === 'function';
+    $('qt-open').style.display = canOpen ? '' : 'none';
+    if (canOpen) {
+      $('qt-open').innerHTML = dot(qc.running === true, true) + T('打开客户端');
+      $('qt-open').title = qc.running ? T('Qoder 客户端运行中，点我唤到前台') : T('Qoder 客户端未运行，点我启动');
     }
   }
   $('t-actions').style.display = prod === 'trae' ? 'contents' : 'none';
@@ -2207,8 +2232,8 @@ function renderDash() {
     if (CLIENT_LABEL[p.id]) {
       const cur = list.find((a) => a.product === p.id && isClientCurrent(a));
       const zid = p.id === 'zcode' ? s.zcodeCurrentIdentity : null;
-      const live = cur ? esc(cur.name || cur.email || cur.uid)
-        : zid && (zid.email || zid.uid || zid.username) ? T('未导入的账号（') + esc(zid.email || zid.username || zid.uid) + T('）')
+      const live = cur ? esc(maskName(cur.name || cur.email || cur.uid))
+        : zid && (zid.email || zid.uid || zid.username) ? T('未导入的账号（') + esc(maskName(zid.email || zid.username || zid.uid)) + T('）')
         : p.id === 'mirasim' && s.mirasimCurrentUid ? T('未导入的账号')
         : p.id === 'catpaw' && s.catpawClient && s.catpawClient.signedIn && !list.some((a) => isClientCurrent(a)) ? T('未导入的账号')
         : p.id === 'trae' && s.traeClient && s.traeClient.signedIn && !list.some((a) => isClientCurrent(a)) ? T('未导入的账号')
@@ -2216,7 +2241,7 @@ function renderDash() {
         : (p.id === 'workbuddy' && (s.workbuddyCurrentUid || s.workbuddyIntlCurrentUid) ? T('未导入的账号') : '—');
       if (p.id === 'workbuddy') {
         const curIdeName = list.find((a) => isIdeCurrent(a))?.name || list.find((a) => isIdeCurrent(a))?.email || null;
-        const ideLive = curIdeName ? esc(curIdeName) : ((s.codebuddyIdeCurrentUid || s.codebuddyIdeIntlCurrentUid) ? T('未导入的账号') : T('—'));
+        const ideLive = curIdeName ? esc(maskName(curIdeName)) : ((s.codebuddyIdeCurrentUid || s.codebuddyIdeIntlCurrentUid) ? T('未导入的账号') : T('—'));
         rows += '<span class="lbl">' + T('WorkBuddy 客户端') + '</span><span class="val">' + live + '</span>'
           + '<span class="lbl">' + T('CodeBuddy IDE') + '</span><span class="val">' + ideLive + '</span>';
       } else {
@@ -2240,7 +2265,7 @@ function renderDash() {
   for (const a of state.accounts) {
     const ex = expiryCell(a);
     const st = statusOf(a);
-    const base = { view: a.product, name: a.name || a.email || a.id, badges: provBadges(a.provider) };
+    const base = { view: a.product, name: maskName(a.name || a.email || a.id), badges: provBadges(a.provider) };
     if (a.verified === false) att.push(Object.assign({ pill: 'fail', text: T('token 无效') }, base));
     else if (ex.label === '已过期') att.push(Object.assign({ pill: 'fail', text: T('token 已过期') }, base));
     else if (ex.warn) att.push(Object.assign({ pill: 'limited', text: ex.label.slice(5, 10) + T(' 过期') }, base));
@@ -2271,7 +2296,7 @@ function renderDash() {
       const r = a.lastResult;
       let [cls, txt] = RES[r.status] || ['pending', r.status];
       const label = r.status === 'checked-in' && r.amount ? txt + ' +' + fmtNum(r.amount) : txt;
-      return '<div class="item" data-view="' + a.product + '" title="' + esc(r.message || '') + '"><span class="item-main"><span class="item-name">' + esc(a.name || a.email || a.id) + '</span>' + provBadges(a.provider) + '</span>'
+      return '<div class="item" data-view="' + a.product + '" title="' + esc(r.message || '') + '"><span class="item-main"><span class="item-name">' + esc(maskName(a.name || a.email || a.id)) + '</span>' + provBadges(a.provider) + '</span>'
         + '<span class="item-side"><span class="pill ' + cls + '">' + esc(label) + '</span><span class="item-time">' + fmtTime(r.at).slice(5) + '</span></span></div>';
     }).join('')
     : '<div class="muted-empty">' + T('还没有领取记录') + '</div>';
@@ -2451,12 +2476,8 @@ document.addEventListener('click', async (e) => {
     } catch (err) { toast(String(err && err.message || err), false); }
     return;
   }
-  if (e.target.closest('#tt-open')) {
-    try {
-      const r = await window.creditdaddy.openTraeClient();
-      if (r && r.ok) toast(T('已启动 Trae 客户端'));
-      else toast((r && r.error) || T('无法打开 Trae 客户端'), false);
-    } catch (err) { toast(String(err && err.message || err), false); }
+  if (e.target.closest('#qt-open') || e.target.closest('#tt-open')) {
+    await openProdClientChoose(e.target.closest('#tt-open') ? 'trae' : 'qoder');
     return;
   }
   if (e.target.closest('#tt-gw')) {
@@ -2684,7 +2705,7 @@ function trPacksHtml(c, packs) {
 }
 
 function trCardHtml(c) {
-  const who = c.name || c.email || c.id.slice(0, 8);
+  const who = maskName(c.name || c.email || c.id.slice(0, 8));
   // 套餐名与供应商名重复时不再单独显示（如 StepFun CN · StepFun CN）
   const norm = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9一-龥]/g, '');
   const showPlan = c.plan && !norm(c.plan).includes(norm(c.providerName)) && !norm(c.providerName).includes(norm(c.plan));
@@ -2705,7 +2726,7 @@ function trCardHtml(c) {
   return '<div class="tr-card' + (c.isActive ? '' : ' off') + (body && body.startsWith('<div class="msg') ? ' flat' : '') + '" draggable="true" data-id="' + esc(c.id) + '" data-vendor="' + esc(c.providerName || c.provider || '') + '"><div class="row1"><div class="name-group">'
     + '<span class="badge prod tenrouter">' + esc(c.providerName) + '</span>'
     + (TR_REGION[c.provider] ? '<span class="badge ' + TR_REGION[c.provider][1] + '">' + T(TR_REGION[c.provider][0]) + '</span>' : '')
-    + '<span class="tr-name" title="' + esc([c.name, c.email].filter(Boolean).join(' · ')) + '">' + esc(who) + '</span>'
+    + '<span class="tr-name" title="' + esc([c.name, c.email].filter(Boolean).map(maskName).join(' · ')) + '">' + esc(who) + '</span>'
     + (showPlan ? '<span class="badge">' + esc(c.plan) + '</span>' : '')
     + (c.isActive ? '' : T('<span class="pill pending">已停用</span>'))
     + (c.limitReached ? T('<span class="pill fail">已达上限</span>') : '')
@@ -3742,7 +3763,7 @@ async function claimWbActivities(btn) {
 async function loomyInvite(id) {
   const a = state.accounts.find((x) => x.id === id);
   if (!a) return;
-  const code = await uiPrompt(T('为 {name} 填写邀请码', { name: a.name || id }), '', {
+  const code = await uiPrompt(T('为 {name} 填写邀请码', { name: maskName(a.name || id) }), '', {
     placeholder: T('输入邀请码，如 8YZCH5（绑定后 +5000 永久积分，每号仅一次）'),
     okText: T('绑定'),
   });
@@ -3763,14 +3784,14 @@ async function loomyMyInvite(id) {
   const listEl = $('my-invite-list');
   const hintEl = $('my-invite-hint');
   listEl.innerHTML = '<div class="empty" style="padding:18px">…</div>';
-  hintEl.textContent = T('正在查询 {name} 的邀请码…', { name: a.name || id });
+  hintEl.textContent = T('正在查询 {name} 的邀请码…', { name: maskName(a.name || id) });
   openModal('m-my-invite');
   let codes = [];
   try {
     const r = await api('/api/accounts/' + encodeURIComponent(id) + '/loomy/my-invite-codes');
     codes = (r && r.codes) || [];
-    if (r && r.initialized) hintEl.textContent = T('首次查询已初始化积分档案，以下是 {name} 的邀请码：', { name: a.name || id });
-    else hintEl.textContent = T('{name} 的邀请码（{n} 个）：', { name: a.name || id, n: codes.length });
+    if (r && r.initialized) hintEl.textContent = T('首次查询已初始化积分档案，以下是 {name} 的邀请码：', { name: maskName(a.name || id) });
+    else hintEl.textContent = T('{name} 的邀请码（{n} 个）：', { name: maskName(a.name || id), n: codes.length });
   } catch (e) {
     listEl.innerHTML = '';
     hintEl.textContent = e.message;
@@ -3891,7 +3912,7 @@ async function onCardClick(e) {
                 : T('\n客户端会自动应用新会话；当前登录账号的最新 token 会先保存到 CreditDaddy。');
     }
 
-    if (!(await uiConfirm(T('把 {client} 切换到「{name}」?', { client, name: (a.name || id) }) + tip, T('切换账号'), T('切换')))) return;
+    if (!(await uiConfirm(T('把 {client} 切换到「{name}」?', { client, name: maskName(a.name || id) }) + tip, T('切换账号'), T('切换')))) return;
     const doSwitch = (force) => api('/api/accounts/' + encodeURIComponent(id) + '/switch', { json: { force, targetClient } });
     try {
       let r;
@@ -3902,7 +3923,7 @@ async function onCardClick(e) {
         r = await doSwitch(true);
       }
       const msg = r && r.alreadyActive ? client + T(' 当前已是该账号')
-        : (r && r.closedClient ? T('已关闭并切换 ') : '') + client + T(' 已切换到 ') + (a.name || id) + (r && r.needsRestart ? T('（重启 IDE 后生效）') : '');
+        : (r && r.closedClient ? T('已关闭并切换 ') : '') + client + T(' 已切换到 ') + maskName(a.name || id) + (r && r.needsRestart ? T('（重启 IDE 后生效）') : '');
       toast(msg);
       await loadStatus(); await loadAccounts();
       // 桌面版切号后自动唤醒打开客户端，免去手动查找客户端快捷方式
@@ -3941,9 +3962,11 @@ async function onCardClick(e) {
         }, 800);
       }
       if (a && a.product === 'trae' && r && !r.alreadyActive && window.creditdaddy && typeof window.creditdaddy.openTraeClient === 'function') {
+        // 国内/国际是两个不同的 exe（Trae CN / Trae），按账号档位选——切到国际版号别把国内版客户端拉起来
+        const tVariant = a.meta && a.meta.isIntl ? 'intl' : 'cn';
         setTimeout(async () => {
           try {
-            const re = await window.creditdaddy.openTraeClient();
+            const re = await window.creditdaddy.openTraeClient(tVariant);
             if (re && re.ok) toast(T('已重新启动 Trae 客户端'));
             else toast((re && re.error) || T('无法打开 Trae 客户端（桌面版才能自动拉起）'), false);
           } catch (e) {}
@@ -4279,6 +4302,28 @@ function okDialog() { const v = $('dlg-field').style.display === 'none' ? true :
 $('dlg-alt')?.addEventListener('click', () => { $('m-dialog').classList.remove('show'); settleDialog('alt'); });
 $('dlg-ok').addEventListener('click', okDialog);
 $('dlg-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') okDialog(); });
+
+// 「打开客户端」版本选择（Trae / Qoder 都有国内、国际两个客户端）：单版本直接开，双版本
+// 弹三键选择（确定=国内版 / 备选=国际版 / 取消不动）——不再按固定顺序开错边
+async function openProdClientChoose(prod) {
+  const c = (state.status && state.status[prod === 'trae' ? 'traeClient' : 'qoderClient']) || {};
+  if (!c.installed) { toast(T('未检测到本机客户端'), false); return; }
+  let variant;
+  if (c.cnInstalled && c.intlInstalled) {
+    const pick = await uiConfirm(
+      prod === 'trae' ? T('本机同时装了 Trae 国内版与国际版，要打开哪一个？') : T('本机同时装了 Qoder 国内版与国际版，要打开哪一个？'),
+      T('打开客户端'), T('国内版'), T('国际版'));
+    if (!pick) return;
+    variant = pick === 'alt' ? 'intl' : 'cn';
+  } else variant = c.cnInstalled ? 'cn' : 'intl';
+  try {
+    const r = prod === 'trae'
+      ? await window.creditdaddy.openTraeClient(variant)
+      : await window.creditdaddy.openQoderClient(variant === 'cn' ? 'qoder-cn' : 'qoder');
+    if (r && r.ok) toast(prod === 'trae' ? T('已启动 Trae 客户端') : T('已启动 Qoder 客户端'));
+    else toast((r && r.error) || (prod === 'trae' ? T('无法打开 Trae 客户端') : T('无法打开 Qoder 客户端')), false);
+  } catch (err) { toast(String(err && err.message || err), false); }
+}
 
 // ── 重启服务（桌面客户端或 CLI） ──
 async function restartCreditDaddy() {
@@ -4622,10 +4667,10 @@ async function localScan() {
     let html = '';
     const cands = r.candidates.filter((c) => !state.addProduct || (c.provider ? provOf(c.provider).prod : 'qoder') === state.addProduct);
     for (const c of cands) {
-      const title = c.kind === 'app' ? esc(c.name || c.email || c.phone || T('(未命名)')) : '<span style="font-family:monospace">' + esc(c.tokenMasked) + '</span>';
+      const title = c.kind === 'app' ? esc(maskName(c.name || c.email || maskPhone(c.phone)) || T('(未命名)')) : '<span style="font-family:monospace">' + esc(c.tokenMasked) + '</span>';
       const prov = (c.provider ? provBadges(c.provider) : '<span class="badge">' + esc(c.kind) + '</span>') + (c.current ? T('<span class="pill cur">当前登录</span>') : '');
       const sub = c.kind === 'app'
-        ? esc(c.source) + (c.email ? ' · ' + esc(mask(c.email)) : c.phone ? ' · ' + esc(c.phone) : '') + (c.expiresAt ? T(' · 有效期至 ') + esc(fmtTime(c.expiresAt)) : '')
+        ? esc(c.source) + (c.email ? ' · ' + esc(mask(c.email)) : c.phone ? ' · ' + esc(maskPhone(c.phone)) : '') + (c.expiresAt ? T(' · 有效期至 ') + esc(fmtTime(c.expiresAt)) : '')
         : esc(c.source) + ' · ' + esc(String(c.file || '').split(/[\\/]/).pop()) + T('（') + c.hits + T(' 处）');
       const intl = c.intlWarning ? '<div class="hint" style="color:var(--warn,#d4b83a);margin-top:4px">⚠ ' + esc(c.intlWarning) + '</div>' : '';
       const btns = c.imported ? T('<span class="pill ok">已导入</span>') + (c.provider ? '<button class="btn" data-cid="' + esc(c.id) + T('" title="用本机凭据更新 token / 有效期 / 邮箱">同步信息</button>') : '')
@@ -4858,7 +4903,7 @@ function qoderWebSessionNote() {
     }
   }
   if (!missing.length && !stale.length && !dead.length) return '';
-  const names = (arr) => arr.map((x) => x.name || x.email || x.uid || x.id).join(T('、'));
+  const names = (arr) => arr.map((x) => maskName(x.name || x.email || x.uid || x.id)).join(T('、'));
   const bits = [];
   if (dead.length) bits.push(T('会话已失效：') + names(dead));
   if (missing.length) bits.push(T('没有网页会话：') + names(missing));
@@ -5119,9 +5164,9 @@ function renderCompMenu() {
   }).join('');
   const sortSections = PRODUCTS.filter((p) => compVisible(p.id) && ofProduct(p.id).length).map((p) => {
     const manual = state.cardOrder[p.id];
-    const rows = sortedAccounts(p.id, ofProduct(p.id)).map((a) => '<span class="comp-chip" draggable="true" data-drag-acc="' + esc(a.id) + '" data-prod="' + p.id + '" title="' + esc(a.name || a.email || a.uid || a.id) + '">'
+    const rows = sortedAccounts(p.id, ofProduct(p.id)).map((a) => '<span class="comp-chip" draggable="true" data-drag-acc="' + esc(a.id) + '" data-prod="' + p.id + '" title="' + esc(maskName(a.name || a.email || a.uid || a.id)) + '">'
       + T('<span class="drag-grip" title="按住拖动调整顺序">') + I.grip + '</span>'
-      + '<span class="sort-name">' + esc(a.name || a.email || ('#' + a.id.slice(0, 6))) + '</span>'
+      + '<span class="sort-name">' + esc(maskName(a.name || a.email) || ('#' + a.id.slice(0, 6))) + '</span>'
       + '</span>').join('');
     return '<details class="sort-sec"' + (manual && manual.length ? ' open' : '') + '><summary>' + esc(T(p.label))
       + (manual && manual.length ? T(' <span class="badge">手动排序</span>') : '')

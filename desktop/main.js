@@ -1686,12 +1686,14 @@ function registerAuthWindowIpc() {
     } catch (err) { return { ok: false, error: String((err && err.message) || err) };
     }
   });
-  ipcMain.handle('open-trae-client', async () => {
+  // variant：'cn' | 'intl' —— 双版本同装时由面板弹窗选择后指定；缺省维持国内版优先的旧行为
+  ipcMain.handle('open-trae-client', async (_e, variant) => {
     try {
       const os = require('node:os');
       const fs = require('node:fs');
       const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
-      const names = ['TRAE SOLO CN', 'Trae CN', 'TRAE SOLO', 'Trae'];
+      const cn = ['TRAE SOLO CN', 'Trae CN'], intl = ['TRAE SOLO', 'Trae'];
+      const names = variant === 'cn' ? cn : variant === 'intl' ? intl : [...cn, ...intl];
       for (const n of names) {
         const cand = path.join(local, 'Programs', n, n + '.exe');
         if (process.platform === 'win32' && fs.existsSync(cand)) {
@@ -1699,7 +1701,7 @@ function registerAuthWindowIpc() {
           if (!err) return { ok: true };
         }
       }
-      return { ok: false, error: Tt('未找到 Trae 客户端可执行文件') };
+      return { ok: false, error: variant === 'cn' ? Tt('未找到 Trae 国内版客户端') : variant === 'intl' ? Tt('未找到 Trae 国际版客户端') : Tt('未找到 Trae 客户端可执行文件') };
     } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
   });
   // Qoder 页切换后「打开客户端」：切号会先关掉运行中的 Qoder，写完登录再拉起来，
@@ -1709,17 +1711,22 @@ function registerAuthWindowIpc() {
       const os = require('node:os');
       const fs = require('node:fs');
       const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
-      // 只拉目标渠道那个客户端：切的是国内版就别把国际版一起打开
-      const names = provider === 'qoder-cn' ? ['Qoder CN'] : ['Qoder'];
-      for (const n of names) {
-        const cand = path.join(local, 'Programs', n, n + '.exe');
+      // 只拉目标渠道那个客户端：切的是国内版就别把国际版一起打开。
+      // Launcher 优先（官方开始菜单入口指向它：负责应用 .qoder-versions 里的待生效更新并
+      // 启动真实当前版本）；Programs 下的顶层 exe 是初装老版本（如 0.2.5），只作兜底。
+      const base = provider === 'qoder-cn' ? 'Qoder CN' : 'Qoder';
+      const cands = [
+        path.join(local, base, base + ' Launcher', base + ' Launcher.exe'),
+        path.join(local, 'Programs', base, base + '.exe'),
+      ];
+      for (const cand of cands) {
         if (process.platform === 'win32' && fs.existsSync(cand)) {
           const err = await shell.openPath(cand);
           if (!err) return { ok: true };
           return { ok: false, error: err };
         }
       }
-      return { ok: false, error: Tt('未找到 Qoder 客户端可执行文件') };
+      return { ok: false, error: provider === 'qoder-cn' ? Tt('未找到 Qoder 国内版客户端') : Tt('未找到 Qoder 国际版客户端') };
     } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
   });
   // MiniMax Code 页「打开客户端」

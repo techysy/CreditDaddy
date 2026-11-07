@@ -1961,5 +1961,16 @@
   "Trae 国内版": "Trae (China)",
   "<span class=\"pill gw\" title=\"体验包接口最近 30 分钟内服役过的账号（{n} 个 ZCode 账号按轮转分摊请求，每个请求换一个，与客户端登录无关）\">接口使用中</span>": "Account that served the pack API in the last 30 minutes ({n} ZCode accounts share requests by rotation, one per request, independent of client login)",
   "<span class=\"pill gw\" title=\"体验包接口最近 30 分钟内服役过的账号（多账号时按轮转自动选择，与客户端登录无关）\">接口使用中</span>": "Account that served the pack API in the last 30 minutes (auto-selected by rotation with multiple accounts, independent of client login)",
-  "<span class=\"pill gw\" title=\"本地接口最近 30 分钟内服役过的账号（多账号时按轮转自动选择，与客户端登录无关）\">接口使用中</span>": "Account that served the local API in the last 30 minutes (auto-selected by rotation with multiple accounts, independent of client login)"
+  "<span class=\"pill gw\" title=\"本地接口最近 30 分钟内服役过的账号（多账号时按轮转自动选择，与客户端登录无关）\">接口使用中</span>": "Account that served the local API in the last 30 minutes (auto-selected by rotation with multiple accounts, independent of client login)",
+  "Qoder 客户端运行中，点我唤到前台": "Qoder client is running — click to bring to front",
+  "Qoder 客户端未运行，点我启动": "Qoder client is not running — click to start",
+  "本机同时装了 Trae 国内版与国际版，要打开哪一个？": "Both Trae CN and Trae International are installed. Which one to open?",
+  "本机同时装了 Qoder 国内版与国际版，要打开哪一个？": "Both Qoder CN and Qoder International are installed. Which one to open?",
+  "已启动 Qoder 客户端": "Started Qoder client",
+  "无法打开 Qoder 客户端": "Could not open Qoder client",
+  "未检测到本机客户端": "No local client detected",
+  "未找到 Trae 国内版客户端": "Trae CN client not found",
+  "未找到 Trae 国际版客户端": "Trae International client not found",
+  "未找到 Qoder 国内版客户端": "Qoder CN client not found",
+  "未找到 Qoder 国际版客户端": "Qoder International client not found"
 }

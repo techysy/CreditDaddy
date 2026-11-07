@@ -21,7 +21,11 @@ import { dataDir } from './store.js';
 // SOLO 两个旧变体垫底——SOLO CN 客户端已停发（官方数据迁移页引导全员升新 TRAE），
 // 但迁移期仍有未升级用户，保留兜底；已卸载残留的旧目录读到陈旧凭据的危害大于漏检，
 // 故不再排最前。TRAE_HOME 环境变量可显式指定目录（traeDataDir）。
-const APP_NAMES = ['Trae CN', 'Trae', 'TRAE SOLO CN', 'TRAE SOLO'];
+// 国内版与国际版分开成组：双版本同装时（盘符里很常见）面板「打开客户端」要让用户选开哪个
+const VARIANT_APPS = {
+  cn: ['Trae CN', 'TRAE SOLO CN'],
+  intl: ['Trae', 'TRAE SOLO'],
+};
 const EXE_NAMES = ['Trae CN.exe', 'Trae.exe', 'TRAE SOLO CN.exe', 'TRAE SOLO.exe'];
 const AUTH_KEY = 'iCubeAuthInfo://icube.cloudide';
 const DC_PREFIX = 'iCubeAuthInfo://icube-dc:';
@@ -69,7 +73,7 @@ export function traeDataDir() {
     const file = path.join(override, 'User', 'globalStorage', 'storage.json');
     return fs.existsSync(file) ? override : null;
   }
-  for (const name of APP_NAMES) {
+  for (const name of [...VARIANT_APPS.cn, ...VARIANT_APPS.intl]) {
     const file = path.join(appDataRoot(), name, 'User', 'globalStorage', 'storage.json');
     if (fs.existsSync(file)) return path.dirname(path.dirname(path.dirname(file)));
   }
@@ -137,29 +141,42 @@ export function traeRunningCached() {
   return procRunningCached(EXE_NAMES);
 }
 
-export function candidateClientPath() {
+function clientPathOf(names) {
   if (process.platform !== 'win32') return null;
   const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
-  for (const name of APP_NAMES) {
-    for (const exe of EXE_NAMES) {
-      const p = path.join(local, 'Programs', name, exe);
-      if (fs.existsSync(p)) return p;
-    }
+  for (const name of names) {
+    const p = path.join(local, 'Programs', name, name + '.exe');
+    if (fs.existsSync(p)) return p;
   }
   return null;
 }
 
+export function candidateClientPath() {
+  for (const names of [VARIANT_APPS.cn, VARIANT_APPS.intl]) {
+    const p = clientPathOf(names);
+    if (p) return p;
+  }
+  return null;
+}
+
+/** 双版本探测：/api/status 的 traeClient.cnInstalled / intlInstalled 供面板决定「直接开」还是「弹选择」 */
+export function candidateClientPaths() {
+  return { cn: clientPathOf(VARIANT_APPS.cn), intl: clientPathOf(VARIANT_APPS.intl) };
+}
+
 export function detectTrae() {
   const dir = traeDataDir();
-  const clientPath = candidateClientPath();
+  const paths = candidateClientPaths();
   let live = null;
   try { live = readLiveAuth(); } catch { /* 视为未登录 */ }
   return {
     dataDir: dir || '',
     exists: Boolean(dir),
     signedIn: Boolean(live),
-    clientInstalled: Boolean(clientPath),
-    clientPath,
+    clientInstalled: Boolean(paths.cn || paths.intl),
+    clientPath: paths.cn || paths.intl,
+    cnInstalled: Boolean(paths.cn),
+    intlInstalled: Boolean(paths.intl),
     running: traeRunningCached(),
     uid: live?.auth?.userId || null,
     name: live?.auth?.account?.username || null,

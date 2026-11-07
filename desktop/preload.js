@@ -23,8 +23,8 @@ contextBridge.exposeInMainWorld('creditdaddy', {
   openMirasimClient: () => ipcRenderer.invoke('open-mirasim-client'),
   /** 打开本机妙手（美团 CatPaw）客户端 @returns {Promise<{ok: boolean, error?: string}>} */
   openCatpawClient: () => ipcRenderer.invoke('open-catpaw-client'),
-  /** 打开本机 Trae 客户端 @returns {Promise<{ok: boolean, error?: string}>} */
-  openTraeClient: () => ipcRenderer.invoke('open-trae-client'),
+  /** 打开本机 Trae 客户端（variant: 'cn' 国内版 Trae CN / 'intl' 国际版 Trae；缺省国内版优先）@returns {Promise<{ok: boolean, error?: string}>} */
+  openTraeClient: (variant) => ipcRenderer.invoke('open-trae-client', variant ? String(variant) : undefined),
   /** 打开本机 Qoder 客户端（按渠道：qoder / qoder-cn）@returns {Promise<{ok: boolean, error?: string}>} */
   openQoderClient: (provider) => ipcRenderer.invoke('open-qoder-client', String(provider || 'qoder')),
   openDoubaoClient: () => ipcRenderer.invoke('open-doubao-client'),

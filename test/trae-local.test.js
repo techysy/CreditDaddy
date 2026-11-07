@@ -137,3 +137,41 @@ test('traePrimaryIds：同 deviceId 只认首个账号为真机号首账号（is
   const second = traeDevice('uid-2', null, 0);
   assert.match(second.deviceId, /^\d{8,}$/, '非首账号由调用方传 null 走稳定派生号');
 });
+
+test('candidateClientPaths：国内/国际分开探测，双版本同装时面板才能选开哪个', { skip: process.platform !== 'win32' }, async () => {
+  const { candidateClientPath, candidateClientPaths } = await import('../src/traeLocal.js');
+  const os = await import('node:os');
+  const fsp = await import('node:fs');
+  const pth = await import('node:path');
+  const tmp = fsp.mkdtempSync(pth.join(os.tmpdir(), 'trae-detect-'));
+  const prev = process.env.LOCALAPPDATA;
+  process.env.LOCALAPPDATA = tmp;
+  try {
+    // 什么都没装：两边都 null
+    assert.deepEqual(candidateClientPaths(), { cn: null, intl: null });
+    assert.equal(candidateClientPath(), null);
+    // 只装国际版
+    fsp.mkdirSync(pth.join(tmp, 'Programs', 'Trae'), { recursive: true });
+    fsp.writeFileSync(pth.join(tmp, 'Programs', 'Trae', 'Trae.exe'), 'x');
+    let r = candidateClientPaths();
+    assert.equal(r.intl, pth.join(tmp, 'Programs', 'Trae', 'Trae.exe'));
+    assert.equal(r.cn, null);
+    assert.equal(candidateClientPath(), r.intl, '单版本时总探针回落到它');
+    // 再装国内版：两路各自命中，总探针国内版优先
+    fsp.mkdirSync(pth.join(tmp, 'Programs', 'Trae CN'), { recursive: true });
+    fsp.writeFileSync(pth.join(tmp, 'Programs', 'Trae CN', 'Trae CN.exe'), 'x');
+    r = candidateClientPaths();
+    assert.equal(r.cn, pth.join(tmp, 'Programs', 'Trae CN', 'Trae CN.exe'));
+    assert.equal(r.intl, pth.join(tmp, 'Programs', 'Trae', 'Trae.exe'));
+    assert.equal(candidateClientPath(), r.cn);
+    // SOLO 变体兜底：删掉 Trae CN 后国内路回落到 TRAE SOLO CN
+    fsp.rmSync(pth.join(tmp, 'Programs', 'Trae CN'), { recursive: true, force: true });
+    fsp.mkdirSync(pth.join(tmp, 'Programs', 'TRAE SOLO CN'), { recursive: true });
+    fsp.writeFileSync(pth.join(tmp, 'Programs', 'TRAE SOLO CN', 'TRAE SOLO CN.exe'), 'x');
+    r = candidateClientPaths();
+    assert.equal(r.cn, pth.join(tmp, 'Programs', 'TRAE SOLO CN', 'TRAE SOLO CN.exe'));
+  } finally {
+    if (prev === undefined) delete process.env.LOCALAPPDATA; else process.env.LOCALAPPDATA = prev;
+    fsp.rmSync(tmp, { recursive: true, force: true });
+  }
+});

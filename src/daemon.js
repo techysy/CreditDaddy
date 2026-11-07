@@ -2054,7 +2054,11 @@ async function handleApi(req, res, url) {
       qoderCurrentUid: qoder.uids,
       // running 走轮询口径（winProc 快照）：/api/status 每 30s 一次，同步 tasklist 串行 7 次
       // 会阻塞 Electron 主进程 4.5s+（#57）。守卫/终止路径的精确探针不变。
-      qoderClient: { installed: qoder.apps.some((x) => x.installed), signedIn: qoder.apps.some((x) => x.signedIn), running: qoderRunningCached() },
+      // cnInstalled/intlInstalled：双版本同装时面板「打开客户端」按此决定直接开还是弹版本选择
+      qoderClient: {
+        installed: qoder.apps.some((x) => x.installed), signedIn: qoder.apps.some((x) => x.signedIn), running: qoderRunningCached(),
+        cnInstalled: qoder.apps.some((x) => x.installed && x.provider === 'qoder-cn'), intlInstalled: qoder.apps.some((x) => x.installed && x.provider === 'qoder'),
+      },
       zcodeCurrentUid: currentZcodeUid(),
       zcodeCurrentIdentity: currentZcodeIdentity(),
       zcodeClient: (() => { const d = detectZcode(); return { installed: d.exists, signedIn: d.signedIn, running: zcodeRunningCached() }; })(),
@@ -2063,7 +2067,10 @@ async function handleApi(req, res, url) {
       catpawCurrentUid: (cpToken && accounts.find((a) => a.provider === 'catpaw' && a.token === cpToken)?.uid) || null,
       catpawClient: (() => { const d = detectCatpaw(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       traeCurrentUid: traeDet.uid,
-      traeClient: { installed: traeDet.clientInstalled, signedIn: traeDet.signedIn, running: traeDet.running },
+      traeClient: {
+        installed: traeDet.clientInstalled, signedIn: traeDet.signedIn, running: traeDet.running,
+        cnInstalled: traeDet.cnInstalled, intlInstalled: traeDet.intlInstalled,
+      },
       minimaxCurrentUid: mmLiveUid,
       minimaxGlobalCurrentUid: mmgLiveUid,
       minimaxClient: (() => { const d = detectMiniMax('cn'); return { installed: d.installed, signedIn: d.signedIn, running: d.running }; })(),
