@@ -19,7 +19,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn, execFile, execFileSync } from 'node:child_process';
 import { dataDir } from './store.js';
-import { anyProcRunning } from './winProc.js';
+import { anyProcRunning, procRunningCached } from './winProc.js';
 import { installedUmid, CLI_RISK_ENV } from './qoderUmid.js';
 
 const RISK_TTL_MS = 50 * 60 * 1000;        // 客户端每 60±5 分钟刷新一次，这里保守取 50 分钟
@@ -486,6 +486,11 @@ const QODER_EXES = ['Qoder.exe', 'Qoder CN.exe'];
 export function qoderRunning() {
   // 走 winProc：这里曾经用 latin1 解 tasklist，中文 Windows 上恒为 true
   return anyProcRunning(QODER_EXES);
+}
+
+/** 轮询口径（/api/status 用）：读 winProc 全量快照，不 spawn；switchTo/terminate 仍走 qoderRunning()。 */
+export function qoderRunningCached() {
+  return procRunningCached(QODER_EXES);
 }
 
 const nap = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);

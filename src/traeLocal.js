@@ -14,6 +14,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { procRunningCached } from './winProc.js';
 import { dataDir } from './store.js';
 
 // 探测顺序（2026-10-21 TraeWork→TRAE 迁移后定版）：新 TRAE CN 优先、国际版次之，
@@ -130,6 +131,12 @@ export function traeRunning() {
   return false;
 }
 
+/** 轮询口径（/api/status 用）：读 winProc 全量快照，不 spawn；switchTo/terminate 仍走 traeRunning()。 */
+export function traeRunningCached() {
+  if (runningOverride !== null) return runningOverride;   // 测试钩子
+  return procRunningCached(EXE_NAMES);
+}
+
 export function candidateClientPath() {
   if (process.platform !== 'win32') return null;
   const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
@@ -153,7 +160,7 @@ export function detectTrae() {
     signedIn: Boolean(live),
     clientInstalled: Boolean(clientPath),
     clientPath,
-    running: traeRunning(),
+    running: traeRunningCached(),
     uid: live?.auth?.userId || null,
     name: live?.auth?.account?.username || null,
   };

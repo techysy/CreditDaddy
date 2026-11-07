@@ -15,6 +15,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { procRunningCached } from './winProc.js';
 
 const EXE_NAME = 'Loomy.exe';
 
@@ -76,6 +77,11 @@ export function loomyRunning() {
   } catch { return false; }
 }
 
+/** 轮询口径（/api/status 用）：读 winProc 全量快照，不 spawn；switchTo/terminate 仍走 loomyRunning()。 */
+export function loomyRunningCached() {
+  return procRunningCached([EXE_NAME]);
+}
+
 /** 获取本机 Loomy.exe 路径 */
 export function candidateClientPath() {
   if (process.platform !== 'win32') return null;
@@ -98,7 +104,7 @@ export function detectLoomy() {
     signedIn: Boolean(cred),
     clientInstalled: Boolean(clientPath),
     clientPath,
-    running: loomyRunning(),
+    running: loomyRunningCached(),
     credential: cred ? {
       userid: cred.userid,
       phone: cred.phone ? `${cred.phone.slice(0, 3)}****${cred.phone.slice(-4)}` : null,

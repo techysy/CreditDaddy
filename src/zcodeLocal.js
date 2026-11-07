@@ -22,6 +22,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execSync } from 'node:child_process';
+import { procRunningCached } from './winProc.js';
 import * as zc from './zcrypto.js';
 
 function home() {
@@ -149,6 +150,11 @@ const WIN_TASKLIST = () => {
 export function zcodeRunning() {
   if (process.platform !== 'win32') return false;
   return /zcode\.exe/i.test(WIN_TASKLIST());
+}
+
+/** 轮询口径（/api/status 用）：读 winProc 全量快照，不 spawn；守卫/终止仍走 zcodeRunning()。 */
+export function zcodeRunningCached() {
+  return procRunningCached(['ZCode.exe']);
 }
 
 const nap = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);

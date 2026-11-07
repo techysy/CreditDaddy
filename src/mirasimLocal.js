@@ -26,6 +26,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFile, execFileSync, execSync } from 'node:child_process';
+import { procRunningCached } from './winProc.js';
 
 const ENC_PREFIX = 'mrs1:';
 
@@ -214,7 +215,7 @@ export function detectMirasim() {
     signedIn,
     clientInstalled: Boolean(clientPath),
     clientPath,
-    running: mirasimRunning(),
+    running: mirasimRunningCached(),
   };
 }
 
@@ -239,6 +240,11 @@ export function mirasimRunning() {
     const out = execSync('tasklist /FI "IMAGENAME eq Mirasim.exe" /NH', { windowsHide: true, encoding: 'utf8' });
     return /mirasim\.exe/i.test(out);
   } catch { return false; }
+}
+
+/** 轮询口径（/api/status 用）：读 winProc 全量快照，不 spawn；switchTo/terminate 仍走 mirasimRunning()。 */
+export function mirasimRunningCached() {
+  return procRunningCached(['Mirasim.exe']);
 }
 
 const nap = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);

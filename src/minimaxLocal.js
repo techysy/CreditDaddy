@@ -15,6 +15,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { fetchMiniMaxProfile } from './minimaxClient.js';
+import { procRunningCached } from './winProc.js';
 
 export function minimaxHome() {
   return process.env.MINIMAX_HOME || path.join(os.homedir(), '.minimax');
@@ -120,6 +121,11 @@ export function minimaxRunning() {
   return /minimax code\.exe/i.test(WIN_TASKLIST());
 }
 
+/** 轮询口径（/api/status 用）：读 winProc 全量快照，不 spawn；writeMiniMaxAuth 的回写判断仍走 minimaxRunning()。 */
+export function minimaxRunningCached() {
+  return procRunningCached(['MiniMax Code.exe']);
+}
+
 /**
  * 检测本机 MiniMax 客户端安装与登录状态
  */
@@ -136,7 +142,7 @@ export function detectMiniMax(flavor = 'cn') {
     exePath: exe,
     authPath: authFile,
     signedIn: hasRecord,
-    running: minimaxRunning(),
+    running: minimaxRunningCached(),
   };
 }
 

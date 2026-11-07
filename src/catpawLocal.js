@@ -20,6 +20,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { procRunningCached } from './winProc.js';
 
 const EXE_NAME = '妙手.exe';
 
@@ -117,6 +118,12 @@ export function catpawRunning() {
   } catch { return false; }
 }
 
+/** 轮询口径（/api/status 用）：读 winProc 全量快照，不 spawn；switchTo/terminate 仍走 catpawRunning()。 */
+export function catpawRunningCached() {
+  if (runningOverride !== null) return runningOverride;   // 测试钩子
+  return procRunningCached([EXE_NAME]);
+}
+
 export function candidateClientPath() {
   if (process.platform !== 'win32') return null;
   const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
@@ -134,7 +141,7 @@ export function detectCatpaw() {
     signedIn: Boolean(cred),
     clientInstalled: Boolean(clientPath),
     clientPath,
-    running: catpawRunning(),
+    running: catpawRunningCached(),
   };
 }
 
