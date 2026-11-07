@@ -314,9 +314,27 @@ test('账号同步映射表：qoder / WorkBuddy 系列映射，zcode 等留待�
   assert.equal(ta.mapProviderId('qoder-cn'), 'qoder-cn');
   assert.equal(ta.mapProviderId('workbuddy'), 'codebuddy-cn');
   assert.equal(ta.mapProviderId('workbuddy-intl'), 'codebuddy-intl');
+  assert.equal(ta.mapProviderId('trae'), 'trae-cn');
   assert.equal(ta.mapProviderId('zcode'), null);
   assert.equal(ta.mapProviderId('mirasim'), null);
   assert.equal(ta.mapProviderId('catpaw'), null);
+});
+
+test('账号同步：trae → trae-cn（#56），国际版账号明说跳过不误推国内站', async () => {
+  const m = mockFetch(() => ({ status: 201, body: { connection: { id: 'x' } } }));
+  try {
+    const r = await ta.syncAccountsTo10r({
+      endpoint: 'http://127.0.0.1:20127', key: 'sk-x',
+      accounts: [
+        { id: '1', provider: 'trae', token: 'cn-jwt', name: '国内版' },
+        { id: '2', provider: 'trae', token: 'intl-jwt', name: '国际版', meta: { isIntl: true } },
+      ],
+    });
+    assert.equal(r.channel, 'apikey');
+    assert.deepEqual(r.results.map((x) => [x.provider, x.imported]), [['trae-cn', 1]]);
+    assert.deepEqual(m.calls.map((c) => JSON.parse(c.init.body).provider), ['trae-cn']);
+    assert.match(r.summary, /跳过 Trae 国际版 ×1/);
+  } finally { m.restore(); }
 });
 
 test('账号同步：apikey 通道逐账号建连接，同名 409 记已存在，无映射产品跳过', async () => {

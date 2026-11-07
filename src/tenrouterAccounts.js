@@ -23,6 +23,7 @@ export const TENROUTER_PROVIDER_MAP = {
   'workbuddy-intl': 'codebuddy-intl',
   minimax: 'minimax-code',             // #55：MiniMax 国内订阅线 → 10R minimax-code
   'minimax-global': 'minimax-code-global',   // #55：MiniMax 国际订阅线 → 10R minimax-code-global
+  trae: 'trae-cn',                     // #56：CD 的 Trae 线读国内客户端（#28）→ 10R trae-cn（条目钉死国内站）
   tokenharbor: 'tokenharbor-free',   // #23：会话 cookie 只喂「额度监控卡」(freeTier,不走路由);tokenharbor 钱包卡留给 sk- 运输 key
   loomy: 'loomy',
   // zcode → glm：等 zcode 反代就绪后补一行（同步流程已就绪，无需改代码）
@@ -151,8 +152,15 @@ export async function syncAccountsTo10r({ endpoint, key, adminPassword, accounts
   // 按目标 10R 连接类型分组；无映射的产品（zcode/mirasim/catpaw 等）记入跳过原因
   const groups = new Map();
   const unmapped = new Map();
+  const traeIntl = [];
   for (const a of accounts || []) {
     if (!a || !a.token) continue;
+    // #56：CD 的 Trae 线只支持国内站（traeLocal 对国际版客户端的导入本来就只挂警告）。
+    // 国际版账号不往 trae-cn 里推——10R 拿国内端点打国际 token 必然 20101，宁可明说跳过。
+    if (a.provider === 'trae' && (a.meta?.isIntl || a.isIntl)) {
+      traeIntl.push(a);
+      continue;
+    }
     const target = mapProviderId(a.provider);
     if (!target) {
       if (a.provider) unmapped.set(a.provider, (unmapped.get(a.provider) || 0) + 1);
@@ -161,7 +169,7 @@ export async function syncAccountsTo10r({ endpoint, key, adminPassword, accounts
     if (!groups.has(target)) groups.set(target, []);
     groups.get(target).push(a);
   }
-  if (!groups.size) throw new Error('没有可同步的账号（qoder / WorkBuddy / MiniMax / Loomy 系列）；zcode 待反代就绪后支持');
+  if (!groups.size) throw new Error('没有可同步的账号（qoder / WorkBuddy / MiniMax / Loomy / Trae 系列）；zcode 待反代就绪后支持');
 
   let channel = 'apikey';
   let cookie = null;
@@ -187,6 +195,7 @@ export async function syncAccountsTo10r({ endpoint, key, adminPassword, accounts
   if (sum('skipped')) parts.push(`已存在 ${sum('skipped')}`);
   if (sum('failed')) parts.push(`失败 ${sum('failed')}`);
   if (unmapped.size) parts.push('跳过 ' + [...unmapped].map(([p, n]) => `${p} ×${n}`).join('、'));
+  if (traeIntl.length) parts.push(`跳过 Trae 国际版 ×${traeIntl.length}（CreditDaddy 的 Trae 线仅支持国内站）`);
   // issue #44：Qoder 网页会话决定 10Router 端「套餐内 Credits」能不能显示。
   // OAuth 通道：10Router 导入时已逐账号探测，失效清单原样带回（deadNames）；
   // 两条通道都要点名本地就没有会话的账号（apikey 通道 webSessions 恒为
