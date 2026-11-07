@@ -5,6 +5,7 @@
  *   workbuddy / workbuddy-intl  WorkBuddy / CodeBuddy 登录（state 轮询，见 workbuddyAuth.js）
  *   zcode-bigmodel / zcode-zai  ZCode 登录（客户端 CLI 轮询流程，见 zcodeAuth.js）
  *   minimax                     MiniMax Code 登录（OAuth 设备码 + S256 PKCE，见 minimaxAuth.js）
+ *   trae                        Trae 登录（官方同款授权码 + PKCE + 本机回调监听，见 traeAuth.js）
  *
  * Qoder 流程：
  *   1. 本地生成 PKCE 对 (verifier/challenge-S256) + nonce + machine_id
@@ -29,6 +30,7 @@ import { t } from './i18n.js';
 import { startWorkbuddyLogin, pollWorkbuddyLogin } from './workbuddyAuth.js';
 import { startZcodeLogin, pollZcodeLogin } from './zcodeAuth.js';
 import { startMiniMaxLogin, pollMiniMaxLogin } from './minimaxAuth.js';
+import { startTraeLogin, pollTraeLogin } from './traeAuth.js';
 
 const FETCH_TIMEOUT_MS = 15000;
 const QODER_TTL_MS = 5 * 60 * 1000;   // Qoder 授权链接 5 分钟有效
@@ -130,6 +132,8 @@ const FLOWS = {
   'zcode-zai': { start: startZcodeLogin, poll: pollZcodeLogin },
   minimax: { start: startMiniMaxLogin, poll: pollMiniMaxLogin },
   'minimax-global': { start: (kind) => startMiniMaxLogin('global'), poll: pollMiniMaxLogin },
+  // Trae：授权码 + PKCE 的本地回调流（与设备码轮询不同，poll 查的是本机回调监听抓没抓到）
+  trae: { start: startTraeLogin, poll: pollTraeLogin },
 };
 export const LOGIN_KINDS = Object.keys(FLOWS);
 const KIND_LABEL = { 'zcode-bigmodel': 'ZCode（BigModel）', 'zcode-zai': 'ZCode（Z.ai）' };
