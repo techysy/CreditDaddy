@@ -30,3 +30,36 @@ export function isNewerRebuild(installed, released) {
   const tOld = Date.parse(installed.builtAt || '');
   return Number.isFinite(tNew) && Number.isFinite(tOld) && tNew > tOld;
 }
+
+/**
+ * 版本号比较(semver 口径):主 / 次 / 补丁逐段比较,其次预发布——**预发布 < 正式版**
+ * (1.7.1-test.4 < 1.7.1),预发布标识符逐个比、纯数字按数值(test.2 < test.10)。
+ * 旧实现 parseInt('1-test')===1 把预发布段整段丢掉,测试包被当成同号正式版,
+ * 「检查更新」永远说已是最新,测试包用户升不上同号正式版(1.7.1-test.4 → 1.7.1 用户实测)。
+ * 解析不了的一律 false:宁可不报新版本,不误报。
+ */
+export function isNewerVersion(next, cur) {
+  const parse = (s) => {
+    const m = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/.exec(String(s ?? '').trim());
+    return m ? { nums: [Number(m[1]), Number(m[2]), Number(m[3])], pre: m[4] === undefined ? null : m[4].split('.') } : null;
+  };
+  const a = parse(next);
+  const b = parse(cur);
+  if (!a || !b) return false;
+  for (let i = 0; i < 3; i++) {
+    if (a.nums[i] !== b.nums[i]) return a.nums[i] > b.nums[i];
+  }
+  if (!a.pre && !b.pre) return false;   // 同号正式版
+  if (!a.pre) return true;              // next 是正式版、cur 是预发布 → 新
+  if (!b.pre) return false;             // next 是预发布、cur 是正式版 → 不更新(预发布 < 正式版)
+  for (let i = 0; i < a.pre.length || i < b.pre.length; i++) {
+    const x = a.pre[i], y = b.pre[i];
+    if (x === undefined) return false;  // 前缀相同,短的一方更小(semver: alpha < alpha.1)
+    if (y === undefined) return true;
+    const nx = /^\d+$/.test(x), ny = /^\d+$/.test(y);
+    if (nx && ny) { if (Number(x) !== Number(y)) return Number(x) > Number(y); }
+    else if (nx !== ny) return nx;      // semver:数字标识符 < 字母标识符
+    else if (x !== y) return x > y;
+  }
+  return false;
+}

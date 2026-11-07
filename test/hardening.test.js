@@ -203,6 +203,37 @@ test('isNewerRebuild:仅 release 渠道 + commit 不同 + builtAt 更晚才算�
   assert.equal(isNewerRebuild(base({}), { commit: '', builtAt: '' }), false);
 });
 
+test('isNewerVersion:semver 口径——预发布 < 正式版,预发布段数值比较(测试包升同号正式版的必经路径)', async () => {
+  const { isNewerVersion } = await import('../src/buildInfo.js');
+  // 用户实测卡死的场景:测试包 1.7.1-test.4 必须能升到正式版 1.7.1
+  assert.equal(isNewerVersion('1.7.1', '1.7.1-test.4'), true, '正式版 > 同号预发布');
+  assert.equal(isNewerVersion('1.7.1-test.4', '1.7.1'), false);
+  // 常规三段
+  assert.equal(isNewerVersion('1.7.2', '1.7.1'), true);
+  assert.equal(isNewerVersion('1.7.0', '1.7.1'), false);
+  assert.equal(isNewerVersion('1.7.1', '1.7.1'), false);
+  assert.equal(isNewerVersion('v1.7.1', '1.7.1-test.4'), true, 'v 前缀剥掉');
+  // 跨位次:预发布挂在更高位次上,比低位次正式版新
+  assert.equal(isNewerVersion('1.7.2-test.1', '1.7.1'), true);
+  assert.equal(isNewerVersion('1.7.1', '1.7.2-test.1'), false);
+  // 预发布标识符:纯数字按数值比(test.10 > test.2,不是字典序)
+  assert.equal(isNewerVersion('1.7.1-test.5', '1.7.1-test.4'), true);
+  assert.equal(isNewerVersion('1.7.1-test.10', '1.7.1-test.2'), true);
+  assert.equal(isNewerVersion('1.7.1-test.2', '1.7.1-test.10'), false);
+  assert.equal(isNewerVersion('1.7.1-test.2', '1.7.1-test.2'), false);
+  // 标识符长度:前缀相同,长的一方更大(alpha < alpha.1)
+  assert.equal(isNewerVersion('1.7.1-alpha.1', '1.7.1-alpha'), true);
+  assert.equal(isNewerVersion('1.7.1-alpha', '1.7.1-alpha.1'), false);
+  // 数字标识符 < 字母标识符(semver)
+  assert.equal(isNewerVersion('1.7.1-1', '1.7.1-alpha'), true);
+  // 字母标识符字典序
+  assert.equal(isNewerVersion('1.7.1-beta', '1.7.1-alpha'), true);
+  // 解析不了的输入一律 false(宁可不报,不误报)
+  assert.equal(isNewerVersion('', '1.7.1'), false);
+  assert.equal(isNewerVersion('1.7.1', 'not-a-version'), false);
+  assert.equal(isNewerVersion('1.7.1', null), false);
+});
+
 test('重新登录刷新 Qoder 网页会话：新收割的 cookie 必须替换旧会话（回归：旧守卫让过期会话无法更新）', async () => {
   const { addAccount } = await import('../src/accounts.js');
   const { withSettings, withAccounts } = await import('../src/store.js');

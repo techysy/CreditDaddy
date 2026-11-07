@@ -177,8 +177,12 @@ function setupAutoUpdate() {
   setInterval(check, 6 * 60 * 60 * 1000).unref?.();
 }
 
-/** 版本号比较：x.y.z 逐段数值比较，next > cur 才算新版本 */
+/** 版本号比较：semver 口径（预发布 < 正式版），实现在 src/buildInfo.js 可测——
+ *  旧实现 parseInt('1-test')===1 丢掉预发布号，测试包 1.7.1-test.4 被当成 1.7.1，
+ *  「检查更新」永远已是最新，升不上同号正式版（用户实测）。
+ *  buildInfoLib 加载失败（理论不发生：启动早期就 load）时退回旧三段比较保底。 */
 function isNewerVersion(next, cur) {
+  if (buildInfoLib && typeof buildInfoLib.isNewerVersion === 'function') return buildInfoLib.isNewerVersion(next, cur);
   const p = (s) => String(s).replace(/^v/i, '').split('.').map((x) => parseInt(x, 10) || 0);
   const a = p(next);
   const b = p(cur);
