@@ -861,3 +861,21 @@ test('atomicWrite：rename 被瞬时占用时重试，仍失败则兜底直写�
   store._setRenameForTests(null);
   await fs.unlink(f).catch(() => {});
 });
+
+test('Trae 设备身份出站：deviceId 进 psd.creditDaddyTraeDevice（10R 签到防 9074），私钥不随载荷出本机', () => {
+  const a = store.normalizeAccountInput({ provider: 'trae', token: 'eyJhbGciOiJFUzI1NiJ9.tok.sig', uid: '7000000000000001' });
+  a.meta.traeDevice = {
+    deviceId: '9001000000000001',
+    machineId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+    publicKeyPem: '-----BEGIN PUBLIC KEY-----X',
+    privateKeyJwk: { kty: 'EC', crv: 'P-256', d: 'secret-d-value' },
+  };
+  const row = transfer.buildExportPayload([a]).accounts[0];
+  assert.equal(row.providerSpecificData.creditDaddyTraeDevice.deviceId, '9001000000000001', '10R 导入端持久化 psd 即零改动拿到设备号');
+  assert.equal(row.providerSpecificData.creditDaddyTraeDevice.machineId, 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee');
+  assert.equal(row.meta.traeDevice.deviceId, '9001000000000001', 'meta.traeDevice 保留（machineId/publicKeyPem 仍随行）');
+  assert.equal(row.meta.traeDevice.privateKeyJwk, undefined, '私钥只服务 CD 本机 DeviceProof 签名，不随载荷出本机');
+  // 非 trae 账号不挂这个字段
+  const q = transfer.buildExportPayload([store.normalizeAccountInput({ provider: 'qoder', token: 'jt-tok', uid: 'u-1' })]).accounts[0];
+  assert.equal(q.providerSpecificData.creditDaddyTraeDevice, undefined);
+});

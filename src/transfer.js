@@ -93,6 +93,20 @@ export function openTransfer(blob, password) {
 }
 
 /** 构造导出载荷（10router 兼容字段 + CreditDaddy 旧字段） */
+/**
+ * Trae 设备身份的出站整理（10Router 签到侧要用已注册设备号防 9074）：
+ *  - psd 增补 creditDaddyTraeDevice（deviceId/machineId，无敏感件）——10R 导入端本来就
+ *    持久化 psd，deviceId 零改动即达；隔壁曾计划「导入端把 meta.traeDevice 收进 psd」，
+ *    现在不需要了。
+ *  - meta.traeDevice 剥掉 privateKeyJwk：EC P-256 私钥只服务 CD 本机的 DeviceProof
+ *    签名（refresh 链），签到接口用不到，不随载荷出本机。
+ */
+function stripDevicePrivateKey(provider, meta) {
+  if (!String(provider).startsWith('trae') || !meta?.traeDevice?.privateKeyJwk) return meta;
+  const { privateKeyJwk: _drop, ...rest } = meta.traeDevice;
+  return { ...meta, traeDevice: rest };
+}
+
 export function buildExportPayload(accounts, { provider, product } = {}) {
   const list = accounts.filter((a) => (!provider || a.provider === provider) && (!product || productOf(a.provider) === product));
   const providers = [...new Set(list.map((a) => a.provider))];
@@ -124,8 +138,13 @@ export function buildExportPayload(accounts, { provider, product } = {}) {
         ...(a.meta?.qoderWebSession?.cookie && String(a.provider).startsWith('qoder')
           ? { creditDaddyWebSession: { cookie: a.meta.qoderWebSession.cookie, capturedAt: a.meta.qoderWebSession.capturedAt || null, userId: a.uid || null } }
           : {}),
+        // Trae 设备号（CD 登录注册的那台）：10R 签到用同一设备号防 9074 设备风控；
+        // meta.traeDevice 里的私钥已在 stripDevicePrivateKey 剥除，不随载荷出本机
+        ...(String(a.provider).startsWith('trae') && a.meta?.traeDevice?.deviceId
+          ? { creditDaddyTraeDevice: { deviceId: a.meta.traeDevice.deviceId, machineId: a.meta.traeDevice.machineId || null } }
+          : {}),
       },
-      ...(a.meta && Object.keys(a.meta).length ? { meta: a.meta } : {}),
+      ...(a.meta && Object.keys(a.meta).length ? { meta: stripDevicePrivateKey(a.provider, a.meta) } : {}),
     })),
   };
 }
