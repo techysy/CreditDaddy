@@ -137,6 +137,15 @@ export function buildConnPayload(a, target) {
   const psd = { creditDaddySync: true, userId: a.uid || null };
   if (qc) psd.creditDaddyWebSession = { cookie: qc.cookie, capturedAt: qc.capturedAt || null, userId: a.uid || null };
   else if (sc) psd.creditDaddyWebSession = { cookie: sc.cookie, capturedAt: sc.capturedAt || null, userId: null };
+  // Trae 签到（10R traeCheckin）优先用「登录时注册的设备」：CD 浏览器登录给每个账号
+  // 造了独立指纹（meta.traeDevice.deviceId），随 psd 带过去，避免 10R 端陌生派生号
+  // 领积分吃 9074（#31 口径）。私钥只服务本机 refresh 链，不出本机。
+  if (a.provider === 'trae' && a.meta?.traeDevice?.deviceId && /^\d{8,}$/.test(String(a.meta.traeDevice.deviceId))) {
+    psd.creditDaddyTraeDevice = {
+      deviceId: String(a.meta.traeDevice.deviceId),
+      ...(a.meta.traeDevice.machineId ? { machineId: String(a.meta.traeDevice.machineId) } : {}),
+    };
+  }
   body.providerSpecificData = psd;
   return body;
 }

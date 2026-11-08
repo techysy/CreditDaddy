@@ -639,3 +639,22 @@ test('quotaPushDisabledProviders：排除渠道的账号被滤掉后不再出卡
     assert.equal(c.quotaPushDisabledProviders, c.quotaPushDisabledProviders, '配置读取一致');
   } finally { globalThis.fetch = realFetch; }
 });
+
+test('buildConnPayload：Trae 账号携带登录注册的设备指纹（10R 签到 9074 规避）', async () => {
+  const { buildConnPayload } = await import('../src/tenrouterAccounts.js');
+  const account = {
+    id: 'tr-1', provider: 'trae', token: 'jwt.tok.sig', uid: 'u-9', name: 'Trae Test',
+    meta: { traeDevice: { deviceId: '1234567890123456', machineId: 'm-uuid', privateKeyJwk: { kty: 'EC' } } },
+  };
+  const body = buildConnPayload(account, 'trae-cn');
+  assert.equal(body.provider, 'trae-cn');
+  assert.deepEqual(body.providerSpecificData.creditDaddyTraeDevice, { deviceId: '1234567890123456', machineId: 'm-uuid' });
+  // 私钥绝不出本机
+  assert.equal(body.providerSpecificData.creditDaddyTraeDevice.privateKeyJwk, undefined);
+  // 无设备指纹的账号不带该字段
+  const bare = buildConnPayload({ id: 'tr-2', provider: 'trae', token: 'jwt', uid: 'u-0' }, 'trae-cn');
+  assert.equal(bare.providerSpecificData.creditDaddyTraeDevice, undefined);
+  // 非纯数字设备号（老数据形状）不携带
+  const weird = buildConnPayload({ id: 'tr-3', provider: 'trae', token: 'jwt', uid: 'u-1', meta: { traeDevice: { deviceId: 'not-digits' } } }, 'trae-cn');
+  assert.equal(weird.providerSpecificData.creditDaddyTraeDevice, undefined);
+});
