@@ -1942,6 +1942,7 @@
   "灵犀签到失败：{err}": "Lingxi check-in failed: {err}",
   "灵犀签到成功": "Lingxi check-in succeeded",
   "签到成功（+{n} 灵点）": "Checked in (+{n} credits)",
+  "立即签到（已签自动跳过，不会重复提交）": "Check in now (auto-skips if already claimed, never double-submits)",
   "灵犀会话缺失，请重新登录捕获": "Lingxi session missing; please sign in and capture again",
   "灵点余额": "Lingxi credit balance",
   "灵犀会话已失效，请在 CreditDaddy「网页会话」页重新登录捕获": "Lingxi session expired; please sign in again on the CreditDaddy Web Sessions page",

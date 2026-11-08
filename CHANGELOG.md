@@ -4,6 +4,10 @@
 
 ---
 
+## [未发布]
+
+- **灵犀卡补「立即签到」按钮（issue #53 追加反馈）**：网页会话卡的 WPS 灵犀账号行此前只有「就地重探」，想手动签到没有入口（自动签到轮虽有，但签到时点不可控）。现账号行补 ▶ 按钮：走 `POST /api/accounts/:id/checkin` 代签每日任务，结果文案直接用 daemon 返回的 message（自带「灵点」单位）；已签自动跳过（先查任务状态，绝不盲打 claim）；签到成功后顺带就地重探一次，余额胶囊立即跟上 +100。豆包虽挂了 checkin 实现但定位是纯打开入口（CD 不代签），不在此列。
+
 ## [1.7.1] (2026-11-07)
 
 - **新增 MiniMax 国际版渠道 `minimax-global`（issue #54）**：与国内版同协议同 client（`mcode-public`，RFC 8628 + S256 PKCE 设备码授权），仅域名不同——`agent.minimax.io` + `account.minimax.io`（端点实证自官方客户端 `@mavis/oauth-core` 的 ACCOUNT_ORIGINS，本机 `~/.minimax/auth/prod/<cn|en>/mcode-public/` 布局互证）。签到 / 额度 / 设备码登录 / 本机导入（双目录收割）/ 本地网关（按账号档位选上游）/ 10Router 连接同步（`minimax-global` 线）全链路打通；面板 MiniMax 页分国际 / 国内版区段（此前 Trae / MiniMax 不分区段的特例删除）；`/api/status` 双线当前 uid（`minimaxCurrentUid` / `minimaxGlobalCurrentUid`）分点亮徽章。

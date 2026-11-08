@@ -4,6 +4,10 @@ English changelog — recent releases translated. For the full history in Chines
 
 ---
 
+## [Unreleased]
+
+- **Lingxi card gains a "Check in now" button (issue #53 follow-up)**: the WPS Lingxi account rows on the Web Sessions card only had "re-probe" — no way to check in manually (the auto round exists, but its timing is not controllable). The rows now get a ▶ button: it fires `POST /api/accounts/:id/checkin` to claim the daily task, and the toast uses the daemon-returned message verbatim (already carries the "Lingxi credits" unit). Already-claimed days are skipped automatically (task state is read first, claim is never fired blindly); on success an in-place re-probe follows so the balance pill picks up the +100 immediately. Doubao keeps its check-in impl but stays an open-client-only entry (CD does not check in on its behalf), so it is excluded.
+
 ## [1.7.1] (2026-11-07)
 
 - **New MiniMax International channel `minimax-global` (issue #54)**: same protocol and client (`mcode-public`, RFC 8628 + S256 PKCE device flow) as the CN line, different domains only — `agent.minimax.io` + `account.minimax.io` (endpoints verified from the official client's `@mavis/oauth-core` ACCOUNT_ORIGINS, cross-checked with the local `~/.minimax/auth/prod/<cn|en>/mcode-public/` layout). Check-in / quota / device-code sign-in / local import (both directories harvested) / local gateway (upstream picked per account flavor) / 10Router connection sync (`minimax-global` line) all wired; the MiniMax panel page now splits International / China segments (the previous Trae+MiniMax no-region special case removed); `/api/status` reports both current UIDs (`minimaxCurrentUid` / `minimaxGlobalCurrentUid`) so badges light per flavor.

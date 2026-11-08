@@ -1289,6 +1289,9 @@ const PROV = {
 };
 // 支持每日签到的产品（ZCode / mirasim / 妙手 额度靠套餐或滚动窗口发放，不做签到）
 const CHECKIN_PRODUCTS = new Set(['qoder', 'workbuddy', 'trae', 'minimax']);
+// 网页会话卡支持「立即签到」的站点：provider 在 providers.js 挂了 checkin 且非 entryOnly
+// （豆包虽挂了 checkin 实现，但定位是纯打开入口、CD 不代签，不在此列）
+const FREE_CHECKIN_SITES = new Set(['lingxi']);
 const CLIENT_LABEL = { qoder: 'Qoder', workbuddy: 'WorkBuddy', zcode: 'ZCode', mirasim: 'mirasim', catpaw: '妙手', trae: 'Trae', minimax: 'MiniMax', loomy: 'Loomy' };
 // 产品页顶部改用「有效套餐 N/M」而不是「剩余积分」的产品（单位不是积分：Token / % / Credits）。
 // ⚠️ 只影响**产品页头部文案**；「能不能并进仪表盘剩余积分合计」由下方的 CREDIT_SUM_EXCLUDED
@@ -3035,6 +3038,7 @@ function renderFreePool() {
             + '<div style="display:flex;align-items:center;gap:8px;flex:none">'
             + '<span class="dim" style="font-size:11.5px">' + (acc.capturedAt ? esc(fmtTime(acc.capturedAt)) : '–') + '</span>'
             + (site.id === 'doubao' && canCapture ? '<button class="icon-btn" data-open-doubao="1" title="' + T('打开豆包客户端（签到请在客户端内完成）') + '">' + I.play + '</button>' : '')
+            + (FREE_CHECKIN_SITES.has(site.id) ? '<button class="icon-btn' + (state.busy[acc.id] ? ' busy' : '') + '" data-act="checkin" data-site="' + esc(site.id) + '" data-id="' + esc(acc.id) + '" title="' + T('立即签到（已签自动跳过，不会重复提交）') + '">' + (state.busy[acc.id] ? I.refresh : I.play) + '</button>' : '')
             + '<button class="icon-btn" data-act="reprobe" data-site="' + esc(site.id) + '" data-id="' + esc(acc.id) + '" title="' + T('就地重探（免登录，用已存会话刷新身份与额度）') + '">' + I.refresh + '</button>'
             + '<button class="icon-btn del" data-act="del" data-id="' + esc(acc.id) + '" title="' + T('删除此账号') + '">' + I.trash + '</button>'
             + '</div></div>'
@@ -3226,6 +3230,9 @@ $('view-free')?.addEventListener('click', (e) => {
   // 就地重探：用已存会话 cookie 重跑身份+额度（身份解析失败/额度过期时免登录修复）
   const rep = e.target.closest && e.target.closest('[data-act="reprobe"]');
   if (rep) { onCardClick({ target: rep, preventDefault: () => {} }); return; }
+  // 网页会话卡「立即签到」（灵犀线）：CD 代签每日任务，成功后顺带重探把新余额顶上卡
+  const chk = e.target.closest && e.target.closest('[data-act="checkin"]');
+  if (chk) { checkinFreeAccount(chk.dataset.site, chk.dataset.id); return; }
   // 账号名点击改备注名（10R「同名认领」的匹配键就从这里改）
   const ren = e.target.closest && e.target.closest('[data-act="rename"]');
   if (ren) onCardClick({ target: ren, preventDefault: () => {} });
@@ -3734,6 +3741,27 @@ async function checkinOne(id) {
   delete state.busy[id];
   await loadStatus(); await loadAccounts(); loadLogs();
 }
+// 网页会话卡「立即签到」（灵犀线，#53 追加）：结果文案直接用 daemon 返回的 message
+// （自带「灵点」单位，产品线通用的「+N Credits」口径不适配）；签到轮只写 lastResult
+// 不动 quotaSnapshot，签到成功后补一次就地重探，余额胶囊立即跟上
+async function checkinFreeAccount(site, id) {
+  state.busy[id] = true; render();
+  try {
+    const d = await api('/api/accounts/' + encodeURIComponent(id) + '/checkin', { method: 'POST' });
+    const r = d.results && d.results[0];
+    const accObj = (state.cookieSites || []).flatMap((s) => s.accounts || []).find((x) => x.id === id);
+    const accLabel = (accObj && (accObj.name || accObj.id)) || (r && r.account) || T('该账号');
+    toast(r ? (accLabel + T('：') + (r.message || r.error || r.status)) : (d.summary || ''), !(r && r.status === 'failed'));
+    if (r && r.status === 'checked-in') {
+      await api('/api/cookie-sites/' + encodeURIComponent(site) + '/reprobe', { method: 'POST', json: { accountId: id } });
+    }
+  } catch (e) { toast(e.message, false); }
+  delete state.busy[id];
+  await loadCookieSites(true);
+  if (state.view === 'free') renderFreePool();
+  await loadStatus(); await loadAccounts(); loadLogs();
+}
+
 async function checkinAll(btn, product) {
   const label = btn.innerHTML;
   btn.disabled = true; btn.innerHTML = I.refresh + T('领取中…');

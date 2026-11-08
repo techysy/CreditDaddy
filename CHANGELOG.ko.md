@@ -4,6 +4,10 @@
 
 ---
 
+## [미출시]
+
+- **영희 카드에 "지금 출석 체크" 버튼 추가（issue #53 후속）**: 웹 세션 카드의 WPS 영희 계정 행에는 "재프로브"만 있어 수동 출석 체크할 방법이 없었습니다(자동 라운드는 있지만 시점을 제어할 수 없음). 행에 ▶ 버튼 추가: `POST /api/accounts/:id/checkin`으로 매일 작업을 대신 수행하고, 토스트는 daemon이 반환한 메시지를 그대로 표시("영점" 단위 포함). 이미 완료된 날은 자동 건너뜀(먼저 작업 상태를 확인, claim을 무분별하게 호출하지 않음). 성공 후 즉시 재프로브하여 잔액에 +100을 바로 반영. 豆包(doubao)는 checkin 구현이 있지만 순수 클라이언트 실행 진입로로 유지(CD가 대신 출석하지 않음)하므로 제외.
+
 ## [1.7.1] (2026-11-07)
 
 - **신규 MiniMax 국제판 채널 `minimax-global` 추가(issue #54)**：국내판과 동일 프로토콜·동일 클라이언트(`mcode-public`, RFC 8628 + S256 PKCE 디바이스 플로우)이며 도메인만 다름——`agent.minimax.io` + `account.minimax.io`(엔드포인트는 공식 클라이언트의 `@mavis/oauth-core` ACCOUNT_ORIGINS에서 실증, 로컬 `~/.minimax/auth/prod/<cn|en>/mcode-public/` 레이아웃과 상호 검증). 출석 / 잔액 / 디바이스 코드 로그인 / 로컬 가져오기(양쪽 디렉터리 수확) / 로컬 게이트웨이(계정 플레이버별 업스트림 선택) / 10Router 연결 동기화(`minimax-global` 라인) 전 체인 연결. 패널 MiniMax 페이지는 국제/국내 세그먼트로 분리(기존 Trae / MiniMax 지역 구분 없음 특례 폐지). `/api/status`는 두 현재 uid(`minimaxCurrentUid` / `minimaxGlobalCurrentUid`)를 반환해 배지가 플레이버별로 점등.
