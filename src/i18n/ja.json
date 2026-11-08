@@ -1976,5 +1976,7 @@
   "Trae 授权超时（5 分钟未完成），请重新发起": "Trae 認証がタイムアウトしました（5 分経過）。再度実行してください",
   "回调 loginTraceID 与本次登录不匹配（CSRF 防护），请重新发起": "コールバックの loginTraceID が今回のログインと一致しません（CSRF 対策）。再度実行してください",
   "回调里的 AuthCode 已过期，请重新发起": "コールバックの AuthCode が期限切れです。再度実行してください",
-  "回调里没有 AuthCode（授权页协议可能又变了），请重新发起或更新 CreditDaddy": "コールバックに AuthCode がありません（認可ページのプロトコルがまた変わった可能性があります）。再度実行するか CreditDaddy を更新してください"
+  "回调里没有 AuthCode（授权页协议可能又变了），请重新发起或更新 CreditDaddy": "コールバックに AuthCode がありません（認可ページのプロトコルがまた変わった可能性があります）。再度実行するか CreditDaddy を更新してください",
+  "MiniMax Code 国内版": "MiniMax Code 国内版",
+  "MiniMax Code 国际版": "MiniMax Code 国際版"
 }
