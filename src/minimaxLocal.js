@@ -105,6 +105,27 @@ export function minimaxExePath() {
   return fs.existsSync(cand) ? cand : null;
 }
 
+/**
+ * app-update.yml 文本 → 构建语言版：国内构建更新源指向 minimax.chat、国际构建指向
+ * minimax.io（两站发的安装包同名同路径——exe 无法区分，更新源是唯一可靠标记）。
+ * 判别不了返回 null（宁可不提示，不误报）。
+ */
+export function buildLangFromUpdateYml(text) {
+  if (!text) return null;
+  if (/minimax\.chat/i.test(text)) return 'cn';
+  if (/minimax\.io/i.test(text)) return 'en';
+  return null;
+}
+
+/** 已装客户端的构建语言版（'cn' / 'en' / null=未知或未装）。exe 同级的 resources/app-update.yml。 */
+export function detectMiniMaxBuildLang() {
+  const exe = minimaxExePath();
+  if (!exe) return null;
+  try {
+    return buildLangFromUpdateYml(fs.readFileSync(path.join(path.dirname(exe), 'resources', 'app-update.yml'), 'utf8'));
+  } catch { return null; }
+}
+
 const WIN_TASKLIST = () => {
   try {
     return execSync('tasklist /FI "IMAGENAME eq MiniMax Code.exe" /NH', { windowsHide: true, encoding: 'utf8' });
@@ -142,6 +163,7 @@ export function detectMiniMax(flavor = 'cn') {
     exePath: exe,
     authPath: authFile,
     signedIn: hasRecord,
+    buildLang: detectMiniMaxBuildLang(),
     running: minimaxRunningCached(),
   };
 }

@@ -355,3 +355,35 @@ test('writeMiniMaxAuth: 本机导入账号（客户端未运行）回写并 gene
     assert.equal(after.records['rec-y'].generation, 7);
   }
 });
+
+test('minimaxLocal: 构建语言版判别——更新源域名是唯一可靠标记（exe 同名同路径，两站安装包后装覆盖先装）', async () => {
+  // 纯函数：国内构建更新源 minimax.chat / 国际构建 minimax.io
+  assert.equal(local.buildLangFromUpdateYml('provider: generic\nurl: https://filecdn.minimax.chat/public/minimax-agent/release'), 'cn');
+  assert.equal(local.buildLangFromUpdateYml('provider: generic\nurl: https://filecdn.minimax.io/public/minimax-agent-prod/release'), 'en');
+  assert.equal(local.buildLangFromUpdateYml(''), null);
+  assert.equal(local.buildLangFromUpdateYml('provider: generic\nurl: https://example.com/release'), null);
+  assert.equal(local.buildLangFromUpdateYml(null), null);
+});
+
+test('minimaxLocal: detectMiniMaxBuildLang 读安装目录的 resources/app-update.yml', { skip: process.platform !== 'win32' }, async () => {
+  const prev = process.env.LOCALAPPDATA;
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'minimax-build-'));
+  process.env.LOCALAPPDATA = tmp;
+  try {
+    // 未安装
+    assert.equal(local.detectMiniMaxBuildLang(), null);
+    // 装上（exe + resources/app-update.yml）：国内构建
+    const resDir = path.join(tmp, 'Programs', 'MiniMax Code', 'resources');
+    fs.mkdirSync(resDir, { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'Programs', 'MiniMax Code', 'MiniMax Code.exe'), 'x');
+    assert.equal(local.detectMiniMaxBuildLang(), null, 'yml 缺失时宁可不判');
+    fs.writeFileSync(path.join(resDir, 'app-update.yml'), 'provider: generic\nurl: https://filecdn.minimax.chat/public/minimax-agent/release');
+    assert.equal(local.detectMiniMaxBuildLang(), 'cn');
+    // 覆盖装成国际构建
+    fs.writeFileSync(path.join(resDir, 'app-update.yml'), 'provider: generic\nurl: https://filecdn.minimax.io/public/minimax-agent-prod/release');
+    assert.equal(local.detectMiniMaxBuildLang(), 'en');
+  } finally {
+    if (prev === undefined) delete process.env.LOCALAPPDATA; else process.env.LOCALAPPDATA = prev;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

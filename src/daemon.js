@@ -66,7 +66,7 @@ import { liveToAccount as zcodeLiveAccount, switchTo as zcodeSwitchTo, currentZc
 import { liveToAccount as mirasimLiveAccount, switchTo as mirasimSwitchTo, currentMirasimUid, detectMirasim, terminateMirasim, mirasimRunning } from './mirasimLocal.js';
 import { liveToAccount as catpawLiveAccount, switchTo as catpawSwitchTo, currentCatpawToken, detectCatpaw, terminateCatpaw } from './catpawLocal.js';
 import { liveToAccount as traeLiveAccount, detectTrae, switchTo as traeSwitchTo, snapshotLive as traeSnapshotLive } from './traeLocal.js';
-import { liveToAccount as minimaxLiveAccount, detectMiniMax, currentMiniMaxUid, currentMiniMaxToken, currentMiniMaxRecordKey } from './minimaxLocal.js';
+import { liveToAccount as minimaxLiveAccount, detectMiniMax, detectMiniMaxBuildLang, currentMiniMaxUid, currentMiniMaxToken, currentMiniMaxRecordKey } from './minimaxLocal.js';
 import { liveToAccount as loomyLiveAccount, hardSwitchLoomy, currentLoomyUid, detectLoomy } from './loomyLocal.js';
 import * as minimaxGateway from './minimaxGateway.js';
 import * as traeGateway from './traeGateway.js';
@@ -1751,14 +1751,23 @@ async function handleApi(req, res, url) {
     } catch (e) { errors.push({ file: 'TRAE/User/globalStorage/storage.json', error: e.message }); }
     // 7) MiniMax 客户端：读取 ~/.minimax 凭据当前登录
     // 7) MiniMax 客户端：读取 ~/.minimax 凭据当前登录（国内 cn / 国际 en 两目录独立，#54——
-    //    各自可能登录不同账号，都要收割；没有对应目录时 liveToAccount 返回 null）
+    //    各自可能登录不同账号，都要收割；没有对应目录时 liveToAccount 返回 null）。
+    //    构建语言版与账号线不一致时带 intlWarning：exe 只有一个「当前装的语言版」，
+    //    错口凭据在本客户端里登录不上（两套安装包同名同路径、后装覆盖先装，凭据目录互不干扰）
+    const mmBuild = detectMiniMaxBuildLang();
     try {
       const mm = await minimaxLiveAccount('cn');
-      if (mm) addRecord(mm, { source: 'MiniMax 当前登录', current: true });
+      if (mm) addRecord(mm, {
+        source: 'MiniMax 当前登录', current: true,
+        ...(mmBuild === 'en' ? { intlWarning: '当前安装的 MiniMax Code 是国际版构建（更新源 minimax.io），国内版账号在该客户端里无法登录——请到国内站安装中文版客户端（覆盖安装即可，两套凭据互不干扰）' } : {}),
+      });
     } catch (e) { errors.push({ file: '~/.minimax/auth/prod/cn/.../auth.json', error: e.message }); }
     try {
       const mmg = await minimaxLiveAccount('global');
-      if (mmg) addRecord(mmg, { source: 'MiniMax 国际版当前登录', current: true });
+      if (mmg) addRecord(mmg, {
+        source: 'MiniMax 国际版当前登录', current: true,
+        ...(mmBuild === 'cn' ? { intlWarning: '当前安装的 MiniMax Code 是国内版构建（更新源 minimax.chat），国际版账号在该客户端里无法登录——请到国际站 agent.minimax.io 安装英文版客户端（覆盖安装即可，两套凭据互不干扰）' } : {}),
+      });
     } catch (e) { errors.push({ file: '~/.minimax/auth/prod/en/.../auth.json', error: e.message }); }
     // 8) 讯飞 Loomy 客户端：读取 Public\Loomy\userData\auth-session.json 当前登录
     try {
@@ -2073,7 +2082,7 @@ async function handleApi(req, res, url) {
       },
       minimaxCurrentUid: mmLiveUid,
       minimaxGlobalCurrentUid: mmgLiveUid,
-      minimaxClient: (() => { const d = detectMiniMax('cn'); return { installed: d.installed, signedIn: d.signedIn, running: d.running }; })(),
+      minimaxClient: (() => { const d = detectMiniMax('cn'); return { installed: d.installed, signedIn: d.signedIn, running: d.running, buildLang: d.buildLang }; })(),
       loomyCurrentUid: currentLoomyUid(),
       loomyClient: (() => { const d = detectLoomy(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       keyRequired: panelKeyRequired(),
