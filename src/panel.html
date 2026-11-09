@@ -2263,7 +2263,7 @@ function renderDash() {
   };
   $('prods').innerHTML = orderedVisibleComps().map((id) => {
     if (id === 'tenrouter') return trDashCard();
-    if (id === 'free') return freeDashCard();
+    if (id === 'free') return freeDashCard(lxProgress);
     const p = PRODUCTS.find((x) => x.id === id);
     return p ? prodCardHtml(p) : '';
   }).join('');
@@ -3470,8 +3470,10 @@ function renderTenrouter() {
   if (!state.cookieSites) loadCookieSites().then(() => { if (state.view === 'tenrouter') renderTenrouter(); });
 }
 
-/** 网页会话仪表盘卡：站点/会话计数 + 签到线今日进度（灵犀），点击进「网页会话」页 */
-function freeDashCard() {
+/** 网页会话仪表盘卡：站点/会话计数 + 签到线今日进度（灵犀），点击进「网页会话」页。
+ *  进度由调用方（renderDash）算好传入——本函数在顶层，引用不到 renderDash 的局部变量
+ *  （test.6 曾直接引用导致 ReferenceError、仪表盘半渲染卡首页）。 */
+function freeDashCard(lxProgress) {
   const sites = (state.cookieSites || []).filter((s) => s.disabled !== true);
   const sessions = sites.reduce((sum, s) => sum + (s.accounts?.length || 0), 0);
   const rows = T('<span class="lbl">已捕获站点</span><span class="val">') + sites.length + '</span>'
