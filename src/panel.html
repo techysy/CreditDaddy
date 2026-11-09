@@ -174,7 +174,9 @@
   .sort-hint { font-size: 11px; color: var(--text-3); line-height: 1.65; margin: 4px 0 3px; }
   .sort-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 2px 0; }
   .sort-row .sort-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .card.dragging, .tr-card.dragging { opacity: .45; }
+  .card.dragging, .tr-card.dragging, .prodcard.dragging { opacity: .45; }
+  .prodcard.drop-before { box-shadow: -3px 0 0 0 rgb(var(--accent-rgb)); }
+  .prodcard.drop-after { box-shadow: 3px 0 0 0 rgb(var(--accent-rgb)); }
   .card.drop-before { box-shadow: inset 0 3px 0 0 rgb(var(--accent-rgb)); }
   .card.drop-after { box-shadow: inset 0 -3px 0 0 rgb(var(--accent-rgb)); }
   .tr-card.drop-before { box-shadow: inset 0 3px 0 0 rgb(var(--accent-rgb)); }
@@ -2259,7 +2261,7 @@ function renderDash() {
         rows += T('<span class="lbl">客户端当前</span><span class="val">') + live + '</span>';
       }
     }
-    return '<div class="prodcard" data-view="' + p.id + '"><div class="prod-head"><span class="prod-name">' + (PROD_ICONS[p.id] ? '<img src="' + PROD_ICONS[p.id] + '" class="dot prod-mark-img" alt="">' : '<span class="dot ' + p.id + '"></span>') + p.label
+    return '<div class="prodcard" draggable="true" data-view="' + p.id + '"><div class="prod-head"><span class="prod-name">' + (PROD_ICONS[p.id] ? '<img src="' + PROD_ICONS[p.id] + '" class="dot prod-mark-img" alt="">' : '<span class="dot ' + p.id + '"></span>') + p.label
       + '<span class="badge">' + list.length + T(' 个账号</span></span><span class="prod-go">查看') + I.chevRight + '</span></div><div class="prod-rows">' + rows + '</div></div>';
   };
   $('prods').innerHTML = orderedVisibleComps().map((id) => {
@@ -3480,7 +3482,7 @@ function freeDashCard(lxProgress) {
   const rows = T('<span class="lbl">已捕获站点</span><span class="val">') + sites.length + '</span>'
     + T('<span class="lbl">会话总数</span><span class="val">') + sessions + '</span>'
     + T('<span class="lbl">今日领取</span><span class="val">') + (lxProgress ? lxProgress.done + ' / ' + lxProgress.total : T('暂无签到站点')) + '</span>';
-  return '<div class="prodcard" data-view="free"><div class="prod-head"><span class="prod-name"><svg viewBox="0 0 24 24" class="dot prod-mark-img"><rect width="24" height="24" rx="5" fill="#5B8DEF"/><circle cx="9" cy="14" r="3.2" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M11.5 11.5 L17 6 M13.5 6h3.5v3.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>网页会话</span>'
+  return '<div class="prodcard" draggable="true" data-view="free"><div class="prod-head"><span class="prod-name"><svg viewBox="0 0 24 24" class="dot prod-mark-img"><rect width="24" height="24" rx="5" fill="#5B8DEF"/><circle cx="9" cy="14" r="3.2" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M11.5 11.5 L17 6 M13.5 6h3.5v3.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>网页会话</span>'
     + '<span class="badge">' + sessions + T(' 个会话</span></span><span class="prod-go">查看') + I.chevRight + '</span></div><div class="prod-rows">' + rows + '</div></div>';
 }
 
@@ -3493,7 +3495,7 @@ function trDashCard() {
   const rows = T('<span class="lbl">供应商连接</span><span class="val">') + (tr.quotas ? list.length : tr.error ? T('读取失败') : '…') + '</span>'
     + T('<span class="lbl">额度告急</span><span class="val') + (low ? ' warn' : '') + '">' + (tr.quotas ? low : '-') + '</span>'
     + T('<span class="lbl">用量同步</span><span class="val">') + (ls ? esc(fmtTime(ls.at).slice(5)) : c.sync.enabled ? T('等待首次同步') : T('手动')) + '</span>';
-  return '<div class="prodcard" data-view="tenrouter"><div class="prod-head"><span class="prod-name"><svg viewBox="0 0 24 24" class="dot prod-mark-img"><defs><linearGradient id="tr-card-g" x1="0" y1="0" x2="0" y2="24" gradientUnits="userSpaceOnUse"><stop stop-color="#F97815"/><stop offset="1" stop-color="#C2590A"/></linearGradient></defs><rect width="24" height="24" rx="5" fill="url(#tr-card-g)"/><text x="12" y="17" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="12" font-weight="800" fill="#fff" text-anchor="middle">10</text></svg>10Router</span>'
+  return '<div class="prodcard" draggable="true" data-view="tenrouter"><div class="prod-head"><span class="prod-name"><svg viewBox="0 0 24 24" class="dot prod-mark-img"><defs><linearGradient id="tr-card-g" x1="0" y1="0" x2="0" y2="24" gradientUnits="userSpaceOnUse"><stop stop-color="#F97815"/><stop offset="1" stop-color="#C2590A"/></linearGradient></defs><rect width="24" height="24" rx="5" fill="url(#tr-card-g)"/><text x="12" y="17" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="12" font-weight="800" fill="#fff" text-anchor="middle">10</text></svg>10Router</span>'
     + T('<span class="prod-go">查看') + I.chevRight + '</span></div><div class="prod-rows">' + rows + '</div></div>';
 }
 
@@ -5033,7 +5035,7 @@ async function submitImport(password) {
 $('btn-comp').innerHTML = I.settings;
 
 // ── 卡片拖拽排序（产品面板 + 10Router）：手动顺序优先级最高，落库 localStorage ──
-const dragState = { kind: null, id: null, vendor: null };
+const dragState = { kind: null, id: null, vendor: null, view: null };
 function clearDropMarkers(root) {
   root.querySelectorAll('.drop-before, .drop-after').forEach((el) => el.classList.remove('drop-before', 'drop-after'));
 }
@@ -5046,42 +5048,45 @@ function moveInManual(orderMap, key, baseIds, dragId, targetId, before) {
 }
 function bindCardDrag(container, { kind, onReorder }) {
   if (!container) return;
+  // 卡片选择器含 .prodcard（仪表盘产品卡，data-view = 组件 id）
+  const CARD_SEL = '.card, .tr-card, .prodcard';
   container.addEventListener('dragstart', (e) => {
-    const card = e.target.closest && e.target.closest('.card, .tr-card');
+    const card = e.target.closest && e.target.closest(CARD_SEL);
     if (!card) return;
     dragState.kind = kind;
     dragState.id = card.dataset.id || null;
+    dragState.view = card.dataset.view || null;
     dragState.vendor = card.dataset.vendor || null;
     card.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
-    try { e.dataTransfer.setData('text/plain', dragState.id || dragState.vendor || ''); } catch {}
+    try { e.dataTransfer.setData('text/plain', dragState.id || dragState.vendor || dragState.view || ''); } catch {}
   });
   container.addEventListener('dragend', (e) => {
-    const card = e.target.closest && e.target.closest('.card, .tr-card');
+    const card = e.target.closest && e.target.closest(CARD_SEL);
     if (card) card.classList.remove('dragging');
     clearDropMarkers(container);
-    dragState.kind = null; dragState.id = null; dragState.vendor = null;
+    dragState.kind = null; dragState.id = null; dragState.vendor = null; dragState.view = null;
   });
   container.addEventListener('dragover', (e) => {
     if (dragState.kind !== kind) return;
-    const over = e.target.closest && e.target.closest('.card, .tr-card');
+    const over = e.target.closest && e.target.closest(CARD_SEL);
     if (!over) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     clearDropMarkers(container);
-    if ((over.dataset.id || null) === dragState.id) return;
+    if ((over.dataset.id || over.dataset.view || null) === (dragState.id || dragState.view)) return;
     const rect = over.getBoundingClientRect();
     over.classList.add(e.clientY < rect.top + rect.height / 2 ? 'drop-before' : 'drop-after');
   });
   container.addEventListener('drop', (e) => {
     if (dragState.kind !== kind) return;
-    const over = e.target.closest && e.target.closest('.card, .tr-card');
+    const over = e.target.closest && e.target.closest(CARD_SEL);
     if (!over) return;
     e.preventDefault();
     const before = over.classList.contains('drop-before');
     clearDropMarkers(container);
-    const targetId = over.dataset.id || null;
-    if (!targetId || targetId === dragState.id) return;
+    const targetId = over.dataset.id || over.dataset.view || null;
+    if (!targetId || targetId === (dragState.id || dragState.view)) return;
     onReorder(dragState, targetId, before);
   });
 }
@@ -5120,6 +5125,27 @@ bindCardDrag($('tr-panel'), {
     } else return;
     saveTrOrder();
     renderTenrouter();
+  },
+});
+// 仪表盘产品卡拖拽：顺序落 state.compOrder（saveCompOrder → localStorage）——
+// 组件设置 chips 与标签栏读同一份数据，拖完三处同步（applyComponents 重排标签栏）。
+// 与其他三处一样只在启动时绑一次；onReorder 的 applyComponents 内部含 render+renderStatus。
+bindCardDrag($('prods'), {
+  kind: 'comp',
+  onReorder: (drag, targetId, before) => {
+    const dragId = drag.id || drag.view;
+    if (!dragId || !targetId) return;
+    const ids = state.compOrder.slice();
+    const from = ids.indexOf(dragId);
+    if (from < 0) return;
+    ids.splice(from, 1);
+    const ti = ids.indexOf(targetId);
+    if (ti < 0) return;
+    ids.splice(before ? ti : ti + 1, 0, dragId);
+    state.compOrder = ids;
+    saveCompOrder();
+    applyComponents();   // 内部 render + renderStatus（仪表盘卡片按新序重画、标签栏同步）
+    renderCompMenu();    // 组件设置 chips 顺序同步
   },
 });
 // 免费额度页站点卡拖拽：与其他两处一样只在启动时绑一次。此前在 renderFreePool 里绑定，
