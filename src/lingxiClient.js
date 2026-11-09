@@ -27,6 +27,24 @@ export const LINGXI_BALANCE_URL = `${LINGXI_BASE}/api/public/v1/credits/balance`
 
 export const DAILY_CHECK_IN_KEY = 'daily_check_in';
 
+/**
+ * 稳定身份：WPS 会话罐里的 `uid` cookie（WPS 账号 uid，纯数字；与 wps_sid 同罐收割，
+ * 登录号变了它必变）。tasks/balance 响应无任何身份字段、user 系端点 404（2026-11-09
+ * 本机实测）——cookie 罐是唯一可靠身份源，多号归户（capture 匹配 / 10R 卡 source）都用它。
+ * @returns {string|null}
+ */
+export function lingxiIdentityFromCookie(cookie) {
+  for (const seg of String(cookie || '').split(';')) {
+    const i = seg.indexOf('=');
+    if (i < 1) continue;
+    if (seg.slice(0, i).trim() === 'uid') {
+      const v = seg.slice(i + 1).trim();
+      if (/^\d{1,20}$/.test(v)) return v;
+    }
+  }
+  return null;
+}
+
 function lingxiHeaders(cookie) {
   return {
     Cookie: String(cookie || '').trim(),

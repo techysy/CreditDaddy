@@ -182,7 +182,7 @@ export const COOKIE_SITES = [
     verify: 'api',
     cookieUrls: ['https://lingxi.kdocs.cn', 'https://www.kdocs.cn'],
     accountName: 'WPS 灵犀',
-    hint: '登录 lingxi.kdocs.cn 后自动抓取每日签到状态与灵点余额（每天 100 灵点，七天一轮第七天 200）；CD 每日自动签到 + 推送 10Router 出余额卡，Cookie 只存本机（约 300+ 天有效期）。',
+    hint: '登录 lingxi.kdocs.cn 后自动抓取每日签到状态与灵点余额（每天 100 灵点，七天一轮第七天 200）；CD 每日自动签到 + 推送 10Router 出余额卡，Cookie 只存本机（约 300+ 天有效期）。多号：各号走「网页版 / 粘贴捕获」分别登录捕获，按 WPS 账号 uid 分行并存；同一登录分区换号前先「清除已存会话」。',
   },
   // ⚠ 码道 CodeArts（issue #40）已于 2026-10-30 撤下，不再提供：
   //   华为云控制台会话受闲置超时 + WAF 指印（HWWAFSESID / browserCheckResult）绑定，

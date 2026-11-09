@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkinLingxi, fetchLingxiStatus, LINGXI_TASKS_URL, LINGXI_BALANCE_URL, LINGXI_BASE } from '../src/lingxiClient.js';
+import { checkinLingxi, fetchLingxiStatus, lingxiIdentityFromCookie, LINGXI_TASKS_URL, LINGXI_BALANCE_URL, LINGXI_BASE } from '../src/lingxiClient.js';
 
 // 七天一轮：每天 reward 100，第七天 200（#53 提案者实测口径）
 const CYCLE_REWARDS = [100, 100, 100, 100, 100, 100, 200];
@@ -85,4 +85,16 @@ test('claimed 状态（已签过）时绝不 POST claim', async () => {
   const r = await checkinLingxi(account, { fetchImpl });
   assert.equal(r.status, 'already');
   assert.equal(claimed, false);
+});
+
+test('lingxiIdentityFromCookie：uid cookie 即身份（多号归户键）', () => {
+  assert.equal(lingxiIdentityFromCookie('wps_sid=abc; uid=1927484201; kso_sid=xyz'), '1927484201');
+  assert.equal(lingxiIdentityFromCookie('uid=1'), '1');
+  // 值非纯数字 → 不是 WPS uid cookie，拒绝（防误把别的站的 uid 当身份）
+  assert.equal(lingxiIdentityFromCookie('uid=abc123'), null);
+  assert.equal(lingxiIdentityFromCookie('uid='), null);
+  assert.equal(lingxiIdentityFromCookie(''), null);
+  assert.equal(lingxiIdentityFromCookie('wps_sid=abc'), null);
+  // 分隔符容错：uid= 前导空格 / 无空格分号
+  assert.equal(lingxiIdentityFromCookie('a=1;uid=42'), '42');
 });

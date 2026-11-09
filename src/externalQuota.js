@@ -533,7 +533,19 @@ export async function runQuotaPush({ endpoint, key, accounts, fetchImpl, onlySou
   //    单值储值卡（灵点只在灵犀界面消费，官方无 API，10R 卡仅展示余额数字）。
   const lxAccounts = (accounts || []).filter((a) => (a.provider === 'lingxi' || a.meta?.cookieSiteId === 'lingxi') && (a.token || a.meta?.cookieSiteSession?.cookie));
   if (lxAccounts.length) {
-    const { fetchLingxiStatus, buildLingxiQuotaPayload } = await import('./lingxiClient.js');
+    const { fetchLingxiStatus, buildLingxiQuotaPayload, lingxiIdentityFromCookie } = await import('./lingxiClient.js');
+    // 一次性清理（230e2fd 模式）：source 从「name 哈希（无 uid 纪元）」换成「uid 落位」后，
+    // 升级用户的旧卡没人再推，不删会挂满 7 天 TTL 与新卡并存。删一次，失败下轮再试。
+    const staleSources = new Set();
+    for (const a of lxAccounts) {
+      const uid = lingxiIdentityFromCookie(a.meta?.cookieSiteSession?.cookie || a.token);
+      if (uid) staleSources.add(buildLingxiQuotaPayload({ ...a, uid: null }).source);
+    }
+    for (const src of staleSources) {
+      if (lxAccounts.some((a) => buildLingxiQuotaPayload(a).source === src)) continue;   // 新旧同源（未升 uid）不误删
+      const deleted = await deleteExternalQuota({ endpoint, key, source: src, fetchImpl }).catch(() => false);
+      if (deleted) logger.info('10R', '灵犀旧版卡 {source} 已清理（推送 source 改按 WPS uid 落位）', { source: src });
+    }
     for (const a of lxAccounts) {
       const { source } = buildLingxiQuotaPayload(a);
       if (only && !only.includes(source)) continue;
