@@ -363,10 +363,11 @@ async function reprobeCookieAccount(site, a) {
     if (site.id === 'lingxi') {
       // 灵犀（issue #53）：任务列表 + 余额一次拿全，重探 = 刷新签到状态与灵点快照；
       // 顺带从会话罐解析 uid（多号归户身份，2026-11-09 起）——老行缺失时回填 + 名字升级
-      const { fetchLingxiStatus, lingxiIdentityFromCookie } = await import('./lingxiClient.js');
+      const { fetchLingxiStatus, lingxiIdentityFromCookie, maskLingxiUid } = await import('./lingxiClient.js');
       const st = await fetchLingxiStatus(cookie).catch((e) => ({ auth: false, code: e?.message || 'network' }));
       if (!st.auth) return finish({ id: a.id, name: a.name, ok: false, error: '灵犀会话已失效，请重新登录捕获' });
       const uid = lingxiIdentityFromCookie(cookie);
+      const uidMasked = uid ? maskLingxiUid(uid) : null;
       await withAccounts((list) => {
         const hit = list.find((x) => x.id === a.id);
         if (!hit) return;
@@ -378,12 +379,12 @@ async function reprobeCookieAccount(site, a) {
         };
         if (uid) {
           hit.uid = String(uid);
-          if (canAutoRename(site, hit) && !/\(\d+\)$/.test(hit.name || '')) hit.name = `WPS 灵犀(${uid})`;
+          if (canAutoRename(site, hit) && !/\(\d+\*{4}\d+\)$/.test(hit.name || '')) hit.name = `WPS 灵犀(${uidMasked})`;
         }
         hit.updatedAt = now;
       });
-      logger.info('COOKIE-SITE', '{name} 就地重探通过（{identity}，签到{signed}，灵点 {balance}）', { name: site.name, identity: uid ? 'uid ' + uid : '无 uid', signed: st.checkedIn ? '已签' : '未签', balance: Number.isFinite(st.balance) ? st.balance : '—' });
-      return finish({ id: a.id, name: a.name, ok: true, identity: uid ? `uid:${uid}` : null, balance: Number.isFinite(st.balance) ? st.balance : null, quotaSnapshot: Number.isFinite(st.balance) ? { used: 0, total: st.balance, isCreditBalance: true, at: now } : null });
+      logger.info('COOKIE-SITE', '{name} 就地重探通过（{identity}，签到{signed}，灵点 {balance}）', { name: site.name, identity: uid ? 'uid ' + uidMasked : '无 uid', signed: st.checkedIn ? '已签' : '未签', balance: Number.isFinite(st.balance) ? st.balance : '—' });
+      return finish({ id: a.id, name: a.name, ok: true, identity: uid ? `uid:${uidMasked}` : null, balance: Number.isFinite(st.balance) ? st.balance : null, quotaSnapshot: Number.isFinite(st.balance) ? { used: 0, total: st.balance, isCreditBalance: true, at: now } : null });
     }
     if (site.id === 'doubao') {
       // 豆包（issue #32）：detail 接口一次拿全（会话有效性 + 签到状态 + 累计点数），
@@ -1469,14 +1470,16 @@ async function handleApi(req, res, url) {
     let lxStatus = null;
     let lxSnapshot = null;
     let lxUid = null;
+    let lxUidMasked = null;
     if (site.id === 'lingxi') {
       try {
-        const { fetchLingxiStatus, lingxiSnapshot, lingxiIdentityFromCookie } = await import('./lingxiClient.js');
+        const { fetchLingxiStatus, lingxiSnapshot, lingxiIdentityFromCookie, maskLingxiUid } = await import('./lingxiClient.js');
         if (!cookie) {
           logger.warn('COOKIE-SITE', '{name} 未读到会话 cookie', { name: site.name });
           return json(res, 400, { error: '未读到 WPS 灵犀登录会话，请在登录窗完成登录后再关闭' });
         }
         lxUid = lingxiIdentityFromCookie(cookie);
+        lxUidMasked = lxUid ? maskLingxiUid(lxUid) : null;
         lxStatus = await fetchLingxiStatus(cookie);
         if (!lxStatus.auth) {
           logger.warn('COOKIE-SITE', '{name} 任务列表探测被拒:{code}', { name: site.name, code: lxStatus.code });
@@ -1484,7 +1487,7 @@ async function handleApi(req, res, url) {
         }
         identity = lxUid ? `uid:${lxUid}` : null;   // 有 uid → 哈希归户；无 → 单例兜底
         quotaSnapshot = { used: 0, total: Number(lxStatus.balance) || 0, isCreditBalance: true };
-        logger.info('COOKIE-SITE', '{name} 探测通过（{identity}，签到{signed}，灵点 {balance}）', { name: site.name, identity: lxUid ? 'uid ' + lxUid : '无 uid（单例）', signed: lxStatus.checkedIn ? '已签' : '未签', balance: Number.isFinite(lxStatus.balance) ? lxStatus.balance : '—' });
+        logger.info('COOKIE-SITE', '{name} 探测通过（{identity}，签到{signed}，灵点 {balance}）', { name: site.name, identity: lxUid ? 'uid ' + lxUidMasked : '无 uid（单例）', signed: lxStatus.checkedIn ? '已签' : '未签', balance: Number.isFinite(lxStatus.balance) ? lxStatus.balance : '—' });
       } catch (lxErr) {
         logger.warn('COOKIE-SITE', '{name} 任务列表抓取异常:{err}', { name: site.name, err: lxErr.message });
         return json(res, 502, { error: '探测站点失败：' + (lxErr.message || '') });
@@ -1506,7 +1509,7 @@ async function handleApi(req, res, url) {
       else if (site.id === 'river') accName = `River AI (${identity || '会话'})`;
       else if (site.id === 'modelscope') accName = `ModelScope (${identity || '会话'})`;
       else if (site.id === 'longcat') accName = `LongCat (${identity || '会话'})`;
-      else if (site.id === 'lingxi') accName = site.accountName + (lxUid ? `(${lxUid})` : '');   // 有 uid 出身份后缀（多号可辨），无 uid 保持纯站名
+      else if (site.id === 'lingxi') accName = site.accountName + (lxUidMasked ? `(${lxUidMasked})` : '');   // uid 后缀脱敏（前3后3），归户仍用原始 uid
       else accName = site.accountName + (identity ? `(${identity})` : '');
       // 自动行名只在「没手改过且现名属自动名家族」时写入（meta.renamed + isAutoGeneratedName 双闸）
       const autoName = (row) => { if (canAutoRename(site, row)) row.name = accName; };

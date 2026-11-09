@@ -45,6 +45,19 @@ export function lingxiIdentityFromCookie(cookie) {
   return null;
 }
 
+/**
+ * uid 展示脱敏（用户要求，手机号同款口径）：≥7 位前 3 后 3，4~6 位前 1 后 1，更短全掩。
+ * 只用于行名等显示位；归户哈希 / 账号 uid / 10R source 仍用原始值。
+ * @param {string|number} uid
+ * @returns {string}
+ */
+export function maskLingxiUid(uid) {
+  const s = String(uid ?? '');
+  if (s.length >= 7) return s.slice(0, 3) + '****' + s.slice(-3);
+  if (s.length >= 4) return s.slice(0, 1) + '****' + s.slice(-1);
+  return '****';
+}
+
 function lingxiHeaders(cookie) {
   return {
     Cookie: String(cookie || '').trim(),

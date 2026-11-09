@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkinLingxi, fetchLingxiStatus, lingxiIdentityFromCookie, LINGXI_TASKS_URL, LINGXI_BALANCE_URL, LINGXI_BASE } from '../src/lingxiClient.js';
+import { checkinLingxi, fetchLingxiStatus, lingxiIdentityFromCookie, maskLingxiUid, LINGXI_TASKS_URL, LINGXI_BALANCE_URL, LINGXI_BASE } from '../src/lingxiClient.js';
 
 // 七天一轮：每天 reward 100，第七天 200（#53 提案者实测口径）
 const CYCLE_REWARDS = [100, 100, 100, 100, 100, 100, 200];
@@ -97,4 +97,14 @@ test('lingxiIdentityFromCookie：uid cookie 即身份（多号归户键）', () 
   assert.equal(lingxiIdentityFromCookie('wps_sid=abc'), null);
   // 分隔符容错：uid= 前导空格 / 无空格分号
   assert.equal(lingxiIdentityFromCookie('a=1;uid=42'), '42');
+});
+
+test('maskLingxiUid：≥7 位前3后3、4~6 位前1后1、更短全掩（手机号同款口径）', () => {
+  assert.equal(maskLingxiUid('1927751197'), '192****197');
+  assert.equal(maskLingxiUid('469061671'), '469****671');
+  assert.equal(maskLingxiUid(1927751197), '192****197');
+  assert.equal(maskLingxiUid('123456'), '1****6');
+  assert.equal(maskLingxiUid('123'), '****');
+  assert.equal(maskLingxiUid(''), '****');
+  assert.equal(maskLingxiUid(null), '****');
 });
