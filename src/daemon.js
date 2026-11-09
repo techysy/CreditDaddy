@@ -1762,7 +1762,7 @@ async function handleApi(req, res, url) {
       const tr = await traeLiveAccount();
       // 国际版客户端（信封 host 为 *.trae.ai）：CD 的 Trae 线只打 api.trae.cn，导入只会有
       // 一张空额度卡——照常列出让用户可见，但带 intlWarning 由前端明确提示，不静默。
-      if (tr) addRecord(tr, { source: 'Trae 当前登录', current: true, ...(tr.meta?.isIntl ? { intlWarning: '检测到 Trae 国际版客户端（trae.ai）——CreditDaddy 的 Trae 线仅支持国内版（api.trae.cn），导入后额度与签到不可用' } : {}) });
+      if (tr) addRecord(tr, { source: 'Trae 当前登录', current: true, ...(tr.meta?.isIntl ? { intlWarning: '检测到 Trae 国际版客户端（trae.ai）——国际账号可导入并同步 10Router，但额度与签到无 API 口径（Dollar Usage 只在官网 Usage 页可见）' } : {}) });
     } catch (e) { errors.push({ file: 'TRAE/User/globalStorage/storage.json', error: e.message }); }
     // 7) MiniMax 客户端：读取 ~/.minimax 凭据当前登录
     // 7) MiniMax 客户端：读取 ~/.minimax 凭据当前登录（国内 cn / 国际 en 两目录独立，#54——

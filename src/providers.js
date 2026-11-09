@@ -15,6 +15,9 @@ import { fetchZcodeQuota } from './zcodeClient.js';
 import { fetchMirasimQuota, fetchMirasimProfile } from './mirasimClient.js';
 import { fetchCatpawQuota, fetchCatpawProfile } from './catpawClient.js';
 import { fetchTraeQuota, checkinTrae, verifyTraeAccount } from './traeClient.js';
+
+/** Trae 国际账号判定：provider trae-intl 或旧线账号带 isIntl 标记（浏览器 OAuth / 本机导入都落这个键） */
+const isTraeIntl = (account) => account?.provider === 'trae-intl' || Boolean(account?.meta?.isIntl);
 import { fetchMiniMaxQuota, checkinMiniMax, verifyMiniMaxAccount } from './minimaxClient.js';
 import { fetchDoubaoStatus, checkinDoubao } from './doubaoClient.js';
 import { checkinLingxi, fetchLingxiQuota } from './lingxiClient.js';
@@ -182,10 +185,21 @@ const PRODUCTS = {
   },
   trae: {
     label: 'Trae',
-    // 每日签到发 150 通用积分（7 天有效）。凭据只来自本机 Trae 客户端的 storage.json，
-    // 无对外 refresh：token 约 14 天过期，失效后到 Trae 客户端重新登录再重新本机导入。
-    checkin: (account, ctx) => checkinTrae(account, ctx),
-    quota: (account) => fetchTraeQuota(account),
+    // 每日签到发 150 通用积分（7 天有效）。凭据线：本机客户端导入 + 浏览器 OAuth（授权码
+    // + PKCE）双线。国际版账号（meta.isIntl / provider trae-intl）分流跳过签到与额度——
+    // ug 签到接口只在 api.trae.cn 注册、pay 端点国际网关 404（10R traeCheckin 同口径结论），
+    // 与其每天报错不如如实说「国际线无 API 口径」（用户拍板：国际版没必要做签到）。
+    checkin: (account, ctx) => (isTraeIntl(account)
+      ? { accountId: account.id, account: account.name || account.id, provider: account.provider, status: 'no-activity', message: 'Trae 国际线无每日签到（Dollar Usage 走官网 Usage 页，无 API 口径）' }
+      : checkinTrae(account, ctx)),
+    quota: (account) => {
+      if (isTraeIntl(account)) {
+        const e = new Error('Trae 国际线额度无 API 口径（Dollar Usage 只在 trae.ai 官网 Usage 页可见），不影响登录与 10Router 同步');
+        e.quotaUnavailable = true;
+        throw e;
+      }
+      return fetchTraeQuota(account);
+    },
     verify: (account) => verifyTraeAccount(account),
   },
   minimax: {

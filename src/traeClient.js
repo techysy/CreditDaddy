@@ -102,8 +102,30 @@ export function traeDevice(uid, storedDeviceId, attempt = 0) {
   };
 }
 
-function traeHeaders(jwt, dev) {
+function traeHeaders(jwt, dev, intl = false) {
   const token = jwt.startsWith('Cloud-IDE-JWT ') ? jwt : `Cloud-IDE-JWT ${jwt.trim()}`;
+  if (intl) {
+    // 国际版（trae.ai / grow-normal 族，10R SOLO intl 网关口径）：区域与包型跟着站点走
+    return {
+      accept: '*/*',
+      'accept-language': 'en-US',
+      authorization: token,
+      'content-type': 'application/json',
+      'user-agent': 'VSCode 1.107.1 (TRAE SOLO INTL)',
+      'x-market-client-id': 'VSCode 1.107.1',
+      'x-market-user-id': dev.marketUserId,
+      'x-user-region': 'SG',
+      'x-device-id': dev.deviceId,
+      'x-lgw-req-sdk-type': '3',
+      'package-type': 'stable',
+      'x-request-id': hex(16),
+      'x-lscbd-aid': '787976',
+      'x-lscbd-platform': process.platform === 'win32' ? 'windows' : process.platform,
+      'app-version': '0.1.45',
+      'x-tt-trace-id': `00-${hex(8)}-01`,
+      'vscode-sessionid': dev.sessionId,
+    };
+  }
   return {
     accept: '*/*',
     'accept-language': 'zh-CN',
@@ -142,10 +164,11 @@ async function post(url, account, body = {}, attempt = 0, storedDeviceId) {
   const jwt = account.token;
   if (!jwt) throw new Error('账号缺少 Trae 登录 token（请到 Trae 客户端登录后用「本机导入」同步）');
   const uid = account.uid || uidFromJwt(jwt);
+  const intl = account.provider === 'trae-intl' || Boolean(account.meta?.isIntl);
   const dev = traeDevice(uid || 'anonymous', storedDeviceId !== undefined ? storedDeviceId : account.meta?.deviceId, attempt);
   const res = await fetchJsonRace(url, {
     method: 'POST',
-    headers: traeHeaders(jwt, dev),
+    headers: traeHeaders(jwt, dev, intl),
     body: JSON.stringify(body),
     timeoutMs: FETCH_TIMEOUT_MS,
   });

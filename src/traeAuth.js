@@ -44,20 +44,29 @@ import http from 'node:http';
 import os from 'node:os';
 import { FETCH_TIMEOUT_MS } from './constants.js';
 
-/** 授权页域（国内站）。国际站是另一套域 + 另一把 client_id，等接国际线时再开。 */
+/** 授权页域：国内站 www.trae.cn / 国际站 www.trae.ai（#99：两站同协议同 client_id，
+ *  账号不互通——站点由 GetLoginGuidance 返回的 LoginHost 权威决定）。 */
 const CONSOLE_BASE_CN = 'https://www.trae.cn';
-const CLIENT_ID_CN = 'ono9krqynydwx5';
+const CONSOLE_BASE_INTL = 'https://www.trae.ai';
+const CLIENT_ID = 'ono9krqynydwx5';
 const AUTH_FROM = 'trae';
-/** 版本指纹常量：来自真机客户端登录 URL 实抓样本（3.4.9 / 插件 2.3.97430），上游更新后在此换。 */
+/** 版本指纹常量：CN 来自真机客户端登录 URL 实抓样本（3.4.9 / 插件 2.3.97430）；
+ *  国际版按 10R 口径（product.json 实测 3.6.4），上游更新后在此换。 */
 const PLUGIN_VERSION = '2.3.97430';
-const APP_VERSION = '3.4.9';
+const APP_VERSION_CN = '3.4.9';
+const APP_VERSION_INTL = '3.6.4';
 const APP_TYPE = 'stable';
-/** 换票主机白名单（CN 族，hostname 级）：host 参数来自回调查询串（浏览器可控），拦 SSRF。
- *  回环放行是给本仓联调 / 测试用的——真正要挡的是把 AuthCode+verifier 发去不相干的外部地址。 */
-const EXCHANGE_HOST_ALLOW = ['api.trae.cn', 'api.trae.com.cn', 'api.marscode.cn', 'www.trae.cn'];
+/** 换票主机白名单（hostname 级）：host 参数来自回调查询串（浏览器可控），拦 SSRF。
+ *  CN 族 = api.trae.cn 系；国际族 = grow-normal 系（AuthCode v3 换票主机，10R #99 实测
+ *  grow-normal.trae.ai / growsg-normal.trae.ai / USTTP 账号面 grow-normal.traeapi.us）
+ *  + 老族兜底。回环放行是给本仓联调 / 测试用的。 */
+const EXCHANGE_HOST_ALLOW_CN = ['api.trae.cn', 'api.trae.com.cn', 'api.marscode.cn', 'www.trae.cn'];
+const EXCHANGE_HOST_ALLOW_INTL = ['grow-normal.trae.ai', 'growsg-normal.trae.ai', 'grow-normal.traeapi.us', 'api.trae.ai', 'api.marscode.com', 'www.trae.ai'];
 const LOOPBACK_HOSTS = ['127.0.0.1', 'localhost', '::1', '[::1]'];
-/** 换票回落主机：回调没带 host（上游版本差异）时用。真机实测打 api.trae.cn。 */
-const EXCHANGE_HOST_FALLBACK = 'https://api.trae.cn';
+/** 换票回落主机：回调没带 host（上游版本差异）时用。CN 真机实测打 api.trae.cn；
+ *  国际按 10R authCodeOrigins 顺序（growsg 优先，USTTP 账号面 traeapi.us 兜底）。 */
+const EXCHANGE_HOST_FALLBACK_CN = 'https://api.trae.cn';
+const EXCHANGE_HOST_FALLBACK_INTL = 'https://growsg-normal.trae.ai';
 /** 回调端口候选：真机 3.4.9 客户端用 3379；workbuddy 钉旧版观察到 17388。 */
 const CALLBACK_PORTS = [3379, 17388];
 const LOGIN_TIMEOUT_MS = 5 * 60_000;
@@ -106,18 +115,34 @@ function osProfile() {
   };
 }
 
+/** 站点上下文：由 kind 归一（'trae'=CN / 'trae-intl'=国际），集中全部按站点分叉的常量。 */
+function siteContext(kind) {
+  return { intl: kind === 'trae-intl' };
+}
+
+/** 站点权威判定：LoginHost / 回调 host 反推（10R traeRegionFromHost 同款后缀表）。 */
+function isIntlHost(host) {
+  const h = String(host || '').trim().toLowerCase().replace(/^https?:\/\//, '').split('/')[0];
+  if (!h) return null;
+  if (/(^|\.)trae\.cn$|(^|\.)trae\.com\.cn$|(^|\.)marscode\.cn$/.test(h)) return false;
+  if (/(^|\.)trae\.ai$|(^|\.)marscode\.com$|(^|\.)traeapi\.us$/.test(h)) return true;
+  return null;
+}
+
 /** 拼内层授权 URL（22 参数，顺序与真机客户端抓包逐字一致——不要按语义重排）。 */
-export function buildAuthorizeUrl({ port, traceId, challenge, identity }) {
+export function buildAuthorizeUrl({ port, traceId, challenge, identity, intl = false }) {
   const system = osProfile();
   const callback = `http://127.0.0.1:${port}/authorize`;
   const enc = encodeURIComponent;
-  const inner = `${CONSOLE_BASE_CN}/authorization`
+  const appVersion = intl ? APP_VERSION_INTL : APP_VERSION_CN;
+  const consoleBase = intl ? CONSOLE_BASE_INTL : CONSOLE_BASE_CN;
+  const inner = `${consoleBase}/authorization`
     + `?login_version=1`
     + `&auth_from=${AUTH_FROM}`
     + `&login_channel=native_ide`
     + `&plugin_version=${PLUGIN_VERSION}`
     + `&auth_type=local`
-    + `&client_id=${CLIENT_ID_CN}`
+    + `&client_id=${CLIENT_ID}`
     + `&redirect=0`
     + `&login_trace_id=${traceId}`
     + `&auth_callback_url=${enc(callback)}`
@@ -129,13 +154,13 @@ export function buildAuthorizeUrl({ port, traceId, challenge, identity }) {
     + `&x_device_type=${enc(process.platform)}`
     + `&x_os_version=${enc(system.osVersion)}`
     + `&x_env=`
-    + `&x_app_version=${APP_VERSION}`
+    + `&x_app_version=${appVersion}`
     + `&x_app_type=${APP_TYPE}`
     + `&code_challenge=${challenge}`
     + `&code_challenge_method=S256`
     + `&channel_name=common`;
   // 外层包装与真机客户端一致（/login?login_platform=trae&redirect_url=<内层>）
-  return `${CONSOLE_BASE_CN}/login?login_platform=trae&redirect_url=${enc(inner)}`;
+  return `${consoleBase}/login?login_platform=trae&redirect_url=${enc(inner)}`;
 }
 
 /** 回调查询解析：先剥到 ? 后（req.url 带着路径前缀）、按 & 切 → 整体反复解码（浏览器/页面
@@ -181,7 +206,7 @@ function jsonIntField(obj, keys) {
   return 0;
 }
 
-/** 解析回调参数 → {authCode, userInfo, host, region, traceId, error}（muskke parseCallback 同款容错）。 */
+/** 解析回调参数 → {authCode, userInfo, host, region, intl, traceId, error}（muskke parseCallback 同款容错）。 */
 export function parseCallbackParams(params) {
   const raw = params.authCodeInfo || params.auth_code_info || params.AuthCodeInfo || '';
   let authCode = jsonStringField(params, ['authCode', 'auth_code', 'AuthCode', 'authorization_code', 'code']);
@@ -206,22 +231,27 @@ export function parseCallbackParams(params) {
     name: user ? jsonStringField(user, ['ScreenName', 'screenName', 'nickname']) : null,
     host,
     region,
+    // 站点权威判定：回调 host 反推（LoginHost 由 GetLoginGuidance 下发并跟 authorize 全程）
+    intl: isIntlHost(host),
     traceId: jsonStringField(params, ['loginTraceID', 'loginTraceId', 'login_trace_id']),
     error: jsonStringField(params, ['error', 'error_description']),
   };
 }
 
-/** 换票主机白名单校验（hostname 级；回环放行给联调 / 测试，回环原样保留 scheme+端口）。 */
-export function resolveExchangeHost(host) {
+/** 换票主机白名单校验（hostname 级；按站点族放行，跨族一律回落本族 fallback——拦 SSRF
+ *  也拦「国内回调拿去国际端点换票」这类站错队）。回环放行给联调 / 测试。 */
+export function resolveExchangeHost(host, { intl = false } = {}) {
   const raw = String(host || '').trim().replace(/\/+$/, '');
   const name = raw.split('://').pop()?.split('/')[0]?.split(':')[0]?.toLowerCase() || '';
-  if (!name) return { host: EXCHANGE_HOST_FALLBACK, usedFallback: 'missing' };
+  const allow = intl ? EXCHANGE_HOST_ALLOW_INTL : EXCHANGE_HOST_ALLOW_CN;
+  const fallback = intl ? EXCHANGE_HOST_FALLBACK_INTL : EXCHANGE_HOST_FALLBACK_CN;
+  if (!name) return { host: fallback, usedFallback: 'missing' };
   if (LOOPBACK_HOSTS.includes(name)) return { host: raw, usedFallback: null };
-  if (EXCHANGE_HOST_ALLOW.includes(name)) return { host: raw.startsWith('http') ? raw : `https://${raw}`, usedFallback: null };
-  return { host: EXCHANGE_HOST_FALLBACK, usedFallback: 'rejected' };
+  if (allow.includes(name)) return { host: raw.startsWith('http') ? raw : `https://${raw}`, usedFallback: null };
+  return { host: fallback, usedFallback: 'rejected' };
 }
 
-function deviceInfoPayload(identity) {
+function deviceInfoPayload(identity, appVersion) {
   const system = osProfile();
   return {
     DeviceID: identity.deviceId,
@@ -230,7 +260,7 @@ function deviceInfoPayload(identity) {
     DeviceType: 'PC',
     DeviceName: system.deviceName,
     DeviceModel: system.deviceModel,
-    ClientVersion: APP_VERSION,
+    ClientVersion: appVersion,
     DevicePublicKey: identity.publicKeyPem,
     DeviceBrand: system.deviceBrand,
     DeviceCPU: system.cpu,
@@ -270,31 +300,47 @@ async function postJson(url, payload, extraHeaders = {}) {
   return { res, body, text };
 }
 
-/** AuthCode 换 token：主端点（新协议，带 DeviceInfo）→ 旧端点扁平体（AuthCode / Code 两种历史拼法）。 */
-export async function exchangeAuthCode({ host, authCode, codeVerifier, identity }) {
-  const attempts = [
-    {
-      tag: 'ExchangeToken/DeviceInfo',
-      url: `${host}/trae/api/v3/oauth/ExchangeToken`,
-      payload: {
-        ClientID: CLIENT_ID_CN,
-        AuthCode: authCode,
-        CodeVerifier: codeVerifier,
-        DeviceInfo: deviceInfoPayload(identity),
-        IDEVersion: APP_VERSION,
+/** AuthCode 换 token：CN 真机验证的三段降级（新端点带 DeviceInfo → 旧端点扁平体 AuthCode/Code）；
+ *  国际线保持 10R 实测的单段 v3（grow-normal 族未观察到需要降级，#99 全链验证）。 */
+export async function exchangeAuthCode({ host, authCode, codeVerifier, identity, intl = false }) {
+  const appVersion = intl ? APP_VERSION_INTL : APP_VERSION_CN;
+  const attempts = intl
+    ? [
+      {
+        tag: 'ExchangeToken/DeviceInfo',
+        url: `${host}/trae/api/v3/oauth/ExchangeToken`,
+        payload: {
+          ClientID: CLIENT_ID,
+          AuthCode: authCode,
+          CodeVerifier: codeVerifier,
+          DeviceInfo: deviceInfoPayload(identity, appVersion),
+          IDEVersion: appVersion,
+        },
       },
-    },
-    {
-      tag: 'ExchangeToken/AuthCode',
-      url: `${host}/cloudide/api/v3/trae/oauth/ExchangeToken`,
-      payload: { ClientID: CLIENT_ID_CN, AuthCode: authCode, CodeVerifier: codeVerifier, DeviceID: identity.deviceId, PlatformCode: 'IDE_PC' },
-    },
-    {
-      tag: 'ExchangeToken/Code',
-      url: `${host}/cloudide/api/v3/trae/oauth/ExchangeToken`,
-      payload: { ClientID: CLIENT_ID_CN, Code: authCode, CodeVerifier: codeVerifier, DeviceID: identity.deviceId, PlatformCode: 'IDE_PC' },
-    },
-  ];
+    ]
+    : [
+      {
+        tag: 'ExchangeToken/DeviceInfo',
+        url: `${host}/trae/api/v3/oauth/ExchangeToken`,
+        payload: {
+          ClientID: CLIENT_ID,
+          AuthCode: authCode,
+          CodeVerifier: codeVerifier,
+          DeviceInfo: deviceInfoPayload(identity, appVersion),
+          IDEVersion: appVersion,
+        },
+      },
+      {
+        tag: 'ExchangeToken/AuthCode',
+        url: `${host}/cloudide/api/v3/trae/oauth/ExchangeToken`,
+        payload: { ClientID: CLIENT_ID, AuthCode: authCode, CodeVerifier: codeVerifier, DeviceID: identity.deviceId, PlatformCode: 'IDE_PC' },
+      },
+      {
+        tag: 'ExchangeToken/Code',
+        url: `${host}/cloudide/api/v3/trae/oauth/ExchangeToken`,
+        payload: { ClientID: CLIENT_ID, Code: authCode, CodeVerifier: codeVerifier, DeviceID: identity.deviceId, PlatformCode: 'IDE_PC' },
+      },
+    ];
   const errors = [];
   for (const a of attempts) {
     let r;
@@ -383,9 +429,11 @@ async function bindCallbackServer(session, ports) {
   throw new Error(`Trae 回调端口都被占用（${errors.join('；')}）——请关掉占用 3379/17388 的程序（可能是正在登录的 Trae 客户端）后重试`);
 }
 
-/** 发起一次浏览器授权登录。kind 预留：'trae'（国内站）；国际线是另一套域 + 钥匙，暂不开。 */
+/** 发起一次浏览器授权登录。kind：'trae'（国内站）/ 'trae-intl'（国际站，10R #99 同协议）。
+ *  授权 URL 直接用本站 console 域（与真机客户端一致——客户端不打 GetLoginGuidance 拿
+ *  授权域，回调里的换票 host 由授权页下发，按站点白名单放行）。 */
 export async function startTraeLogin(kind, { ports = CALLBACK_PORTS } = {}) {
-  if (kind && kind !== 'trae') throw new Error('暂只支持 Trae 国内站登录（国际线待接）');
+  const site = siteContext(kind === 'trae-intl' ? 'trae-intl' : 'trae');
   gcSessions();
   const identity = newDeviceIdentity();
   const verifier = crypto.randomBytes(48).toString('base64url');
@@ -393,6 +441,7 @@ export async function startTraeLogin(kind, { ports = CALLBACK_PORTS } = {}) {
   const traceId = crypto.randomUUID();
   const session = {
     identity, verifier, traceId,
+    intl: site.intl,
     result: null, error: null, settledAt: 0,
     deadline: Date.now() + LOGIN_TIMEOUT_MS,
   };
@@ -401,7 +450,7 @@ export async function startTraeLogin(kind, { ports = CALLBACK_PORTS } = {}) {
   session.port = port;
   const loginId = crypto.randomUUID();
   sessions.set(loginId, session);
-  const url = buildAuthorizeUrl({ port, traceId, challenge, identity });
+  const url = buildAuthorizeUrl({ port, traceId, challenge, identity, intl: site.intl });
   return {
     url,
     expiresInMs: LOGIN_TIMEOUT_MS,
@@ -445,12 +494,14 @@ export async function pollTraeLogin(data) {
 
   // 旧契约直接带 token 的版本：跳过换票
   if (info.directAccessToken && !info.authCode) {
+    const intlDirect = info.intl !== null ? info.intl : Boolean(session.intl);
     return buildLoginResult({
       accessToken: info.directAccessToken,
       refreshToken: info.directRefreshToken,
       identity: session.identity,
       host: info.host,
       region: info.region,
+      intl: intlDirect,
       uid: info.uid,
       name: info.name,
       expiresAtMs: 0,
@@ -458,14 +509,17 @@ export async function pollTraeLogin(data) {
   }
   if (!info.authCode) throw new Error('回调里没有 AuthCode（授权页协议可能又变了），请重新发起或更新 CreditDaddy');
 
-  const resolved = resolveExchangeHost(info.host);
-  const t = await exchangeAuthCode({ host: resolved.host, authCode: info.authCode, codeVerifier: session.verifier, identity: session.identity });
+  // 站点裁决：回调 host 反推 → 缺失/判不出时用本次登录的发起站点（startTraeLogin 定）
+  const intl = info.intl !== null ? info.intl : Boolean(session.intl);
+  const resolved = resolveExchangeHost(info.host, { intl });
+  const t = await exchangeAuthCode({ host: resolved.host, authCode: info.authCode, codeVerifier: session.verifier, identity: session.identity, intl });
   return buildLoginResult({
     accessToken: t.accessToken,
     refreshToken: t.refreshToken,
     identity: session.identity,
     host: info.host || resolved.host,
     region: info.region,
+    intl,
     uid: info.uid,
     name: info.name,
     expiresAtMs: t.expiresAtMs,
@@ -481,7 +535,7 @@ function uidFromJwt(jwt) {
   } catch { return { uid: null, exp: 0 }; }
 }
 
-function buildLoginResult({ accessToken, refreshToken, identity, host, region, uid, name, expiresAtMs, expiresInSec = 0, exchangeFallback }) {
+function buildLoginResult({ accessToken, refreshToken, identity, host, region, intl = false, uid, name, expiresAtMs, expiresInSec = 0, exchangeFallback }) {
   const jwt = uidFromJwt(accessToken);
   const finalUid = uid || jwt.uid || null;
   let expiresAt = null;
@@ -511,8 +565,10 @@ function buildLoginResult({ accessToken, refreshToken, identity, host, region, u
         traeDevice: device,
         traeHost: host || null,
         traeRegion: region || null,
+        // 国际账号标记（切客户端选 exe / 10R 推送护栏 / 签到额度跳过口径都读它）
+        ...(intl ? { isIntl: true } : {}),
         traeExchangeFallback: exchangeFallback || undefined,
-        clientVersion: APP_VERSION,
+        clientVersion: intl ? APP_VERSION_INTL : APP_VERSION_CN,
         pluginVersion: PLUGIN_VERSION,
         capturedAt: new Date().toISOString(),
       },

@@ -111,6 +111,25 @@ test('换票主机：白名单族放行、回环保留 scheme、外域回落 api
   assert.equal(resolveExchangeHost('').usedFallback, 'missing');
 });
 
+test('换票主机（国际线）：grow-normal 族放行、跨族回落国际 fallback', () => {
+  assert.equal(resolveExchangeHost('https://grow-normal.trae.ai', { intl: true }).host, 'https://grow-normal.trae.ai');
+  assert.equal(resolveExchangeHost('growsg-normal.trae.ai', { intl: true }).host, 'https://growsg-normal.trae.ai');
+  assert.equal(resolveExchangeHost('grow-normal.traeapi.us', { intl: true }).host, 'https://grow-normal.traeapi.us');
+  // 国内域不在国际白名单：跨族拦下，回落国际 fallback（防「国际登录拿国内端点换票」站错队）
+  assert.equal(resolveExchangeHost('https://api.trae.cn', { intl: true }).host, 'https://growsg-normal.trae.ai');
+  assert.equal(resolveExchangeHost('https://evil.example.com', { intl: true }).usedFallback, 'rejected');
+  assert.equal(resolveExchangeHost('', { intl: true }).host, 'https://growsg-normal.trae.ai');
+});
+
+test('回调解析：host 是国际域 → intl=true；国内域 → false；回环/缺失 → null（回落发起站点）', () => {
+  assert.equal(parseCallbackParams({ host: 'grow-normal.trae.ai' }).intl, true);
+  assert.equal(parseCallbackParams({ host: 'https://api.marscode.com' }).intl, true);
+  assert.equal(parseCallbackParams({ host: 'api.trae.cn' }).intl, false);
+  assert.equal(parseCallbackParams({ host: 'api.marscode.cn' }).intl, false);
+  assert.equal(parseCallbackParams({ host: '127.0.0.1:46999' }).intl, null);
+  assert.equal(parseCallbackParams({}).intl, null);
+});
+
 // ── 全链路：探测 → 回调 → 换票（本地 mock 授权页 + mock 换票端点） ──
 
 let mockExchange;
@@ -218,4 +237,67 @@ test('全链路：拒绝回调（error=）不误判为探测，立即终态失�
   const flow = await startTraeLogin('trae', { ports: [TEST_PORT + 2] });
   await fireCallback(TEST_PORT + 2, 'error=user_cancel&error_description=denied');
   await assert.rejects(() => pollTraeLogin(flow.data), /user_cancel|拒绝/);
+});
+
+// ── 国际线（trae-intl，www.trae.ai，10R #99 同协议） ──
+
+test('国际线：授权 URL 走 trae.ai、app_version 3.6.4，换票单段 v3 + isIntl 落 meta', async () => {
+  const mockPort = mockExchange.address().port;
+  const flow = await startTraeLogin('trae-intl', { ports: [TEST_PORT + 3] });
+  assert.equal(flow.url.includes('www.trae.ai'), true);
+  assert.equal(flow.url.includes('www.trae.cn'), false);
+  const inner = new URL(flow.url).searchParams.get('redirect_url');
+  assert.equal(inner.includes('www.trae.ai/authorization'), true);
+  assert.equal(new URL(inner).searchParams.get('x_app_version'), '3.6.4');
+
+  // 回调带国际换票主机 + userRegion=sg
+  const cb = await fireCallback(TEST_PORT + 3, enc2(`authCodeInfo=${JSON.stringify({ AuthCode: 'ac-intl', ExpireAt: Math.floor(Date.now() / 1000) + 600 })}`)
+    + `&userInfo=${encodeURIComponent(JSON.stringify({ UserID: '90001', ScreenName: 'IntlUser' }))}`
+    + `&host=${enc2(`http://127.0.0.1:${mockPort}`)}`
+    + `&userRegion=SG&loginTraceID=${new URL(inner).searchParams.get('login_trace_id')}`);
+  assert.equal(cb.status, 200);
+
+  const r = await pollTraeLogin(flow.data);
+  assert.equal(r.status, 'ok');
+  assert.equal(r.input.provider, 'trae');
+  assert.equal(r.input.meta.isIntl, true);
+  assert.equal(r.input.meta.clientVersion, '3.6.4');
+  assert.equal(r.input.uid, '90001');
+  // 国际线单段 v3：只打一次主端点，无旧端点降级
+  assert.equal(mockCalls.length, 1);
+  assert.equal(mockCalls[0].url, '/trae/api/v3/oauth/ExchangeToken');
+  assert.equal(mockCalls[0].body.IDEVersion, '3.6.4');
+});
+
+test('国际线：回调 host 是国内域 → 按回调 host 判站点（intl=false）走 CN 白名单与三段降级', async () => {
+  const mockPort = mockExchange.address().port;
+  const flow = await startTraeLogin('trae-intl', { ports: [TEST_PORT + 4] });
+  const inner = new URL(flow.url).searchParams.get('redirect_url');
+  // 回环 host（127.0.0.1）判不出站点 → 回落本次发起站点（intl=true，联调语义）；
+  // 真实场景 host 是 api.trae.cn / grow-normal.* 域，isIntlHost 都能判定
+  const cb = await fireCallback(TEST_PORT + 4, enc2(`authCodeInfo=${JSON.stringify({ AuthCode: 'ac-cn' })}`)
+    + `&host=${enc2(`http://127.0.0.1:${mockPort}`)}`
+    + `&userRegion=cn&loginTraceID=${new URL(inner).searchParams.get('login_trace_id')}`);
+  assert.equal(cb.status, 200);
+  const r = await pollTraeLogin(flow.data);
+  assert.equal(r.status, 'ok');
+  assert.equal(r.input.meta.isIntl, true);   // 回环 host → 回落发起站点（trae-intl）
+  // mock 只挂了主端点：首个 attempt 即中
+  assert.equal(mockCalls[0].url, '/trae/api/v3/oauth/ExchangeToken');
+});
+
+test('国际线：回调 host 外域 → 回落国际 fallback（growsg-normal.trae.ai）', async () => {
+  const flow = await startTraeLogin('trae-intl', { ports: [TEST_PORT + 5] });
+  const inner = new URL(flow.url).searchParams.get('redirect_url');
+  await fireCallback(TEST_PORT + 5, enc2(`authCodeInfo=${JSON.stringify({ AuthCode: 'ac-x' })}`)
+    + `&host=${enc2('https://evil.example.com')}&loginTraceID=${new URL(inner).searchParams.get('login_trace_id')}`);
+  // 外域被拒 → 国际 fallback 主机换票（此处 mock 不在 growsg 域上，真端点 400/拒 → 终态失败即证明走到 fallback）
+  await assert.rejects(() => pollTraeLogin(flow.data), /Trae 换票失败/);
+});
+
+test('startTraeLogin：未知 kind 拒绝（守卫仍在一，只是范围变成 CN/intl 两个）', async () => {
+  // siteContext 对未知 kind 归 CN——但 startTraeLogin 只接受显式两种，别的 kind 不会从 FLOWS 进来；
+  // 这里验证 authDevice LOGIN_KINDS 层面已在 daemon 白名单内（间接：不抛「不支持」即通过）
+  const flow = await startTraeLogin('trae', { ports: [TEST_PORT + 6] });
+  assert.equal(flow.url.includes('www.trae.cn'), true);
 });

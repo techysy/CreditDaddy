@@ -233,9 +233,11 @@ async function runTickNow(opts) {
 async function runTickInner(opts) {
   const allAccounts = await loadAccounts();
   // workbuddy-intl 无 checkin 动作（providers.js 的 intl 分支已删），providers 过滤天然跳过；
+  // trae-intl 同理（ug 签到接口只在国内站注册，国际号连排程都不进——10R traeCheckin 同口径）。
   // 「活跃请求」全局开关随该机制一并删除（设置项不再读写）
   const accounts = allAccounts.filter(
-    (a) => (!opts.provider || a.provider === opts.provider)
+    (a) => a.provider !== 'trae-intl'
+        && (!opts.provider || a.provider === opts.provider)
         && (!opts.product || productOf(a.provider) === opts.product)
         && (!opts.onlyAccountId || a.id === opts.onlyAccountId)
         && typeof productImpl(a.provider)?.checkin === 'function'

@@ -132,8 +132,10 @@ const FLOWS = {
   'zcode-zai': { start: startZcodeLogin, poll: pollZcodeLogin },
   minimax: { start: startMiniMaxLogin, poll: pollMiniMaxLogin },
   'minimax-global': { start: (kind) => startMiniMaxLogin('global'), poll: pollMiniMaxLogin },
-  // Trae：授权码 + PKCE 的本地回调流（与设备码轮询不同，poll 查的是本机回调监听抓没抓到）
+  // Trae：授权码 + PKCE 的本地回调流（与设备码轮询不同，poll 查的是本机回调监听抓没抓到）；
+  // trae-intl 走国际站（www.trae.ai，同协议同 client_id，#99 10R 侧全链验证）
   trae: { start: startTraeLogin, poll: pollTraeLogin },
+  'trae-intl': { start: startTraeLogin, poll: pollTraeLogin },
 };
 export const LOGIN_KINDS = Object.keys(FLOWS);
 const KIND_LABEL = { 'zcode-bigmodel': 'ZCode（BigModel）', 'zcode-zai': 'ZCode（Z.ai）' };

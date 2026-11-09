@@ -783,7 +783,7 @@
           <option value="workbuddy" data-i18n="WorkBuddy 国内版">WorkBuddy 国内版</option><option value="workbuddy-intl" data-i18n="WorkBuddy 国际版">WorkBuddy 国际版</option>
           <option value="zcode-bigmodel" data-i18n="ZCode · BigModel（智谱）">ZCode · BigModel（智谱）</option><option value="zcode-zai" data-i18n="ZCode · Z.ai（国际）">ZCode · Z.ai（国际）</option>
           <option value="minimax" data-i18n="MiniMax Code 国内版">MiniMax Code 国内版</option><option value="minimax-global" data-i18n="MiniMax Code 国际版">MiniMax Code 国际版</option>
-          <option value="trae" data-i18n="Trae 国内版">Trae 国内版</option>
+          <option value="trae" data-i18n="Trae 国内版">Trae 国内版</option><option value="trae-intl" data-i18n="Trae 国际版">Trae 国际版</option>
         </select>
       </div>
       <div class="row"><button class="btn primary" id="btn-device" data-i18n="生成授权链接">生成授权链接</button><button class="btn" id="dev-cancel" style="display:none">取消</button></div>
@@ -1282,7 +1282,8 @@ const PROV = {
   zcode: { prod: 'zcode', prodLabel: 'ZCode', region: '', cls: '' },
   mirasim: { prod: 'mirasim', prodLabel: 'mirasim', region: '', cls: '' },
   catpaw: { prod: 'catpaw', prodLabel: '妙手', region: '', cls: '' },
-  trae: { prod: 'trae', prodLabel: 'Trae', region: '', cls: '' },
+  trae: { prod: 'trae', prodLabel: 'Trae', region: '国内版', cls: 'cn' },
+  'trae-intl': { prod: 'trae', prodLabel: 'Trae', region: '国际版', cls: 'intl' },
   minimax: { prod: 'minimax', prodLabel: 'MiniMax', region: '国内版', cls: 'cn' },
   'minimax-global': { prod: 'minimax', prodLabel: 'MiniMax', region: '国际版', cls: 'intl' },
   loomy: { prod: 'loomy', prodLabel: 'Loomy', region: '', cls: '' },
@@ -4019,7 +4020,7 @@ async function onCardClick(e) {
       }
       if (a && a.product === 'trae' && r && !r.alreadyActive && window.creditdaddy && typeof window.creditdaddy.openTraeClient === 'function') {
         // 国内/国际是两个不同的 exe（Trae CN / Trae），按账号档位选——切到国际版号别把国内版客户端拉起来
-        const tVariant = a.meta && a.meta.isIntl ? 'intl' : 'cn';
+        const tVariant = (a.meta && a.meta.isIntl) || a.provider === 'trae-intl' ? 'intl' : 'cn';
         setTimeout(async () => {
           try {
             const re = await window.creditdaddy.openTraeClient(tVariant);

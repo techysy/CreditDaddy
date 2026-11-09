@@ -24,6 +24,7 @@ export const TENROUTER_PROVIDER_MAP = {
   minimax: 'minimax-code',             // #55：MiniMax 国内订阅线 → 10R minimax-code
   'minimax-global': 'minimax-code-global',   // #55：MiniMax 国际订阅线 → 10R minimax-code-global
   trae: 'trae-cn',                     // #56：CD 的 Trae 线读国内客户端（#28）→ 10R trae-cn（条目钉死国内站）
+  'trae-intl': 'trae',                 // 国际线（浏览器 OAuth 登录，10R trae 条目缺省国际站）；连接同步走 transfer 管线
   tokenharbor: 'tokenharbor-free',   // #23：会话 cookie 只喂「额度监控卡」(freeTier,不走路由);tokenharbor 钱包卡留给 sk- 运输 key
   loomy: 'loomy',
   // zcode → glm：等 zcode 反代就绪后补一行（同步流程已就绪，无需改代码）
@@ -164,8 +165,8 @@ export async function syncAccountsTo10r({ endpoint, key, adminPassword, accounts
   const traeIntl = [];
   for (const a of accounts || []) {
     if (!a || !a.token) continue;
-    // #56：CD 的 Trae 线只支持国内站（traeLocal 对国际版客户端的导入本来就只挂警告）。
-    // 国际版账号不往 trae-cn 里推——10R 拿国内端点打国际 token 必然 20101，宁可明说跳过。
+    // #56：国内线（provider trae）里混进国际账号（旧 meta.isIntl 标记）不往 trae-cn 推——
+    // 10R 拿国内端点打国际 token 必然 20101。provider 'trae-intl' 有独立映射（→ trae），不走这。
     if (a.provider === 'trae' && (a.meta?.isIntl || a.isIntl)) {
       traeIntl.push(a);
       continue;
