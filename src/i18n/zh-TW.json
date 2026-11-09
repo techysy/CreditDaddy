@@ -615,6 +615,8 @@
   "还没有 Qoder 账号。<br>点「添加账号」可一键读取本机 Qoder / Qoder CN 客户端已登录的账号,或用浏览器登录。": "還沒有 Qoder 帳號。<br>點「新增帳號」可一鍵讀取本機 Qoder / Qoder CN 客戶端已登入的帳號,或用瀏覽器登入。",
   "还没有 Qoder 账号。<br>点「添加账号」可一键读取本机 Qoder / Qoder CN 客户端已登录的账号，或用浏览器登录。": "還沒有 Qoder 賬號。<br>點「添加賬號」可一鍵讀取本機 Qoder / Qoder CN 客戶端已登錄的賬號，或用瀏覽器登錄。",
   "还没有 Trae 账号。<br>点「添加账号 → 本机导入」可读取本机 Trae 客户端当前登录的账号（本地解密 storage.json 凭据，token 不出本机）。多个账号需先在 Trae 里分别登录并逐个导入。": "還沒有 Trae 賬號。<br>點「添加賬號 → 本機導入」可讀取本機 Trae 客戶端當前登錄的賬號（本地解密 storage.json 憑據，token 不出本機）。多個賬號需先在 Trae 裡分別登錄並逐個導入。",
+  "还没有 Trae 账号。<br>点「添加账号 → 本机导入」可读取本机 Trae 客户端当前登录的账号（本地解密 storage.json 凭据，token 不出本机），或用「浏览器登录」走官方授权码流程直接添加（无需客户端）。多账号可混合两种方式逐个添加。": "還沒有 Trae 賬號。<br>點「添加賬號 → 本機導入」可讀取本機 Trae 客戶端當前登入的賬號（本地解密 storage.json 憑據，token 不出本機），或用「瀏覽器登入」走官方授權碼流程直接添加（無需客戶端）。多賬號可混合兩種方式逐個添加。",
+  "WorkBuddy / ZCode / Trae 用浏览器登录的账号同样可以一键切换客户端。": "WorkBuddy / ZCode / Trae 用瀏覽器登入的賬號同樣可以一鍵切換客戶端。",
   "还没有 WorkBuddy 账号。<br>点「添加账号」可读取本机 WorkBuddy 客户端(当前 + 历史会话),或用浏览器登录 WorkBuddy 账号。": "還沒有 WorkBuddy 帳號。<br>點「新增帳號」可讀取本機 WorkBuddy 客戶端(目前 + 歷史工作階段),或用瀏覽器登入 WorkBuddy 帳號。",
   "还没有 WorkBuddy 账号。<br>点「添加账号」可读取本机 WorkBuddy 客户端（当前 + 历史会话）,或用浏览器登录 WorkBuddy 账号。": "還沒有 WorkBuddy 帳號。<br>點「新增帳號」可讀取本機 WorkBuddy 客戶端(目前 + 歷史工作階段),或用瀏覽器登入 WorkBuddy 帳號。",
   "还没有 WorkBuddy 账号。<br>点「添加账号」可读取本机 WorkBuddy 客户端（当前 + 历史会话），或用浏览器登录 WorkBuddy 账号。": "還沒有 WorkBuddy 賬號。<br>點「添加賬號」可讀取本機 WorkBuddy 客戶端（當前 + 歷史會話），或用瀏覽器登錄 WorkBuddy 賬號。",
