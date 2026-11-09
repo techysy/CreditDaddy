@@ -2157,6 +2157,11 @@ function renderDash() {
   const failed = signable.filter((a) => statusOf(a).cls === 'fail').length;
   const credit = creditSum(state.accounts.filter((a) => a.product !== 'zcode'));
   const byProd = orderedVisibleComps().filter((id) => id !== 'tenrouter').map((id) => prodLabel(id) + ' ' + ofProduct(id).length).join(' · ');
+  // 网页会话签到线（灵犀）今日进度，freeDashCard 用；账号要同时在 cookieSites 视图里才算
+  const lxRows = (state.cookieSites || []).flatMap((s) => s.id === 'lingxi' ? (s.accounts || []) : []);
+  const lxProgress = lxRows.length
+    ? { done: lxRows.filter((acc) => { const full = state.accounts.find((x) => x.id === acc.id); return full && isDone(full); }).length, total: lxRows.length }
+    : null;
   // 明细按「可合并的积分口径」动态生成，而不是写死三个产品：
   // 新增产品线（如 Loomy）只要额度单位是「积分」就自动出现在这里，不会再出现
   // 「产品卡里有积分合计、顶部 KPI 却没算」的口径分裂（issue #45）。
@@ -2258,6 +2263,7 @@ function renderDash() {
   };
   $('prods').innerHTML = orderedVisibleComps().map((id) => {
     if (id === 'tenrouter') return trDashCard();
+    if (id === 'free') return freeDashCard();
     const p = PRODUCTS.find((x) => x.id === id);
     return p ? prodCardHtml(p) : '';
   }).join('');
@@ -3462,6 +3468,17 @@ function renderTenrouter() {
     + tabStrip
     + '<div class="tr-grid">' + grid + '</div>';
   if (!state.cookieSites) loadCookieSites().then(() => { if (state.view === 'tenrouter') renderTenrouter(); });
+}
+
+/** 网页会话仪表盘卡：站点/会话计数 + 签到线今日进度（灵犀），点击进「网页会话」页 */
+function freeDashCard() {
+  const sites = (state.cookieSites || []).filter((s) => s.disabled !== true);
+  const sessions = sites.reduce((sum, s) => sum + (s.accounts?.length || 0), 0);
+  const rows = T('<span class="lbl">已捕获站点</span><span class="val">') + sites.length + '</span>'
+    + T('<span class="lbl">会话总数</span><span class="val">') + sessions + '</span>'
+    + T('<span class="lbl">今日领取</span><span class="val">') + (lxProgress ? lxProgress.done + ' / ' + lxProgress.total : T('暂无签到站点')) + '</span>';
+  return '<div class="prodcard" data-view="free"><div class="prod-head"><span class="prod-name"><svg viewBox="0 0 24 24" class="dot prod-mark-img"><rect width="24" height="24" rx="5" fill="#5B8DEF"/><circle cx="9" cy="14" r="3.2" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M11.5 11.5 L17 6 M13.5 6h3.5v3.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>网页会话</span>'
+    + '<span class="badge">' + sessions + T(' 个会话</span></span><span class="prod-go">查看') + I.chevRight + '</span></div><div class="prod-rows">' + rows + '</div></div>';
 }
 
 function trDashCard() {
@@ -5519,6 +5536,8 @@ function hideBootBusy() { const b = $('boot-busy'); if (!b) return; clearTimeout
     applyDictFromServer().then(() => {
     window.__syncTheme?.();   // 头部主题按钮的图标/标题在字典到达后重渲染（initTheme 时字典还没到，T() 当时只能回落中文）
     loadStatus().then(loadAccounts).then(hideBootBusy, (e) => { toast(e.message, false); hideBootBusy(); });
+    // 网页会话仪表盘卡的数据源（站点/会话计数、灵犀签到进度）：懒加载，到了就重绘仪表盘
+    loadCookieSites().then(() => { if (state.view === 'dash') renderDash(); });
     loadSettings().then(renderCompMenu);
     loadZNet();
     loadZGateway();
