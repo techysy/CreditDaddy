@@ -2046,6 +2046,7 @@ async function handleApi(req, res, url) {
         workbuddy: dayKey(Date.now(), 'workbuddy'),
         trae: dayKey(Date.now(), 'trae'),
         minimax: dayKey(Date.now(), 'minimax'),
+        lingxi: dayKey(Date.now(), 'lingxi'),   // 网页会话签到线（#53）：0 点翻日，徽标/isDone 的日界比对用
       },
       scheduler: await getSchedulerInfo(),
       riskIdentity: riskIdentityAvailable(),

@@ -34,6 +34,8 @@ const ZCODE_FIRST_DELAY_MS = 2 * 60 * 1000;
 // 各产品「业务日」刷新时点（UTC+8）：Qoder 每日 10:00 放出/重置领取资格，其余产品按 00:00。
 // 签到日 = 对应时点起的日历日：dayKey(now, provider) = (now + (8 - 刷新小时)h) 的 UTC 日期
 const DAY_REFRESH_HOUR_UTC8 = { qoder: 10, 'qoder-cn': 10 };
+// 领取日志的积分单位：默认 Credits（Qoder/WorkBuddy 系），网页会话线各自带单位
+const CHECKIN_UNIT = { lingxi: '灵点', doubao: '额度' };
 
 let timerHandle = null;
 let zcodeTimerHandle = null;
@@ -291,7 +293,7 @@ async function runTickInner(opts) {
       if (outcome.status === 'checked-in') {
         memo[account.id] = todayFor;
         account.lastCheckin = new Date().toISOString();
-        logger.info('CHECKIN', '{label} 领取成功 +{amount} Credits', { label, amount: outcome.claimedAmount });
+        logger.info('CHECKIN', '{label} 领取成功 +{amount} {unit}', { label, amount: outcome.claimedAmount, unit: CHECKIN_UNIT[account.provider] || 'Credits' });
       } else if (outcome.status === 'already') {
         memo[account.id] = todayFor;
         account.lastCheckin = account.lastCheckin || new Date().toISOString();

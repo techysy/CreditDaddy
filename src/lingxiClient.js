@@ -59,7 +59,7 @@ function localDayKey(now = new Date()) {
  * 任务面板：每日签到状态 + 智点余额/资源包一次拿全。
  * @param {string} cookie
  * @param {{ fetchImpl?: Function }} [opts]
- * @returns {Promise<{ auth: boolean, checkedIn?: boolean, reward?: number, streakDays?: number,
+ * @returns {Promise<{ auth: boolean, checkedIn?: boolean, reward?: number, dayReward?: number, streakDays?: number,
  *            balance?: number, packs?: Array, raw?: object, code?: string }>}
  *   auth=false = 会话失效；其余字段尽力而为（接口各自独立，某一路失败不带该字段）
  *
@@ -87,7 +87,13 @@ export async function fetchLingxiStatus(cookie, { fetchImpl } = {}) {
       const reward = Number(daily.reward_amount ?? daily.rewardAmount);
       if (Number.isFinite(reward) && reward > 0) out.reward = reward;
       const days = daily.extra?.check_in_days || daily.extra?.checkInDays;
-      if (Array.isArray(days)) out.streakDays = days.filter((d) => d?.claimed || d?.status === 'claimed').length;
+      if (Array.isArray(days)) {
+        out.streakDays = days.filter((d) => d?.claimed || d?.status === 'claimed').length;
+        // 当天奖励 = 本轮第 streakDays+1 天的 reward（每日 100 / 第七天 200，#53 实测口径）；
+        // claim 响应的 total_claimed_credits 是本轮周期累计，不能当当天额展示
+        const dayReward = Number(days[out.streakDays]?.reward ?? days[out.streakDays]?.rewardAmount);
+        if (Number.isFinite(dayReward) && dayReward > 0) out.dayReward = dayReward;
+      }
     }
     out.raw = { tasks: tasks.length };
   } catch (e) {
@@ -151,7 +157,9 @@ export async function checkinLingxi(account, ctx = {}) {
     e.auth = true;
     throw e;
   }
-  const reward = status.reward ?? 100;
+  // 展示口径的当天额：优先当日奖励（check_in_days[连签天数].reward），
+  // 退 reward_amount；绝不直接用 claim 的 total_claimed_credits（周期累计，会虚报 N 倍）
+  const reward = status.dayReward ?? status.reward ?? 100;
   if (status.checkedIn) {
     return {
       status: 'already',
@@ -184,8 +192,10 @@ export async function checkinLingxi(account, ctx = {}) {
     return { status: 'failed', message: t('灵犀签到失败：{err}', { err: e.message }) };
   }
 
-  const claimed = Number(claimData?.data?.total_claimed_credits ?? claimData?.data?.totalClaimedCredits);
-  const pts = Number.isFinite(claimed) && claimed > 0 ? claimed : reward;
+  // 2026-11-09 实测：连签第 3 天 claim 返回 total_claimed_credits=300，余额实动 +100——
+  // 该字段是本轮周期累计（100×3），当当天额展示会虚报 3 倍（第七天会虚报成 800）。
+  // pts 一律走任务状态的当日奖励链，不再读累计值。
+  const pts = reward;
   log?.('灵犀签到成功');
   return {
     status: 'checked-in',

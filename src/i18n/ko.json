@@ -224,6 +224,7 @@
   "{label} 连接成功,开始流式输出 （{model}）": "{label} 연결 성공, 스트림 출력 시작 ({model})",
   "{label} 领取「{plan}」失败:{err}": "{label} 「{plan}」 수령 실패: {err}",
   "{label} 领取成功 +{amount} Credits": "{label} 수령 성공 +{amount} Credits",
+  "{label} 领取成功 +{amount} {unit}": "{label} 수령 성공 +{amount} {unit}",
   "{label} 领取失败:{err}": "{label} 수령 실패: {err}",
   "{label} 名额已领完,跳过直到 {until}(服务端计划结束点)": "{label} 쿼터 소진. {until} 까지 건너뜀(서버 예정 시각)",
   "{label} 凭据失效,拉黑": "{label}: 자격 증명 무효, 차단",

@@ -224,6 +224,7 @@
   "{label} 连接成功,开始流式输出 （{model}）": "{label} 連接成功,開始流式輸出 ({model})",
   "{label} 领取「{plan}」失败:{err}": "{label} 領取「{plan}」失敗:{err}",
   "{label} 领取成功 +{amount} Credits": "{label} 領取成功 +{amount} Credits",
+  "{label} 领取成功 +{amount} {unit}": "{label} 領取成功 +{amount} {unit}",
   "{label} 领取失败:{err}": "{label} 領取失敗:{err}",
   "{label} 名额已领完,跳过直到 {until}(服务端计划结束点)": "{label} 名額已領完,跳過直到 {until}(服務端計劃結束點)",
   "{label} 凭据失效,拉黑": "{label} 憑據失效,拉黑",

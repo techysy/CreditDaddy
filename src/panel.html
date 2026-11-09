@@ -1656,7 +1656,9 @@ function initTheme() {
 // ── 状态 / 渲染 ──
 // 统一「领鸡蛋」语义：全部签到产品线 = 领取积分（workbuddy-intl 的「活跃」语义随活跃领取线删除）
 function statusOf(a) {
-  if (!CHECKIN_PRODUCTS.has(a.product)) {
+  // CHECKIN_PRODUCTS = 产品页四线；FREE_CHECKIN_SITES = 网页会话签到线（灵犀）——
+  // 同一套 todayDone/日界比对逻辑出徽标，自动签到轮签过的号在卡片上也有迹可循
+  if (!CHECKIN_PRODUCTS.has(a.product) && !FREE_CHECKIN_SITES.has(a.product)) {
     // ZCode 无「每日签到」口径，但活动领取的结果必须落到徽标上：
     // 否则卡片上唯一能证明「领到了」的东西只有额度数字，而活动额度常带
     // effective_at（当天稍晚到账），在那之前卡片看起来毫无变化。
@@ -2150,7 +2152,7 @@ function renderDash() {
   const s = state.status || {};
   const sch = s.scheduler || {};
   const visibleProducts = PRODUCTS.filter((p) => compVisible(p.id));
-  const signable = state.accounts.filter((a) => CHECKIN_PRODUCTS.has(a.product));
+  const signable = state.accounts.filter((a) => CHECKIN_PRODUCTS.has(a.product) || FREE_CHECKIN_SITES.has(a.product));
   const done = signable.filter(isDone).length;
   const failed = signable.filter((a) => statusOf(a).cls === 'fail').length;
   const credit = creditSum(state.accounts.filter((a) => a.product !== 'zcode'));
@@ -3022,6 +3024,13 @@ function renderFreePool() {
       ? '<div style="margin-top:6px;border-top:1px dashed var(--border-subtle);padding-top:10px;display:grid;gap:8px">'
         + rows.map((acc) => {
           const metricHtml = formatAccMetric(acc);
+          // 网页会话签到线（灵犀）：徽标复用产品行同一套 statusOf（todayDone 日界比对）——
+          // 手动/自动签到的结果都落到卡片行上，不只靠转瞬即逝的 toast
+          const accFull = state.accounts.find((x) => x.id === acc.id);
+          const st = accFull && FREE_CHECKIN_SITES.has(site.id) ? statusOf(accFull) : null;
+          const stBadgeHtml = st && st.text
+            ? '<span class="pill ' + st.cls + '" title="' + esc((accFull.lastResult ? fmtTime(accFull.lastResult.at) + ' · ' : '') + (st.msg || accFull.lastResult?.message || st.text)) + '">' + esc(st.text) + '</span>'
+            : '';
           // 探活灯三态（meta.lastProbe）：无记录=绿（新捕获即探过）、warn=黄（探测失败）、
           // dead=红（会话失效需重捕）；tooltip 带失败原因与时间，鼠标悬停即可知病因
           const lp = acc.lastProbe;
@@ -3042,7 +3051,7 @@ function renderFreePool() {
             + '<button class="icon-btn" data-act="reprobe" data-site="' + esc(site.id) + '" data-id="' + esc(acc.id) + '" title="' + T('就地重探（免登录，用已存会话刷新身份与额度）') + '">' + I.refresh + '</button>'
             + '<button class="icon-btn del" data-act="del" data-id="' + esc(acc.id) + '" title="' + T('删除此账号') + '">' + I.trash + '</button>'
             + '</div></div>'
-            + (metricHtml ? '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding-left:14px">' + metricHtml + '</div>' : '')
+            + ((metricHtml || stBadgeHtml) ? '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding-left:14px">' + metricHtml + stBadgeHtml + '</div>' : '')
             + '</div>';
         }).join('') + '</div>'
       : T('<div class="muted-empty" style="padding:16px 0 6px">还没有该站点的账号，点右上角「网页版」登录后自动捕获</div>');
