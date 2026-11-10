@@ -1282,6 +1282,8 @@ const PROV = {
   workbuddy: { prod: 'workbuddy', prodLabel: 'WorkBuddy', region: '国内版', cls: 'cn' },
   'workbuddy-intl': { prod: 'workbuddy', prodLabel: 'WorkBuddy', region: '国际版', cls: 'intl' },
   zcode: { prod: 'zcode', prodLabel: 'ZCode', region: '', cls: '' },
+  'zcode-bigmodel': { prod: 'zcode', prodLabel: 'ZCode', region: 'BigModel', cls: 'cn' },
+  'zcode-zai': { prod: 'zcode', prodLabel: 'ZCode', region: 'Z.ai', cls: 'intl' },
   mirasim: { prod: 'mirasim', prodLabel: 'mirasim', region: '', cls: '' },
   catpaw: { prod: 'catpaw', prodLabel: '妙手', region: '', cls: '' },
   trae: { prod: 'trae', prodLabel: 'Trae', region: '国内版', cls: 'cn' },
@@ -1302,7 +1304,16 @@ const CLIENT_LABEL = { qoder: 'Qoder', workbuddy: 'WorkBuddy', zcode: 'ZCode', m
 const CREDIT_VIEWS = new Set(['zcode', 'mirasim', 'catpaw', 'loomy']);
 // 网关调用日志：tag → 所属产品页（无网关的产品不展示日志卡）
 const GW_LOG_TAG = { zcode: 'ZCODE-GW', minimax: 'MINIMAX-GW', trae: 'TRAE-GW' };
-const provOf = (p) => PROV[p] || { prod: 'qoder', prodLabel: p, region: '', cls: '' };
+const provOf = (p) => {
+  if (PROV[p]) return PROV[p];
+  const prod = String(p || '').startsWith('workbuddy') ? 'workbuddy'
+    : String(p || '').startsWith('zcode') ? 'zcode'
+    : String(p || '').startsWith('trae') ? 'trae'
+    : String(p || '').startsWith('minimax') ? 'minimax'
+    : String(p || '').startsWith('qoder') ? 'qoder'
+    : String(p || '').split('-')[0] || 'qoder';
+  return { prod, prodLabel: p, region: '', cls: '' };
+};
 const provBadges = (p, regionOnly, flavor) => {
   const v = provOf(p);
   const zBadge = p === 'zcode' && flavor
@@ -4701,17 +4712,20 @@ function openAdd(product) {
     if (ok && !first) first = o.value;
   }
   if (first) { $('f-provider').value = first; $('f-provider').dispatchEvent(new Event('change')); }
-  // 浏览器登录的选项值以产品名开头（qoder / workbuddy / zcode-…）；
-  // 产品名带地区的（minimax / minimax-global）按 prod 过滤，否则 minimax 会漏掉 minimax-global
+  // 浏览器登录的选项值：按所属产品过滤（qoder / workbuddy / zcode / minimax / trae）
   let firstDev = null;
   for (const o of $('dev-provider').options) {
     const ok = !product || provOf(o.value).prod === product;
     o.hidden = !ok;
     if (ok && !firstDev) firstDev = o.value;
   }
-  // 不传产品（仪表盘「添加账号」）时保持上次选择，避免回落到第一个 qoder 造成加错池
+  // 不传产品（仪表盘「添加账号」）时保持上次选择，避免回落到第一个 qoder 造成加错池；
+  // 传具体产品时，如果当前选择属于该产品且未隐藏则保留，否则对齐到该产品的第一个选项
   if (product) {
-    $('dev-provider').value = product === 'minimax' ? 'minimax' : (firstDev || '');
+    const curOpt = $('dev-provider').selectedOptions[0];
+    if (!curOpt || curOpt.hidden || provOf(curOpt.value).prod !== product) {
+      $('dev-provider').value = firstDev || '';
+    }
   } else if (!$('dev-provider').value || $('dev-provider').selectedOptions[0]?.hidden) {
     $('dev-provider').value = firstDev || '';
   }
