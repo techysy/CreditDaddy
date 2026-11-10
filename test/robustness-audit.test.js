@@ -13,6 +13,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+// 隔离代理：qoderClient 的 webReq → fetchJsonRace(preferProxy) 在配置了
+// https_proxy 时会走 node:http/tls 的 viaProxy 路径（不经 globalThis.fetch），
+// 开发机 shell 带代理变量会让 stub 失效、真网络闯进「无网络」测试。
+for (const k of ['https_proxy', 'HTTPS_PROXY', 'http_proxy', 'HTTP_PROXY', 'ALL_PROXY', 'all_proxy']) delete process.env[k];
+
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'creditdaddy-audit-'));
 process.env.CREDITDADDY_HOME = path.join(root, 'data');
 

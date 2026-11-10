@@ -12,6 +12,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+// 隔离代理：fetchJsonRace 的 viaProxy 路径走 node:http/tls 原生模块（不经
+// globalThis.fetch），开发机 shell 里的 https_proxy / HTTPS_PROXY 会让它绕过
+// fetch stub 发真网络请求（6-8s 耗时、探测结果被真实响应覆盖）。本文件
+// 「全部注入 fetch，无网络」的承诺靠摘掉代理变量兑现。
+for (const k of ['https_proxy', 'HTTPS_PROXY', 'http_proxy', 'HTTP_PROXY', 'ALL_PROXY', 'all_proxy']) delete process.env[k];
+
 const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-watch-test-'));
 process.env.CREDITDADDY_HOME = HOME;
 
@@ -30,6 +36,10 @@ function stubFetch(handler) {
 
 async function seedQoder(overrides = {}) {
   const acc = {
+    // 必须带 id：产品代码与断言都按 id 精确寻址（withAccounts / find）。
+    // 缺 id 时 find(x.id === acc.id) 退化成「第一个 undefined id 的账号」，
+    // 多账号共存时永远命中第一个种子，断言到错的记录上。
+    id: 'acc-' + Math.random().toString(36).slice(2),
     name: '测试号',
     provider: 'qoder',
     token: 'tok-' + Math.random().toString(36).slice(2),
@@ -67,10 +77,12 @@ test('保活监视：网络异常 → 保守不动标记（不误杀）', async 
 });
 
 test('store 投影：qoderWebDead 只回时间戳，qoderWebSession.cookie 永不回显', async () => {
-  await seedQoder({ meta: { qoderWebSession: { cookie: 'SECRET', capturedAt: '2026-10-15T00:00:00Z' }, qoderWebDead: { at: '2026-10-15T01:00:00Z' } } });
+  // 按精确 id 找自己种入的账号：模糊 find（x.meta?.qoderWebDead）会被
+  // 前面测试留下的死标记账号串位，断言到错的记录上
+  const acc = await seedQoder({ meta: { qoderWebSession: { cookie: 'SECRET', capturedAt: '2026-10-15T00:00:00Z' }, qoderWebDead: { at: '2026-10-15T01:00:00Z' } } });
   const accounts = await store.loadAccounts();
-  const hit = accounts.find((x) => x.meta?.qoderWebDead);
-  assert.ok(hit);
+  const hit = accounts.find((x) => x.id === acc.id);
+  assert.ok(hit, '刚种入的账号必须能按 id 找到');
   const panel = store.publicAccount(hit);
   assert.equal(panel.qoderWebDead, '2026-10-15T01:00:00Z');
   assert.equal(panel.qoderWebCapturedAt, '2026-10-15T00:00:00Z');
