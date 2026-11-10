@@ -18,6 +18,7 @@
  *   - Anthropic 兼容端点：POST {agent}/mavis/api/v1/llm/v1/messages
  */
 
+import { createHash } from 'node:crypto';
 import { fetchJsonRace } from './zcodeClient.js';
 import { withRefreshDedupe, refreshFpDead } from './refreshGuard.js';
 import { FETCH_TIMEOUT_MS } from './constants.js';
@@ -62,6 +63,80 @@ export function minimaxEndpointsOf(account) {
     signinClaimUrl: `${agent}/minimax-cloud/api/v1/signin/claim?timezone_offset=28800&is_desktop=1&client=desktop`,
     tokenRefreshUrl: `${accountBase}/oauth2/token`,
   };
+}
+
+/** 账户动作类端点（签到 / 额度 / 资料）的服务端签名，取自 10Router open-sse 实现 */
+const SIGN_SECRET = 'I*7Cf%WZ#S&%1RlZJ&C2';
+const md5hex = (s) => createHash('md5').update(s).digest('hex');
+
+/**
+ * 构造 signed account 请求：查询参数与请求头参与签名，签名值绑定
+ * URL+时间戳(+body)，因此不能与裸 fetch 的查询串混用。
+ * @returns {{url: string, headers: object, body?: string}}
+ */
+export function signedMiniMaxRequest(flavor, path, { access, userID, body, now = Date.now() } = {}) {
+  const lang = flavor === 'global' ? 'en' : 'zh';
+  const url = new URL(path, basesOf({ provider: flavor === 'global' ? 'minimax-global' : 'minimax' }).agent);
+  url.search = new URLSearchParams({
+    device_platform: 'mcode',
+    biz_id: '3',
+    app_id: '3001',
+    version_code: '22201',
+    unix: String(now),
+    timezone_offset: String(new Date().getTimezoneOffset() * -60),
+    sys_language: lang,
+    lang,
+    device_id: '0',
+    os_name: process.platform,
+    browser_name: 'mcode',
+    user_id: String(userID ?? '').trim() || '0',
+    client: 'mcode',
+  }).toString();
+  const at = url.pathname + url.search;
+  const ts = Math.floor(now / 1000);
+  const json = body === undefined ? undefined : JSON.stringify(body);
+  const headers = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    'User-Agent': 'MiniMaxCode',
+    Authorization: `Bearer ${String(access || '').trim()}`,
+    yy: json === undefined
+      ? md5hex(`${encodeURIComponent(at)}_{}${md5hex(String(now))}ooui`)
+      : md5hex(`${encodeURIComponent(at)}_${json}${md5hex(String(now))}ooui`),
+    'x-timestamp': String(ts),
+    'x-signature': json === undefined ? md5hex(`${ts}${SIGN_SECRET}`) : md5hex(`${ts}${SIGN_SECRET}${json}`),
+  };
+  return { url: url.toString(), headers, body: json };
+}
+
+/** 账户端点统一入口：国际版走签名 + 代理优先（CN 网络直连 agent.minimax.io 会被 307 到 CN 域名家族） */
+function signedCall(account, path, { access, userID, body, timeoutMs = FETCH_TIMEOUT_MS } = {}) {
+  const flavor = minimaxFlavorOf(account);
+  const req = signedMiniMaxRequest(flavor, path, { access, userID, body });
+  return fetchJsonRace(req.url, {
+    method: req.body === undefined ? 'GET' : 'POST',
+    headers: req.headers,
+    body: req.body ?? null,
+    timeoutMs,
+    preferProxy: flavor === 'global',
+  });
+}
+
+/** 307 到别的域名家族 = 地区限制，本机配置代理即可，token 本身没问题 */
+function geoNote(requestedUrl, res) {
+  try {
+    const from = new URL(requestedUrl).host;
+    const to = new URL(res.url || requestedUrl).host;
+    if (from === to) return null;
+    return `上游 ${from} 在当前网络被重定向到 ${to}（地区限制）——请为国际版配置代理后重试`;
+  } catch {
+    return null;
+  }
+}
+
+/** 签名里的 user_id：账号已解析出 uid 时带上，未解析按 10Router 口径退化为 "0" */
+function uiOf(account) {
+  return account?.uid || account?.meta?.realUserID || undefined;
 }
 
 /** 时间戳宽容转换（口径同 traeClient.iso）：≤1e11 视为秒，否则视为毫秒；0/无效 → null */
@@ -244,17 +319,8 @@ export async function verifyMiniMaxAccount(account) {
  * 查询额度 (quota)
  */
 export async function fetchMiniMaxQuota(account, ctx = {}) {
-  const { membershipUrl } = minimaxEndpointsOf(account);
   return withMiniMaxAuth(account, async (token) => {
-    const res = await fetchJsonRace(membershipUrl, {
-      method: 'POST',
-      headers: {
-        ...authHeaders(token),
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({}),
-      timeoutMs: FETCH_TIMEOUT_MS,
-    });
+    const res = await signedCall(account, '/matrix/api/v1/commerce/get_membership_info', { access: token, userID: uiOf(account), body: {} });
     if (res.status === 401) {
       const err = new Error('MiniMax 凭据已失效 (401)');
       err.auth = true;
@@ -331,13 +397,9 @@ export function normalizeMiniMaxQuota(data) {
  * @returns {Promise<{checkedToday: boolean, streakDays: number, points: number, bonusPoints: number}|null>}
  */
 export async function fetchMiniMaxCheckinStatus(account, ctx = {}) {
-  const { signinStatusUrl } = minimaxEndpointsOf(account);
   try {
     return await withMiniMaxAuth(account, async (token) => {
-      const statusRes = await fetchJsonRace(signinStatusUrl, {
-        headers: authHeaders(token),
-        timeoutMs: FETCH_TIMEOUT_MS,
-      });
+      const statusRes = await signedCall(account, '/minimax-cloud/api/v1/signin/status', { access: token, userID: uiOf(account) });
       if (!statusRes.ok) return null;
       const statusData = await statusRes.json().catch(() => null);
       if (!statusData || statusData.base_resp?.status_code !== 0) return null;
@@ -359,14 +421,12 @@ export async function fetchMiniMaxCheckinStatus(account, ctx = {}) {
  * 每日自动签到 (checkin)
  */
 export async function checkinMiniMax(account, ctx = {}) {
-  const { signinStatusUrl, signinClaimUrl } = minimaxEndpointsOf(account);
   return withMiniMaxAuth(account, async (token) => {
     // 1. 查询签到状态
-    const statusRes = await fetchJsonRace(signinStatusUrl, {
-      headers: authHeaders(token),
-      timeoutMs: FETCH_TIMEOUT_MS,
-    });
-    if (statusRes.status === 401) {
+    const statusRes = await signedCall(account, '/minimax-cloud/api/v1/signin/status', { access: token, userID: uiOf(account) });
+    if (statusRes.status === 401 || statusRes.status === 403) {
+      const geo = geoNote(statusRes.url, statusRes);
+      if (geo) throw new Error(geo);
       const err = new Error('MiniMax 凭据已失效 (401)');
       err.auth = true;
       throw err;
@@ -390,13 +450,11 @@ export async function checkinMiniMax(account, ctx = {}) {
       };
     }
 
-    // 2. 发起签到 claim
-    const claimRes = await fetchJsonRace(signinClaimUrl, {
-      method: 'POST',
-      headers: authHeaders(token),
-      timeoutMs: FETCH_TIMEOUT_MS,
-    });
-    if (claimRes.status === 401) {
+    // 2. 发起签到 claim（status=GET，claim=POST；动词错了是裸 404，不是签名错）
+    const claimRes = await signedCall(account, '/minimax-cloud/api/v1/signin/claim', { access: token, userID: uiOf(account), body: {} });
+    if (claimRes.status === 401 || claimRes.status === 403) {
+      const geo = geoNote(claimRes.url, claimRes);
+      if (geo) throw new Error(geo);
       const err = new Error('MiniMax 凭据已失效 (401)');
       err.auth = true;
       throw err;

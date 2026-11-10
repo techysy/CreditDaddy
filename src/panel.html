@@ -4701,14 +4701,20 @@ function openAdd(product) {
     if (ok && !first) first = o.value;
   }
   if (first) { $('f-provider').value = first; $('f-provider').dispatchEvent(new Event('change')); }
-  // 浏览器登录的选项值以产品名开头（qoder / workbuddy / zcode-…）
+  // 浏览器登录的选项值以产品名开头（qoder / workbuddy / zcode-…）；
+  // 产品名带地区的（minimax / minimax-global）按 prod 过滤，否则 minimax 会漏掉 minimax-global
   let firstDev = null;
   for (const o of $('dev-provider').options) {
-    const ok = !product || o.value.split('-')[0] === product;
+    const ok = !product || provOf(o.value).prod === product;
     o.hidden = !ok;
     if (ok && !firstDev) firstDev = o.value;
   }
-  if (firstDev) $('dev-provider').value = firstDev;
+  // 不传产品（仪表盘「添加账号」）时保持上次选择，避免回落到第一个 qoder 造成加错池
+  if (product) {
+    $('dev-provider').value = product === 'minimax' ? 'minimax' : (firstDev || '');
+  } else if (!$('dev-provider').value || $('dev-provider').selectedOptions[0]?.hidden) {
+    $('dev-provider').value = firstDev || '';
+  }
   $('dev-hint').textContent = (hasIncognito() ? T('在内置隐私窗口里登录（不带出系统浏览器已登录的账号），') : T('在浏览器里登录并授权，'))
     + T('完成后账号自动添加。') + (product === 'qoder' ? '' : T('WorkBuddy / ZCode / Trae 用浏览器登录的账号同样可以一键切换客户端。'));
   openModal('m-add');
