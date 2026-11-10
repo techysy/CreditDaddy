@@ -77,6 +77,12 @@ export async function getWorkbuddyMasterKey(clientPath) {
   if (masterKeyInflight) return masterKeyInflight;
   const exe = clientPath || detectWorkbuddy().clientPath;
   if (!exe) return null;
+  // #52 防线：被污染的缓存值（如 workbuddy-switch 的 exe）绝不能拉起——非 Electron
+  // 程序不消费 -e 参数，会弹出自己的 GUI 窗口 2 秒后被 kill（报告者实测复现现象）。
+  if (!looksLikeWbElectronClient(exe)) {
+    masterKeyFailAt = Date.now();
+    return null;
+  }
 
   const code = [
     "const b = process._linkedBinding('electron_browser_workbuddy_storage');",
@@ -320,6 +326,28 @@ const CLIENT_CANDIDATES = process.platform === 'win32'
 let discoveredClientPath = null;   // 异步发现到的自定义安装路径（进程内缓存）
 let discoverPromise = null;        // 在途去重
 
+/** 候选 exe 是否像「真 WorkBuddy/CodeBuddy Electron 客户端」（issue #52 防误判闸）：
+ *  - 文件名排除：同厂工具（workbuddy-switch 等）名字里带产品词但不是客户端；
+ *  - Electron 二进制校验：真客户端内嵌 electron.exe 图标资源，Rust/原生 GUI 程序没有——
+ *    零子进程（读文件字节，不起进程），误判的代价是 getWorkbuddyMasterKey 把
+ *    非 Electron exe 当 Electron 拉起来（弹自己的 GUI 窗口 2 秒后被 kill，#52 现象）。 */
+function looksLikeWbElectronClient(exePath) {
+  const p = String(exePath || '');
+  const base = path.basename(p).replace(/\.exe$/i, '');
+  // 文件名黑名单：第三方/衍生工具（不区分大小写，workbuddy-switch / wb-switch-rust 等全拦）
+  if (/switch|launcher|uninstall|setup|crashpad|updater|squirrel/i.test(base)) return false;
+  // Electron 指纹：官方客户端由 electron-builder 打包，exe 内嵌 'Electron' 的 PE 资源段。
+  // 读文件头 2MB 扫 ASCII 'Electron'——Electron exe 必中，Rust/Go/原生 GUI 基本不会误含。
+  try {
+    const fd = fs.openSync(p, 'r');
+    try {
+      const buf = Buffer.alloc(2 * 1024 * 1024);
+      const bytes = fs.readSync(fd, buf, 0, buf.length, 0);
+      return buf.slice(0, bytes).includes('Electron');
+    } finally { fs.closeSync(fd); }
+  } catch { return false; }
+}
+
 /** 异步预热：注册表 / 进程探测（唯一允许起子进程的地方，且绝不阻塞调用方）。
  * 契约：**永远返回 Promise**（已发现 / 非 win32 时 resolve 现状）——调用方都挂 .catch，
  * 返回 null/undefined 会在 NAS 与已预热的 Windows 机器上直接 TypeError（1.7.0 审计发现）。 */
@@ -328,7 +356,10 @@ export function warmWorkbuddyClientPath() {
   if (discoverPromise) return discoverPromise;
   discoverPromise = (async () => {
     try {
-      // ① 注册表 Uninstall 键：DisplayIcon / InstallLocation 指向真实安装目录
+      // ① 注册表 Uninstall 键：DisplayIcon / InstallLocation 指向真实安装目录。
+      //    /f 模糊搜索会误命中名字含产品词的第三方工具（#52：workbuddy-switch 的
+      //    DisplayIcon 指 wb-switch-rust.exe，曾被当客户端缓存 → 反复弹窗），
+      //    所以命中后必须过 looksLikeWbElectronClient 双闸才入缓存。
       const out = await new Promise((resolve) => {
         cp.execFile('reg', ['query', 'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall', '/s', '/f', 'WorkBuddy', '/d'],
           { encoding: 'utf8', windowsHide: true, timeout: 4000, maxBuffer: 2 * 1024 * 1024 },
@@ -345,9 +376,9 @@ export function warmWorkbuddyClientPath() {
       for (const line of hits) {
         // DisplayIcon 常见值：D:\Apps\WorkBuddy\WorkBuddy.exe / "...\WorkBuddy.exe",0
         const raw = line.replace(/^DisplayIcon\s+REG_SZ\s+/i, '').trim().replace(/^"(.*)"(?:,\d+)?$/, '$1').replace(/,\d+$/, '');
-        if (/\.exe$/i.test(raw) && fs.existsSync(raw)) { discoveredClientPath = raw; return; }
+        if (/\.exe$/i.test(raw) && fs.existsSync(raw) && looksLikeWbElectronClient(raw)) { discoveredClientPath = raw; return; }
       }
-      // ② 运行中的进程路径（客户端已启动但注册表没写 DisplayIcon 的情况）
+      // ② 运行中的进程路径（客户端已启动但注册表没写 DisplayIcon 的情况）——同闸
       const ps = await new Promise((resolve) => {
         cp.execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command',
           "Get-Process -Name 'WorkBuddy','WorkBuddyAI','CodeBuddy*' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path -Unique"],
@@ -356,7 +387,7 @@ export function warmWorkbuddyClientPath() {
       });
       for (const line of String(ps).split(/\r?\n/)) {
         const p = line.trim();
-        if (/\.exe$/i.test(p) && fs.existsSync(p)) { discoveredClientPath = p; return; }
+        if (/\.exe$/i.test(p) && fs.existsSync(p) && looksLikeWbElectronClient(p)) { discoveredClientPath = p; return; }
       }
     } catch { /* 探测失败只是保持「未发现」，不影响既有候选路径判定 */ }
   })().finally(() => { discoverPromise = null; });

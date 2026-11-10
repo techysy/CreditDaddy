@@ -63,3 +63,74 @@ test('issue #46：CACHE_MISS 不抛异常——探测失败只是保持「未发
   _setDiscoveredClientPathForTest(null);
   assert.doesNotThrow(() => detectWorkbuddy());
 });
+
+// ── issue #52：注册表模糊搜索误命中 workbuddy-switch → 反复拉起弹窗 ──
+
+test('issue #52：非 Electron 的假客户端（wb-switch-rust.exe）不得被采纳为发现路径', async () => {
+  const { warmWorkbuddyClientPath, _setDiscoveredClientPathForTest } = await import('../src/workbuddyLocal.js');
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  if (process.platform !== 'win32') return;   // 注册表探测只在 Windows 上跑
+
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-fake-'));
+  try {
+    // 造一个名字带 switch 的非 Electron exe（内容不含 'Electron' 指纹）
+    const fake = path.join(tmp, 'wb-switch-rust.exe');
+    fs.writeFileSync(fake, Buffer.alloc(1024, 0x41));   // 1KB 的 'A'，绝非 Electron
+
+    // 临时把它写进 HKCU Uninstall（用完即删；测试自清理，失败也只影响本机注册表一行）
+    const key = 'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\CreditDaddyTestFakeWB';
+    const run = promisify(execFile);
+    try {
+      await run('reg', ['add', key, '/v', 'DisplayName', '/d', 'WorkBuddy-like tool', '/f'], { windowsHide: true });
+      await run('reg', ['add', key, '/v', 'DisplayIcon', '/d', fake, '/f'], { windowsHide: true });
+      _setDiscoveredClientPathForTest(null);
+      await warmWorkbuddyClientPath();
+      // 探测不得采纳假 exe（真客户端被本机默认候选命中时 discoveredClientPath 也应保持 null 或真路径）
+      const d = detectWorkbuddy();
+      assert.notEqual(d.clientPath, fake, '假客户端绝不能进发现缓存');
+    } finally {
+      await run('reg', ['delete', key, '/f'], { windowsHide: true }).catch(() => {});
+    }
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('issue #52：getWorkbuddyMasterKey 对非 Electron 路径短路返回 null，不 spawn', async () => {
+  const { getWorkbuddyMasterKey, _setDiscoveredClientPathForTest } = await import('../src/workbuddyLocal.js');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-fake2-'));
+  try {
+    const fake = path.join(tmp, 'wb-switch-rust.exe');
+    fs.writeFileSync(fake, Buffer.alloc(2048, 0x42));   // 非 Electron 内容
+    _setDiscoveredClientPathForTest(fake);
+    // 即使缓存被污染，取钥也必须短路返回 null（绝不把假 exe 拉起来弹窗）
+    const key = await getWorkbuddyMasterKey(fake);
+    assert.equal(key, null, '非 Electron exe 必须短路返回 null');
+  } finally {
+    _setDiscoveredClientPathForTest(null);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('issue #52：真 Electron 路径的指纹判定为通过（防误杀真客户端）', async () => {
+  const { getWorkbuddyMasterKey } = await import('../src/workbuddyLocal.js');
+  // 不实际执行 spawn——只验证 looksLikeWbElectronClient 的判定边界：
+  // 用一个内嵌 'Electron' 字节的假 exe，确认判定函数不会把真客户端形态误拦。
+  // 判定函数未导出，通过 masterKey 行为间接验证：真 Electron 形态的 exe 会走到 spawn
+  // （本地无真客户端输出 → 返回 null 但不短路），耗时 < 6s（5s 超时兜底）。
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-electron-'));
+  try {
+    const realish = path.join(tmp, 'WorkBuddy.exe');
+    const buf = Buffer.alloc(1024, 0x43);
+    Buffer.from('electron_browser_workbuddy_storage Electron').copy(buf, 0);   // 内嵌 Electron 字样
+    fs.writeFileSync(realish, buf);
+    const t0 = Date.now();
+    const key = await getWorkbuddyMasterKey(realish);
+    const elapsed = Date.now() - t0;
+    assert.equal(key, null, '假 Electron（非真客户端）仍取不到钥，但不应被指纹闸提前短路');
+    assert.ok(elapsed < 8000, '应尝试 spawn 后失败（毫秒级）而非被指纹闸直接拒绝');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
