@@ -173,6 +173,7 @@
   "(留空保持不变)": "(leave empty to keep unchanged)",
   "（留空保持不变）": "(leave empty to keep unchanged)",
   "(驱动降级:": "(driver fallback: ",
+  "bearer:过期跳过": "bearer:expired-skipped",
   "（驱动降级:": "(driver fallback: ",
   "（驱动降级：": "(driver fallback: ",
   "（输出里没有设备身份）": "(no device identity in the output)",

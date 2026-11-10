@@ -185,6 +185,85 @@ test('fetchRiverBalance：401 自动刷新并重试，刷新链落盘', async ()
   } finally { restore(); }
 });
 
+test('jwtExpiresAt 与 isBearerExpired：容差与解析边界', () => {
+  const futureExp = Math.floor(Date.now() / 1000) + 300;
+  const validJwt = 'eyJhbGciOiJIUzI1NiJ9.' + Buffer.from(JSON.stringify({ exp: futureExp })).toString('base64url') + '.sig';
+  const iso = client.jwtExpiresAt(validJwt);
+  assert.equal(iso, new Date(futureExp * 1000).toISOString());
+  assert.equal(client.isBearerExpired(iso), false, '未来 300s 未过期');
+
+  // 过期 25s：在 60s 容差内，不算过期（避免过早刷掉单次轮换的 refresh 链）
+  const expired25s = new Date(Date.now() - 25_000).toISOString();
+  assert.equal(client.isBearerExpired(expired25s), false, '过期 25s 在 60s 容差内应为 false');
+
+  // 过期 65s：超出 60s 容差，判定为过期跳过
+  const expired65s = new Date(Date.now() - 65_000).toISOString();
+  assert.equal(client.isBearerExpired(expired65s), true, '过期 65s 超出容差应判定为 true');
+
+  // 异常/非 JWT 输入容错
+  assert.equal(client.jwtExpiresAt('not-a-jwt'), null);
+  assert.equal(client.jwtExpiresAt(''), null);
+  assert.equal(client.jwtExpiresAt(null), null);
+  assert.equal(client.isBearerExpired(null), false);
+  assert.equal(client.isBearerExpired('invalid-date'), false);
+});
+
+test('fetchRiverBalance：已知过期超 60s 时跳过 Bearer 直达刷新兑换，免白打一发必败请求', async () => {
+  const expiredJwt = 'eyJhbGciOiJIUzI1NiJ9.' + Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) - 100 })).toString('base64url') + '.sig';
+  const freshJwt = 'eyJhbGciOiJIUzI1NiJ9.' + Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 300 })).toString('base64url') + '.sig';
+  const acc = {
+    id: 'river-skip-expired-bearer',
+    name: 'River AI (dev@example.com)',
+    provider: 'river',
+    token: expiredJwt,
+    meta: {
+      cookieSiteId: 'river',
+      workosSession: {
+        accessToken: expiredJwt,
+        refreshToken: 'rt-active',
+        expiresAt: new Date(Date.now() - 100_000).toISOString(),
+      },
+    },
+  };
+  await store.saveAccounts([acc]);
+
+  const requestedUrls = [];
+  const logMessages = [];
+  const restore = stubFetch(async (url, init) => {
+    requestedUrls.push(String(url));
+    if (String(url).includes('/api/auth/config')) {
+      return jsonResponse(200, { workos_client_id: 'client_01TEST', workos_api_hostname: 'auth.console.river.ai' });
+    }
+    if (String(url).includes('/user_management/authenticate')) {
+      // 模拟刷新成功（WorkOS 响应不含 expires_in）
+      return jsonResponse(200, { access_token: freshJwt, refresh_token: 'rt-next' });
+    }
+    if (String(url).includes('/api/billing/account')) {
+      assert.equal(init.headers.Authorization, `Bearer ${freshJwt}`, '读余额请求必须直接使用刷新后的 freshJwt，不可有打向 expiredJwt 的请求');
+      return jsonResponse(200, { balance_usd: 19.8 });
+    }
+    return jsonResponse(404, {});
+  });
+
+  try {
+    const r = await client.fetchRiverBalance(acc, {
+      fetchImpl: globalThis.fetch,
+      log: (msg) => logMessages.push(msg),
+    });
+    assert.equal(r.ok, true);
+    assert.equal(r.channel, 'refresh');
+    assert.equal(r.balance, 19.8);
+    // 验证日志中含有 "bearer:过期跳过" 标记
+    assert.ok(logMessages.some((m) => m.includes('bearer:过期跳过')), '日志中应记录 bearer:过期跳过');
+    // 验证新凭据中的 expiresAt 成功由 freshJwt 推导
+    assert.ok(r.session?.expiresAt, '刷新得到的 session 必须带有由 JWT 推导出的 expiresAt');
+    assert.equal(r.session?.expiresAt, client.jwtExpiresAt(freshJwt));
+    // 账目库中的记录应已同步落盘
+    const disk = (await store.loadAccounts()).find((a) => a.id === 'river-skip-expired-bearer');
+    assert.equal(disk.meta.workosSession.expiresAt, client.jwtExpiresAt(freshJwt));
+  } finally { restore(); }
+});
+
 test('buildRiverQuotaPayload：储值余额卡（isCreditBalance + summarizeDetail，标量载荷）', () => {
   const account = {
     id: 'acc-1',

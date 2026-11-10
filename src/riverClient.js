@@ -29,6 +29,35 @@ export const RIVER_STORAGE_KEYS = ['workos:access-token', 'workos:refresh-token'
 /** WorkOS 刷新端点（console 配置 workos_api_hostname = auth.console.river.ai） */
 export const RIVER_WORKOS_AUTH_BASE = 'https://auth.console.river.ai';
 
+/**
+ * 从 JWT payload 的 exp 提取绝对到期时间（ISO 字符串）。
+ * @param {string} token
+ * @returns {string|null}
+ */
+export function jwtExpiresAt(token) {
+  try {
+    const part = String(token || '').split('.')[1];
+    if (!part) return null;
+    const payload = JSON.parse(Buffer.from(part, 'base64url').toString('utf8'));
+    return Number.isFinite(payload?.exp) ? new Date(payload.exp * 1000).toISOString() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 判断 Bearer token 是否已过期。
+ * 留 60 秒容差：WorkOS 上游有时钟容差（实测过期 25 秒仍返 200）；
+ * 过早判定会白刷一次单次轮换的 refresh 链（多消耗一次轮换，且有与浏览器抢刷新的风险）。
+ * 只有在已过期且超过 60 秒容差后才视为过期。
+ */
+export function isBearerExpired(expiresAt) {
+  if (!expiresAt) return false;
+  const t = Date.parse(expiresAt);
+  if (!Number.isFinite(t)) return false;
+  return Date.now() > t + 60_000;
+}
+
 const RIVER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36';
 
@@ -71,10 +100,12 @@ export function parseRiverSession(storage) {
       };
     }
   } catch { /* user 解析失败不影响 token 可用性 */ }
+  const at = pick('workos:access-token');
+  const exp = pick('workos:expires-at') || jwtExpiresAt(at);
   return {
-    accessToken: pick('workos:access-token'),
+    accessToken: at,
     refreshToken: refresh,
-    expiresAt: pick('workos:expires-at'),
+    expiresAt: exp,
     user,
   };
 }
@@ -84,10 +115,14 @@ export function riverSessionOf(account) {
   const cookie = account?.meta?.workosSession?.cookie || account?.meta?.cookieSiteSession?.cookie || '';
   const sess = account?.meta?.workosSession;
   if (sess && (sess.accessToken || account?.token || cookie)) {
-    return { ...sess, accessToken: sess.accessToken || account.token || null, cookie: sess.cookie || cookie };
+    const accessToken = sess.accessToken || account?.token || null;
+    const expiresAt = sess.expiresAt || account?.expiresAt || jwtExpiresAt(accessToken);
+    return { ...sess, accessToken, expiresAt, cookie: sess.cookie || cookie };
   }
+  const accessToken = account?.token || null;
+  const expiresAt = account?.expiresAt || jwtExpiresAt(accessToken);
   return (account?.token || cookie)
-    ? { accessToken: account?.token || null, refreshToken: null, expiresAt: null, user: account?.meta?.workosUser || {}, cookie }
+    ? { accessToken, refreshToken: null, expiresAt, user: account?.meta?.workosUser || {}, cookie }
     : null;
 }
 
@@ -149,12 +184,13 @@ export async function refreshRiverSession(account, { fetchImpl, log } = {}) {
     throw err;
   }
   const parsedUser = parseWorkOsUser(data.user) || sess.user;
+  const expiresAt = Number.isFinite(data.expires_in)
+    ? new Date(Date.now() + data.expires_in * 1000).toISOString()
+    : jwtExpiresAt(data.access_token);
   const creds = {
     accessToken: data.access_token,
     refreshToken: data.refresh_token || sess.refreshToken || null,   // 无新 refresh 时保留旧链
-    expiresAt: Number.isFinite(data.expires_in)
-      ? new Date(Date.now() + data.expires_in * 1000).toISOString()
-      : null,
+    expiresAt,
     clientId: clientId || undefined,
     authBase: authBase || undefined,
     user: parsedUser,
@@ -167,6 +203,7 @@ export async function refreshRiverSession(account, { fetchImpl, log } = {}) {
         const cur = list.find((it) => it.id === account.id);
         if (cur) {
           cur.token = creds.accessToken;
+          cur.expiresAt = creds.expiresAt;
           cur.meta = {
             ...(cur.meta || {}),
             workosSession: { ...(cur.meta?.workosSession || {}), ...creds },
@@ -182,6 +219,7 @@ export async function refreshRiverSession(account, { fetchImpl, log } = {}) {
   if (account) {
     account.token = creds.accessToken;
     account.refreshToken = creds.refreshToken;
+    account.expiresAt = creds.expiresAt;
     if (account.meta) account.meta.workosSession = { ...(account.meta.workosSession || {}), ...creds };
   }
   return creds;
@@ -238,12 +276,17 @@ export async function fetchRiverBalance(account, { fetchImpl, log } = {}) {
     if (r.authExpired) authExpired = true;
     misses.push(`cookie:${r.status || r.error || '?'}`);
   }
-  // 2) Bearer
+  // 2) Bearer：本地已知过期（留 60s 容差）直接跳过，避免每轮无谓 401 浪费网络
+  const bearerExpired = isBearerExpired(sess?.expiresAt);
   if (sess?.accessToken) {
-    const r = await attempt({ token: sess.accessToken }).catch((e) => ({ ok: false, error: e.message || String(e) }));
-    if (r.ok) return { ...r, channel: 'bearer' };
-    if (r.authExpired) authExpired = true;
-    misses.push(`bearer:${r.status || r.error || '?'}`);
+    if (bearerExpired) {
+      misses.push(t('bearer:过期跳过'));
+    } else {
+      const r = await attempt({ token: sess.accessToken }).catch((e) => ({ ok: false, error: e.message || String(e) }));
+      if (r.ok) return { ...r, channel: 'bearer' };
+      if (r.authExpired) authExpired = true;
+      misses.push(`bearer:${r.status || r.error || '?'}`);
+    }
   }
   // 3) 刷新兑换（cookie 授予或 refreshToken 授予）→ Bearer 重试
   if (sess?.refreshToken || cookie) {

@@ -345,6 +345,7 @@ async function reprobeCookieAccount(site, a) {
         if (!hit) return;
         const sess = hit.meta?.workosSession || {};
         if (bal.session) Object.assign(sess, bal.session);   // 刷新兑换到的新链一并落盘（单次轮换）
+        if (sess.expiresAt) hit.expiresAt = sess.expiresAt;
         hit.meta = {
           ...(hit.meta || {}),
           cookieSiteSession: { cookie, capturedAt: hit.meta?.cookieSiteSession?.capturedAt || now },
@@ -1517,6 +1518,7 @@ async function handleApi(req, res, url) {
         hit.token = cred;
         if (mimoUserId) { hit.uid = mimoUserId; autoName(hit); }
         if (riverUid) { hit.uid = riverUid; autoName(hit); }
+        if (riverSession?.expiresAt) hit.expiresAt = riverSession.expiresAt;
         if (msSession && (msSession.id || msSession.email || msSession.name)) {
           if (msSession.id) hit.uid = String(msSession.id);
           autoName(hit);
@@ -1543,6 +1545,7 @@ async function handleApi(req, res, url) {
           name: accName,
           provider: site.provider,
           token: cred,
+          expiresAt: site.id === 'river' ? (riverSession?.expiresAt || undefined) : undefined,
           uid: mimoUserId || riverUid || (msSession?.id ? String(msSession.id) : undefined) || (lcSession?.userId ? String(lcSession.userId) : undefined) || (lxUid ? String(lxUid) : undefined) || undefined,
           source: 'web-session',
           meta: {

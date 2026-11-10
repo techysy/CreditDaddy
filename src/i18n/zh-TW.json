@@ -1585,6 +1585,7 @@
   "可用余额 $ ": "可用餘額 $ ",
   "免费额度余额": "免費額度餘額",
   "River 控制台会话已失效，请在 CreditDaddy「网页会话」页重新登录捕获": "River 控制台會話已失效，請在 CreditDaddy「網頁會話」頁重新登入捕獲",
+  "bearer:过期跳过": "bearer:過期跳過",
   "cookie 体积异常，请重新登录后再捕获": "cookie 體積異常，請重新登入後再捕獲",
   "登录 console.river.ai 后自动抓取 WorkOS 会话与 Billing 余额（$25 免费额度）；token 只存本机，推送 10Router 只带余额数字，会话过期自动刷新（单次轮换即时落盘）。": "登入 console.river.ai 後自動抓取 WorkOS 會話與 Billing 餘額（$25 免費額度）；token 只存本機，推送 10Router 只帶餘額數字，會話過期自動刷新（單次輪換即時落盤）。",
   "免费配额 ": "免費配額 ",
