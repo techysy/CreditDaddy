@@ -1134,6 +1134,8 @@ const I = {
   monitor: svg('<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>'),
   clock: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5l3 2"/>'),
   msg: svg('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'),
+  // 纸飞机（Lucide send）：飞书交流群入口用
+  send: svg('<path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/>'),
   heart: svg('<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>'),
 };
 
@@ -1575,6 +1577,9 @@ function initTheme() {
   withIcon('hm-restart', I.power);
   withIcon('feedback-btn', I.msg);
   withIcon('donate-btn', I.heart);
+  // 飞书交流群（<a> 无 id，按 href 定位）——纸飞机图标
+  const fsLink = document.querySelector('#hmenu-pop a[href*="applink.feishu.cn"]');
+  if (fsLink) fsLink.innerHTML = I.send + fsLink.textContent;
   // 检查更新：桌面版走应用内更新；纯浏览器（无 updater 桥）也保留入口——点开给「去 Releases 手动下载」的承接。
   $('hm-update').onclick = () => { closeHmenu(); openUpdateModal(true); };
   $('hm-restart').onclick = async () => {
@@ -4554,12 +4559,25 @@ function openChangelogModal() {
   window.creditdaddy.changelogBrief().then((r) => {
     const box = $('changelog-body');
     const strip = (s) => esc(String(s || '').replace(/\*\*/g, ''));
+    // 条目行摘要：取「**标题**：描述」的标题段（无描述则整行），截 48 字；topics 优先（有 ### 板块的旧版式）
+    const entrySummary = (s) => {
+      const items = (s.entries || []).map((e) => {
+        const m = /^\*\*([^*]+)\*\*[：:]\s*(.*)$/.exec(String(e).trim());
+        const title = m ? m[1] : String(e).replace(/\*\*/g, '');
+        const desc = m ? m[2] : '';
+        const text = desc ? title + '：' + desc.slice(0, 40) + (desc.length > 40 ? '…' : '') : title;
+        return strip(text);
+      }).slice(0, 4);
+      return items.length ? '<div class="hint" style="margin-top:4px">' + items.join('<br>') + '</div>' : '';
+    };
     box.innerHTML = (r && r.ok && r.sections && r.sections.length)
       ? r.sections.map((s) => '<div class="changelog-sec">'
           + '<div style="font-weight:700;margin:0 0 4px">v' + esc(s.version)
           + (s.date ? ' <span class="dim" style="font-weight:400;font-size:11px">' + esc(s.date) + '</span>' : '') + '</div>'
           + (s.theme ? '<div class="hint">' + strip(s.theme) + '</div>' : '')
-          + (s.topics && s.topics.length ? '<div class="hint" style="margin-top:4px">' + s.topics.map((t) => strip(T(t.trim()))).join(' · ') + '</div>' : '')
+          + (s.topics && s.topics.length
+            ? '<div class="hint" style="margin-top:4px">' + s.topics.map((t) => strip(T(t.trim()))).join(' · ') + '</div>'
+            : entrySummary(s))
           + '</div>').join('')
       : T('<div class="hint">暂无本地更新日志，请到 GitHub Releases 查看。</div>');
   }).catch(openReleases);

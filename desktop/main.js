@@ -1494,7 +1494,7 @@ function registerAuthWindowIpc() {
   ipcMain.handle('changelog-brief', async () => {
     const parseBody = (tag, body, publishedAt) => {
       // release body 的提取段不含 CHANGELOG 标题行里的日期（awk 从标题下一行起收），日期取 API published_at
-      const sec = { version: String(tag).replace(/^v/i, ''), date: String(publishedAt || '').slice(0, 10), theme: '', topics: [] };
+      const sec = { version: String(tag).replace(/^v/i, ''), date: String(publishedAt || '').slice(0, 10), theme: '', topics: [], entries: [] };
       for (const raw of String(body).split('\n')) {
         const line = raw.trim();
         if (!sec.theme && line.startsWith('>')) sec.theme = line.replace(/^>+\s?/, '');
@@ -1504,6 +1504,9 @@ function registerAuthWindowIpc() {
         // 英文用户读 '/ Theme: …' 后半段；解析不拆分，展示由 strip 去粗体标记。
         else if (!sec.theme && /^本版主题[:：]/.test(line)) sec.theme = line.replace(/^本版主题[:：]\s?/, '');
         else if (line.startsWith('### ')) sec.topics.push(line.slice(4).trim());
+        // 纯条目行（1.7.x 起 CHANGELOG 段落是「- **标题**：长描述」形态，无主题行无 ### 板块）——
+        // 整行收进 entries，面板摘要才有内容可显（截断在渲染端）
+        else if (line.startsWith('- ')) sec.entries.push(line.slice(2));
       }
       return sec;
     };
@@ -1524,7 +1527,7 @@ function registerAuthWindowIpc() {
         const sections = [];
         for (const raw of String(md).split('\n')) {
           const h = /^##\s*\[([^\]]+)\](?:\s*\(([^)]+)\))?/.exec(raw.trim());
-          if (h) { sections.push({ version: h[1].replace(/^v/i, ''), date: h[2] || '', theme: '', topics: [] }); continue; }
+          if (h) { sections.push({ version: h[1].replace(/^v/i, ''), date: h[2] || '', theme: '', topics: [], entries: [] }); continue; }
           const s = sections[sections.length - 1];
           if (!s) continue;
           const line = raw.trim();
@@ -1532,6 +1535,7 @@ function registerAuthWindowIpc() {
           else if (!s.theme && /^Theme[:：]/.test(line)) s.theme = line.replace(/^Theme[:：]\s?/, '');
           else if (!s.theme && /^主题[:：]/.test(line)) s.theme = line.replace(/^主题[:：]\s?/, '');
           else if (line.startsWith('### ')) s.topics.push(line.slice(4).trim());
+          else if (line.startsWith('- ')) s.entries.push(line.slice(2));
         }
         return sections;
       };
@@ -1578,7 +1582,7 @@ function registerAuthWindowIpc() {
         const sections = [];
         for (const raw of String(md).split('\n')) {
           const h = /^##\s*\[([^\]]+)\](?:\s*\(([^)]+)\))?/.exec(raw.trim());
-          if (h) { sections.push({ version: h[1].replace(/^v/i, ''), date: h[2] || '', theme: '', topics: [] }); continue; }
+          if (h) { sections.push({ version: h[1].replace(/^v/i, ''), date: h[2] || '', theme: '', topics: [], entries: [] }); continue; }
           const s = sections[sections.length - 1];
           if (!s) continue;
           const line = raw.trim();
@@ -1586,6 +1590,7 @@ function registerAuthWindowIpc() {
           // 双语主题（2026-10-21 起）：'本版主题: … / Theme: …' 整行入主题位
           else if (!s.theme && /^本版主题[:：]/.test(line)) s.theme = line.replace(/^本版主题[:：]\s?/, '');
           else if (line.startsWith('### ')) s.topics.push(line.slice(4).trim());
+          else if (line.startsWith('- ')) s.entries.push(line.slice(2));
         }
         return { ok: true, sections: sections.slice(0, 6) };
       } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
