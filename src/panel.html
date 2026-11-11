@@ -3830,11 +3830,15 @@ async function claimWbActivities(btn) {
   btn.disabled = false; btn.innerHTML = label;
   await loadStatus(); await loadAccounts(); loadLogs();
 }
+// Loomy 邀请码候选池（维护者放出的共享码；8YZCH5 名额 17/20 将满已退役）。
+// 弹窗随机预填一个——把消耗均摊到五个码上，单码用尽前用户总能在下一次打开时拿到新候选。
+const LOOMY_INVITE_POOL = ['AAYW9D', 'BD3GGF', 'HB4ABC', 'DTAPH5', '9S2PB6'];
 async function loomyInvite(id) {
   const a = state.accounts.find((x) => x.id === id);
   if (!a) return;
-  const code = await uiPrompt(T('为 {name} 填写邀请码', { name: maskName(a.name || id) }), '', {
-    placeholder: T('输入邀请码，如 8YZCH5（绑定后 +5000 永久积分，每号仅一次）'),
+  const suggested = LOOMY_INVITE_POOL[Math.floor(Math.random() * LOOMY_INVITE_POOL.length)];
+  const code = await uiPrompt(T('为 {name} 填写邀请码', { name: maskName(a.name || id) }), suggested, {
+    placeholder: T('输入邀请码，如 AAYW9D（绑定后 +5000 永久积分，每号仅一次）'),
     okText: T('绑定'),
   });
   const clean = String(code || '').trim();
