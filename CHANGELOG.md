@@ -4,12 +4,23 @@
 
 ---
 
-## [未发布]
-
+## [1.7.2] (2026-11-12)
 - **灵犀卡补「立即签到」按钮（issue #53 追加反馈）**：网页会话卡的 WPS 灵犀账号行此前只有「就地重探」，想手动签到没有入口（自动签到轮虽有，但签到时点不可控）。现账号行补 ▶ 按钮：走 `POST /api/accounts/:id/checkin` 代签每日任务，结果文案直接用 daemon 返回的 message（自带「灵点」单位）；已签自动跳过（先查任务状态，绝不盲打 claim）；签到成功后顺带就地重探一次，余额胶囊立即跟上 +100。豆包虽挂了 checkin 实现但定位是纯打开入口（CD 不代签），不在此列。
 - **灵犀签到口径三处修正（test.2 实测反馈）**：① 仪表盘「今日领取」KPI 与徽标补入网页会话签到线——`/api/status` 的 `todayByProduct` 补 lingxi 日界（0 点翻日，与产品行同一套 `todayDone` 比对），灵犀卡账号行复用产品行同一套 `statusOf` 徽标（今日已领 / 未领取 / 失败，带时间与消息 tooltip），手动与自动签到结果都落到卡片上，不再只留转瞬即逝的 toast；② 修「+N 虚报」——claim 响应的 `total_claimed_credits` 是**本轮周期累计**（实测连签第 3 天返回 300、余额实动 +100；第七天会虚报成 800），展示口径改取任务状态 `check_in_days[连签天数].reward`（每日 100 / 第七天 200），toast、徽标、daemon 日志三处同步；③ 领取日志单位按产品线（灵犀「灵点」、豆包「额度」），不再一律「Credits」。新增 `test/lingxi.test.js` 六例钉住当天额口径与「已签绝不盲打 claim」。
 - **Trae 双通道：直连非沙箱 + v3 换票嵌套契约（同步 10Router 44b2bb27 / #99）**：① 网关会话载荷按模型名分流——普通模型走直连非沙箱通道（`agent_type: chat` + `env: local`，不开云端沙箱容器），显式含 solo/work/agent- 的走 SOLO 沙箱；模型名先过 `canonicalTraeModel` 规范化（服务端严格区分大小写，传错 4001 config empty）；流解析补直连通道的 `content / delta.content / text` 字段链。② 修浏览器登录「授权页成功但换票报 ExchangeToken/DeviceInfo: HTTP 200」——v3 端点真机契约是嵌套 `Result.Token / Result.RefreshToken / Result.RefreshExpireAt`（毫秒），此前按扁平字段读解析成无 token、误判失败降级旧端点吃 10101。新增通道分流 4 例 + 嵌套契约回归 1 例。
 
+- **灵犀多号归户（issue #53 追加反馈，test.4 实测）**：此前捕获硬编码「单例」（tasks/balance 无身份字段、user 端点 404），第二个号捕获必顶掉第一个。身份改取会话罐 `uid` cookie（WPS 账号 uid，实测唯一可靠身份源）：捕获按 uid 哈希归户各行并存；重探回填 identityHash + 行名升级 uid 后缀；10Router 卡 source 改 uid 落位并按 230e2fd 模式一次性清理旧卡；hint 补多号指引（各号分别「网页版 / 粘贴捕获」，同分区换号先「清除已存会话」）。
+- **灵犀 uid 显示脱敏（test.5 实测反馈）**：行名与日志统一前 3 后 3（`192****197`，手机号同款口径）；归户哈希 / 账号 uid / 10R source 仍用原始 uid，多号匹配不受影响。
+- **仪表盘补网页会话卡并修卡首页（test.6 实测反馈）**：COMPONENTS 里有「网页会话」但产品卡渲染只认 PRODUCTS，网页会话线一直没有仪表盘入口——现出卡：已捕获站点 / 会话总数 / 灵犀签到今日进度，点击直达网页会话页（cookieSites 懒加载后重绘）。首版曾引用 renderDash 局部变量致仪表盘 ReferenceError 卡首页，改调用方传参修复。
+- **仪表盘产品卡拖拽排序（test.9 实测反馈）**：bindCardDrag 泛化选择器（含 .prodcard，data-view 兜底），产品卡 / 网页会话卡 / 10Router 卡全部可拖；顺序落 compOrder 持久化，仪表盘卡片、顶部标签栏、组件设置 chips 三处同源同步。
+- **Trae 浏览器登录：国内入口放开 + 国际线（test.8/test.9 实测反馈）**：OAuth 授权码 + PKCE 流早已闭环但 tabShown 硬藏入口，已放开；新增 provider `trae-intl` 接国际站 www.trae.ai（同协议同 client_id，app_version 3.6.4、换票白名单 grow-normal 族、单段 v3——对齐 10Router #99 口径）；国际号签到/额度诚实跳过（ug 签到接口只在国内站注册、pay 端点国际网关 404，10R traeCheckin 同口径结论）；10R 连接映射 trae-intl→trae，原 isIntl 护栏收窄为只拦旧标记账号。
+- **MiniMax 国际版账户端点走服务端签名 + 307 地区检测（社区 PR #59）**：CN 网络直连 agent.minimax.io 的签到/额度/资料端点被 307 重定向到 CN 域名家族、全部失败且报错形似凭据失效——移植 10Router open-sse 同款实现：账户动作端点统一双签名（yy + x-signature），国际版代理优先；跨域名家族 307/403 报明确的「地区限制——请为国际版配置代理」而非伪装凭据失效。面板浏览器登录下拉过滤改按 prod（修 minimax-global 被前缀切漏掉）。
+- **River AI 会话 expiresAt 修复（issue #61，社区报告）**：WorkOS 刷新响应不含 `expires_in` → `expiresAt` 恒 null → 每轮探测先打一发必 401 的 Bearer 再走刷新兑换，每轮白等约 3 秒。新增 `jwtExpiresAt`（JWT payload exp 反推）三处兜底并落盘；`fetchRiverBalance` 本地已知过期（留 60s 时钟容差，防过早刷新消耗单次轮换 refresh 链）直接跳过 Bearer，日志标记 `bearer:过期跳过`。
+- **WorkBuddy 弹窗修复（issue #52，社区报告）**：注册表模糊搜索误命中 workbuddy-switch 的 DisplayIcon，把 wb-switch-rust.exe 当客户端缓存；取 master key 时按 Electron 方式 spawn 它——Rust GUI 不消费 `-e` 参数，弹自己的窗口 5 秒被 kill，每轮反复。候选过双闸：文件名黑名单（switch/launcher/uninstall 等）+ 零子进程 Electron 指纹校验（exe 头 2MB 内嵌 'Electron'）；getWorkbuddyMasterKey spawn 前同闸兜底，缓存被污染也不拉假 exe。
+- **Qoder 浏览器登录下拉混入 ZCode 修复（test.12 实测反馈）**：PROV 缺 zcode-bigmodel/zcode-zai，provOf 兜底写死 prod:'qoder'——Qoder 页下拉混进 ZCode 两项、ZCode 页反把自己的选项全隐藏。词典补齐 + 兜底改按前缀（workbuddy/zcode/trae/minimax/qoder）准确识别。
+- **Loomy 邀请码候选池**：8YZCH5 名额 17/20 将满退役；邀请码弹窗随机预填五个共享码之一（AAYW9D/BD3GGF/HB4ABC/DTAPH5/9S2PB6），开框即见可直接绑定，消耗均摊。
+- **单测代理隔离（社区 PR #58）**：fetchJsonRace 的 viaProxy 走 node:http/tls 绕过 globalThis.fetch stub，带 https_proxy 的开发机上真网络漏进「无网络」测试（3/4 挂、单测 6-17s）——两测试文件头部统一摘除代理环境变量；seedQoder 补 id、store 投影改按精确 id 寻址（修多账号串位）。
+- **i18n 词典治理**：补两条 MiniMax 构建/语言版错口 intlWarning 词条（d6721c9 遗留裸中文，发版门禁第 15 项阻塞）；删旧 Trae intlWarning 孤儿键；灵犀领取日志模板 {unit} 版四语补齐。
 ## [1.7.1] (2026-11-07)
 
 - **新增 MiniMax 国际版渠道 `minimax-global`（issue #54）**：与国内版同协议同 client（`mcode-public`，RFC 8628 + S256 PKCE 设备码授权），仅域名不同——`agent.minimax.io` + `account.minimax.io`（端点实证自官方客户端 `@mavis/oauth-core` 的 ACCOUNT_ORIGINS，本机 `~/.minimax/auth/prod/<cn|en>/mcode-public/` 布局互证）。签到 / 额度 / 设备码登录 / 本机导入（双目录收割）/ 本地网关（按账号档位选上游）/ 10Router 连接同步（`minimax-global` 线）全链路打通；面板 MiniMax 页分国际 / 国内版区段（此前 Trae / MiniMax 不分区段的特例删除）；`/api/status` 双线当前 uid（`minimaxCurrentUid` / `minimaxGlobalCurrentUid`）分点亮徽章。
