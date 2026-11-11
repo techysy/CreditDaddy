@@ -1963,7 +1963,6 @@
   "{name} 探测通过（{identity}，签到{signed}，灵点 {balance}）": "{name} probe passed ({identity}, check-in {signed}, credits {balance})",
   "无 uid": "no uid",
   "无 uid（单例）": "no uid (singleton)",
-  "灵犀旧版卡 {source} 已清理（推送 source 改按 WPS uid 落位）": "Legacy Lingxi card {source} cleaned up (push source now keyed by WPS uid)",
   "登录 lingxi.kdocs.cn 后自动抓取每日签到状态与灵点余额（每天 100 灵点，七天一轮第七天 200）；CD 每日自动签到 + 推送 10Router 出余额卡，Cookie 只存本机（约 300+ 天有效期）。多号：各号走「网页版 / 粘贴捕获」分别登录捕获，按 WPS 账号 uid 分行并存；同一登录分区换号前先「清除已存会话」。": "Sign in at lingxi.kdocs.cn and CreditDaddy auto-captures the daily check-in state and credit balance (100 credits/day, 7-day cycle with 200 on day 7); CD checks in daily and pushes a balance card to 10Router. Cookies stay on this machine (~300+ day lifetime). Multiple accounts: sign in and capture each account via \"Web sign-in\" / \"Paste capture\" — rows are keyed by WPS account uid and coexist; before switching accounts in the same sign-in partition, use \"Clear saved session\" first.",
   "活动赠送包": "Promo grant pack",
   "智点包": "Zhi credits pack",
