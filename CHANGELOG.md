@@ -8,6 +8,7 @@
 
 - **灵犀卡补「立即签到」按钮（issue #53 追加反馈）**：网页会话卡的 WPS 灵犀账号行此前只有「就地重探」，想手动签到没有入口（自动签到轮虽有，但签到时点不可控）。现账号行补 ▶ 按钮：走 `POST /api/accounts/:id/checkin` 代签每日任务，结果文案直接用 daemon 返回的 message（自带「灵点」单位）；已签自动跳过（先查任务状态，绝不盲打 claim）；签到成功后顺带就地重探一次，余额胶囊立即跟上 +100。豆包虽挂了 checkin 实现但定位是纯打开入口（CD 不代签），不在此列。
 - **灵犀签到口径三处修正（test.2 实测反馈）**：① 仪表盘「今日领取」KPI 与徽标补入网页会话签到线——`/api/status` 的 `todayByProduct` 补 lingxi 日界（0 点翻日，与产品行同一套 `todayDone` 比对），灵犀卡账号行复用产品行同一套 `statusOf` 徽标（今日已领 / 未领取 / 失败，带时间与消息 tooltip），手动与自动签到结果都落到卡片上，不再只留转瞬即逝的 toast；② 修「+N 虚报」——claim 响应的 `total_claimed_credits` 是**本轮周期累计**（实测连签第 3 天返回 300、余额实动 +100；第七天会虚报成 800），展示口径改取任务状态 `check_in_days[连签天数].reward`（每日 100 / 第七天 200），toast、徽标、daemon 日志三处同步；③ 领取日志单位按产品线（灵犀「灵点」、豆包「额度」），不再一律「Credits」。新增 `test/lingxi.test.js` 六例钉住当天额口径与「已签绝不盲打 claim」。
+- **Trae 双通道：直连非沙箱 + v3 换票嵌套契约（同步 10Router 44b2bb27 / #99）**：① 网关会话载荷按模型名分流——普通模型走直连非沙箱通道（`agent_type: chat` + `env: local`，不开云端沙箱容器），显式含 solo/work/agent- 的走 SOLO 沙箱；模型名先过 `canonicalTraeModel` 规范化（服务端严格区分大小写，传错 4001 config empty）；流解析补直连通道的 `content / delta.content / text` 字段链。② 修浏览器登录「授权页成功但换票报 ExchangeToken/DeviceInfo: HTTP 200」——v3 端点真机契约是嵌套 `Result.Token / Result.RefreshToken / Result.RefreshExpireAt`（毫秒），此前按扁平字段读解析成无 token、误判失败降级旧端点吃 10101。新增通道分流 4 例 + 嵌套契约回归 1 例。
 
 ## [1.7.1] (2026-11-07)
 

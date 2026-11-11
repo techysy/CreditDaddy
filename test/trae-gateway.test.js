@@ -114,6 +114,47 @@ function fakeRes() {
   return res;
 }
 
+// ── 双通道分流（同步 10Router 44b2bb27：直连非沙箱 vs SOLO 沙箱） ──
+
+test('通道分流：普通模型走直连非沙箱（agent_type chat + env local），模型名规范化', () => {
+  const p = gw.buildTraeSessionPayload('hello', 'doubao-seed-code');
+  assert.equal(p.initial_message.agent_type, 'chat');
+  assert.equal(p.env, 'local');
+  assert.equal(p.initial_message.model_name, 'Doubao-Seed-Code', '服务端大小写敏感（4001 config empty 防线）');
+  assert.equal(p.initial_message.model_selection_strategy, 'manual');
+  assert.equal(p.mode, 'code');
+  const cp = JSON.parse(p.initial_message.common_params);
+  assert.equal(cp.solo_chat_mode, 'code');
+});
+
+test('通道分流：solo/work/agent- 字样走 SOLO 沙箱（solo_agent_remote + remote）', () => {
+  for (const m of ['solo', 'solo-agent', 'work', 'SOLO-Work', 'agent-task']) {
+    const p = gw.buildTraeSessionPayload('hi', m);
+    assert.equal(p.initial_message.agent_type, 'solo_agent_remote', m + ' 必须是沙箱通道');
+    assert.equal(p.env, 'remote', m + ' 必须 env remote');
+  }
+});
+
+test('通道分流：work 族 mode=work + strategy=auto + 空模型名；auto/空同理（10Router resolveMode 口径）', () => {
+  const w = gw.buildTraeSessionPayload('hi', 'work');
+  assert.equal(w.mode, 'work');
+  assert.equal(w.initial_message.model_selection_strategy, 'auto');
+  assert.equal(w.initial_message.model_name, '');
+  const a = gw.buildTraeSessionPayload('hi', 'auto');
+  assert.equal(a.mode, 'code');
+  assert.equal(a.initial_message.model_selection_strategy, 'auto');
+  assert.equal(a.initial_message.model_name, '');
+  const e = gw.buildTraeSessionPayload('hi', '');
+  assert.equal(e.initial_message.model_selection_strategy, 'auto');
+});
+
+test('canonicalTraeModel：表内规范化、表外原样、空串回空', () => {
+  assert.equal(gw.canonicalTraeModel('deepseek-v4.1-flash'), 'DeepSeek-V4-Flash');
+  assert.equal(gw.canonicalTraeModel('Kimi-K3.1-Pro'), 'Kimi-K3.1-Pro');
+  assert.equal(gw.canonicalTraeModel('unknown-model'), 'unknown-model');
+  assert.equal(gw.canonicalTraeModel(''), '');
+});
+
 test('Trae 网关开关关闭时返回 503', async () => {
   await resetState({ settings: { traeGateway: false } });
   await seedAccount('t1');

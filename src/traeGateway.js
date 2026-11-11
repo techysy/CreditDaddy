@@ -4,12 +4,19 @@
  * 数据面端点：POST /gateway/trae/v1/messages
  * （上游为 ByteDance Trae SOLO 远程 Agent 协议：https://solo.trae.cn/api/remote/v1）
  *
+ * 双通道（同步 10Router 44b2bb27）：普通模型走**直连非沙箱通道**
+ * （agent_type: "chat" + env: "local"，不开云端沙箱容器，纯文本对话更快更省）；
+ * 模型名显式含 solo/work/agent- 的走 SOLO 沙箱通道（solo_agent_remote + remote）。
+ * 服务端 chat_v3 的 ConfigName 严格区分大小写，模型名先过 canonicalTraeModel
+ * 规范化（传错报 4001 config empty）。
+ *
  * 架构特性：
  * 1. 账号多路轮换（provider=trae）：自动在有效账号间按剩余积分加权轮询（SWRR）
  * 2. 凭据热对齐：401 时若为本机导入账号，尝试重读 storage.json 最新登录态
  * 3. 429 限流保护：429 限流自动冷却（退避阶梯 30s → 1min → 2min → 5min → 10min 封顶，成功一次即清零）
  * 4. 局域网访问控制：继承相同的白名单与回环检查机制
- * 5. SSE 增量转换：将 Trae SOLO 累积流转换为标准 Anthropic 流式 SSE 或一次性 JSON 响应
+ * 5. SSE 增量转换：将 Trae 累积流（沙箱 plan_item.thought / 直连 content/delta/text）
+ *    转换为标准 Anthropic 流式 SSE 或一次性 JSON 响应
  */
 
 import { fetchJsonRace } from './zcodeClient.js';
@@ -28,6 +35,93 @@ const MAX_ATTEMPTS = 5;
 const UPSTREAM_TIMEOUT_MS = 600_000;
 const UPSTREAM_CONNECT_MS = 15_000;
 const DEFAULT_MODEL = 'Doubao-Seed-Code';
+
+// 模型名规范化映射（同步 10Router CANONICAL_TRAE_MODELS，#99 真机口径：
+// 服务端严格区分大小写，传错 4001 config empty）；表外原样透传。
+const CANONICAL_TRAE_MODELS = {
+  'doubao-seed-code': 'Doubao-Seed-Code',
+  'doubao-seed-2.1-turbo': 'Doubao-Seed-2.1-Turbo',
+  'doubao-seed-2.1-pro': 'Doubao-Seed-2.1-Pro',
+  'doubao-seed-2.0-code': 'Doubao-Seed-2.0-Code',
+  'doubao-seed-evolving': 'Doubao-Seed-Evolving',
+  'deepseek-v4.1-flash': 'DeepSeek-V4-Flash',
+  'deepseek-v4-flash': 'DeepSeek-V4-Flash',
+  'deepseek-v4-pro': 'DeepSeek-V4-Pro',
+  'deepseek-v4-pro-official': 'DeepSeek-V4-Pro-Official',
+  'glm-5.3': 'GLM-5.3',
+  'glm-5.3-flash': 'GLM-5.3-Flash',
+  'glm-5.3-flashx': 'GLM-5.3-FlashX',
+  'kimi-k3.1-pro': 'Kimi-K3.1-Pro',
+  'kimi-k3': 'Kimi-K3',
+  'minimax-m3.1-flash': 'MiniMax-M3.1-Flash',
+  'minimax-m3': 'MiniMax-M3',
+  'step-5-preview': 'Step-5-Preview',
+  'qwen3.8-flash': 'qwen3.8-flash',
+  'qwen3.8-max': 'qwen3.8-max',
+  'mimo-v2.6-flash': 'mimo-v2.6-flash',
+  'mimo-v2.6-pro': 'mimo-v2.6-pro',
+};
+
+export function canonicalTraeModel(model) {
+  if (!model) return '';
+  return CANONICAL_TRAE_MODELS[String(model).trim().toLowerCase()] || model;
+}
+
+// 显式要求 SOLO 沙箱通道的模型名（含 solo/work/agent- 字样）；其余走直连非沙箱
+export function isSoloAgentMode(model = '') {
+  const m = String(model).trim().toLowerCase();
+  return m.includes('solo') || m.includes('work') || m.startsWith('agent-');
+}
+
+// mode/strategy 判定（同步 10Router resolveMode）：work 族 = mode work + auto + 空模型名；
+// auto/空 = mode code + auto；其余 = mode code + manual + 规范化模型名
+export function resolveTraeMode(model = '') {
+  const m = String(model || '').trim().toLowerCase();
+  if (m === 'work' || m === 'auto-work' || m === 'solo-work') {
+    return { mode: 'work', strategy: 'auto', modelName: '' };
+  }
+  const auto = !m || m === 'auto';
+  return { mode: 'code', strategy: auto ? 'auto' : 'manual', modelName: auto ? '' : canonicalTraeModel(model) };
+}
+
+/** 会话载荷构造（按通道分流）：直连 = agent_type chat + env local；沙箱 = solo_agent_remote + remote */
+export function buildTraeSessionPayload(promptText, requestedModel) {
+  const { mode, strategy, modelName } = resolveTraeMode(requestedModel);
+  const solo = isSoloAgentMode(requestedModel);
+  return {
+    mode,
+    environment_id: 'default',
+    initial_message: {
+      chat_session_id: '',
+      content: [],
+      query: JSON.stringify([{ type: 'text', data: { content: promptText } }]),
+      model_name: modelName,
+      agent_type: solo ? 'solo_agent_remote' : 'chat',
+      model_selection_strategy: strategy,
+      common_params: JSON.stringify({
+        language: 'zh-cn',
+        app_language: 'zh-cn',
+        quality: 'stable',
+        app_version: '1.0.0.1229',
+        web_id: '',
+        user_identity: 'Free',
+        is_freshman: '0',
+        biz_user_id: '',
+        user_unique_id: '',
+        scope: 'marscode-cn',
+        tenant: 'marscode',
+        region: 'CN',
+        aiRegion: 'CN',
+        is_privacy_mode: 0,
+        privacy_mode: 'off',
+        solo_chat_mode: mode,
+      }),
+    },
+    env: solo ? 'remote' : 'local',
+    auto_create_project: false,
+    origin: 'web',
+  };
+}
 
 // ── 开关（持久化在 settings.traeGateway） ──
 
@@ -388,39 +482,7 @@ export async function handleGateway(req, res) {
     const label = account.name || account.uid || account.id;
 
     let token = account.token;
-    const sessionPayload = {
-      mode: 'code',
-      environment_id: 'default',
-      initial_message: {
-        chat_session_id: '',
-        content: [],
-        query: JSON.stringify([{ type: 'text', data: { content: promptText } }]),
-        model_name: requestedModel,
-        agent_type: 'solo_agent_remote',
-        model_selection_strategy: 'manual',
-        common_params: JSON.stringify({
-          language: 'zh-cn',
-          app_language: 'zh-cn',
-          quality: 'stable',
-          app_version: '1.0.0.1229',
-          web_id: '',
-          user_identity: 'Free',
-          is_freshman: '0',
-          biz_user_id: '',
-          user_unique_id: '',
-          scope: 'marscode-cn',
-          tenant: 'marscode',
-          region: 'CN',
-          aiRegion: 'CN',
-          is_privacy_mode: 0,
-          privacy_mode: 'off',
-          solo_chat_mode: 'code',
-        }),
-      },
-      env: 'remote',
-      auto_create_project: false,
-      origin: 'web',
-    };
+    const sessionPayload = buildTraeSessionPayload(promptText, requestedModel);
 
     const makeHeaders = (tok) => ({
       Authorization: tok.startsWith('Cloud-IDE-JWT ') ? tok : `Cloud-IDE-JWT ${tok.trim()}`,
@@ -633,8 +695,9 @@ export async function handleGateway(req, res) {
               });
             }
 
-            // 2. Text delta (thought or summary)
-            const candidateText = data.thought || data.tool_call_info?.params?.summary || '';
+            // 2. Text delta：兼顾沙箱通道的 plan_item.thought 与直连 chat 通道的
+            //    content / delta.content / text（同步 10Router renderNewText 字段链）
+            const candidateText = data.thought || data.content || data.delta?.content || data.text || data.tool_call_info?.params?.summary || '';
             if (candidateText && candidateText.length > emittedText.length) {
               const delta = candidateText.slice(emittedText.length);
               emittedText = candidateText;
@@ -724,7 +787,7 @@ export async function handleGateway(req, res) {
             try {
               const data = JSON.parse(raw);
               if (data.reasoning_content) fullThinking = data.reasoning_content;
-              const t = data.thought || data.tool_call_info?.params?.summary;
+              const t = data.thought || data.content || data.delta?.content || data.text || data.tool_call_info?.params?.summary;
               if (t) fullText = t;
               if (data.prompt_tokens !== undefined || data.last_turn_total_tokens !== undefined) {
                 usageInfo = data;
