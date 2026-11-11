@@ -745,6 +745,7 @@
   "拒绝请求 {method} {path}:{denied}(Host={host} Origin={origin})": "Rejected request {method} {path}: {denied} (Host={host} Origin={origin})",
   "拒绝请求 {method} {path}:{denied}（Host={host} Origin={origin}）": "Rejected request {method} {path}: {denied} (Host={host} Origin={origin})",
   "捐赠支持": "Donate",
+  "支付后请在备注里留下您的 GitHub 用户名 —— 便于将您署名加入贡献者列表 ❤️": "Please leave your GitHub username in the payment note — so we can credit you in the contributors list ❤️",
   "开": "on",
   "开(每 {min} 分钟,{window})": "on (every {min} min, {window})",
   "开（每 {min} 分钟,{window}）": "on (every {min} min, {window})",

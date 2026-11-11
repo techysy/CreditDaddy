@@ -744,6 +744,7 @@
   "拒绝请求 {method} {path}:{denied}(Host={host} Origin={origin})": "リクエストを拒否 {method} {path}:{denied}(Host={host} Origin={origin})",
   "拒绝请求 {method} {path}:{denied}（Host={host} Origin={origin}）": "リクエストを拒否 {method} {path}:{denied}(Host={host} Origin={origin})",
   "捐赠支持": "寄付",
+  "支付后请在备注里留下您的 GitHub 用户名 —— 便于将您署名加入贡献者列表 ❤️": "お支払い後に備考欄へ GitHub ユーザー名を残してください——コントリビューター一覧に署名として掲載します ❤️",
   "开": "オン",
   "开(每 {min} 分钟,{window})": "オン(毎 {min} 分、{window})",
   "开（每 {min} 分钟,{window}）": "オン(毎 {min} 分、{window})",

@@ -744,6 +744,7 @@
   "拒绝请求 {method} {path}:{denied}(Host={host} Origin={origin})": "요청 거부 {method} {path}: {denied} (Host={host} Origin={origin})",
   "拒绝请求 {method} {path}:{denied}（Host={host} Origin={origin}）": "요청 거부 {method} {path}: {denied} (Host={host} Origin={origin})",
   "捐赠支持": "후원",
+  "支付后请在备注里留下您的 GitHub 用户名 —— 便于将您署名加入贡献者列表 ❤️": "결제 후 비고에 GitHub 사용자명을 남겨 주세요——컨트리뷰터 목록에 이름을 올릴 수 있도록 ❤️",
   "开": "켜짐",
   "开(每 {min} 分钟,{window})": "켜짐 (매 {min}분, {window})",
   "开（每 {min} 分钟,{window}）": "켜짐 (매 {min}분, {window})",
