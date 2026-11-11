@@ -134,15 +134,23 @@ test('回调解析：host 是国际域 → intl=true；国内域 → false；回
 
 let mockExchange;
 let mockCalls;
+let mockExchangeResponseOverride = null;   // 用例级响应覆盖（嵌套 Result.* 形态等）
 
 beforeEach(async () => {
   _resetForTests();
   mockCalls = [];
+  mockExchangeResponseOverride = null;
   mockExchange = http.createServer((req, res) => {
     let body = '';
     req.on('data', (c) => { body += c; });
     req.on('end', () => {
       mockCalls.push({ url: req.url, headers: req.headers, body: JSON.parse(body || '{}') });
+      if (mockExchangeResponseOverride) {
+        const ov = mockExchangeResponseOverride(JSON.parse(body || '{}'));
+        res.writeHead(ov.status ?? 200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(ov.body));
+        return;
+      }
       // 主端点成功，兜底端点返回 404 以证明不会走到
       if (req.url === '/trae/api/v3/oauth/ExchangeToken') {
         const jwt = 'eyJhbGciOiJIUzI1NiJ9.' + Buffer.from(JSON.stringify({ data: { id: 1910311587417227 }, exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url') + '.sig';
@@ -293,6 +301,28 @@ test('国际线：回调 host 外域 → 回落国际 fallback（growsg-normal.t
     + `&host=${enc2('https://evil.example.com')}&loginTraceID=${new URL(inner).searchParams.get('login_trace_id')}`);
   // 外域被拒 → 国际 fallback 主机换票（此处 mock 不在 growsg 域上，真端点 400/拒 → 终态失败即证明走到 fallback）
   await assert.rejects(() => pollTraeLogin(flow.data), /Trae 换票失败/);
+});
+
+test('v3 换票嵌套 Result.* 契约（#99 真机形态）：HTTP 200 + Result.Token 必须解析成功，不降级旧端点', async () => {
+  // 2026-11-11 用户实测：授权页成功但面板报 ExchangeToken/DeviceInfo: HTTP 200——
+  // v3 端点真机契约是嵌套 Result.Token / Result.RefreshToken / Result.RefreshExpireAt（毫秒），
+  // 按扁平字段读会误判无 token 降级旧端点吃 10101。本用例钉住嵌套形态。
+  const mockPort = mockExchange.address().port;
+  mockExchangeResponseOverride = (body) => {
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.' + Buffer.from(JSON.stringify({ data: { id: 777 }, exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url') + '.sig';
+    return { status: 200, body: { Result: { Token: jwt, RefreshToken: 'rt-nested', RefreshExpireAt: Date.now() + 30 * 86400_000 } } };
+  };
+  const flow = await startTraeLogin('trae', { ports: [TEST_PORT + 7] });
+  const inner = new URL(flow.url).searchParams.get('redirect_url');
+  await fireCallback(TEST_PORT + 7, enc2(`authCodeInfo=${JSON.stringify({ AuthCode: 'ac-nested' })}`)
+    + `&host=${enc2(`http://127.0.0.1:${mockPort}`)}&loginTraceID=${new URL(inner).searchParams.get('login_trace_id')}`);
+  const r = await pollTraeLogin(flow.data);
+  assert.equal(r.status, 'ok');
+  assert.equal(r.input.refreshToken, 'rt-nested', '嵌套 Result.RefreshToken 必须被提取');
+  assert.ok(r.input.expiresAt, '嵌套 Result.RefreshExpireAt（毫秒）必须换算为 expiresAt');
+  assert.equal(mockCalls.length, 1, '主端点成功即止，不得再打旧端点降级');
+  assert.equal(mockCalls[0].url, '/trae/api/v3/oauth/ExchangeToken');
+  mockExchangeResponseOverride = null;
 });
 
 test('startTraeLogin：未知 kind 拒绝（守卫仍在一，只是范围变成 CN/intl 两个）', async () => {

@@ -269,13 +269,26 @@ function deviceInfoPayload(identity, appVersion) {
   };
 }
 
-/** 响应字段容错：accessToken/refreshToken 驼峰为主（muskke TokenData 同款），下划线兜底。 */
+/** 响应字段容错：v3 端点的真机契约是**嵌套 Result.***（10Router #99 换票对照实验：
+ *  Result.Token / Result.RefreshToken / Result.RefreshExpireAt 毫秒）——HTTP 200 却按
+ *  扁平字段读会解析成「无 token」，误判失败降级旧端点吃 10101（2026-11-11 用户实测：
+ *  授权页成功、面板报 ExchangeToken/DeviceInfo: HTTP 200）。扁平形态保留兜底
+ *  （更老的回调/端点形态，muskke TokenData 同款）。 */
 function pickToken(body) {
+  const nested = (body?.Result && typeof body.Result === 'object') ? body.Result
+    : (body?.result && typeof body.result === 'object') ? body.result
+    : (body?.data && typeof body.data === 'object') ? body.data
+    : {};
   return {
-    accessToken: jsonStringField(body || {}, ['accessToken', 'access_token', 'Token', 'token']),
-    refreshToken: jsonStringField(body || {}, ['refreshToken', 'refresh_token', 'RefreshToken']),
-    expiresAtMs: jsonIntField(body || {}, ['expiresAt', 'expires_at', 'ExpireAt', 'expireAt']),
-    expiresInSec: jsonIntField(body || {}, ['expiresIn', 'expires_in']),
+    accessToken: jsonStringField(body, ['accessToken', 'access_token'])
+      || jsonStringField(nested, ['AccessToken', 'Token', 'accessToken', 'token']),
+    refreshToken: jsonStringField(body, ['refreshToken', 'refresh_token', 'RefreshToken'])
+      || jsonStringField(nested, ['RefreshToken', 'refreshToken', 'refresh_token']),
+    // RefreshExpireAt（毫秒）优先——v3 契约的 refresh 寿命字段；ExpiresAt 系兜底
+    expiresAtMs: jsonIntField(nested, ['RefreshExpireAt', 'ExpiresAt', 'expiresAt', 'expire_at'])
+      || jsonIntField(body, ['expiresAt', 'expires_at', 'ExpireAt', 'expireAt']),
+    expiresInSec: jsonIntField(body, ['expiresIn', 'expires_in'])
+      || jsonIntField(nested, ['ExpiresIn', 'expiresIn']),
   };
 }
 
