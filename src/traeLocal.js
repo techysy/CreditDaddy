@@ -121,10 +121,39 @@ const decodeTasklist = (buf) => {
 
 let runningOverride = null;
 
+const UNIX_BINS = [...new Set([...VARIANT_APPS.cn, ...VARIANT_APPS.intl].map((n) => n.toLowerCase().replace(/\s+/g, '-')))];
+
+/** unix 下任一变体的运行 pid（Linux 读 /proc/<pid>/exe；macOS 用 pgrep -x） */
+function unixTraePids() {
+  if (process.platform === 'linux') {
+    const out = [];
+    let entries;
+    try { entries = fs.readdirSync('/proc'); } catch { return out; }
+    for (const d of entries) {
+      if (!/^\d+$/.test(d)) continue;
+      try {
+        if (UNIX_BINS.includes(path.basename(fs.readlinkSync(`/proc/${d}/exe`)).toLowerCase())) out.push(Number(d));
+      } catch { /* 权限不足或进程已退出，下一个 */ }
+    }
+    return out;
+  }
+  if (process.platform === 'darwin') {
+    const out = [];
+    for (const bin of UNIX_BINS) {
+      try {
+        out.push(...execFileSync('pgrep', ['-x', bin], { encoding: 'utf8', timeout: 5000 })
+          .trim().split(/\s+/).map(Number).filter(Boolean));
+      } catch { /* 该变体没在跑 */ }
+    }
+    return out;
+  }
+  return [];
+}
+
 /** 任一变体的 Trae 客户端是否在运行 */
 export function traeRunning() {
   if (runningOverride !== null) return runningOverride;
-  if (process.platform !== 'win32') return false;
+  if (process.platform !== 'win32') return unixTraePids().length > 0;
   for (const exe of EXE_NAMES) {
     try {
       const out = decodeTasklist(execFileSync('tasklist.exe', ['/FI', `IMAGENAME eq ${exe}`, '/NH'],
@@ -135,18 +164,65 @@ export function traeRunning() {
   return false;
 }
 
-/** 轮询口径（/api/status 用）：读 winProc 全量快照，不 spawn；switchTo/terminate 仍走 traeRunning()。 */
+/** 轮询口径（/api/status 用）：win32 读 winProc 全量快照，不 spawn；unix 读 /proc 同口径足够轻；switchTo/terminate 仍走 traeRunning()。 */
 export function traeRunningCached() {
   if (runningOverride !== null) return runningOverride;   // 测试钩子
+  if (process.platform !== 'win32') return traeRunning();
   return procRunningCached(EXE_NAMES);
 }
 
+/** Linux 桌面入口兜底：按 .desktop 的 Name 匹配变体名，解析 Exec 首个实参并校验存在 */
+function linuxDesktopExecPath(name) {
+  const dataDirs = [...new Set([
+    ...(process.env.XDG_DATA_DIRS || '/usr/share:/usr/local/share').split(':').filter(Boolean).map((d) => path.join(d, 'applications')),
+    path.join(os.homedir(), '.local', 'share', 'applications'),
+  ])];
+  for (const dir of dataDirs) {
+    let entries;
+    try { entries = fs.readdirSync(dir); } catch { continue; }
+    for (const f of entries) {
+      if (!f.endsWith('.desktop')) continue;
+      let text;
+      try { text = fs.readFileSync(path.join(dir, f), 'utf8'); } catch { continue; }
+      const names = [...text.matchAll(/^Name(?:\[[^\]]*\])?=(.*)$/gm)].map((m) => m[1].trim());
+      if (!names.includes(name)) continue;
+      const m = /^Exec=(.*)$/m.exec(text);
+      if (!m) continue;
+      const argv0 = m[1].split(/[\s;]+/).find((t) => t && !/^%[a-zA-Z%]$/.test(t) && t !== "''");
+      if (!argv0) continue;
+      if (argv0.startsWith('/') && fs.existsSync(argv0)) return argv0;
+    }
+  }
+  return null;
+}
+
 function clientPathOf(names) {
-  if (process.platform !== 'win32') return null;
-  const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+  if (process.platform === 'win32') {
+    const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+    for (const name of names) {
+      const p = path.join(local, 'Programs', name, name + '.exe');
+      if (fs.existsSync(p)) return p;
+    }
+    return null;
+  }
+  if (process.platform === 'darwin') {
+    for (const name of names) {
+      for (const base of ['/Applications', path.join(os.homedir(), 'Applications')]) {
+        const p = path.join(base, `${name}.app`);
+        if (fs.existsSync(p)) return p;
+      }
+    }
+    return null;
+  }
+  // linux：官方包（deb/rpm）把入口软链到 PATH，先查 PATH 常见目录；查不到再按 .desktop 解析 Exec 兜底
   for (const name of names) {
-    const p = path.join(local, 'Programs', name, name + '.exe');
-    if (fs.existsSync(p)) return p;
+    const bin = name.toLowerCase().replace(/\s+/g, '-');
+    for (const dir of ['/usr/bin', '/usr/local/bin', path.join(os.homedir(), '.local', 'bin')]) {
+      const p = path.join(dir, bin);
+      try { if (fs.statSync(p).isFile()) return fs.realpathSync(p); } catch { /* 下一个 */ }
+    }
+    const d = linuxDesktopExecPath(name);
+    if (d) return d;
   }
   return null;
 }
@@ -227,7 +303,24 @@ export function uidFromJwt(token) {
 }
 
 export function terminateTrae({ timeoutMs = 8000 } = {}) {
-  if (process.platform !== 'win32') return { closed: false, supported: false };
+  const nap = (ms) => {
+    if (process.platform === 'win32') { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); return; }
+    try { execFileSync('sleep', [String(ms / 1000)], { stdio: 'ignore', timeout: ms + 2000 }); } catch { /* 尽力等待 */ }
+  };
+  if (process.platform !== 'win32') {
+    const pids = unixTraePids();
+    if (!pids.length) return { closed: false, running: false };
+    for (const pid of pids) { try { process.kill(pid, 'SIGTERM'); } catch { /* 已退出 */ } }
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline && unixTraePids().length) nap(250);
+    const left = unixTraePids();
+    if (left.length) {
+      for (const pid of left) { try { process.kill(pid, 'SIGKILL'); } catch { /* 已退出 */ } }
+      const hard = Date.now() + 3000;
+      while (Date.now() < hard && unixTraePids().length) nap(250);
+    }
+    return { closed: !unixTraePids().length, running: unixTraePids().length > 0 };
+  }
   if (!traeRunning()) return { closed: false, running: false };
   const kill = (force) => {
     for (const exe of EXE_NAMES) {
@@ -237,7 +330,6 @@ export function terminateTrae({ timeoutMs = 8000 } = {}) {
       } catch { /* 该变体没在跑 */ }
     }
   };
-  const nap = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
   const deadline = Date.now() + timeoutMs;
   kill(false);
   while (Date.now() < deadline && traeRunning()) nap(250);
