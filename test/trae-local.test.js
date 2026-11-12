@@ -116,7 +116,7 @@ test('uidFromJwt：取 payload.data.id，非 JWT 输入返回 null', () => {
   assert.equal(uidFromJwt(''), null);
 });
 
-test('traePrimaryIds：同 deviceId 只认首个账号为真机号首账号（issue #28 防回归）', () => {
+test('traePrimaryIds：同 deviceId 只认首个账号（保留兼容签名，不再用于强制派生）', () => {
   const DEV = '9001000000000001';
   const accounts = [
     { id: 'a1', provider: 'trae', meta: { deviceId: DEV } },
@@ -127,15 +127,18 @@ test('traePrimaryIds：同 deviceId 只认首个账号为真机号首账号（is
   ];
   const primary = traePrimaryIds(accounts);
   assert.equal(primary.has('a1'), true, '该设备首账号');
-  assert.equal(primary.has('a2'), false, '同设备第二账号起必须派生号');
+  assert.equal(primary.has('a2'), false, '同设备第二账号不在 primary 集合');
   assert.equal(primary.has('a3'), false, '无 deviceId 无真机号可优先');
   assert.equal(primary.has('t1'), true, '另一设备自己的首账号');
   assert.equal(primary.has('q1'), false);
-  // 首账号的 marketUserId/sessionId 仍按 uid 派生（非首账号走派生分支不受影响）
+  // 所有账号 attempt=0 都可用真机号（#31 修正：不再强制派生）
   const first = traeDevice('uid-1', DEV, 0);
   assert.equal(first.deviceId, DEV);
-  const second = traeDevice('uid-2', null, 0);
-  assert.match(second.deviceId, /^\d{8,}$/, '非首账号由调用方传 null 走稳定派生号');
+  const second = traeDevice('uid-2', DEV, 0);
+  assert.equal(second.deviceId, DEV, '同设备第二账号也用真机号（服务端按设备限一领归 already）');
+  // 无真机号时走稳定派生
+  const derived = traeDevice('uid-3', null, 0);
+  assert.match(derived.deviceId, /^\d{8,}$/, '无真机号走稳定派生号');
 });
 
 test('candidateClientPaths：国内/国际分开探测，双版本同装时面板才能选开哪个', { skip: process.platform !== 'win32' }, async () => {
