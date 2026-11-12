@@ -53,15 +53,18 @@ function seeded(uid, salt, n) {
 }
 
 /**
- * 同机多账号的设备分离（issue #28）：同一个真机 deviceId 只能给「该设备的首账号」用
- * （服务端按设备限每日一领，第二个号起必吃 9074）。首账号按账号顺序定，与签到轮顺序一致。
- * 返回 Set<accountId>；调用方对非首账号不得传 storedDeviceId（走派生号）。
+ * 同机多账号的设备分离（issue #28 / #31 修正）：
+ * 旧逻辑把真机号只给首账号、其余强制派生——但派生号被服务端一律拒 9074（#31 实测）。
+ * 新逻辑：所有账号都先尝试自己的真机号（登录时注册的设备），9074 时再降级派生号重试。
+ * 同设备多账号共享真机号时，服务端按「设备每日限一领」拒绝第二个号（返回「已经签到」
+ * 文案或 checked_in=true），归 already 而非 failed——不会误报。
+ * 保留导出以兼容 checkin.js 调用签名，但不再用于强制派生。
  */
 export function traePrimaryIds(accounts) {
   const seen = new Set();
   const primary = new Set();
   for (const a of accounts || []) {
-    if (!a || a.provider !== 'trae') continue;
+    if (!a || !String(a.provider).startsWith('trae')) continue;
     const dev = String(a.meta?.deviceId || a.meta?.traeDevice?.deviceId || '').trim();
     if (!dev || seen.has(dev)) continue;
     seen.add(dev);
@@ -275,28 +278,23 @@ export async function checkinTrae(account, ctx = {}) {
   const uid = account.uid || uidFromJwt(account.token || '');
   const label = account.name || account.id;
   const base = { accountId: account.id, account: label, provider: 'trae' };
-  // 同机多账号：真机号只给该 deviceId 的首账号（ctx.traePrimaryIds 由签到循环按全量
-  // trae 账号算好），非首账号强制派生号——否则第二个号起每天 9074（issue #28）
-  const devArg = (!ctx.traePrimaryIds || ctx.traePrimaryIds.has(account.id)) ? undefined : null;
+  // 所有账号都先用真机号（登录时注册的设备）——派生号被服务端一律拒 9074（#31）。
+  // 同设备多账号：服务端按「设备每日限一领」拒第二个号，返回「已经签到」归 already。
+  // 9074 时降级派生号重试（claimWithRetry attempt>0），仍失败归 failed 下轮再试。
   let r;
   try {
-    r = await post(STATUS_URL, account, {}, 0, devArg);
+    r = await post(STATUS_URL, account, {}, 0);
   } catch (e) {
     if (authDead(e)) throw e;
     return { ...base, status: 'failed', message: e.message, uid };
   }
   if (r.code !== 0) {
-    // 服务端部分拒绝文案也长「已经签到」样（如「当前设备今日已经签到」）——归 already，
-    // 面板显示「今日已领」而非「领取失败」；多账号同 IP / 同登录源被服务端风控合并时走这条
     if (/已经签到|已签到|already.*sign/i.test(String(r.message || ''))) {
       return { ...base, status: 'already', message: withCode(r.message || '今天已签到', r.code), uid };
     }
-    // 9074 实测两副面孔（issue #31）：面板文案「当前参与用户太多」像瞬时限流，但报告者对照
-    // 实验显示派生设备号被服务端一律拒 9074、同一时刻真机号可领——服务端大概率只认登录时
-    // 注册的设备号。因此重试时**轮换派生设备号**（attempt 递增），退避 + 换号双管齐下；
-    // 重试耗尽归 failed（不写签到 memo，下一轮还试）
     if (r.code === 9074) {
-      return finalizeClaim(await claimWithRetry(ctx, (i) => post(CLAIM_URL, account, {}, i, devArg)), base, uid, TRAE_DEFAULT_DAILY_CREDITS);
+      // 真机号被拒（可能是瞬时限流或设备绑定冲突）：降级派生号重试
+      return finalizeClaim(await claimWithRetry(ctx, (i) => post(CLAIM_URL, account, {}, i)), base, uid, TRAE_DEFAULT_DAILY_CREDITS);
     }
     return { ...base, status: 'failed', message: withCode(r.message || `code ${r.code}`, r.code), uid };
   }
@@ -305,11 +303,9 @@ export async function checkinTrae(account, ctx = {}) {
     return { ...base, status: 'already', message: '今天已签到', uid };
   }
 
-  // 签到应得额度：status 接口里通常预告 credits / extra_credits（如 100 积分），
-  // claim 接口有时只返回 { code: 0, message: "success" } 而不包含 credits 字段，作为 fallback 避免 +0
   const expectedCredits = Number(findField(r.body, 'credits') ?? findField(r.body, 'extra_credits')) || TRAE_DEFAULT_DAILY_CREDITS;
 
-  return finalizeClaim(await claimWithRetry(ctx, (i) => post(CLAIM_URL, account, {}, i, devArg)), base, uid, expectedCredits);
+  return finalizeClaim(await claimWithRetry(ctx, (i) => post(CLAIM_URL, account, {}, i)), base, uid, expectedCredits);
 }
 
 /**
