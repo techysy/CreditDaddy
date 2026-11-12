@@ -68,7 +68,8 @@
 - **本机导入**：一键安全读取本机已登录的客户端凭据 —— 本地解密 Qoder / Qoder CN 的 `auth.v1.dat`，读取 WorkBuddy 客户端（当前与历史会话），解密 ZCode / mirasim / 妙手 / Trae 客户端凭据，读取 MiniMax Code 的 `~/.minimax` 登录记录。敏感 Token 绝不出机器；同一用户续期时自动覆盖。
 - **客户端一键换号**：一键将桌面客户端切换至指定账号（WorkBuddy 自动热切换；ZCode / mirasim / 妙手 / Trae 退出客户端后写回并自动重新拉起），切号前自动保存当前在线 Token，各账号拥有独立设备指纹，杜绝风控串号。
 - **内置隐私（无痕）授权**：桌面版提供隔离的一次性会话窗口进行网页登录授权，不污染系统浏览器 Cookie，支持同平台无缝扩增多账号。
-- **全流程浏览器登录**：支持四家产品线在面板内直接完成网页 / 设备码授权并入库 —— Qoder 设备码授权（PKCE + nonce）、WorkBuddy 状态轮询、ZCode CLI 轮询（支持智谱 BigModel 与 Z.ai）、MiniMax 官方 OAuth 设备码授权（S256 PKCE）。
+- **全流程浏览器登录**：支持五家产品线在面板内直接完成网页 / 设备码授权并入库 —— Qoder 设备码授权（PKCE + nonce）、WorkBuddy 状态轮询、ZCode CLI 轮询（支持智谱 BigModel 与 Z.ai）、MiniMax 官方 OAuth 设备码授权（S256 PKCE）、Trae 官方同款授权码 + PKCE（国内 / 国际双线）。
+  > ⚠️ **Trae 浏览器登录需「同机」完成**：Trae 采用官方客户端同款机制，授权完成后浏览器会回跳 `http://127.0.0.1:<端口>` 的本机回调（由 CreditDaddy 监听）。因此请在**运行 CreditDaddy 的同一台机器**上打开授权链接完成登录——回跳打在本机回环才算送达。**远程场景（如 fnOS / NAS 网页面板在另一台电脑的浏览器里打开）回跳会落在你眼前的电脑上，浏览器报「无法访问 / 拒绝连接」属预期现象**，此时登录不会完成；NAS 上请改用「本机导入」（Trae 客户端装在同一台 NAS 时）或桌面版 / 同机浏览器操作。其余四家产品线为设备码 / 服务端回调，不受此限制，可跨机远程操作。
 - **网页会话免费额度捕获**：配置驱动的通用浏览器 cookie 捕获框架，接入 Token Harbor / 小米 MiMo / River AI / ModelScope 魔搭 / LongCat（美团）五家「凭据只在网页会话」的供应商——桌面版隐私窗登录自动收割（含 localStorage 凭据变体与鉴权 cookie 轮询等待），支持同站点多号并存、按身份归户、粘贴捕获兜底、就地重探（免重登刷新身份与余额）与三色探活呼吸灯 + 死会话低频重试；凭据只存本机，面板「免费额度」页统一管理。
 
 **自动领取与资产保障**
@@ -122,6 +123,7 @@
 
 ### Trae（字节 TRAE SOLO / Trae CN）
 - **账号来源**：解本机客户端 `<userData>/User/globalStorage/storage.json` 的 `iCubeAuthInfo://icube.cloudide`（Trae 自研「tc」信封：pepper 为随安装包分发的公开常量表，SHA512 两轮派生 + AES-128-CBC + SHA512 完整性前缀），纯 `node:crypto` 实现，不引入依赖、不需要 SQLite。敏感 Token 绝不出机。
+- **浏览器登录**（国内 / 国际双线）：官方客户端同款 OAuth 授权码 + PKCE，无需本机装 Trae 客户端；每账号独立设备指纹，不与已装客户端抢身份。授权完成时浏览器回跳本机回调端口——**须在运行 CreditDaddy 的同一台机器上完成授权**，跨机远程（NAS 网页面板）回跳报「无法访问」属预期，详见功能总览处的说明。
 - **签到与积分**：每日签到领积分，查询当前额度；面板显示凭据到期日，临期变红。
 - **有意不做自动续期**：Trae 的 refresh 会轮转 refreshToken 并作废 IDE 自己那份，等于把用户正在用的客户端踢下线，因此不提供自动续期。
 - **客户端切号**：按账号存 15 项登录态快照到 `~/.creditdaddy/trae-slots/<uid>/`，换走前先自动快照当前登录避免丢号；客户端在跑时拒绝切换（Trae 会把内存里的旧登录写回文件），强制切换后自动重新拉起。`x-device-id` 必须为纯数字设备号（传 GUID 触发 `code 9074`），优先取 `storage.json` 里 `iCubeAuthInfo://icube-dc:<数字>` 的键名后缀以与 IDE 自身指纹一致，缺失时按 uid 确定性派生。
