@@ -62,7 +62,7 @@ export function traePrimaryIds(accounts) {
   const primary = new Set();
   for (const a of accounts || []) {
     if (!a || a.provider !== 'trae') continue;
-    const dev = String(a.meta?.deviceId || '').trim();
+    const dev = String(a.meta?.deviceId || a.meta?.traeDevice?.deviceId || '').trim();
     if (!dev || seen.has(dev)) continue;
     seen.add(dev);
     primary.add(a.id);
@@ -165,7 +165,7 @@ async function post(url, account, body = {}, attempt = 0, storedDeviceId) {
   if (!jwt) throw new Error('账号缺少 Trae 登录 token（请到 Trae 客户端登录后用「本机导入」同步）');
   const uid = account.uid || uidFromJwt(jwt);
   const intl = account.provider === 'trae-intl' || Boolean(account.meta?.isIntl);
-  const dev = traeDevice(uid || 'anonymous', storedDeviceId !== undefined ? storedDeviceId : account.meta?.deviceId, attempt);
+  const dev = traeDevice(uid || 'anonymous', storedDeviceId !== undefined ? storedDeviceId : (account.meta?.deviceId || account.meta?.traeDevice?.deviceId), attempt);
   const res = await fetchJsonRace(url, {
     method: 'POST',
     headers: traeHeaders(jwt, dev, intl),
