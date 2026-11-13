@@ -4,7 +4,7 @@
 
 # CreditDaddy
 
-**AI 编程工具多账号本地管理 + 每日积分自动领取（领鸡蛋）助手：Qoder · WorkBuddy · ZCode · mirasim · 妙手 · Trae · MiniMax · ModelScope · 豆包 Doubao · 讯飞 Loomy，集成 10Router 额度总览、用量同步与网页会话额度卡（Token Harbor / 小米 MiMo / River / ModelScope 魔搭 / LongCat）**
+**AI 编程工具多账号本地管理 + 每日积分自动领取（领鸡蛋）助手：Qoder · WorkBuddy · ZCode · mirasim · 妙手 · Trae · MiniMax · ModelScope · 豆包 Doubao · 讯飞 Loomy · Meoo 秒悟，集成 10Router 额度总览、用量同步与网页会话额度卡（Token Harbor / 小米 MiMo / River / ModelScope 魔搭 / LongCat）**
 
 [![Release](https://img.shields.io/github/v/release/techysy/CreditDaddy?label=%E7%89%88%E6%9C%AC&color=2563eb)](https://github.com/techysy/CreditDaddy/releases/latest)
 [![CI](https://img.shields.io/github/actions/workflow/status/techysy/CreditDaddy/ci.yml?branch=main&label=CI)](https://github.com/techysy/CreditDaddy/actions/workflows/ci.yml)
@@ -144,6 +144,7 @@
 | River AI | WorkOS localStorage JWT 变体（三源收割） | `$25` 免费额度 `balance_usd`，会话过期自动续期 |
 | ModelScope 魔搭（issue #25） | 会话 cookie（双源） | 魔粒余额，卡面拆「今日发放 / 长期」两腿；每日额度登录自动发放、无签到端点 |
 | LongCat 美团（issue #29） | 美团 SSO 会话 cookie | Token 资源包：Balance 汇总 + 逐包明细腿（官方消耗顺序、赠送包徽注、到期日） |
+| Meoo 秒悟 | meoo.com 会话 cookie（阿里云 SSO 手机号 + 短信登录） | 每日首登积分（`/api/mc/entitlement/init` 触发，当前 +2000/天、约 6~7 天过期）自动领取 + 积分余额；会话失效（`NEED_LOGIN`）提示重新捕获；首版不推 10Router 卡 |
 
 > 注：办公小浣熊曾按 issue #27 调研接入，因 `raccoon_token` 异步写回时序不可靠已于 v1.5.0 回滚移除。
 
@@ -343,6 +344,7 @@ CreditDaddy/
 │   ├── localDetect.js          # 客户端已安装环境侦测
 │   ├── logger.js               # 内存环形日志与按日归档
 │   ├── longcatClient.js        # LongCat Token 资源包与身份请求
+│   ├── meooClient.js           # Meoo 秒悟每日首登积分与积分余额
 │   ├── mirasimClient.js        # mirasim 套餐 / 额度请求
 │   ├── mirasimLocal.js         # 本机 mirasim 凭据解密与切号
 │   ├── minimaxAuth.js          # MiniMax 浏览器登录（OAuth 设备码 + S256 PKCE）

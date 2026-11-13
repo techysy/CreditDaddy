@@ -1,7 +1,7 @@
 {
   "name": "creditdaddy",
   "version": "1.7.2",
-  "description": "CreditDaddy — Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae / MiniMax / ModelScope / 豆包 Doubao / 讯飞 Loomy / WPS 灵犀多账号本地管理与每日积分自动签到助手，及 10Router 供应商 Cookie 会话捕获与外部配额（Token Harbor / 小米 MiMo / River / ModelScope 魔搭 / LongCat）",
+  "description": "CreditDaddy — Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae / MiniMax / ModelScope / 豆包 Doubao / 讯飞 Loomy / WPS 灵犀 / Meoo 秒悟多账号本地管理与每日积分自动签到助手，及 10Router 供应商 Cookie 会话捕获与外部配额（Token Harbor / 小米 MiMo / River / ModelScope 魔搭 / LongCat）",
   "homepage": "https://github.com/techysy/CreditDaddy",
   "repository": {
     "type": "git",

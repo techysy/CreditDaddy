@@ -246,7 +246,7 @@ import('./src/constants.js').then(({ PROVIDERS, productOf }) => {
 " 2>/dev/null || true)
 if [ -n "$PROVIDERS" ]; then
   # catpaw 在文案里叫「妙手」，单独给别名
-  alias_of() { case "$1" in catpaw) echo "妙手";; tokenharbor) echo "Token Harbor";; 'xiaomi-mimo') echo "MiMo";; lingxi) echo "灵犀";; *) echo "$1";; esac; }
+  alias_of() { case "$1" in catpaw) echo "妙手";; tokenharbor) echo "Token Harbor";; 'xiaomi-mimo') echo "MiMo";; lingxi) echo "灵犀";; meoo) echo "秒悟";; *) echo "$1";; esac; }
   ROOT_DESC=$(node -p "require('./package.json').description")
   STALE=0
   while IFS= read -r product; do
