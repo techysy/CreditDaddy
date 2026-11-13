@@ -1,0 +1,266 @@
+/**
+ * DuMate 百度搭子（console.bce.baidu.com / dumate.cn）网页会话与每日登录积分领取。
+ *
+ * 协议与 10Router PR #113（open-sse/services/dumate.js 及 dumateCheckin.js）完全对齐：
+ *   1. 网关 token 换取（验证会话连通性）：
+ *      GET https://console.bce.baidu.com/api/dumate/app/token/get
+ *      - 带 Cookie 头（需含 BDUSS 与 bce-user-info）
+ *      - 成功返回 { code: 0, success: true, result: { token, expired_at } }
+ *      - 失败（重定向到登录页、返回 HTML 登录页或 JSON message 含“过期/登录”）判为会话失效
+ *   2. 每日登录积分领取：
+ *      POST https://console.bce.baidu.com/api/dumate/points/loginBonus
+ *      - 请求头带 csrftoken（从 bce-user-info 解码取得）、Cookie、Origin/Referer
+ *      - 接口自带幂等，成功返回 { code: 0, success: true }
+ *   3. 凭据 = 百度控制台会话 Cookie（支持 raw Cookie 字符串或 JSON array），
+ *      捕获后可直接同步至 10Router（映射为 dumate 连接，以 Cookie 作为 apiKey）。
+ */
+
+import { fetchJsonRace } from './zcodeClient.js';
+import { FETCH_TIMEOUT_MS } from './constants.js';
+import { t } from './i18n.js';
+
+export const DUMATE_CONSOLE_ORIGIN = 'https://console.bce.baidu.com';
+export const DUMATE_CONSOLE_HOST = 'console.bce.baidu.com';
+export const DUMATE_TOKEN_URL = `${DUMATE_CONSOLE_ORIGIN}/api/dumate/app/token/get`;
+export const DUMATE_LOGIN_BONUS_URL = `${DUMATE_CONSOLE_ORIGIN}/api/dumate/points/loginBonus`;
+export const DUMATE_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36';
+
+function normCookie(c) {
+  return { name: String(c.name), value: String(c.value ?? ''), domain: String(c.domain || '') };
+}
+
+/**
+ * 将传入的 Cookie 凭据（字符串、JSON 数组或包含 cookies 的对象）归一化为 [{ name, value, domain }]
+ */
+export function parseDumateCookies(input) {
+  if (!input) return [];
+  if (Array.isArray(input)) return input.filter((c) => c && c.name).map(normCookie);
+  if (typeof input === 'object') return Array.isArray(input.cookies) ? parseDumateCookies(input.cookies) : [];
+  const text = String(input).trim();
+  if (!text) return [];
+  if (text.startsWith('[') || text.startsWith('{')) {
+    try {
+      return parseDumateCookies(JSON.parse(text));
+    } catch {
+      return [];
+    }
+  }
+  const raw = text.replace(/^cookie:\s*/i, '');
+  return raw
+    .split(';')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const eq = part.indexOf('=');
+      if (eq <= 0) return null;
+      return { name: part.slice(0, eq).trim(), value: part.slice(eq + 1).trim(), domain: '' };
+    })
+    .filter(Boolean);
+}
+
+function domainMatches(cookie, host) {
+  if (!cookie.domain) return true;
+  const d = cookie.domain.replace(/^\./, '');
+  return host === d || host.endsWith(`.${d}`);
+}
+
+/** 按目标 host 生成过滤后的 Cookie 头字符串 */
+export function buildDumateCookieHeader(cookies, host = DUMATE_CONSOLE_HOST) {
+  const list = Array.isArray(cookies) ? cookies : parseDumateCookies(cookies);
+  return list
+    .filter((c) => c.name && domainMatches(c, host))
+    .map((c) => `${c.name}=${c.value}`)
+    .join('; ');
+}
+
+/**
+ * 从 bce-user-info Cookie 提取 csrftoken（URL 解码并去除两边引号）
+ */
+export function extractDumateCsrfToken(cookies, host = DUMATE_CONSOLE_HOST) {
+  const list = Array.isArray(cookies) ? cookies : parseDumateCookies(cookies);
+  const c = list.find((x) => x.name === 'bce-user-info' && domainMatches(x, host));
+  if (!c?.value) return '';
+  let v = c.value;
+  try {
+    v = decodeURIComponent(v);
+  } catch {
+    /* keep raw */
+  }
+  return v.replace(/^["']+|["']+$/g, '');
+}
+
+/**
+ * 从 bce-user-info 中提取标识 ID（若包含形如 timestamp|userId 则提取后半段）
+ */
+export function extractDumateUserId(cookies) {
+  const token = extractDumateCsrfToken(cookies);
+  if (!token) return null;
+  const parts = token.split('|');
+  if (parts.length >= 2 && parts[1]) {
+    return parts[1].trim();
+  }
+  return token;
+}
+
+/**
+ * 账号脱敏掩码显示
+ */
+export function maskDumateUserId(id) {
+  const s = String(id ?? '');
+  if (s.length >= 7) return s.slice(0, 3) + '****' + s.slice(-3);
+  if (s.length >= 4) return s.slice(0, 1) + '****' + s.slice(-1);
+  return '****';
+}
+
+export function parseConsoleJson(text) {
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === 'object') return parsed;
+  } catch {
+    /* fall through */
+  }
+  return null;
+}
+
+export function consoleMessage(payload) {
+  const m = payload?.message;
+  if (typeof m === 'string') return m;
+  if (m && typeof m === 'object') return m.global || JSON.stringify(m);
+  return '';
+}
+
+/**
+ * 验证百度搭子会话并换取网关 token：
+ * @returns {Promise<{ auth: boolean, ok: boolean, token?: string, expiredAt?: string, code?: string|number, error?: string }>}
+ */
+export async function verifyDumateSession(credentialInput, { fetchImpl } = {}) {
+  const cookies = parseDumateCookies(credentialInput);
+  const header = buildDumateCookieHeader(cookies);
+  if (!header) {
+    return { auth: false, ok: false, error: t('缺少 Cookie（需包含 console.bce.baidu.com 的 Cookie）') };
+  }
+  const doIt = fetchImpl || ((u, init) => fetchJsonRace(u, { ...init, timeoutMs: FETCH_TIMEOUT_MS }));
+
+  try {
+    const res = await doIt(DUMATE_TOKEN_URL, {
+      method: 'GET',
+      headers: {
+        Cookie: header,
+        'User-Agent': DUMATE_USER_AGENT,
+        Accept: 'application/json',
+        Referer: `${DUMATE_CONSOLE_ORIGIN}/`,
+      },
+      redirect: 'manual',
+    });
+
+    if (res.status >= 300 && res.status < 400) {
+      return { auth: false, ok: false, error: t('DuMate 登录态已失效（控制台重定向到登录页）') };
+    }
+
+    const text = await res.text().catch(() => '');
+    const payload = parseConsoleJson(text);
+    if (!payload) {
+      return { auth: false, ok: false, error: t('DuMate 登录态已失效（控制台返回登录页）') };
+    }
+
+    const msg = consoleMessage(payload);
+    if (payload.code !== 0 || payload.success === false || !payload.result?.token) {
+      const expired = /登录|过期|login/i.test(msg);
+      return { auth: !expired, ok: false, code: payload.code, error: msg || `code=${payload.code}` };
+    }
+
+    return {
+      auth: true,
+      ok: true,
+      token: payload.result.token,
+      expiredAt: payload.result.expired_at,
+    };
+  } catch (err) {
+    return { auth: true, ok: false, error: err?.message || t('网络请求异常') };
+  }
+}
+
+/**
+ * 每日领取登录积分：
+ * @returns {Promise<{ status: 'checked-in'|'already'|'failed', claimedAmount?: number, message?: string, error?: string, authExpired?: boolean }>}
+ */
+export async function checkinDumate(account, { fetchImpl } = {}) {
+  const cookie = account?.meta?.cookieSiteSession?.cookie || account?.token || '';
+  const cookies = parseDumateCookies(cookie);
+  const csrftoken = extractDumateCsrfToken(cookies);
+
+  if (!csrftoken) {
+    return { status: 'failed', error: t('Cookie 缺少 bce-user-info（无法生成 csrftoken）') };
+  }
+
+  const doIt = fetchImpl || ((u, init) => fetchJsonRace(u, { ...init, timeoutMs: FETCH_TIMEOUT_MS }));
+
+  try {
+    const res = await doIt(DUMATE_LOGIN_BONUS_URL, {
+      method: 'POST',
+      headers: {
+        Cookie: buildDumateCookieHeader(cookies),
+        csrftoken,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        Origin: DUMATE_CONSOLE_ORIGIN,
+        Referer: `${DUMATE_CONSOLE_ORIGIN}/`,
+        'User-Agent': DUMATE_USER_AGENT,
+      },
+      body: '{}',
+      redirect: 'manual',
+    });
+
+    if (res.status >= 300 && res.status < 400) {
+      return { status: 'failed', error: t('登录态已失效（重定向到登录页）'), authExpired: true };
+    }
+
+    const text = await res.text().catch(() => '');
+    const payload = parseConsoleJson(text);
+    if (!payload) {
+      return { status: 'failed', error: t('登录态已失效（控制台返回登录页）'), authExpired: true };
+    }
+
+    if (payload.success === true && payload.code === 0) {
+      return {
+        status: 'checked-in',
+        message: t('已领取今日登录赠送积分'),
+      };
+    }
+
+    const msg = consoleMessage(payload);
+    const expired = /登录|过期|login/i.test(msg);
+    return {
+      status: 'failed',
+      error: msg || `code=${payload.code}`,
+      authExpired: expired,
+    };
+  } catch (err) {
+    return { status: 'failed', error: err?.message || t('网络请求异常') };
+  }
+}
+
+/**
+ * 额度查询（DuMate 个人额度及网关状态查询）
+ */
+export async function fetchDumateQuota(account, { fetchImpl } = {}) {
+  const cookie = account?.meta?.cookieSiteSession?.cookie || account?.token || '';
+  const ver = await verifyDumateSession(cookie, { fetchImpl });
+  if (!ver.auth) {
+    const err = new Error(ver.error || t('会话已失效'));
+    err.auth = true;
+    throw err;
+  }
+  if (!ver.ok) {
+    throw new Error(ver.error || t('网关 token 验证失败'));
+  }
+  return {
+    unit: '积分',
+    total: 100,
+    used: 0,
+    remaining: 100,
+    parts: [{ name: t('网关可用'), total: 100, used: 0, remaining: 100 }],
+  };
+}

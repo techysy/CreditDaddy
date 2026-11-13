@@ -22,6 +22,7 @@ import { fetchMiniMaxQuota, checkinMiniMax, verifyMiniMaxAccount } from './minim
 import { fetchDoubaoStatus, checkinDoubao } from './doubaoClient.js';
 import { checkinLingxi, fetchLingxiQuota } from './lingxiClient.js';
 import { checkinMeoo, fetchMeooQuota } from './meooClient.js';
+import { checkinDumate, fetchDumateQuota } from './dumateClient.js';
 import { fetchLoomyQuota, verifyLoomyAccount } from './loomyClient.js';
 /** 从 userinfo 响应中挑一个可读的显示名 */
 export function displayNameFrom(ui) {
@@ -264,6 +265,14 @@ const PRODUCTS = {
     // NEED_LOGIN 记失败并提示重新捕获。额度 = 积分余额（独立口径，unit '秒悟积分' 不进剩余积分合计）。
     checkin: (account) => checkinMeoo(account),
     quota: (account) => fetchMeooQuota(account),
+  },
+  dumate: {
+    label: 'DuMate 百度搭子',
+    // 网页会话捕获线：凭据是 console.bce.baidu.com 会话 Cookie（BDUSS + bce-user-info）。
+    // 「签到」= 调控制台 loginBonus 领取每日登录赠送积分；验证 = 调 /api/dumate/app/token/get 换网关 token。
+    // 同步到 10Router 时直接作为 dumate 渠道的 apiKey 消费。
+    checkin: (account) => checkinDumate(account),
+    quota: (account) => fetchDumateQuota(account),
   },
   loomy: {
     label: '讯飞 Loomy',

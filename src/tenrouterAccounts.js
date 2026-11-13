@@ -27,6 +27,7 @@ export const TENROUTER_PROVIDER_MAP = {
   'trae-intl': 'trae',                 // 国际线（浏览器 OAuth 登录，10R trae 条目缺省国际站）；连接同步走 transfer 管线
   tokenharbor: 'tokenharbor-free',   // #23：会话 cookie 只喂「额度监控卡」(freeTier,不走路由);tokenharbor 钱包卡留给 sk- 运输 key
   loomy: 'loomy',
+  dumate: 'dumate',                  // 10R #113：DuMate 百度搭子 web-cookie 渠道
   // zcode → glm：等 zcode 反代就绪后补一行（同步流程已就绪，无需改代码）
 };
 

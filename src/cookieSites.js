@@ -200,6 +200,18 @@ export const COOKIE_SITES = [
     no10rSync: true,       // 首版不推 10Router 外部配额卡（积分只在 Meoo 内消费）
     hint: '登录 meoo.com（阿里云账号手机号 + 短信）后捕获会话；CD 每日自动领取首登积分（当前 +2000/天，约 6~7 天后过期）并展示积分余额。会话失效（NEED_LOGIN）时请重新登录捕获，Cookie 只存本机。',
   },
+  {
+    id: 'dumate',
+    name: 'DuMate 百度搭子',
+    provider: 'dumate',
+    label: 'DuMate 百度搭子',
+    loginUrl: 'https://login.bce.baidu.com',
+    homeUrl: 'https://console.bce.baidu.com',
+    verify: 'api',
+    cookieUrls: ['https://console.bce.baidu.com', 'https://login.bce.baidu.com', 'https://www.dumate.cn'],
+    accountName: 'DuMate 百度搭子',
+    hint: '登录百度智能云控制台后捕获会话；CD 每日自动领取登录赠送积分并验证网关可用性，Cookie 只存本机，可直接同步到 10Router 作为 dumate 渠道。',
+  },
   // ⚠ 码道 CodeArts（issue #40）已于 2026-10-30 撤下，不再提供：
   //   华为云控制台会话受闲置超时 + WAF 指印（HWWAFSESID / browserCheckResult）绑定，
   //   浏览器里能靠 SPA 持续续期，本机无法续 —— 实测新鲜会话当日内即失效（网关回登录页），
