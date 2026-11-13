@@ -188,3 +188,50 @@ test('DuMate 供应商登记与 10Router 映射一致性', () => {
   assert.equal(typeof impl.checkin, 'function');
   assert.equal(typeof impl.quota, 'function');
 });
+
+test('DuMate 积分明细 quota_overview 真实解析', async () => {
+  const mockFetch = async () => res(200, {
+    code: 0,
+    success: true,
+    result: {
+      isSubscribed: true,
+      usedPoints: '0.00',
+      totalPoints: '5500.00',
+      subscription: [
+        {
+          packageId: 'sub-1',
+          usedPoints: '0.00',
+          totalPoints: '5000.00',
+          pointsExpireDate: 1795182589,
+          packageType: 'plan_experience',
+          source: 'event_bonus',
+          status: 'active',
+        },
+      ],
+      incremental: [
+        {
+          packageId: 'inc-1',
+          usedPoints: '0.00',
+          totalPoints: '500.00',
+          pointsExpireDate: 1797091199,
+          packageType: 'grant_point',
+          source: 'login_bonus',
+          status: 'active',
+        },
+      ],
+    },
+  });
+
+  const account = { token: COOKIE_HEADER };
+  const q = await fetchDumateQuota(account, { fetchImpl: mockFetch });
+  assert.equal(q.unit, '积分');
+  assert.equal(q.total, 5500);
+  assert.equal(q.used, 0);
+  assert.equal(q.remaining, 5500);
+  assert.equal(q.parts.length, 2);
+  assert.equal(q.parts[0].name, '体验版订阅积分');
+  assert.equal(q.parts[0].total, 5000);
+  assert.equal(q.parts[1].name, '登录赠送积分');
+  assert.equal(q.parts[1].total, 500);
+  assert.ok(q.expiresAt);
+});

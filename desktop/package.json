@@ -7,8 +7,9 @@
   "author": "techysy",
   "license": "MIT",
   "scripts": {
-    "dist": "electron-builder --win --x64",
-    "dist:mac": "electron-builder --mac"
+    "clean:dist": "node ../scripts/clean-dist.js",
+    "dist": "node ../scripts/clean-dist.js && electron-builder --win --x64",
+    "dist:mac": "node ../scripts/clean-dist.js && electron-builder --mac"
   },
   "devDependencies": {
     "electron": "^37.2.0",

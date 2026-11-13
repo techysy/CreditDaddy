@@ -2070,5 +2070,11 @@
   "<div class=\"z-row\"><span class=\"z-label\">本机凭据</span><span class=\"z-text\">由本机 DuMate 百度搭子客户端本地解密导入（会话 Cookie 不出本机）；每日自动领取登录赠送积分，支持邀请码兑换，可一键同步 10Router。</span></div>": "<div class=\"z-row\"><span class=\"z-label\">Local credentials</span><span class=\"z-text\">Imported by locally decrypting the DuMate client (session cookies never leave this machine); daily login bonus claimed automatically, invite-code redemption supported, one-click sync to 10Router.</span></div>",
   " <span class=\"dim\">客户端：未安装（本机导入需要 Windows DuMate 百度搭子客户端）</span>": " <span class=\"dim\">Client: not installed (local import requires the Windows DuMate client)</span>",
   "推荐使用邀请码 {code}（复制到下方即可；兑换后双方各 +2000 积分，每号仅一次）": "Recommended invite code {code} (copy it below; both sides +2,000 points after redemption, once per account)",
-  "输入邀请码，如 {code}（区分大小写）": "Enter invite code, e.g. {code} (case-sensitive)"
+  "输入邀请码，如 {code}（区分大小写）": "Enter invite code, e.g. {code} (case-sensitive)",
+  "体验版订阅积分": "Experience plan subscription points",
+  "订阅积分": "Subscription points",
+  "登录赠送积分": "Login bonus points",
+  "赠送积分": "Bonus points",
+  "增购积分": "Purchased points",
+  "可用积分": "Available points"
 }

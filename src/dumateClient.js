@@ -23,6 +23,7 @@ export const DUMATE_CONSOLE_ORIGIN = 'https://console.bce.baidu.com';
 export const DUMATE_CONSOLE_HOST = 'console.bce.baidu.com';
 export const DUMATE_TOKEN_URL = `${DUMATE_CONSOLE_ORIGIN}/api/dumate/app/token/get`;
 export const DUMATE_LOGIN_BONUS_URL = `${DUMATE_CONSOLE_ORIGIN}/api/dumate/points/loginBonus`;
+export const DUMATE_QUOTA_OVERVIEW_URL = `${DUMATE_CONSOLE_ORIGIN}/api/dumate/points/quota_overview`;
 export const DUMATE_USER_INFO_URL = `${DUMATE_CONSOLE_ORIGIN}/api/dumate/user/info`;
 export const DUMATE_INVITE_GET_URL = `${DUMATE_CONSOLE_ORIGIN}/api/dumate/invitation_code/get`;
 export const DUMATE_INVITE_REDEEM_URL = `${DUMATE_CONSOLE_ORIGIN}/api/dumate/invitation_code/redeem`;
@@ -338,24 +339,105 @@ export async function redeemDumateInviteCode(credentialInput, code, { fetchImpl 
 }
 
 /**
- * 额度查询（DuMate 个人额度及网关状态查询）
+ * 额度查询（DuMate 个人版积分概览）
+ * 对齐客户端积分明细（quota_overview 接口）：
+ *  - 订阅积分（subscription）
+ *  - 赠送积分（login_bonus / event_bonus 等）
+ *  - 增购积分（plan_point）
+ *  - 最近到期时间（nearestExpiryPackage）
  */
 export async function fetchDumateQuota(account, { fetchImpl } = {}) {
   const cookie = account?.meta?.cookieSiteSession?.cookie || account?.token || '';
-  const ver = await verifyDumateSession(cookie, { fetchImpl });
-  if (!ver.auth) {
-    const err = new Error(ver.error || t('会话已失效'));
+  const doIt = fetchImpl || ((u, init) => fetchJsonRace(u, { ...init, timeoutMs: FETCH_TIMEOUT_MS }));
+
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai';
+  const url = `${DUMATE_QUOTA_OVERVIEW_URL}?timezone=${encodeURIComponent(tz)}&clientType=desktop&ignoreLoginBonus=true`;
+
+  const res = await doIt(url, {
+    method: 'GET',
+    headers: dumateConsoleHeaders(cookie),
+    redirect: 'manual',
+  });
+
+  if (res.status >= 300 && res.status < 400) {
+    const err = new Error(t('DuMate 登录态已失效（控制台重定向到登录页）'));
     err.auth = true;
     throw err;
   }
-  if (!ver.ok) {
-    throw new Error(ver.error || t('网关 token 验证失败'));
+
+  const text = await res.text().catch(() => '');
+  const payload = parseConsoleJson(text);
+  if (!payload) {
+    const err = new Error(t('DuMate 登录态已失效（控制台返回登录页）'));
+    err.auth = true;
+    throw err;
   }
+
+  if (payload.code !== 0 || payload.success === false) {
+    const msg = consoleMessage(payload);
+    const expired = /登录|过期|login/i.test(msg);
+    const err = new Error(msg || `code=${payload.code}`);
+    err.auth = expired;
+    throw err;
+  }
+
+  const r = payload.result || {};
+  const total = parseFloat(r.totalPoints) || 0;
+  const used = parseFloat(r.usedPoints) || 0;
+  const remaining = Math.max(0, total - used);
+
+  const parts = [];
+  const subs = Array.isArray(r.subscription) ? r.subscription.filter((s) => s.status === 'active') : [];
+  const incs = Array.isArray(r.incremental) ? r.incremental.filter((s) => s.status === 'active') : [];
+
+  const fmtDate = (sec) => (Number(sec) > 0 ? new Date(sec * 1000).toISOString() : null);
+
+  for (const s of subs) {
+    const pTotal = parseFloat(s.totalPoints) || 0;
+    const pUsed = parseFloat(s.usedPoints) || 0;
+    const pRem = Math.max(0, pTotal - pUsed);
+    parts.push({
+      name: s.packageType === 'plan_experience' ? t('体验版订阅积分') : t('订阅积分'),
+      total: pTotal,
+      used: pUsed,
+      remaining: pRem,
+      recurring: true,
+      expiresAt: fmtDate(s.pointsExpireDate || s.expireDate),
+    });
+  }
+
+  for (const s of incs) {
+    const pTotal = parseFloat(s.totalPoints) || 0;
+    const pUsed = parseFloat(s.usedPoints) || 0;
+    const pRem = Math.max(0, pTotal - pUsed);
+    const isLoginBonus = s.source === 'login_bonus';
+    const isGrant = s.packageType === 'grant_point' || s.packageType === 'event_bonus';
+    const name = isLoginBonus ? t('登录赠送积分') : (isGrant ? t('赠送积分') : t('增购积分'));
+    parts.push({
+      name,
+      total: pTotal,
+      used: pUsed,
+      remaining: pRem,
+      recurring: false,
+      expiresAt: fmtDate(s.pointsExpireDate || s.expireDate),
+    });
+  }
+
+  // 找最近到期包的到期时间
+  let nearestExp = null;
+  const allActive = [...subs, ...incs].filter((p) => p.pointsExpireDate || p.expireDate);
+  allActive.sort((a, b) => (a.pointsExpireDate || a.expireDate) - (b.pointsExpireDate || b.expireDate));
+  if (allActive.length > 0) {
+    nearestExp = fmtDate(allActive[0].pointsExpireDate || allActive[0].expireDate);
+  }
+
   return {
     unit: '积分',
-    total: 100,
-    used: 0,
-    remaining: 100,
-    parts: [{ name: t('网关可用'), total: 100, used: 0, remaining: 100 }],
+    total,
+    used,
+    remaining,
+    parts: parts.length > 0 ? parts : [{ name: t('可用积分'), total, used, remaining }],
+    expiresAt: nearestExp,
+    exceeded: remaining <= 0,
   };
 }
