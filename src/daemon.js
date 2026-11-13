@@ -387,6 +387,36 @@ async function reprobeCookieAccount(site, a) {
       logger.info('COOKIE-SITE', '{name} 就地重探通过（{identity}，签到{signed}，灵点 {balance}）', { name: site.name, identity: uid ? 'uid ' + uidMasked : '无 uid', signed: st.checkedIn ? '已签' : '未签', balance: Number.isFinite(st.balance) ? st.balance : '—' });
       return finish({ id: a.id, name: a.name, ok: true, identity: uid ? `uid:${uidMasked}` : null, balance: Number.isFinite(st.balance) ? st.balance : null, quotaSnapshot: Number.isFinite(st.balance) ? { used: 0, total: st.balance, isCreditBalance: true, at: now } : null });
     }
+    if (site.id === 'meoo') {
+      // Meoo 秒悟：权益接口即探测（只读，不调 entitlement/init——发放动作只走签到线），
+      // 刷新积分余额快照；身份走 user/me 的 user_id（老行缺失时回填 + 名字升级）
+      const { fetchMeooEntitlement, fetchMeooIdentity, maskMeooUserId } = await import('./meooClient.js');
+      const ent = await fetchMeooEntitlement(cookie).catch((e) => ({ auth: true, ok: false, code: e?.message || 'network' }));
+      if (!ent.auth) return finish({ id: a.id, name: a.name, ok: false, error: 'Meoo 会话已失效（NEED_LOGIN），请重新登录捕获' });
+      if (!ent.ok) return finish({ id: a.id, name: a.name, ok: false, error: '探测失败，请稍后再试或重新登录捕获' });
+      const ident = await fetchMeooIdentity(cookie).catch(() => null);
+      const userId = ident?.ok ? ident.userId : null;
+      const masked = userId ? maskMeooUserId(userId) : null;
+      const bal = Number.isFinite(ent.balance) ? ent.balance : null;
+      await withAccounts((list) => {
+        const hit = list.find((x) => x.id === a.id);
+        if (!hit) return;
+        hit.meta = {
+          ...(hit.meta || {}),
+          cookieSiteSession: { cookie, capturedAt: hit.meta?.cookieSiteSession?.capturedAt || now },
+          ...(userId && !hit.meta?.identityHash ? { identityHash: identityHashOf(`uid:${userId}`) } : {}),
+          ...(ent.grants ? { meooGrants: { grants: ent.grants, at: now } } : {}),
+          ...(bal !== null ? { quotaSnapshot: { used: 0, total: bal, isCreditBalance: true, at: now } } : {}),
+        };
+        if (userId) {
+          hit.uid = String(userId);
+          if (canAutoRename(site, hit)) hit.name = `${site.accountName}(${masked})`;
+        }
+        hit.updatedAt = now;
+      });
+      logger.info('COOKIE-SITE', '{name} 就地重探通过（{identity}，积分 {balance}）', { name: site.name, identity: masked ? 'uid ' + masked : '无 uid', balance: bal ?? '—' });
+      return finish({ id: a.id, name: a.name, ok: true, identity: masked ? `uid:${masked}` : null, balance: bal, quotaSnapshot: bal !== null ? { used: 0, total: bal, isCreditBalance: true, at: now } : null });
+    }
     if (site.id === 'doubao') {
       // 豆包（issue #32）：detail 接口一次拿全（会话有效性 + 签到状态 + 累计点数），
       // 重探 = 刷新额度快照；无 10R 同步（豆包不推外部配额卡，错误文案不再误导）
@@ -764,7 +794,7 @@ async function handleApi(req, res, url) {
       // 单位标注：各家余额单位互异（Token / USD / CNY / 魔粒 / 积分）且都不是「积分」
       // 口径——带 unit 返回，面板 creditSum 按 unit 有无决定是否计入「剩余积分」合计
       //（有单位 = 不同量纲，不相加）。HTML 探针站（tokenharbor）是百分比，同样排除。
-      const UNIT_BY_SITE = { 'xiaomi-mimo': 'CNY', 'river': 'USD', 'longcat': 'Token', 'modelscope': '魔粒', 'lingxi': '灵点' };
+      const UNIT_BY_SITE = { 'xiaomi-mimo': 'CNY', 'river': 'USD', 'longcat': 'Token', 'modelscope': '魔粒', 'lingxi': '灵点', 'meoo': '秒悟积分' };
       const unit = UNIT_BY_SITE[site.id] || (hasTotal ? '' : '%');
       return json(res, 200, { quota: {
         total: hasTotal ? total : 100,
@@ -1280,11 +1310,13 @@ async function handleApi(req, res, url) {
             msBalance: a.meta?.msBalance || null,
             longcatPacks: a.meta?.longcatPacks || null,
             lingxiPacks: a.meta?.lingxiPacks || null,   // 智点资源包快照（issue #53）
+            meooGrants: a.meta?.meooGrants || null,     // Meoo 积分逐笔发放快照（带到期日）
             lastProbe: a.meta?.lastProbe || null,   // 呼吸灯数据源：ok / warn / dead + 失败原因
           }));
         const latest = rows.reduce((t, r) => (r.capturedAt && (!t || r.capturedAt > t) ? r.capturedAt : t), null);
         return {
           id: site.id, name: site.name, label: site.label, loginUrl: site.loginUrl, hint: site.hint,
+          ...(site.no10rSync === true ? { no10rSync: true } : {}),
           accountId: rows[0]?.id || null, capturedAt: latest, accounts: rows,
         };
       }),
@@ -1495,6 +1527,37 @@ async function handleApi(req, res, url) {
       }
     }
 
+    // Meoo 秒悟：权益接口即探测（带 cookie 返 success:true，未登录 401 NEED_LOGIN）。
+    // 只读——不在捕获时调 entitlement/init，首登积分发放统一走签到线。身份 = user/me 的 user_id。
+    let meooUserId = null;
+    let meooMasked = null;
+    let meooGrants = null;
+    if (site.id === 'meoo') {
+      try {
+        const { fetchMeooEntitlement, fetchMeooIdentity, maskMeooUserId } = await import('./meooClient.js');
+        if (!cookie) {
+          logger.warn('COOKIE-SITE', '{name} 未读到会话 cookie', { name: site.name });
+          return json(res, 400, { error: '未读到 Meoo 登录会话，请在登录窗完成登录后再关闭' });
+        }
+        const ent = await fetchMeooEntitlement(cookie);
+        if (!ent.auth) {
+          logger.warn('COOKIE-SITE', '{name} 权益接口探测被拒:{code}', { name: site.name, code: ent.code });
+          return json(res, 401, { error: '会话不可用，请重新登录该站点后再捕获（探测 401/403）' });
+        }
+        if (!ent.ok) return json(res, 502, { error: '探测站点失败：' + (ent.code || '') });
+        const ident = await fetchMeooIdentity(cookie).catch(() => null);
+        meooUserId = ident?.ok ? ident.userId : null;
+        meooMasked = meooUserId ? maskMeooUserId(meooUserId) : null;
+        if (ent.grants) meooGrants = { grants: ent.grants, at: now };
+        identity = meooUserId ? `uid:${meooUserId}` : null;   // 有 user_id → 哈希归户；无 → 单例兜底
+        quotaSnapshot = { used: 0, total: Number(ent.balance) || 0, isCreditBalance: true };
+        logger.info('COOKIE-SITE', '{name} 探测通过（{identity}，积分 {balance}）', { name: site.name, identity: meooUserId ? 'uid ' + meooMasked : '无 uid（单例）', balance: Number.isFinite(ent.balance) ? ent.balance : '—' });
+      } catch (meooErr) {
+        logger.warn('COOKIE-SITE', '{name} 权益接口抓取异常:{err}', { name: site.name, err: meooErr.message });
+        return json(res, 502, { error: '探测站点失败：' + (meooErr.message || '') });
+      }
+    }
+
     const ih = identityHashOf(mimoUserId || riverSession?.user?.id || msSession?.id || lcSession?.userId || identity);
     const quotaMeta = quotaSnapshot ? { quotaSnapshot: { ...quotaSnapshot, at: now } } : {};
     const cred = riverSession ? riverSession.accessToken : cookie;   // 落盘的凭据主体
@@ -1511,6 +1574,7 @@ async function handleApi(req, res, url) {
       else if (site.id === 'modelscope') accName = `ModelScope (${identity || '会话'})`;
       else if (site.id === 'longcat') accName = `LongCat (${identity || '会话'})`;
       else if (site.id === 'lingxi') accName = site.accountName + (lxUidMasked ? `(${lxUidMasked})` : '');   // uid 后缀脱敏（前3后3），归户仍用原始 uid
+      else if (site.id === 'meoo') accName = site.accountName + (meooMasked ? `(${meooMasked})` : '');   // user_id 脱敏后缀，归户仍用原始值
       else accName = site.accountName + (identity ? `(${identity})` : '');
       // 自动行名只在「没手改过且现名属自动名家族」时写入（meta.renamed + isAutoGeneratedName 双闸）
       const autoName = (row) => { if (canAutoRename(site, row)) row.name = accName; };
@@ -1538,6 +1602,8 @@ async function handleApi(req, res, url) {
           ...(lxSnapshot ? { lingxiPacks: lxSnapshot } : {}),
         };
         if (lcSession?.userId) { hit.uid = String(lcSession.userId); autoName(hit); }
+        if (meooUserId) { hit.uid = String(meooUserId); autoName(hit); }
+        if (meooGrants) hit.meta.meooGrants = meooGrants;
         hit.updatedAt = now;
         accountId = hit.id;
       } else {
@@ -1546,7 +1612,7 @@ async function handleApi(req, res, url) {
           provider: site.provider,
           token: cred,
           expiresAt: site.id === 'river' ? (riverSession?.expiresAt || undefined) : undefined,
-          uid: mimoUserId || riverUid || (msSession?.id ? String(msSession.id) : undefined) || (lcSession?.userId ? String(lcSession.userId) : undefined) || (lxUid ? String(lxUid) : undefined) || undefined,
+          uid: mimoUserId || riverUid || (msSession?.id ? String(msSession.id) : undefined) || (lcSession?.userId ? String(lcSession.userId) : undefined) || (lxUid ? String(lxUid) : undefined) || (meooUserId ? String(meooUserId) : undefined) || undefined,
           source: 'web-session',
           meta: {
             cookieSiteId: site.id,
@@ -1561,6 +1627,7 @@ async function handleApi(req, res, url) {
           ...(lcPacks ? { longcatPacks: longcatSnapshot(lcPacks) } : {}),
           ...(lcSession ? { longcatSession: lcSession } : {}),
           ...(lxSnapshot ? { lingxiPacks: lxSnapshot } : {}),
+          ...(meooGrants ? { meooGrants } : {}),
           },
         });
         acc.verified = true;
@@ -1623,6 +1690,7 @@ async function handleApi(req, res, url) {
     // ——失败说明会话可能已死，恰好要把 message 状态卡推上去让 10R 卡面可见。
     const touchedSources = new Set();
     const sourceOf = async (a) => {
+      if (site.no10rSync === true) return null;   // 不推 10R 卡的站点（如 Meoo）不进推送名单
       if (site.id === 'tokenharbor') return 'tokenharbor';
       try {
         const m = await import(
@@ -2065,6 +2133,7 @@ async function handleApi(req, res, url) {
         trae: dayKey(Date.now(), 'trae'),
         minimax: dayKey(Date.now(), 'minimax'),
         lingxi: dayKey(Date.now(), 'lingxi'),   // 网页会话签到线（#53）：0 点翻日，徽标/isDone 的日界比对用
+        meoo: dayKey(Date.now(), 'meoo'),       // Meoo 首登积分线：同为 0 点翻日
       },
       scheduler: await getSchedulerInfo(),
       riskIdentity: riskIdentityAvailable(),

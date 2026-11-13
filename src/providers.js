@@ -21,6 +21,7 @@ const isTraeIntl = (account) => account?.provider === 'trae-intl' || Boolean(acc
 import { fetchMiniMaxQuota, checkinMiniMax, verifyMiniMaxAccount } from './minimaxClient.js';
 import { fetchDoubaoStatus, checkinDoubao } from './doubaoClient.js';
 import { checkinLingxi, fetchLingxiQuota } from './lingxiClient.js';
+import { checkinMeoo, fetchMeooQuota } from './meooClient.js';
 import { fetchLoomyQuota, verifyLoomyAccount } from './loomyClient.js';
 /** 从 userinfo 响应中挑一个可读的显示名 */
 export function displayNameFrom(ui) {
@@ -255,6 +256,14 @@ const PRODUCTS = {
     // （幂等性提案者未验证，claimed 时绝不盲打 POST）。
     checkin: (account) => checkinLingxi(account),
     quota: (account) => fetchLingxiQuota(account),
+  },
+  meoo: {
+    label: 'Meoo 秒悟',
+    // 网页会话捕获线：凭据是 meoo.com 会话 cookie（meta.cookieSiteSession.cookie，阿里云 SSO 登录）。
+    // 「签到」= 调网页端同款 entitlement/init 触发每日首登积分（2000/天，约 6~7 天后过期）；
+    // NEED_LOGIN 记失败并提示重新捕获。额度 = 积分余额（独立口径，unit '秒悟积分' 不进剩余积分合计）。
+    checkin: (account) => checkinMeoo(account),
+    quota: (account) => fetchMeooQuota(account),
   },
   loomy: {
     label: '讯飞 Loomy',

@@ -1303,7 +1303,7 @@ const PROV = {
 const CHECKIN_PRODUCTS = new Set(['qoder', 'workbuddy', 'trae', 'minimax']);
 // 网页会话卡支持「立即签到」的站点：provider 在 providers.js 挂了 checkin 且非 entryOnly
 // （豆包虽挂了 checkin 实现，但定位是纯打开入口、CD 不代签，不在此列）
-const FREE_CHECKIN_SITES = new Set(['lingxi']);
+const FREE_CHECKIN_SITES = new Set(['lingxi', 'meoo']);
 const CLIENT_LABEL = { qoder: 'Qoder', workbuddy: 'WorkBuddy', zcode: 'ZCode', mirasim: 'mirasim', catpaw: '妙手', trae: 'Trae', minimax: 'MiniMax', loomy: 'Loomy' };
 // 产品页顶部改用「有效套餐 N/M」而不是「剩余积分」的产品（单位不是积分：Token / % / Credits）。
 // ⚠️ 只影响**产品页头部文案**；「能不能并进仪表盘剩余积分合计」由下方的 CREDIT_SUM_EXCLUDED
@@ -3037,6 +3037,18 @@ function renderFreePool() {
             ? '<span class="dim" style="font-size:11px">' + T('（') + packs.length + T(' 个资源包 · 至 ') + esc((packs.map((p) => p.expireAt).filter(Boolean).sort()[0] || '').slice(0, 10)) + T(' 到期）') + '</span>'
             : '';
           return '<span class="pill ok" style="font-weight:600">' + T('智点余额 ') + Number(bal).toLocaleString() + '</span>' + detail;
+        }
+      }
+      if (site.id === 'meoo') {
+        // 积分余额 + 最早到期日（每日首登积分约 6~7 天后过期）
+        const bal = acc.quota?.total;
+        if (Number.isFinite(bal)) {
+          const grants = acc.meooGrants?.grants;
+          const firstExp = Array.isArray(grants) ? (grants.map((g) => g.expireAt).filter(Boolean).sort()[0] || '') : '';
+          const detail = firstExp
+            ? '<span class="dim" style="font-size:11px">' + T('（最早 ') + esc(String(firstExp).slice(0, 10)) + T(' 到期）') + '</span>'
+            : '';
+          return '<span class="pill ok" style="font-weight:600">' + T('积分余额 ') + Number(bal).toLocaleString() + '</span>' + detail;
         }
       }
       if (site.id === 'tokenharbor') {
