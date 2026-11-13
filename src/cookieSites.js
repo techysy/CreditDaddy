@@ -205,12 +205,14 @@ export const COOKIE_SITES = [
     name: 'DuMate 百度搭子',
     provider: 'dumate',
     label: 'DuMate 百度搭子',
-    loginUrl: 'https://login.bce.baidu.com',
-    homeUrl: 'https://console.bce.baidu.com',
+    // 个人版登录入口（客户端 login-config 现网值，from=oa_dumate 标记个人版渠道；
+    // 不是百度云企业控制台入口）。首选「添加账号 → 本机导入」读桌面客户端凭据。
+    loginUrl: 'https://login.bce.baidu.com/?from=oa_dumate',
+    homeUrl: 'https://www.dumate.cn',
     verify: 'api',
     cookieUrls: ['https://console.bce.baidu.com', 'https://login.bce.baidu.com', 'https://www.dumate.cn'],
     accountName: 'DuMate 百度搭子',
-    hint: '登录百度智能云控制台后捕获会话；CD 每日自动领取登录赠送积分并验证网关可用性，Cookie 只存本机，可直接同步到 10Router 作为 dumate 渠道。',
+    hint: '个人版（www.dumate.cn）会话：推荐「添加账号 → 本机导入」直接读 DuMate 客户端凭据；也可在此登录捕获。CD 每日自动领取登录赠送积分，Cookie 只存本机，可一键同步到 10Router 作为 dumate 渠道。',
   },
   // ⚠ 码道 CodeArts（issue #40）已于 2026-10-30 撤下，不再提供：
   //   华为云控制台会话受闲置超时 + WAF 指印（HWWAFSESID / browserCheckResult）绑定，

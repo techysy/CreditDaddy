@@ -68,6 +68,7 @@ import { liveToAccount as catpawLiveAccount, switchTo as catpawSwitchTo, current
 import { liveToAccount as traeLiveAccount, detectTrae, switchTo as traeSwitchTo, snapshotLive as traeSnapshotLive } from './traeLocal.js';
 import { liveToAccount as minimaxLiveAccount, detectMiniMax, detectMiniMaxBuildLang, currentMiniMaxUid, currentMiniMaxToken, currentMiniMaxRecordKey } from './minimaxLocal.js';
 import { liveToAccount as loomyLiveAccount, hardSwitchLoomy, currentLoomyUid, detectLoomy } from './loomyLocal.js';
+import { liveToAccount as dumateLiveAccount, detectDumate, readDumateCredential } from './dumateLocal.js';
 import * as minimaxGateway from './minimaxGateway.js';
 import * as traeGateway from './traeGateway.js';
 import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl, autoClaimEnabled, autoClaimUntil, setAutoClaimEnabled, claimIntervalMin, setClaimIntervalMin, claimWindowMin, setClaimWindowMin } from './zcodeClient.js';
@@ -83,7 +84,7 @@ import { detectInstalls, scanLocalTokens, putCandidate, peekCandidate } from './
 import { PROVIDER_LABEL, APP_VERSION, PROVIDERS, PROJECT_URL } from './constants.js';
 import { getLocale, setLocale, normalizeLocale, loadDict, t as tr } from './i18n.js';
 
-const PRODUCT_IDS = ['qoder', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'loomy'];
+const PRODUCT_IDS = ['qoder', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'loomy', 'dumate'];
 
 /** 面板访问密码：面板「设置」写入的 settings.json.panelKey 优先（可设 / 可关）；
  *  未设置（或被面板关闭）时回退环境变量 CREDITDADDY_PASSWORD（fnOS / 命令行部署注入），
@@ -926,6 +927,35 @@ async function handleApi(req, res, url) {
       logger.warn('DAEMON', 'Loomy {name} 邀请码查询失败:{err}', { name: account.name, err: e.message });
       return json(res, e.auth ? 401 : 502, { error: e.message });
     }
+  }
+  // DuMate 邀请码兑换：POST /api/dumate/invitation_code/redeem（个人版，双方各 +2000，每号仅一次）
+  const dumateInviteMatch = p.match(/^\/api\/accounts\/([\w-]+)\/dumate\/invite$/);
+  if (dumateInviteMatch && method === 'POST') {
+    const body = await readBody(req).catch(() => ({}));
+    const code = String(body?.code || '').trim();
+    if (!code) return json(res, 400, { error: '缺少邀请码' });
+    const accounts = await loadAccounts();
+    const account = accounts.find((a) => a.id === dumateInviteMatch[1] && a.provider === 'dumate');
+    if (!account) return json(res, 404, { error: 'DuMate 账号不存在' });
+    const { redeemDumateInviteCode } = await import('./dumateClient.js');
+    const r = await redeemDumateInviteCode(account.token, code);
+    if (!r.ok) {
+      logger.warn('DAEMON', 'DuMate {name} 邀请码兑换失败:{err}', { name: account.name, err: r.error });
+      return json(res, r.authExpired ? 401 : 400, { error: r.error });
+    }
+    logger.info('DAEMON', 'DuMate {name} 邀请码已兑换:{code}', { name: account.name, code });
+    return json(res, 200, { ok: true, message: r.message, result: r.result });
+  }
+  // DuMate 我的邀请码：GET /api/dumate/invitation_code/get
+  const dumateMyInviteMatch = p.match(/^\/api\/accounts\/([\w-]+)\/dumate\/my-invite-code$/);
+  if (dumateMyInviteMatch && method === 'GET') {
+    const accounts = await loadAccounts();
+    const account = accounts.find((a) => a.id === dumateMyInviteMatch[1] && a.provider === 'dumate');
+    if (!account) return json(res, 404, { error: 'DuMate 账号不存在' });
+    const { fetchDumateMyInviteCode } = await import('./dumateClient.js');
+    const r = await fetchDumateMyInviteCode(account.token);
+    if (!r.ok) return json(res, r.auth === false ? 401 : 502, { error: r.error });
+    return json(res, 200, { ok: true, code: r.code, type: r.type, activityId: r.activityId });
   }
   // 网络出口偏好（全局——Qoder/ZCode/cookie 探测等全部出口都走它）：默认「直连优先、代理兜底」，
   // 可切「代理优先、直连兜底」；代理地址可面板配置（存 zcode-net.json，0600；键名 zcode 前缀是历史遗留）
@@ -1827,7 +1857,7 @@ async function handleApi(req, res, url) {
 
   // ── 本机检测 / 凭据扫描 ──
   if (p === '/api/local/detect' && method === 'GET') {
-    return json(res, 200, { apps: detectQoderApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), trae: detectTrae(), minimax: detectMiniMax(), loomy: detectLoomy(), legacy: detectInstalls() });
+    return json(res, 200, { apps: detectQoderApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), trae: detectTrae(), minimax: detectMiniMax(), loomy: detectLoomy(), dumate: detectDumate(), legacy: detectInstalls() });
   }
   if (p === '/api/local/scan' && method === 'POST') {
     const existing = await loadAccounts();
@@ -1914,6 +1944,11 @@ async function handleApi(req, res, url) {
       const lm = await loomyLiveAccount();
       if (lm) addRecord(lm, { source: 'Loomy 当前登录', current: true });
     } catch (e) { errors.push({ file: 'loomy/auth-session.json', error: e.message }); }
+    // 8.5) DuMate 百度搭子客户端：本地解密 qianfan-desktop-app/auth.json（AES-256-GCM，密钥不出本机）
+    try {
+      const dm = await dumateLiveAccount();
+      if (dm) addRecord(dm, { source: 'DuMate 当前登录', current: true });
+    } catch (e) { errors.push({ file: 'qianfan-desktop-app/auth.json', error: e.message }); }
     // 9) CodeBuddy IDE 桌面客户端（issue #51）：state.vscdb + Chromium Safe Storage。
     //    与 WorkBuddy 账号体系同源（token 由同一 realm 签发），provider 由 inspectToken 决定；
     //    存储却完全不同（SQLite + DPAPI 加密），所以单列一条线。国内版 / 国际版各试一次。
@@ -2228,6 +2263,8 @@ async function handleApi(req, res, url) {
       minimaxClient: (() => { const d = detectMiniMax('cn'); return { installed: d.installed, signedIn: d.signedIn, running: d.running, buildLang: d.buildLang }; })(),
       loomyCurrentUid: currentLoomyUid(),
       loomyClient: (() => { const d = detectLoomy(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
+      dumateClient: (() => { const d = detectDumate(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
+      dumateCurrentUid: readDumateCredential()?.uid || null,
       keyRequired: panelKeyRequired(),
     });
   }

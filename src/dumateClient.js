@@ -23,6 +23,14 @@ export const DUMATE_CONSOLE_ORIGIN = 'https://console.bce.baidu.com';
 export const DUMATE_CONSOLE_HOST = 'console.bce.baidu.com';
 export const DUMATE_TOKEN_URL = `${DUMATE_CONSOLE_ORIGIN}/api/dumate/app/token/get`;
 export const DUMATE_LOGIN_BONUS_URL = `${DUMATE_CONSOLE_ORIGIN}/api/dumate/points/loginBonus`;
+export const DUMATE_USER_INFO_URL = `${DUMATE_CONSOLE_ORIGIN}/api/dumate/user/info`;
+export const DUMATE_INVITE_GET_URL = `${DUMATE_CONSOLE_ORIGIN}/api/dumate/invitation_code/get`;
+export const DUMATE_INVITE_REDEEM_URL = `${DUMATE_CONSOLE_ORIGIN}/api/dumate/invitation_code/redeem`;
+export const DUMATE_INVITED_COUNT_URL = `${DUMATE_CONSOLE_ORIGIN}/api/dumate/invitation_code/invited/count`;
+/** 个人版官网（邀请分享链接同客户端口径） */
+export const DUMATE_HOME_URL = 'https://www.dumate.cn/?track=yqyl';
+/** 个人版登录入口（客户端 login-config 现网值，from=oa_dumate 标记个人版渠道） */
+export const DUMATE_LOGIN_URL = 'https://login.bce.baidu.com/?from=oa_dumate&redirect=https%3A%2F%2Fconsole.bce.baidu.com%2F';
 export const DUMATE_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36';
 
@@ -239,6 +247,93 @@ export async function checkinDumate(account, { fetchImpl } = {}) {
     };
   } catch (err) {
     return { status: 'failed', error: err?.message || t('网络请求异常') };
+  }
+}
+
+/** 个人版控制台请求头（Cookie + csrftoken，与客户端 bceConsoleRequest 同口径） */
+export function dumateConsoleHeaders(credentialInput, { json = false } = {}) {
+  const cookies = parseDumateCookies(credentialInput);
+  const h = {
+    Cookie: buildDumateCookieHeader(cookies),
+    Accept: 'application/json',
+    'User-Agent': DUMATE_USER_AGENT,
+    Origin: DUMATE_CONSOLE_ORIGIN,
+    Referer: `${DUMATE_CONSOLE_ORIGIN}/`,
+    'X-Requested-With': 'XMLHttpRequest',
+  };
+  const csrf = extractDumateCsrfToken(cookies);
+  if (csrf) h.csrftoken = csrf;
+  if (json) h['Content-Type'] = 'application/json';
+  return h;
+}
+
+/**
+ * 个人版身份：GET /api/dumate/user/info → { bceUserId, displayName, userId, firstLoginBonus }
+ * @returns {Promise<{auth: boolean, ok: boolean, uid?: string, displayName?: string, code?: string|number, error?: string}>}
+ */
+export async function fetchDumateIdentity(credentialInput, { fetchImpl } = {}) {
+  const doIt = fetchImpl || ((u, init) => fetchJsonRace(u, { ...init, timeoutMs: FETCH_TIMEOUT_MS }));
+  try {
+    const res = await doIt(DUMATE_USER_INFO_URL, { method: 'GET', headers: dumateConsoleHeaders(credentialInput), redirect: 'manual' });
+    if (res.status >= 300 && res.status < 400) return { auth: false, ok: false, error: t('DuMate 登录态已失效（控制台重定向到登录页）') };
+    const payload = parseConsoleJson(await res.text().catch(() => ''));
+    if (!payload) return { auth: false, ok: false, error: t('DuMate 登录态已失效（控制台返回登录页）') };
+    if (payload.code !== 0 || payload.success === false) {
+      const msg = consoleMessage(payload);
+      return { auth: !/登录|过期|login/i.test(msg), ok: false, code: payload.code, error: msg || `code=${payload.code}` };
+    }
+    const r = payload.result || {};
+    return { auth: true, ok: true, uid: r.bceUserId || r.userId || null, displayName: r.displayName || null };
+  } catch (err) {
+    return { auth: true, ok: false, error: err?.message || t('网络请求异常') };
+  }
+}
+
+/**
+ * 我的邀请码：GET /api/dumate/invitation_code/get → { invitationCode, type, activityId }
+ */
+export async function fetchDumateMyInviteCode(credentialInput, { fetchImpl } = {}) {
+  const doIt = fetchImpl || ((u, init) => fetchJsonRace(u, { ...init, timeoutMs: FETCH_TIMEOUT_MS }));
+  try {
+    const res = await doIt(DUMATE_INVITE_GET_URL, { method: 'GET', headers: dumateConsoleHeaders(credentialInput), redirect: 'manual' });
+    if (res.status >= 300 && res.status < 400) return { auth: false, ok: false, error: t('DuMate 登录态已失效（控制台重定向到登录页）') };
+    const payload = parseConsoleJson(await res.text().catch(() => ''));
+    if (!payload) return { auth: false, ok: false, error: t('DuMate 登录态已失效（控制台返回登录页）') };
+    if (payload.code !== 0 || payload.success === false) {
+      const msg = consoleMessage(payload);
+      return { auth: !/登录|过期|login/i.test(msg), ok: false, code: payload.code, error: msg || `code=${payload.code}` };
+    }
+    return { auth: true, ok: true, code: payload.result?.invitationCode || null, type: payload.result?.type || null, activityId: payload.result?.activityId || null };
+  } catch (err) {
+    return { auth: true, ok: false, error: err?.message || t('网络请求异常') };
+  }
+}
+
+/**
+ * 兑换邀请码：POST /api/dumate/invitation_code/redeem
+ * body 与客户端同口径：{ invitationCode, timezone, source: 'pc' }（双方各 +2000 积分，每号仅一次）
+ */
+export async function redeemDumateInviteCode(credentialInput, code, { fetchImpl } = {}) {
+  const clean = String(code || '').trim();
+  if (!clean) return { ok: false, error: t('邀请码不能为空') };
+  const doIt = fetchImpl || ((u, init) => fetchJsonRace(u, { ...init, timeoutMs: FETCH_TIMEOUT_MS }));
+  try {
+    const res = await doIt(DUMATE_INVITE_REDEEM_URL, {
+      method: 'POST',
+      headers: dumateConsoleHeaders(credentialInput, { json: true }),
+      body: JSON.stringify({ invitationCode: clean, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, source: 'pc' }),
+      redirect: 'manual',
+    });
+    if (res.status >= 300 && res.status < 400) return { ok: false, authExpired: true, error: t('登录态已失效（重定向到登录页）') };
+    const payload = parseConsoleJson(await res.text().catch(() => ''));
+    if (!payload) return { ok: false, authExpired: true, error: t('登录态已失效（控制台返回登录页）') };
+    if (payload.code !== 0 || payload.success === false) {
+      const msg = consoleMessage(payload);
+      return { ok: false, authExpired: /登录|过期|login/i.test(msg), error: msg || `code=${payload.code}` };
+    }
+    return { ok: true, message: typeof payload.message === 'string' ? payload.message : '', result: payload.result ?? null };
+  } catch (err) {
+    return { ok: false, error: err?.message || t('网络请求异常') };
   }
 }
 

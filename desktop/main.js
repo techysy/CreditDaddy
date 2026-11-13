@@ -1773,6 +1773,27 @@ function registerAuthWindowIpc() {
       return { ok: false, error: Tt('未找到 Loomy 客户端可执行文件') };
     } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
   });
+  // DuMate 百度搭子客户端拉起（个人版桌面端，安装目录 %LOCALAPPDATA%\Programs\DuMate）
+  ipcMain.handle('open-dumate-client', async () => {
+    try {
+      const os = require('node:os');
+      const fs = require('node:fs');
+      const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+      const cands = [
+        path.join(local, 'Programs', 'DuMate', 'DuMate.exe'),
+        'C:\\Program Files\\DuMate\\DuMate.exe',
+        'C:\\Program Files (x86)\\DuMate\\DuMate.exe',
+      ];
+      for (const cand of cands) {
+        if (process.platform === 'win32' && fs.existsSync(cand)) {
+          const err = await shell.openPath(cand);
+          if (!err) return { ok: true };
+          return { ok: false, error: err };
+        }
+      }
+      return { ok: false, error: Tt('未找到 DuMate 客户端可执行文件') };
+    } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
+  });
   // WorkBuddy 切号后自动拉起：国内（WorkBuddy）/ 国际（WorkBuddyAI）是两个独立客户端，只拉目标档位
   ipcMain.handle('open-workbuddy-client', async (_e, flavor) => {
     try {
