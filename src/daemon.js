@@ -418,32 +418,6 @@ async function reprobeCookieAccount(site, a) {
       logger.info('COOKIE-SITE', '{name} 就地重探通过（{identity}，积分 {balance}）', { name: site.name, identity: masked ? 'uid ' + masked : '无 uid', balance: bal ?? '—' });
       return finish({ id: a.id, name: a.name, ok: true, identity: masked ? `uid:${masked}` : null, balance: bal, quotaSnapshot: bal !== null ? { used: 0, total: bal, isCreditBalance: true, at: now } : null });
     }
-    if (site.id === 'dumate') {
-      // DuMate 百度搭子：调 /api/dumate/app/token/get 换取网关 token 验证连通性
-      const { verifyDumateSession, extractDumateUserId, maskDumateUserId } = await import('./dumateClient.js');
-      const ver = await verifyDumateSession(cookie).catch((e) => ({ auth: true, ok: false, error: e?.message || 'network' }));
-      if (!ver.auth) return finish({ id: a.id, name: a.name, ok: false, error: ver.error || 'DuMate 会话已失效，请重新登录捕获' });
-      if (!ver.ok) return finish({ id: a.id, name: a.name, ok: false, error: ver.error || '探测失败，请稍后再试或重新登录捕获' });
-      const rawUid = extractDumateUserId(cookie);
-      const masked = rawUid ? maskDumateUserId(rawUid) : null;
-      await withAccounts((list) => {
-        const hit = list.find((x) => x.id === a.id);
-        if (!hit) return;
-        hit.meta = {
-          ...(hit.meta || {}),
-          cookieSiteSession: { cookie, capturedAt: hit.meta?.cookieSiteSession?.capturedAt || now },
-          ...(rawUid && !hit.meta?.identityHash ? { identityHash: identityHashOf(`uid:${rawUid}`) } : {}),
-          quotaSnapshot: { used: 0, total: 100, isCreditBalance: true, at: now },
-        };
-        if (rawUid) {
-          hit.uid = String(rawUid);
-          if (canAutoRename(site, hit)) hit.name = `${site.accountName}(${masked})`;
-        }
-        hit.updatedAt = now;
-      });
-      logger.info('COOKIE-SITE', '{name} 就地重探通过（{identity}，网关正常）', { name: site.name, identity: masked ? 'uid ' + masked : '无 uid' });
-      return finish({ id: a.id, name: a.name, ok: true, identity: masked ? `uid:${masked}` : null, balance: 100, quotaSnapshot: { used: 0, total: 100, isCreditBalance: true, at: now } });
-    }
     if (site.id === 'doubao') {
       // 豆包（issue #32）：detail 接口一次拿全（会话有效性 + 签到状态 + 累计点数），
       // 重探 = 刷新额度快照；无 10R 同步（豆包不推外部配额卡，错误文案不再误导）
@@ -821,7 +795,7 @@ async function handleApi(req, res, url) {
       // 单位标注：各家余额单位互异（Token / USD / CNY / 魔粒 / 积分）且都不是「积分」
       // 口径——带 unit 返回，面板 creditSum 按 unit 有无决定是否计入「剩余积分」合计
       //（有单位 = 不同量纲，不相加）。HTML 探针站（tokenharbor）是百分比，同样排除。
-      const UNIT_BY_SITE = { 'xiaomi-mimo': 'CNY', 'river': 'USD', 'longcat': 'Token', 'modelscope': '魔粒', 'lingxi': '灵点', 'meoo': '秒悟积分', 'dumate': '积分' };
+      const UNIT_BY_SITE = { 'xiaomi-mimo': 'CNY', 'river': 'USD', 'longcat': 'Token', 'modelscope': '魔粒', 'lingxi': '灵点', 'meoo': '秒悟积分' };
       const unit = UNIT_BY_SITE[site.id] || (hasTotal ? '' : '%');
       return json(res, 200, { quota: {
         total: hasTotal ? total : 100,
@@ -1614,33 +1588,6 @@ async function handleApi(req, res, url) {
       }
     }
 
-    // DuMate 百度搭子：验证 token 换取网关可用性
-    let dumateUserId = null;
-    let dumateMasked = null;
-    if (site.id === 'dumate') {
-      try {
-        const { verifyDumateSession, extractDumateUserId, maskDumateUserId } = await import('./dumateClient.js');
-        if (!cookie) {
-          logger.warn('COOKIE-SITE', '{name} 未读到会话 cookie', { name: site.name });
-          return json(res, 400, { error: '未读到 DuMate 登录会话，请在登录窗完成登录后再关闭' });
-        }
-        const ver = await verifyDumateSession(cookie);
-        if (!ver.auth) {
-          logger.warn('COOKIE-SITE', '{name} 网关 token 换取被拒:{err}', { name: site.name, err: ver.error });
-          return json(res, 401, { error: ver.error || '会话不可用，请重新登录百度搭子后再捕获' });
-        }
-        if (!ver.ok) return json(res, 502, { error: '探测站点失败：' + (ver.error || '') });
-        dumateUserId = extractDumateUserId(cookie);
-        dumateMasked = dumateUserId ? maskDumateUserId(dumateUserId) : null;
-        identity = dumateUserId ? `uid:${dumateUserId}` : null;
-        quotaSnapshot = { used: 0, total: 100, isCreditBalance: true };
-        logger.info('COOKIE-SITE', '{name} 探测通过（{identity}，网关正常）', { name: site.name, identity: dumateUserId ? 'uid ' + dumateMasked : '无 uid' });
-      } catch (dmErr) {
-        logger.warn('COOKIE-SITE', '{name} 探测站点失败：{err}', { name: site.name, err: dmErr.message });
-        return json(res, 502, { error: '探测站点失败：' + (dmErr.message || '') });
-      }
-    }
-
     const ih = identityHashOf(mimoUserId || riverSession?.user?.id || msSession?.id || lcSession?.userId || identity);
     const quotaMeta = quotaSnapshot ? { quotaSnapshot: { ...quotaSnapshot, at: now } } : {};
     const cred = riverSession ? riverSession.accessToken : cookie;   // 落盘的凭据主体
@@ -1658,7 +1605,6 @@ async function handleApi(req, res, url) {
       else if (site.id === 'longcat') accName = `LongCat (${identity || '会话'})`;
       else if (site.id === 'lingxi') accName = site.accountName + (lxUidMasked ? `(${lxUidMasked})` : '');   // uid 后缀脱敏（前3后3），归户仍用原始 uid
       else if (site.id === 'meoo') accName = site.accountName + (meooMasked ? `(${meooMasked})` : '');   // user_id 脱敏后缀，归户仍用原始值
-      else if (site.id === 'dumate') accName = site.accountName + (dumateMasked ? `(${dumateMasked})` : '');
       else accName = site.accountName + (identity ? `(${identity})` : '');
       // 自动行名只在「没手改过且现名属自动名家族」时写入（meta.renamed + isAutoGeneratedName 双闸）
       const autoName = (row) => { if (canAutoRename(site, row)) row.name = accName; };
@@ -1696,7 +1642,7 @@ async function handleApi(req, res, url) {
           provider: site.provider,
           token: cred,
           expiresAt: site.id === 'river' ? (riverSession?.expiresAt || undefined) : undefined,
-          uid: mimoUserId || riverUid || (msSession?.id ? String(msSession.id) : undefined) || (lcSession?.userId ? String(lcSession.userId) : undefined) || (lxUid ? String(lxUid) : undefined) || (meooUserId ? String(meooUserId) : undefined) || (dumateUserId ? String(dumateUserId) : undefined) || undefined,
+          uid: mimoUserId || riverUid || (msSession?.id ? String(msSession.id) : undefined) || (lcSession?.userId ? String(lcSession.userId) : undefined) || (lxUid ? String(lxUid) : undefined) || (meooUserId ? String(meooUserId) : undefined) || undefined,
           source: 'web-session',
           meta: {
             cookieSiteId: site.id,

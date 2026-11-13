@@ -3896,6 +3896,9 @@ async function claimWbActivities(btn) {
 // 弹窗正文随机推荐一个（消耗均摊到五个码上）——输入框保持空 + placeholder 示例引导，
 // 直接预填值太生硬（用户实测反馈：没有友好提示）。
 const LOOMY_INVITE_POOL = ['AAYW9D', 'BD3GGF', 'HB4ABC', 'DTAPH5', '9S2PB6'];
+// DuMate 邀请码候选池（同 Loomy 口径：弹窗随机推荐一个，消耗均摊）。
+// 首版先放维护者自己的码 ZW5ABSJ，后续有共享码再往池里加。
+const DUMATE_INVITE_POOL = ['ZW5ABSJ'];
 async function loomyInvite(id) {
   const a = state.accounts.find((x) => x.id === id);
   if (!a) return;
@@ -3974,9 +3977,10 @@ async function loomyMyInvite(id) {
 async function dumateInvite(id) {
   const a = state.accounts.find((x) => x.id === id);
   if (!a) return;
+  const suggested = DUMATE_INVITE_POOL[Math.floor(Math.random() * DUMATE_INVITE_POOL.length)];
   const code = await uiPrompt(T('为 {name} 填写邀请码', { name: maskName(a.name || id) }), '', {
-    message: T('兑换后双方各 +2000 积分，每号仅一次'),
-    placeholder: T('输入邀请码（区分大小写）'),
+    message: T('推荐使用邀请码 {code}（复制到下方即可；兑换后双方各 +2000 积分，每号仅一次）', { code: suggested }),
+    placeholder: T('输入邀请码，如 {code}（区分大小写）', { code: suggested }),
     okText: T('兑换'),
   });
   const clean = String(code || '').trim();

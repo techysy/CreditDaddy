@@ -181,10 +181,8 @@ test('DuMate 供应商登记与 10Router 映射一致性', () => {
   assert.equal(productOf('dumate'), 'dumate');
   assert.equal(TENROUTER_PROVIDER_MAP.dumate, 'dumate');
 
-  const site = getSite('dumate');
-  assert.ok(site);
-  assert.equal(site.provider, 'dumate');
-  assert.equal(site.verify, 'api');
+  // DuMate 走本机导入线，不进网页会话捕获（无浏览器登录 / 网页会话入口）
+  assert.equal(getSite('dumate'), null);
 
   const impl = productImpl('dumate');
   assert.equal(typeof impl.checkin, 'function');

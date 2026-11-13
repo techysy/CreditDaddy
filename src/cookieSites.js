@@ -200,20 +200,8 @@ export const COOKIE_SITES = [
     no10rSync: true,       // 首版不推 10Router 外部配额卡（积分只在 Meoo 内消费）
     hint: '登录 meoo.com（阿里云账号手机号 + 短信）后捕获会话；CD 每日自动领取首登积分（当前 +2000/天，约 6~7 天后过期）并展示积分余额。会话失效（NEED_LOGIN）时请重新登录捕获，Cookie 只存本机。',
   },
-  {
-    id: 'dumate',
-    name: 'DuMate 百度搭子',
-    provider: 'dumate',
-    label: 'DuMate 百度搭子',
-    // 个人版登录入口（客户端 login-config 现网值，from=oa_dumate 标记个人版渠道；
-    // 不是百度云企业控制台入口）。首选「添加账号 → 本机导入」读桌面客户端凭据。
-    loginUrl: 'https://login.bce.baidu.com/?from=oa_dumate',
-    homeUrl: 'https://www.dumate.cn',
-    verify: 'api',
-    cookieUrls: ['https://console.bce.baidu.com', 'https://login.bce.baidu.com', 'https://www.dumate.cn'],
-    accountName: 'DuMate 百度搭子',
-    hint: '个人版（www.dumate.cn）会话：推荐「添加账号 → 本机导入」直接读 DuMate 客户端凭据；也可在此登录捕获。CD 每日自动领取登录赠送积分，Cookie 只存本机，可一键同步到 10Router 作为 dumate 渠道。',
-  },
+  // ⚠ DuMate 百度搭子不走网页会话捕获：个人版凭据由「添加账号 → 本机导入」本地解密
+  //   桌面客户端 auth.json 取得（同 Loomy 本机线），无浏览器登录 / 网页会话入口。
   // ⚠ 码道 CodeArts（issue #40）已于 2026-10-30 撤下，不再提供：
   //   华为云控制台会话受闲置超时 + WAF 指印（HWWAFSESID / browserCheckResult）绑定，
   //   浏览器里能靠 SPA 持续续期，本机无法续 —— 实测新鲜会话当日内即失效（网关回登录页），
