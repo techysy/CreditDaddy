@@ -388,6 +388,38 @@ async function reprobeCookieAccount(site, a) {
       logger.info('COOKIE-SITE', '{name} 就地重探通过（{identity}，签到{signed}，灵点 {balance}）', { name: site.name, identity: uid ? 'uid ' + uidMasked : '无 uid', signed: st.checkedIn ? '已签' : '未签', balance: Number.isFinite(st.balance) ? st.balance : '—' });
       return finish({ id: a.id, name: a.name, ok: true, identity: uid ? `uid:${uidMasked}` : null, balance: Number.isFinite(st.balance) ? st.balance : null, quotaSnapshot: Number.isFinite(st.balance) ? { used: 0, total: st.balance, isCreditBalance: true, at: now } : null });
     }
+    if (site.id === 'dumate') {
+      // DuMate 浏览器登录线（网页会话）：user/info 即探测（身份 + 连通性一步拿全，
+      // bceUserId 与本机导入同源，两条凭据线归户互认）；顺带刷新积分快照
+      const { fetchDumateIdentity, fetchDumateQuota, maskDumateUserId } = await import('./dumateClient.js');
+      const ident = await fetchDumateIdentity(cookie).catch((e) => ({ auth: true, ok: false, error: e?.message || 'network' }));
+      if (!ident.auth) return finish({ id: a.id, name: a.name, ok: false, error: ident.error || 'DuMate 会话已失效，请重新登录捕获' });
+      if (!ident.ok) return finish({ id: a.id, name: a.name, ok: false, error: ident.error || '探测失败，请稍后再试或重新登录捕获' });
+      const userId = ident.uid || null;
+      const masked = userId ? maskDumateUserId(userId) : null;
+      let balance = null;
+      try {
+        const q = await fetchDumateQuota({ token: cookie });
+        balance = Number.isFinite(q.remaining) ? q.remaining : null;
+      } catch { /* 积分查询失败不阻断重探 */ }
+      await withAccounts((list) => {
+        const hit = list.find((x) => x.id === a.id);
+        if (!hit) return;
+        hit.meta = {
+          ...(hit.meta || {}),
+          cookieSiteSession: { cookie, capturedAt: hit.meta?.cookieSiteSession?.capturedAt || now },
+          ...(userId && !hit.meta?.identityHash ? { identityHash: identityHashOf(`uid:${userId}`) } : {}),
+          ...(balance !== null ? { quotaSnapshot: { used: 0, total: balance, isCreditBalance: true, at: now } } : {}),
+        };
+        if (userId) {
+          hit.uid = String(userId);
+          if (canAutoRename(site, hit)) hit.name = `${site.accountName}(${masked})`;
+        }
+        hit.updatedAt = now;
+      });
+      logger.info('COOKIE-SITE', '{name} 就地重探通过（{identity}，积分 {balance}）', { name: site.name, identity: masked ? 'uid ' + masked : '无 uid', balance: balance ?? '—' });
+      return finish({ id: a.id, name: a.name, ok: true, identity: masked ? `uid:${masked}` : null, balance, quotaSnapshot: balance !== null ? { used: 0, total: balance, isCreditBalance: true, at: now } : null });
+    }
     if (site.id === 'meoo') {
       // Meoo 秒悟：权益接口即探测（只读，不调 entitlement/init——发放动作只走签到线），
       // 刷新积分余额快照；身份走 user/me 的 user_id（老行缺失时回填 + 名字升级）
@@ -795,7 +827,7 @@ async function handleApi(req, res, url) {
       // 单位标注：各家余额单位互异（Token / USD / CNY / 魔粒 / 积分）且都不是「积分」
       // 口径——带 unit 返回，面板 creditSum 按 unit 有无决定是否计入「剩余积分」合计
       //（有单位 = 不同量纲，不相加）。HTML 探针站（tokenharbor）是百分比，同样排除。
-      const UNIT_BY_SITE = { 'xiaomi-mimo': 'CNY', 'river': 'USD', 'longcat': 'Token', 'modelscope': '魔粒', 'lingxi': '灵点', 'meoo': '秒悟积分' };
+      const UNIT_BY_SITE = { 'xiaomi-mimo': 'CNY', 'river': 'USD', 'longcat': 'Token', 'modelscope': '魔粒', 'lingxi': '灵点', 'meoo': '秒悟积分', 'dumate': '积分' };
       const unit = UNIT_BY_SITE[site.id] || (hasTotal ? '' : '%');
       return json(res, 200, { quota: {
         total: hasTotal ? total : 100,
@@ -1588,6 +1620,38 @@ async function handleApi(req, res, url) {
       }
     }
 
+    // DuMate 浏览器登录线（网页会话）：user/info 即探测（bceUserId 与本机导入同源归户）。
+    let dumateUserId = null;
+    let dumateMasked = null;
+    if (site.id === 'dumate') {
+      try {
+        const { fetchDumateIdentity, fetchDumateQuota, maskDumateUserId } = await import('./dumateClient.js');
+        if (!cookie) {
+          logger.warn('COOKIE-SITE', '{name} 未读到会话 cookie', { name: site.name });
+          return json(res, 400, { error: '未读到 DuMate 登录会话，请在登录窗完成登录后再关闭' });
+        }
+        const ident = await fetchDumateIdentity(cookie);
+        if (!ident.auth) {
+          logger.warn('COOKIE-SITE', '{name} user/info 探测被拒:{err}', { name: site.name, err: ident.error });
+          return json(res, 401, { error: '会话不可用，请重新登录百度搭子后再捕获（' + (ident.error || '') + '）' });
+        }
+        if (!ident.ok) return json(res, 502, { error: '探测站点失败：' + (ident.error || '') });
+        dumateUserId = ident.uid || null;
+        dumateMasked = dumateUserId ? maskDumateUserId(dumateUserId) : null;
+        identity = dumateUserId ? `uid:${dumateUserId}` : null;   // 与本机导入同 uid 源 → 哈希归户互认
+        let dmBalance = null;
+        try {
+          const q = await fetchDumateQuota({ token: cookie });
+          dmBalance = Number.isFinite(q.remaining) ? q.remaining : null;
+        } catch { /* 积分查询失败不阻断捕获 */ }
+        quotaSnapshot = { used: 0, total: dmBalance ?? 0, isCreditBalance: true };
+        logger.info('COOKIE-SITE', '{name} 探测通过（{identity}，积分 {balance}）', { name: site.name, identity: dumateUserId ? 'uid ' + dumateMasked : '无 uid（单例）', balance: dmBalance ?? '—' });
+      } catch (dmErr) {
+        logger.warn('COOKIE-SITE', '{name} 探测异常:{err}', { name: site.name, err: dmErr.message });
+        return json(res, 502, { error: '探测站点失败：' + (dmErr.message || '') });
+      }
+    }
+
     const ih = identityHashOf(mimoUserId || riverSession?.user?.id || msSession?.id || lcSession?.userId || identity);
     const quotaMeta = quotaSnapshot ? { quotaSnapshot: { ...quotaSnapshot, at: now } } : {};
     const cred = riverSession ? riverSession.accessToken : cookie;   // 落盘的凭据主体
@@ -1605,6 +1669,7 @@ async function handleApi(req, res, url) {
       else if (site.id === 'longcat') accName = `LongCat (${identity || '会话'})`;
       else if (site.id === 'lingxi') accName = site.accountName + (lxUidMasked ? `(${lxUidMasked})` : '');   // uid 后缀脱敏（前3后3），归户仍用原始 uid
       else if (site.id === 'meoo') accName = site.accountName + (meooMasked ? `(${meooMasked})` : '');   // user_id 脱敏后缀，归户仍用原始值
+      else if (site.id === 'dumate') accName = site.accountName + (dumateMasked ? `(${dumateMasked})` : '');   // bceUserId 脱敏后缀，与本机导入同源
       else accName = site.accountName + (identity ? `(${identity})` : '');
       // 自动行名只在「没手改过且现名属自动名家族」时写入（meta.renamed + isAutoGeneratedName 双闸）
       const autoName = (row) => { if (canAutoRename(site, row)) row.name = accName; };
@@ -1642,7 +1707,7 @@ async function handleApi(req, res, url) {
           provider: site.provider,
           token: cred,
           expiresAt: site.id === 'river' ? (riverSession?.expiresAt || undefined) : undefined,
-          uid: mimoUserId || riverUid || (msSession?.id ? String(msSession.id) : undefined) || (lcSession?.userId ? String(lcSession.userId) : undefined) || (lxUid ? String(lxUid) : undefined) || (meooUserId ? String(meooUserId) : undefined) || undefined,
+          uid: mimoUserId || riverUid || (msSession?.id ? String(msSession.id) : undefined) || (lcSession?.userId ? String(lcSession.userId) : undefined) || (lxUid ? String(lxUid) : undefined) || (meooUserId ? String(meooUserId) : undefined) || (dumateUserId ? String(dumateUserId) : undefined) || undefined,
           source: 'web-session',
           meta: {
             cookieSiteId: site.id,

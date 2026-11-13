@@ -2058,7 +2058,7 @@ const EMPTY_TIP = {
   trae: '还没有 Trae 账号。<br>点「添加账号 → 本机导入」可读取本机 Trae 客户端当前登录的账号（本地解密 storage.json 凭据，token 不出本机），或用「浏览器登录」走官方授权码流程直接添加（无需客户端）。多账号可混合两种方式逐个添加。',
   minimax: '还没有 MiniMax 账号。<br>点「添加账号 → 本机导入」可读取本机 MiniMax Code 客户端当前登录的账号，或用浏览器登录 / 粘贴 Bearer Token 添加。',
   loomy: '还没有 Loomy 账号。<br>点「添加账号 → 本机导入」可读取本机 Loomy 客户端当前登录的账号（Token 有效期约 14 天，免客户端运行），支持多账号保存切换，并可一键同步给 10Router 网关。',
-  dumate: '还没有 DuMate 账号。<br>点「添加账号 → 本机导入」可读取本机 DuMate 百度搭子客户端当前登录的账号（本地解密会话 Cookie，凭据不出本机），每日自动领取登录赠送积分，并可一键同步给 10Router 网关。',
+  dumate: '还没有 DuMate 账号。<br>点「添加账号 → 本机导入」可读取本机 DuMate 百度搭子客户端当前登录的账号（本地解密会话 Cookie，凭据不出本机）；或在「网页会话」页走浏览器登录个人版入口捕获。每日自动领取登录赠送积分，并可一键同步给 10Router 网关。',
   lingxi: '还没有 WPS 灵犀账号。<br>到 lingxi.kdocs.cn 登录（WPS 账号）后在「网页会话」页捕获会话，或点「添加账号 → 网页登录」。CD 每日自动签到（+100 灵点，七天一轮第七天 200）并同步余额到 10Router。',
 };
 
@@ -2095,7 +2095,9 @@ function renderProd() {
   $('s-credits').textContent = CREDIT_VIEWS.has(prod)
     ? acc.filter((a) => { const q = state.quotas[a.id]; return q && !q.error && !q.empty; }).length + ' / ' + acc.length
     : c.loading ? '…' : (c.known ? fmtNum(c.sum) : '-');
-  const hasRegions = !CREDIT_VIEWS.has(prod) && prod !== 'trae';   // Trae 不分国际 / 国内版；MiniMax 现在双渠道（#54）
+  // 地区筛选只给真正分国际/国内两区的产品（白名单——黑名单会让每个新产品默认亮出无关的地区标签，
+  // DuMate 单区接入时就是这么中招的）
+  const hasRegions = ['qoder', 'workbuddy', 'minimax'].includes(prod);
   $('region').style.display = hasRegions ? '' : 'none';
   $('region-div').style.display = hasRegions ? '' : 'none';
   document.querySelectorAll('#region button').forEach((x) => x.classList.toggle('active', x.dataset.r === state.region));

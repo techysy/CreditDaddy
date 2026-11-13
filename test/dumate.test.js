@@ -181,8 +181,12 @@ test('DuMate 供应商登记与 10Router 映射一致性', () => {
   assert.equal(productOf('dumate'), 'dumate');
   assert.equal(TENROUTER_PROVIDER_MAP.dumate, 'dumate');
 
-  // DuMate 走本机导入线，不进网页会话捕获（无浏览器登录 / 网页会话入口）
-  assert.equal(getSite('dumate'), null);
+  // 浏览器登录线（网页会话）与本机导入线并存：站点配置用个人版登录入口
+  const site = getSite('dumate');
+  assert.ok(site);
+  assert.equal(site.provider, 'dumate');
+  assert.equal(site.verify, 'api');
+  assert.ok(site.loginUrl.includes('from=oa_dumate'), '登录页必须是个人版入口（from=oa_dumate）');
 
   const impl = productImpl('dumate');
   assert.equal(typeof impl.checkin, 'function');
