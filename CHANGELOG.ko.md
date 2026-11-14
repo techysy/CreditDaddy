@@ -13,12 +13,13 @@
   - **포인트와 잔액**: 실제 quota_overview 엔드포인트 접속(개인 버전 타임존과 desktop clientType로 조회)——구독 / 지급 / 추가 구매 포인트와 최근 만기일을 정확히 계산하여 기존 고정 "100점" 표시 수정; 출석은 loginBonus 매일 로그인 포인트로 진행; 잔액 바는 패키지별 분할 표시(WorkBuddy 다중 패키지 바와 동일, 텍스트 행은 최근 만기만 보고); quota에서 유료 플랜 배지 파생——plan_pro/plan_max/plan_team은 최상위 등급만 보라색 PRO/Max/Team 배지(hover 시 만기일 표시), plan_experience(무료 체험)는 미출력;
   - **로컬 계정 전환**: 하드 전환은 클라이언트 auth.json active 슬롯에 기록——최상위 cookies를 동일한 AES-256-GCM iv||tag||ct 레이아웃으로 재암호화하고 activeProfileId/activeProviderType를 다시 기록. 전환 전에 셸과 전체 Go 서비스(main-server/base-proxy/router/opencode/na)를 kill, 1.2초 지연 재확인으로 되쓰기 방어. 근거: 클라이언트 시작 시 setCookieProvider로 Go 프록시가 auth.json을 직접 소비해 Cookie를 주입하므로 콜드 상태 파일 기록만으로 전환 완료(윈도우 Chromium 통에 옛 Cookie가 남아 있으면 UI상 신원이 옛것일 수 있음——콘솔 API의 실제 신원이 기준); 전환 후 패널이 클라이언트를 자동 재실행(Loomy 동형, 미설치는 DUMATE_NOT_INSTALLED 409 동일 기준);
   - **10Router 동기화**: 계정 관리 다이얼로그의 채널 표에 DuMate 추가(계정 동기화 체인 수렴); 채널 행은 "연결 전용"으로 변경——잔액 카드는 10R 측 연결 자격증명 자체가 내보내므로 CD는 중복 카드를 밀어넣지 않음;
-  - 기타: 표시명 "DuMate 百度搭子"→"DuMate"로 축약(10R 정합); 제품 페이지 VIEWS 누락 등록 수정 + 공식 아이콘; README 보안 경계에 다중 계정 격리·안티 연관 기준 추가(issue #64).
+  - 기타: 표시명 "DuMate 百度搭子"→"DuMate"로 축약(10R 정합); 제품 페이지 VIEWS 누락 등록 수정 + 공식 아이콘; README 보안 경계에 다중 계정 격리·안티 연관 기준 추가(issue #64); 웹 세션 페이지에는 DuMate를 표시하지 않음——브라우저 로그인 라인 입구는 자체 페이지의 "계정 추가 → 웹 버전" 탭으로 이동(시크릿 창 수집 메커니즘과 수집된 계정은 변경 없음).
 - **신규 Meoo 제품 라인(issue #65)**: 웹 세션 cookie 라인은 1 이터레이션 만에 독립 제품 라인으로 승격(cookieSites의 meoo 항목과 캡처 분기 제거), CLI 컨트롤 플레인으로 이행——
   - **컨트롤 플레인 API 클라이언트**: `/open/v1/cli-compat/*`(Bearer + `X-Meoo-Client: cli` + CLI-Version 0.5.8): identity / points / projects / 프로젝트 AK; 잔액 기준 total=totalGranted, used=totalConsumed, remaining=availableBalance, parts는 소스별로 배치 만기일 동봉;
   - **OAuth PKCE S256 루프백 브라우저 로그인**: 공식 CLI 공개 클라이언트와 동형(authorize/token + 127.0.0.1 루프백 리스너로 인가 코드 수신, trae 골격 동형); redirect_uri는 공식 CLI 0.5.8 산물 고고학으로 `/oauth/callback`에 정정(기존 `/callback`은 인가 페이지가 invalid_redirect_uri로 거부); 루프백 랜덤 포트 + 콜백 응답 규율(404/400/200 + no-store) + token 응답 계약 검증; refreshMeooToken 신설——출석 트리거 동작을 토큰 강제 리프레시 1회로 승격(리프레시 자체가 로그인 신호, 10R 동일), 결과는 계정 저장소에 되돌려 쓰고 재독은 새 자격증명 사용;
   - **출석 증분 검증**: 수령 엔드포인트 없음 = 기준 대장 → 신원 읽기로 트리거 → 재독(3×1.5초) → totalGranted 증분 재정, 결코 성공을 위장하지 않음(10R meoo-daily-claim 동일 알고리즘); 수령 완료는 already로 마감;
   - **패널과 동기화**: 제품 카드 / 내비 / 빈 상태 표시 배선; 계정 추가 듀얼 채널(OAuth 브라우저 로그인 + meoo_ak_ 붙여넣기); 잔액 카드 `meoo-free-<uid>` 단일 계정 display-only(잔액 + 활동 배치별 만기일); 10R 동기화 자격증명은 psd.meooControlKey에 넣고 프로젝트 필드 완비(00cde6b7 수신 기준), 동기화 전 best-effort로 프로젝트 AK 사전 해석;
+  - 아이콘: CD 내비 / 제품 카드와 10Router providers 아이콘을 meoo.com 현행 favicon으로 교체(공식 브랜드 자산, 128×128로 lingxi/dumate 크기 관례에 정합)——CD 보라 점 placeholder와 10R 288 풀블리드版은 폐기;
   - OAuth 로그인 신원 읽기 재시도: uid 귀속 키가 되는 첫 신원 읽기가 실패하면 openid로 폴백——동일 계정 다음 로그인(uid=user_id)에서 합류 불가, 구행이 토큰 교체와 함께 invalid_token 죽은 행으로 잔존; 3회 재시도 후에도 실패할 때만 openid로 폴백하도록 변경.
 - **Loomy 초대 코드**: 추천 코드 다이얼로그 placeholder를 현재 랜덤 후보 코드에 동기화; 초대 코드 풀에 4HT9MF6 추가(랜덤 균등 배분으로 두 공유 코드).
 - **Trae 수정**:

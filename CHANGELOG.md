@@ -14,12 +14,13 @@ Theme: **Two new product lines — DuMate (Baidu companion) and Meoo (independen
   - **积分与额度**：接入真实 quota_overview 接口（按个人版时区与 desktop clientType 查询）——精确计算订阅 / 赠送 / 增购积分与最近到期日，修此前显示固定 100 分；签到走 loginBonus 每日登录赠送；额度条改逐包分段（同 WorkBuddy 多包条，文字行只报最近到期）；quota 派生付费套餐徽章——plan_pro/plan_max/plan_team 取最高档出紫色 PRO/Max/Team 徽章（hover 带到期日），plan_experience 免费体验不出；
   - **本机账号切换**：硬切换写客户端 auth.json active 槽——顶层 cookies 以 AES-256-GCM 同款 iv||tag||ct 布局重加密 + 重写 activeProfileId/activeProviderType，切换前杀壳与全部 Go 服务（main-server/base-proxy/router/opencode/na），1.2s 延时复核防回写；依据：客户端启动 setCookieProvider 后 Go 代理直接消费 auth.json 注入 Cookie，冷状态写文件即完成切换（窗口 Chromium 罐残留旧 Cookie 时界面身份可能仍旧，以控制台 API 实际身份为准）；切完自动重开客户端（Loomy 同构，未安装报 DUMATE_NOT_INSTALLED 409 同口径）；
   - **10Router 同步**：账号管理弹窗渠道表补 DuMate（账号同步链路收口）；渠道行改「仅连接」——额度卡由 10R 连接凭据自身出卡，CD 不重复推卡；
-  - 杂项：显示名缩短「DuMate 百度搭子」→「DuMate」（对齐 10R）；产品页 VIEWS 漏注册修复 + 官方图标；README 安全边界补多账号隔离与防关联口径（issue #64）。
+  - 杂项：显示名缩短「DuMate 百度搭子」→「DuMate」（对齐 10R）；产品页 VIEWS 漏注册修复 + 官方图标；README 安全边界补多账号隔离与防关联口径（issue #64）；网页会话页不再列 DuMate——浏览器登录线入口迁至自身页「添加账号 → 网页版」tab（无痕窗捕获机制与已捕获账号不变）。
 - **新增 Meoo 秒悟产品线（issue #65）**：网页会话 cookie 线仅存活一个迭代即升级为独立产品线（cookieSites meoo 条目与捕获分支摘除），改走 CLI 控制面——
   - **控制面 API 客户端**：`/open/v1/cli-compat/*`（Bearer + `X-Meoo-Client: cli` + CLI-Version 0.5.8）：identity / points / projects / 项目 AK；额度口径 total=totalGranted、used=totalConsumed、remaining=availableBalance，parts 按来源逐包带批次到期日；
   - **OAuth PKCE S256 回环浏览器登录**：官方 CLI 公开客户端同款（authorize/token + 127.0.0.1 回环监听抓授权码，trae 骨架同构）；redirect_uri 按官方 CLI 0.5.8 产物考古修正为 `/oauth/callback`（此前 `/callback` 被授权页拒 invalid_redirect_uri）；回环随机端口 + 回调响应纪律（404/400/200 + no-store）+ token 响应契约校验；新增 refreshMeooToken——签到触发动作升级为强制刷新一次令牌（刷新即登录信号，10R 同款），刷新结果回写账号库，复读用新凭据；
   - **签到增量核验**：无领取端点 = 基线账面 → 身份读触发 → 复读（3×1.5s）→ totalGranted 增量裁决，绝不假装成功（10R meoo-daily-claim 同款算法）；已领过记 already 闭环；
   - **面板与同步**：产品卡 / 导航 / 空态提示接线；添加账号双通道（OAuth 浏览器登录 + 粘贴 meoo_ak_）；额度卡 `meoo-free-<uid>` 单账号 display-only（余额 + 活动批次逐包含到期日）；10R 同步凭证入 psd.meooControlKey + 项目字段带齐（00cde6b7 接收口径），同步前 best-effort 预解析项目 AK；
+  - 图标：CD 导航 / 产品卡与 10Router providers 图标换 meoo.com 现役 favicon（官方品牌资产，128×128 对齐 lingxi/dumate 尺寸惯例）——CD 紫点占位与 10R 288 全出血版退役；
   - OAuth 登录身份读加重试：uid 归户键的首次身份读挂了会回落 openid——同账号下次登录（uid=user_id）合并不了，旧行随令牌轮换失效成 invalid_token 死卡；现重试 3 次仍失败才回落 openid。
 - **Loomy 邀请码**：推荐码弹窗 placeholder 同步当前随机候选码；邀请码池新增 4HT9MF6（随机均摊两个共享码）。
 - **Trae 修复**：

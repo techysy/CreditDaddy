@@ -1414,6 +1414,7 @@ async function handleApi(req, res, url) {
         return {
           id: site.id, name: site.name, label: site.label, loginUrl: site.loginUrl, hint: site.hint,
           ...(site.no10rSync === true ? { no10rSync: true } : {}),
+          ...(site.hideFromWebPage === true ? { hideFromWebPage: true } : {}),
           accountId: rows[0]?.id || null, capturedAt: latest, accounts: rows,
         };
       }),

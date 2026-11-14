@@ -193,15 +193,18 @@ export const COOKIE_SITES = [
     name: 'DuMate',
     provider: 'dumate',
     label: 'DuMate',
-    // 独立的浏览器登录线（网页会话）：个人版登录入口 = 客户端 login-config 现网值
+    // 独立的浏览器登录线：个人版登录入口 = 客户端 login-config 现网值
     // （from=oa_dumate 标记个人版渠道，登录成功落 console.bce.baidu.com 会话）。
     // 与「本机导入」（本地解密客户端 auth.json）互为两条独立凭据线，凭据同形可互认归户。
+    // hideFromWebPage：DuMate 已是完整产品线，登录线入口在其自身页「添加账号 → 网页版」，
+    // 网页会话页不再列出（API 与捕获机制保持全量，cookieSiteCapture 仍走本条目）。
     loginUrl: 'https://login.bce.baidu.com/?from=oa_dumate&redirect=https%3A%2F%2Fconsole.bce.baidu.com%2F',
     homeUrl: 'https://www.dumate.cn',
     verify: 'api',
     cookieUrls: ['https://console.bce.baidu.com', 'https://login.bce.baidu.com', 'https://www.dumate.cn'],
     accountName: 'DuMate',
     hint: '浏览器登录线：在登录窗完成个人版登录（login.bce.baidu.com/?from=oa_dumate）后自动捕获会话；也可在 DuMate 页「添加账号 → 本机导入」直接读客户端凭据。CD 每日自动领取登录赠送积分，Cookie 只存本机，可一键同步到 10Router 作为 dumate 渠道。',
+    hideFromWebPage: true,
   },
   // ⚠ 码道 CodeArts（issue #40）已于 2026-10-30 撤下，不再提供：
   //   华为云控制台会话受闲置超时 + WAF 指印（HWWAFSESID / browserCheckResult）绑定，

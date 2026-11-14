@@ -2089,6 +2089,8 @@
   "DuMate 会话已失效": "DuMate session expired",
   "DuMate 身份验证失败": "DuMate identity verification failed",
   "百度搭子扫码登录：用百度 App 扫码确认即可，无需打开浏览器或客户端，凭据全程不出本机。": "Baidu Dazi QR sign-in: scan and confirm with the Baidu App — no browser or client needed, credentials never leave this machine.",
+  "百度搭子网页版登录：在内置无痕窗口完成个人版登录（login.bce.baidu.com），关闭窗口后自动捕获会话——免装客户端，也无需百度 App 扫码。换号请先在账号卡上「清除已存会话」。": "Baidu Dazi web sign-in: sign in to the personal version in the built-in incognito window (login.bce.baidu.com) — the session is captured automatically when the window closes. No client or Baidu App scan needed. To switch accounts, clear the saved session on the account card first.",
+  "需要桌面版 CreditDaddy(无痕登录窗)": "Requires the desktop CreditDaddy (incognito window)",
   "正在生成二维码…": "Generating QR code…",
   "扫码登录失败：": "QR sign-in failed: ",
   "请用百度 App 扫码": "Scan with the Baidu App",
