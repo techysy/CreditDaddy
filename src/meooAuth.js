@@ -208,12 +208,16 @@ export async function pollMeooLogin(data) {
   const refreshToken = tok.refresh_token;
   const expiresAt = new Date(Date.now() + Number(tok.expires_in) * 1000).toISOString();
 
-  // 身份读补 uid/昵称（失败不阻断入库——addAccount 侧 verify 会再补一次）
+  // 身份读补 uid/昵称（失败重试两次——uid 决定账号归户，首次读挂会落到 openid
+  // 造成同账号两行漂移；仍失败才回落 openid，addAccount 侧 verify 再补一次）
   let uid = tok.openid || null, name = null;
-  try {
-    const ident = await fetchMeooIdentity(accessToken);
-    if (ident.ok) { uid = ident.uid || uid; name = ident.name; }
-  } catch { /* verify 兜底 */ }
+  for (let attempt = 0; attempt < 3 && !name; attempt++) {
+    try {
+      const ident = await fetchMeooIdentity(accessToken);
+      if (ident.ok && ident.uid) { uid = ident.uid; name = ident.name; break; }
+    } catch { /* 瞬时抖动重试 */ }
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 1200));
+  }
 
   return {
     status: 'ok',
