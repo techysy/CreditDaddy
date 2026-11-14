@@ -4,6 +4,29 @@
 
 ---
 
+## [1.8.0] (2026-11-15)
+
+テーマ:**新製品ライン DuMate（百度搭子）と Meoo（独立ライン: CLI コントロールプレーン API + OAuth PKCE ループバック + 増分検証サインイン）の 2 本追加 + Loomy 招待コード同期 + Trae Linux/macOS ローカル取り込みと同一マシン複数アカウントのサインイン修正**.
+
+- **新製品ライン DuMate（百度搭子）**：Baidu 個人版コンパニオンクライアントのフルチェーン接続——
+  - **ログイン三線**：ローカル取り込み（Loomy 同様のクライアント認証情報取得）+ **QR コードログイン**（Baidu Passport tangram 二次元コードフローの完全移植：getqrcode 画像取得→data URI 変換 → unicast ロングポーリング（scanned/confirming）→ qrbdusslogin チケット交換（u 単回エンコード + SDK パラメータ補完 + シングルクォート JSON 正規表現フォールバック）→ リダイレクトチェーンを追って bce-sessionid を取得、欠落時は wap クイックログインチェーンでフォールバック。ドメイン認識 cookie 缶はコンソールセッション + Passport 系のみ保持）+ ブラウザログイン（個人版入口）；パネル「アカウント追加」に「QR ログイン」タブ追加（DuMate のみ、デフォルトで開く）：QR 表示 + ステートマシン文案 + 再取得/キャンセル、ダイアログを閉じると daemon 側セッションを自動中止；
+  - **ポイントと残高**：実物の quota_overview エンドポイントに接続（個人版タイムゾーンと desktop clientType で照会）——サブスクリプション / 付与 / 増し購入ポイントと直近期限を正確に算出し、従来の固定「100 点」表示を修正；サインインは loginBonus の毎日ログインポイント；残高バーはパッケージごとの分割表示（WorkBuddy 複数パッケージバーと同じ、文字行は直近期限のみ報告）；quota から有料プランバッジを派生——plan_pro/plan_max/plan_team は最高位のみ紫色の PRO/Max/Team バッジ（hover で期限日表示）、plan_experience（無料体験）は出さない；
+  - **ローカルアカウント切替**：ハード切替はクライアントの auth.json active スロットに書込——トップレベル cookies を同じ AES-256-GCM の iv||tag||ct レイアウトで再暗号化し、activeProfileId/activeProviderType を書き直す。切替前にシェルと全 Go サービス（main-server/base-proxy/router/opencode/na）を kill、1.2 秒遅延再確認で書き戻しを防御。根拠：クライアント起動時の setCookieProvider により Go プロキシが auth.json を直接消費して Cookie を注入するため、コールド状態でのファイル書込だけで切替が完了（ウィンドウの Chromium 缶に古い Cookie が残留する場合 UI 上の身份は旧いままの可能性——コンソール API の実際の身份が正）；切替後はパネルがクライアントを自動再起動（Loomy 同構、未インストールは DUMATE_NOT_INSTALLED 409 で同一口径）；
+  - **10Router 同期**：アカウント管理ダイアログのチャネル表に DuMate を追加（アカウント同期リンクの収口）；チャネル行は「接続のみ」に変更——残高カードは 10R 側の接続認証情報自身が出すため、CD は重複カードを推送しない；
+  - その他：表示名を「DuMate 百度搭子」→「DuMate」に短縮（10R と整合）；製品ページの VIEWS 登録漏れ修正 + 公式アイコン；README のセキュリティ境界に複数アカウント隔離・アンチ関連付けの口径を追記（issue #64）。
+- **新製品ライン Meoo（issue #65）**：ウェブセッション cookie 線は 1 イテレーションのみで独立製品ラインに昇格（cookieSites の meoo 項目と取得分岐は摘除）、CLI コントロールプレーンへ移行——
+  - **コントロールプレーン API クライアント**：`/open/v1/cli-compat/*`（Bearer + `X-Meoo-Client: cli` + CLI-Version 0.5.8）：identity / points / projects / プロジェクト AK；残高の口径は total=totalGranted、used=totalConsumed、remaining=availableBalance、parts はソース別にバッチ期限日付き；
+  - **OAuth PKCE S256 ループバックブラウザログイン**：公式 CLI 公開クライアントと同型（authorize/token + 127.0.0.1 ループバックリスナで認可コードを受領、trae 骨格と同構造）；redirect_uri は公式 CLI 0.5.8 産物の考古により `/oauth/callback` に修正（従来の `/callback` は認可ページに invalid_redirect_uri で拒否）；ループバックはランダムポート + コールバック応答規律（404/400/200 + no-store）+ token レスポンス契約検証；refreshMeooToken を新設——サインインのトリガ動作をトークン強制リフレッシュ 1 回に格上げ（リフレッシュ自体がログイン信号、10R 同様）、結果はアカウント庫に書き戻し、再読は新認証情報を使用；
+  - **サインイン増分検証**：受取エンドポイントなし = 基準台帳 → 身份読取でトリガ → 再読（3×1.5 秒）→ totalGranted 増分裁定、決して成功を偽装しない（10R meoo-daily-claim と同じアルゴリズム）；受取済みは already で閉環；
+  - **パネルと同期**：製品カード / ナビ / 空状態表示の配線；アカウント追加のデュアルチャネル（OAuth ブラウザログイン + meoo_ak_ 貼り付け）；残高カード `meoo-free-<uid>` 単一アカウント display-only（残高 + 活動バッチごとの期限日）；10R 同期の認証情報は psd.meooControlKey に入れプロジェクト欄を完全装填（00cde6b7 受入口径）、同期前に best-effort でプロジェクト AK を事前解析；
+  - OAuth ログインの身份読取リトライ：uid 照合キーとなる初回の身份読取が失敗すると openid にフォールバック——同一アカウントの次回ログイン（uid=user_id）で合流できず、旧行がトークン輪番とともに invalid_token の死行として残存；3 回リトライしても失敗してから openid にフォールバックするように変更。
+- **Loomy 招待コード**：紹介コードダイアログの placeholder を現在のランダム候補コードに同期；招待コードプールに 4HT9MF6 を追加（ランダム均等割りで 2 つの共有コード）。
+- **Trae 修正**：
+  - **ローカル認証情報検出の Linux/macOS 対応（PR #62、Ubuntu 26.04 + Trae CN 2.3.92182 で実測）**：detectTrae の clientInstalled/clientPath/running の 3 字段は従来 win32 限定のハードコード——Linux では storage.json を復号できるのに「クライアント未インストール」と判定され、パネルがローカル取り込み入口を出さなかった。clientPathOf に darwin（/Applications/*.app）と linux（PATH 上の kebab-case bin + .desktop の Name 解析による Exec フォールバック）を追加；running は unixTraePids 経由（Linux は /proc/<pid>/exe、macOS は pgrep -x）；terminateTrae は unix で SIGTERM→ポーリング→SIGKILL；win32 の挙動は無変更；
+  - **同一マシン複数アカウントのサインイン 9074 収束（issue #31）**：① ブラウザログインの OAuth デバイス番号は meta.traeDevice.deviceId に保存されるが、サインインは meta.deviceId のみを読んでいた——OAuth アカウントは常に派生番号となり 9074 で拒否され続けた；fallback を追加し両ログイン経路を統一。② 同一マシン複数アカウントは派生番号を強制されないように（issue #28 の旧口径を廃止）：同一マシンで取り込んだ全アカウントはログイン時にそのデバイスをサーバーに登録済みなので、実機番号が全アカウントで有効——全アカウント attempt=0 で実機番号を使用し、9074 時に派生番号へ降格リトライ（フォールバックは温存）；「デバイスは本日受取済み」は already（緑バッジ）に分類し、赤失敗にしない。
+- **デスクトップシェルの終了チェーン兜底（test.11 実測「プログラムを閉じられない」）**：従来の終了パス（quit → close 通過 → window-all-closed 空処理）は正常破棄に依存——Meoo 認可失敗ウィンドウ / OAuth ループバック server など懸かった handle が quit を引き留め、プログラムが閉じられなかった。before-quit で全ウィンドウ（authWin 含む）とトレイを非同期で強制 destroy し、1.2 秒後も終了していない場合は app.exit(0) でハード退出——終了はどの handle が自然に片付くことにも依存しない。
+- **その他**：デスクトップビルド成果物はインストーラ（nsis）のみに絞り、ポータブル版 target を廃止（歴代 Portable 産物も一括整理）；scripts/clean-dist.js ビルドゲートを新設——旧テストパッケージを自動掃除（最新 2 個のテスト版と全正式版のみ保持）；README に Trae ブラウザログインの「同一マシン認可」説明を追記（127.0.0.1 へのリダイレクトは公式と同じ仕組み、NAS / リモート web パネルではブラウザが「到達不可」を報じるのは想定内）と機能概覧の 5 社訂正；テスト 460/460 グリーン（test/dumate.test.js 新設：暗号化往復 / active スロット / 冪等 / 不明アカウント拒否 / 有料プランバッジ、test/meoo.test.js は 9 ケースに書き直し、blob Key 行形状アサーションを含む）。
+
 ## [1.7.2] (2026-11-12)
 - **霊犀カードに「今すぐサインイン」ボタンを追加（issue #53 フォローアップ）**：ウェブセッションカードの WPS 灵犀アカウント行には「再プローブ」しかなく、手動サインインの入口がありませんでした（自動ラウンドはあるが、実行タイミングは制御不可）。行に ▶ ボタンを追加：`POST /api/accounts/:id/checkin` で毎日タスクを代行し、トーストは daemon 返却のメッセージをそのまま表示（「霊点」単位付き）。済みの日付は自動スキップ（先にタスク状態を確認し、claim を盲撃ちしない）。成功後はその場で再プローブして残高に +100 を即反映。豆包は checkin 実装を持つが純粋なクライアント起動入口のまま（CD は代行しない）ため対象外。
 - **霊犀サインインの表示を3か所修正（test.2 実測フィードバック）**: ① ダッシュボードの「本日受取」KPI とバッジにウェブセッションサインイン線を追加——`/api/status` の `todayByProduct` に lingxi の日界（0 時切替）を追加し、霊犀カードのアカウント行は製品行と同じ `statusOf` バッジを流用（本日受取 / 未受取 / 失敗、時刻とメッセージのツールチップ付き）。手動・自動サインインの結果がカード上に残り、一瞬のトーストだけにならない；② 「+N の水増し」を修正——claim レスポンスの `total_claimed_credits` は**周期の累計**（実測：連続 3 日目で 300 が返るが残高は +100 しか動かない。7 日目は 800 と誤表示になる）。表示はタスク状態の `check_in_days[連続日数].reward`（毎日 100 / 7 日目 200）に統一し、トースト・バッジ・daemon ログの 3 か所を同期；③ 受取ログの単位を製品線別に（霊犀「霊点」、豆包「額度」）、一律「Credits」を廃止。新規 `test/lingxi.test.js`（6 ケース）で当日額の口径と「済みなら claim を盲撃ちしない」を固定。
