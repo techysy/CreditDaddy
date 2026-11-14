@@ -68,7 +68,7 @@ import { liveToAccount as catpawLiveAccount, switchTo as catpawSwitchTo, current
 import { liveToAccount as traeLiveAccount, detectTrae, switchTo as traeSwitchTo, snapshotLive as traeSnapshotLive } from './traeLocal.js';
 import { liveToAccount as minimaxLiveAccount, detectMiniMax, detectMiniMaxBuildLang, currentMiniMaxUid, currentMiniMaxToken, currentMiniMaxRecordKey } from './minimaxLocal.js';
 import { liveToAccount as loomyLiveAccount, hardSwitchLoomy, currentLoomyUid, detectLoomy } from './loomyLocal.js';
-import { liveToAccount as dumateLiveAccount, detectDumate, readDumateCredential } from './dumateLocal.js';
+import { liveToAccount as dumateLiveAccount, detectDumate, readDumateCredential, hardSwitchDumate } from './dumateLocal.js';
 import * as minimaxGateway from './minimaxGateway.js';
 import * as traeGateway from './traeGateway.js';
 import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl, autoClaimEnabled, autoClaimUntil, setAutoClaimEnabled, claimIntervalMin, setClaimIntervalMin, claimWindowMin, setClaimWindowMin } from './zcodeClient.js';
@@ -1185,6 +1185,23 @@ async function handleApi(req, res, url) {
       } catch (e) {
         logger.warn('DAEMON', 'Loomy 切换到 {name} 失败:{err}', { name: target.name || target.id, err: e.message });
         return json(res, e.loomyNotInstalled ? 409 : 400, { error: e.message, code: e.loomyNotInstalled ? 'LOOMY_NOT_INSTALLED' : undefined });
+      }
+    }
+    if (target.provider === 'dumate') {
+      try {
+        const live = await dumateLiveAccount();
+        if (live && live.token && live.token !== target.token) {
+          await addAccount(live, { trusted: true }).catch((e) => logger.warn('DAEMON', '同步 DuMate 当前登录失败:{err}', { err: e.message }));
+        }
+      } catch (e) {}
+      try {
+        // 硬切换：杀壳 + Go 服务 → 重写 auth.json active 槽 → 延时复核；面板收到 closedClient 后重开客户端
+        const r = await hardSwitchDumate(target);
+        logger.info('DAEMON', r.alreadyActive ? 'DuMate 当前已是 {name}' : r.verified ? 'DuMate 已切换到 {name}(凭据已写入并重开客户端;窗口 Chromium 罐残留旧 Cookie 时界面身份可能仍旧,以控制台 API 实际身份为准)' : 'DuMate 已切换到 {name},但凭据复核未落定(疑似有进程回写)', { name: target.name || target.id });
+        return json(res, 200, { ok: true, ...r });
+      } catch (e) {
+        logger.warn('DAEMON', 'DuMate 切换到 {name} 失败:{err}', { name: target.name || target.id, err: e.message });
+        return json(res, e.dumateNotInstalled ? 409 : 400, { error: e.message, code: e.dumateNotInstalled ? 'DUMATE_NOT_INSTALLED' : undefined });
       }
     }
     if (target.provider === 'qoder' || target.provider === 'qoder-cn') {

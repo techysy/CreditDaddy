@@ -22,7 +22,7 @@ import {
   DUMATE_INVITE_GET_URL,
   DUMATE_INVITE_REDEEM_URL,
 } from '../src/dumateClient.js';
-import { decryptDumateCookies, readDumateProfiles, liveToAccount } from '../src/dumateLocal.js';
+import { decryptDumateCookies, encryptDumateCookies, readDumateProfiles, liveToAccount, hardSwitchDumate } from '../src/dumateLocal.js';
 import { getSite } from '../src/cookieSites.js';
 import { PROVIDERS, productOf } from '../src/constants.js';
 import { productImpl } from '../src/providers.js';
@@ -174,6 +174,62 @@ test('DuMate 个人版身份 / 我的邀请码 / 兑换接口', async () => {
 
   const empty = await redeemDumateInviteCode(COOKIE_HEADER, '  ', { fetchImpl: mockFetch });
   assert.equal(empty.ok, false);
+});
+
+test('DuMate 账号切换：加密往返 + 硬切换写 active 槽（杀客户端路径测试注入跳过）', async () => {
+  // 加密往返：encrypt → decrypt 还原
+  const cookies = [{ name: 'BDUSS', value: 'v1', domain: '.baidu.com' }, { name: 'bce-user-info', value: 'ui', domain: '.bce.baidu.com' }];
+  const key = crypto.randomBytes(32);
+  const enc = encryptDumateCookies(cookies, key);
+  assert.deepEqual(decryptDumateCookies(enc, key), cookies);
+  assert.equal(decryptDumateCookies(enc, crypto.randomBytes(32)), null, '错误密钥必须解不开');
+
+  // 双 profile 凭据库：p1 active、p2 目标
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dumate-switch-'));
+  const mkCookies = (v) => [
+    { name: 'BDUSS', value: 'bduss-' + v, domain: '.baidu.com', expirationDate: Math.floor(Date.now() / 1000) + 86400 },
+    { name: 'bce-user-info', value: 'ui-' + v, domain: '.bce.baidu.com' },
+  ];
+  const p2cookies = mkCookies('p2');
+  const enc1 = encryptDumateCookies(mkCookies('p1'), key);
+  const enc2 = encryptDumateCookies(p2cookies, key);
+  fs.writeFileSync(path.join(dir, '.cookie-key'), key);
+  fs.writeFileSync(path.join(dir, 'auth.json'), JSON.stringify({
+    cookies: enc1,
+    activeProviderType: 'bce',
+    activeProfileId: 'p1',
+    accountProfiles: [
+      { profileId: 'p1', loginType: 'bce', bceUserId: 'uid-1', displayName: 'A', encryptedCookies: enc1 },
+      { profileId: 'p2', loginType: 'bce', bceUserId: 'uid-2', displayName: 'B', encryptedCookies: enc2 },
+    ],
+  }));
+  process.env.DUMATE_DATA_DIR = dir;
+  try {
+    // 目标账号：token = p2 的 Cookie 串（本机导入会带 meta.dumateProfileId）
+    const p2Header = readDumateProfiles().find((p) => p.profileId === 'p2').cookieHeader;
+    const target = { provider: 'dumate', token: p2Header, uid: 'uid-2', meta: { dumateProfileId: 'p2' } };
+
+    const r = await hardSwitchDumate(target, { requireClient: false });
+    assert.equal(r.switched, true);
+    assert.equal(r.verified, true, '写入后复核 active 槽已指向 p2');
+
+    const j = JSON.parse(fs.readFileSync(path.join(dir, 'auth.json'), 'utf8'));
+    assert.equal(j.activeProfileId, 'p2');
+    assert.equal(j.activeProviderType, 'bce');
+    // 顶层 cookies 重加密为目标 profile 的 Cookie（客户端启动 setCookieProvider 直接消费）
+    assert.deepEqual(decryptDumateCookies(j.cookies, key), p2cookies);
+
+    // 切到当前账号 = 幂等
+    const r2 = await hardSwitchDumate(target, { requireClient: false });
+    assert.equal(r2.alreadyActive, true);
+
+    // 不在客户端已登录列表的账号（QR/网页会话来的，无 profileId 也无 Cookie 交集）拒绝写入
+    const stranger = { provider: 'dumate', token: 'BDUSS=stranger; bce-user-info=zzz', meta: {} };
+    await assert.rejects(() => hardSwitchDumate(stranger, { requireClient: false }), /不是本机 DuMate 客户端已登录/);
+  } finally {
+    delete process.env.DUMATE_DATA_DIR;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('DuMate 供应商登记与 10Router 映射一致性', () => {

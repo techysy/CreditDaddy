@@ -2119,5 +2119,17 @@
   "还没有 Meoo 账号。<br>点「添加账号 → 浏览器登录」走 Meoo OAuth（官方 CLI 同款 PKCE 回环，无需网页抓包），或在「粘贴 Token」里贴 meoo_ak_ 控制面 Key。每日登录积分自动增量核验领取，可一键同步给 10Router 网关。": "還沒有 Meoo 帳號。<br>點「新增帳號 → 瀏覽器登入」走 Meoo OAuth（官方 CLI 同款 PKCE 回環，無需網頁抓包），或在「貼上 Token」裡貼 meoo_ak_ 控制面 Key。每日登入積分自動增量核驗領取，並可一鍵同步給 10Router 閘道。",
   "粘贴控制面 Key（meoo.com → 设置 → API 密钥，meoo_ak_ 开头）直接入库；或走「浏览器登录」OAuth。同步 10Router 时自动预解析项目 AK。": "貼上控制面 Key（meoo.com → 設定 → API 金鑰，meoo_ak_ 開頭）直接入庫；或走「瀏覽器登入」OAuth。同步 10Router 時自動預解析專案 AK。",
   "今日可能已领取，或该权益需在 meoo.com 网页登录触发": "今日可能已領取，或該權益需在 meoo.com 網頁登入觸發",
-  "Meoo 凭据已失效，请重新登录或更换控制面 Key": "Meoo 憑據已失效，請重新登入或更換控制面 Key"
+  "Meoo 凭据已失效，请重新登录或更换控制面 Key": "Meoo 憑據已失效，請重新登入或更換控制面 Key",
+  "同步 DuMate 当前登录失败:{err}": "同步 DuMate 當前登入失敗：{err}",
+  "DuMate 当前已是 {name}": "DuMate 當前已是 {name}",
+  "DuMate 已切换到 {name}(凭据已写入并重开客户端;窗口 Chromium 罐残留旧 Cookie 时界面身份可能仍旧,以控制台 API 实际身份为准)": "DuMate 已切換到 {name}（憑據已寫入並重開用戶端；視窗 Chromium 罐殘留舊 Cookie 時介面身分可能仍舊，以控制台 API 實際身分為準）",
+  "DuMate 已切换到 {name},但凭据复核未落定(疑似有进程回写)": "DuMate 已切換到 {name}，但憑據複核未落定（疑似有程序回寫）",
+  "DuMate 切换到 {name} 失败:{err}": "DuMate 切換到 {name} 失敗：{err}",
+  "目标账号缺少会话 Cookie": "目標帳號缺少會話 Cookie",
+  "本机未安装 DuMate 客户端，无法切换（切换是把登录写入客户端凭据，由客户端应用）": "本機未安裝 DuMate 用戶端，無法切換（切換是把登入寫入用戶端憑據，由用戶端應用）",
+  "DuMate 客户端仅支持 Windows，本平台无法切换": "DuMate 用戶端僅支援 Windows，本平台無法切換",
+  "未读到 DuMate 客户端凭据库（auth.json / .cookie-key）": "未讀取到 DuMate 用戶端憑據庫（auth.json / .cookie-key）",
+  "目标账号不是本机 DuMate 客户端已登录的账号，无法写入切换（请先在客户端登录该账号后本机导入）": "目標帳號不是本機 DuMate 用戶端已登入的帳號，無法寫入切換（請先在用戶端登入該帳號後本機匯入）",
+  "DuMate 目标账号凭据已过期（全部 Cookie 过期），请在客户端重新登录后再切换": "DuMate 目標帳號憑據已過期（全部 Cookie 過期），請在用戶端重新登入後再切換",
+  "已重新打开 DuMate 客户端": "已重新開啟 DuMate 用戶端"
 }
