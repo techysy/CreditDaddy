@@ -3230,7 +3230,9 @@ const AM_CHANNELS = [
   { provider: 'workbuddy', label: 'WorkBuddy 国内版', syncable: true },
   { provider: 'workbuddy-intl', label: 'WorkBuddy 国际版', syncable: true },
   { provider: 'loomy', label: '讯飞 Loomy', syncable: true },
-  { provider: 'dumate', label: 'DuMate 百度搭子', syncable: true },   // 凭据=会话 Cookie 串，10R dumate 渠道 apiKey 同形
+  // dumate 只同步连接、不推额度卡：10R 用连接凭据原生拉 quota_overview 出卡（PR #116 修双计），
+  // CD 再推一份免费卡纯属重复——pushable:false = 渠道行不出「额度卡推送」主勾，保存时恒记排除
+  { provider: 'dumate', label: 'DuMate 百度搭子', syncable: true, pushable: false },
 ];
 
 function openTrAccountManage() {
@@ -3256,12 +3258,18 @@ function renderAmChannels() {
   if (!box) return;
   const rows = AM_CHANNELS.filter((ch) => have.has(ch.provider)).map((ch) => {
     // 勾选语义 = 推送该渠道：账号同步看 accountSync（总开关关了整组禁用），
-    // 额度卡看 quotaPushDisabledProviders 反集
+    // 额度卡看 quotaPushDisabledProviders 反集；pushable:false 的渠道（dumate）
+    // 不出主勾——额度卡由 10R 连接凭据自身出卡，CD 推一份纯属重复
     const syncOn = enabled && ((c.accountSync?.providers || []).length
       ? (c.accountSync.providers.includes(ch.provider)) : ch.syncable);
+    const pushable = ch.pushable !== false;
     const pushOn = !excluded.includes(ch.provider);
+    const labelHtml = esc(T(ch.label)) + (pushable
+      ? ''
+      : '<span class="dim" style="font-size:11px;margin-left:4px">' + T('10R 自身出卡') + '</span>');
     return '<label class="check" style="display:flex;gap:6px;align-items:center">'
-      + '<input type="checkbox" data-am-push="' + ch.provider + '"' + (pushOn ? ' checked' : '') + '> ' + esc(T(ch.label))
+      + (pushable ? '<input type="checkbox" data-am-push="' + ch.provider + '"' + (pushOn ? ' checked' : '') + '> ' : '<span style="width:16px;flex:none"></span> ')
+      + labelHtml
       + '<label class="check" style="margin-left:auto;gap:4px"><input type="checkbox" data-am-sync="' + ch.provider + '"' + (syncOn ? ' checked' : '') + (!ch.syncable || !enabled ? ' disabled' : '') + '> <span class="dim">连接</span></label>'
       + '</label>';
   });
@@ -3282,8 +3290,10 @@ async function saveAmChannels() {
       json: {
         accountSyncEnabled: true,
         accountSyncProviders: sync,
-        // 主勾没勾的 = 排除推送
-        quotaPushDisabledProviders: AM_CHANNELS.map((c) => c.provider).filter((p) => !push.includes(p)),
+        // 主勾没勾的 = 排除推送；pushable:false 的渠道（dumate）恒排除——10R 自身出卡
+        quotaPushDisabledProviders: AM_CHANNELS
+          .filter((c) => c.pushable === false || !push.includes(c.provider))
+          .map((c) => c.provider),
       },
     });
     toast(T('渠道同步设置已保存'), true);

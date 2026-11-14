@@ -2098,5 +2098,6 @@
   "登录成功，已导入账号库": "Signed in and saved to the account library",
   " 登录成功": " signed in",
   "二维码已过期": "QR code expired",
-  "扫码登录": "QR sign-in"
+  "扫码登录": "QR sign-in",
+  "10R 自身出卡": "card by 10R itself"
 }
