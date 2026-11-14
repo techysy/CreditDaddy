@@ -1837,6 +1837,10 @@ function creditHtml(a) {
       if (x.pending && x.startsAt) return base + T('（') + fmtTime(x.startsAt).slice(5, 16) + T(' 生效）');
       return base + (x.expiresAt ? T('（') + fmtTime(x.expiresAt).slice(5, 16) + (x.recurring ? T(' 重置）') : T(' 到期）')) : '');
     }).join(' · ');
+    // 紧凑口径（DuMate）：登录赠送积分逐日一包、包数只增不减，行内全列出来会无限变长——
+    // 文字行同 WorkBuddy 只报「最近一个到期 + 已用/共」，全量明细进悬浮提示，分段条逐包展示
+    const compactParts = a.product === 'dumate';
+    const soonPart = effParts.filter((x) => x.remaining > 0 && !x.recurring && x.expiresAt).sort((x, y) => x.expiresAt.localeCompare(y.expiresAt))[0];
     const atText = q.pendingAt ? fmtTime(q.pendingAt) : '';
     const isToday = atText.slice(0, 10) === fmtTime(new Date().toISOString()).slice(0, 10);
     const when = atText ? (isToday ? atText.slice(11) : atText.slice(0, 10) + ' ' + atText.slice(11)) : '';
@@ -1846,7 +1850,12 @@ function creditHtml(a) {
       + '</span><span class="credit dim" title="' + items + '">'
       + (q.plan ? esc(q.plan) + ' · ' : '') + (when ? when + ' ' + T('到账') : T('即将到账')) + '</span></div>';
     const pct = q.total > 0 ? Math.min(1, q.remaining / q.total) : 0;
-    const mainLine = () => T('<div class="credit-line"><span class="credit"><span class="lbl">剩余</span><b>') + fmtNum(q.remaining) + '</b>' + esc(unit) + '</span>'
+    const mainLine = () => compactParts
+      ? T('<div class="credit-line"><span class="credit"><span class="lbl">剩余</span><b>') + fmtNum(q.remaining) + '</b>' + esc(unit) + '</span>'
+        + '<span class="credit dim" title="' + items + '">'
+        + (soonPart ? fmtNum(soonPart.remaining) + T(' 于 ') + fmtTime(soonPart.expiresAt).slice(5, 10) + T(' 到期 · ') : '')
+        + T('已用 ') + fmtNum(q.used) + T(' / 共 ') + fmtNum(q.total) + (q.exceeded ? T(' · <span style="color:var(--err)">已超额</span>') : '') + '</span></div>'
+      : T('<div class="credit-line"><span class="credit"><span class="lbl">剩余</span><b>') + fmtNum(q.remaining) + '</b>' + esc(unit) + '</span>'
       + '<span class="credit dim" title="' + items + '">' + (q.plan ? esc(q.plan) + ' · ' : '') + items + '</span></div>';
     // 全部待生效（活动刚发、还没到点）：主行显示待生效，别只显示一个 0
     if (pendingParts.length && !effParts.length) {
@@ -2394,9 +2403,9 @@ function renderStatus() {
     n.innerHTML = T('<div class="z-row"><span class="z-label">本机凭据</span><span class="z-text">由本机 Loomy 客户端读取导入，约 14 天有效；支持多账号切换，可一键同步 10Router。</span></div>')
       + loomyClientChip(s);
   } else if (state.view === 'dumate') {
+    // 客户端安装/运行状态不再写文字——头部「打开客户端」按钮的状态灯已覆盖，信息条只留凭据线说明
     n.style.display = '';
-    n.innerHTML = T('<div class="z-row"><span class="z-label">本机凭据</span><span class="z-text">由本机 DuMate 百度搭子客户端本地解密导入（会话 Cookie 不出本机）；每日自动领取登录赠送积分，支持邀请码兑换，可一键同步 10Router。</span></div>')
-      + dumateClientChip(s);
+    n.innerHTML = T('<div class="z-row"><span class="z-label">本机凭据</span><span class="z-text">由本机 DuMate 百度搭子客户端本地解密导入（会话 Cookie 不出本机）；每日自动领取登录赠送积分，支持邀请码兑换，可一键同步 10Router。</span></div>');
   } else if (state.view === 'minimax') {
     n.style.display = '';
     n.innerHTML = T('<div class="z-row"><span class="z-label">每日签到</span><span class="z-text">每日签到领 800~2000 积分 + 400 连签加成。支持自动检测本机 MiniMax Code 凭据与 Bearer Token 导入，自带标准 Anthropic 本地网关。</span></div>');
@@ -2468,12 +2477,6 @@ function loomyClientChip(s) {
   if (!c.installed) return T(' <span class="dim">客户端：未安装（本机导入 / 切换需要 Windows Loomy 客户端）</span>');
   return T(' <span class="dim">客户端：') + (c.running ? T('运行中') : T('未运行')) + (c.signedIn ? '' : T(' · 未登录')) + '</span>';
 }
-function dumateClientChip(s) {
-  const c = s.dumateClient || {};
-  if (!c.installed) return T(' <span class="dim">客户端：未安装（本机导入需要 Windows DuMate 百度搭子客户端）</span>');
-  return T(' <span class="dim">客户端：') + (c.running ? T('运行中') : T('未运行')) + (c.signedIn ? '' : T(' · 未登录')) + '</span>';
-}
-
 // Qoder 设备身份组件（Linux / fnOS）
 const umidOffer = (s) => Boolean(s && s.umid && s.umid.supported && !s.umid.installed);
 let umidBusy = false;
