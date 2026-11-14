@@ -260,11 +260,19 @@ const PRODUCTS = {
   },
   meoo: {
     label: 'Meoo 秒悟',
-    // 网页会话捕获线：凭据是 meoo.com 会话 cookie（meta.cookieSiteSession.cookie，阿里云 SSO 登录）。
-    // 「签到」= 调网页端同款 entitlement/init 触发每日首登积分（2000/天，约 6~7 天后过期）；
-    // NEED_LOGIN 记失败并提示重新捕获。额度 = 积分余额（独立口径，unit '秒悟积分' 不进剩余积分合计）。
+    // 独立产品线（issue #65）：凭据 = OAuth 令牌（PKCE 回环）或控制面 Key（meoo_ak_），
+    // 走 CLI 控制面 API（/open/v1/cli-compat/*），不走网页会话。
+    // 「签到」无领取端点 = 登录等价动作 + totalGranted 增量核验（10R 同款算法）；
+    // 额度 = 积分账面（unit '积分' 计入剩余积分合计），parts 按来源逐包带批次到期日。
     checkin: (account) => checkinMeoo(account),
     quota: (account) => fetchMeooQuota(account),
+    verify: async (account) => {
+      const { fetchMeooIdentity } = await import('./meooClient.js');
+      const ident = await fetchMeooIdentity(account.token);
+      if (!ident.auth) { const e = new Error(ident.error || 'Meoo 凭据已失效，请重新登录或更换控制面 Key'); e.auth = true; throw e; }
+      if (!ident.ok) throw new Error(ident.error || 'Meoo 身份验证失败');
+      return { name: ident.name || null, uid: ident.uid ? String(ident.uid) : null };
+    },
   },
   dumate: {
     label: 'DuMate',

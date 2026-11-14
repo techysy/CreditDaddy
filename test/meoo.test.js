@@ -1,159 +1,152 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  checkinMeoo, fetchMeooQuota, fetchMeooEntitlement, fetchMeooIdentity, maskMeooUserId,
-  MEOO_INIT_URL, MEOO_ENTITLEMENT_URL, MEOO_USER_URL,
+  checkinMeoo, fetchMeooQuota, fetchMeooPoints, fetchMeooIdentity, maskMeooUserId,
+  MEOO_IDENTITY_URL, MEOO_POINTS_URL, resolveMeooProjectAk,
 } from '../src/meooClient.js';
 import { getSite } from '../src/cookieSites.js';
 import { PROVIDERS, productOf } from '../src/constants.js';
 import { productImpl } from '../src/providers.js';
+import { TENROUTER_PROVIDER_MAP } from '../src/tenrouterAccounts.js';
+import { buildExportPayload } from '../src/transfer.js';
+
+const CP_HEADERS = { 'X-Meoo-Client': 'cli', 'X-Meoo-CLI-Version': '0.5.8' };
+const TOKEN = 'meoo_ak_test123';
 
 const res = (status, body) => ({ status, ok: status >= 200 && status < 300, text: async () => JSON.stringify(body) });
-const NEED_LOGIN = { success: false, errCode: 'NEED_LOGIN', errMsg: 'need login' };
 
-const entBody = (balance = 4000, extra = {}) => ({
+const identityBody = { success: true, data: { user_id: '1234567890', username: 'Techysy' } };
+const pointsBody = (granted, balance, extra = {}) => ({
   success: true,
   data: {
-    planCode: 'FREE',
-    benefits: [{ typeCode: 'daily_login', quota: 2000 }, { typeCode: 'model_credits', quota: 0, used: 0 }],
-    userPointInfo: { account: { availableBalance: balance, totalGranted: 6000, totalConsumed: 2000 }, ...extra },
+    account: { availableBalance: balance, totalGranted: granted, totalConsumed: 100, totalExpired: 0 },
+    activeGrants: [
+      { sourceTypeName: '每日赠送', totalInitialAmount: 2000, totalRemainingAmount: 1800,
+        grantDetails: [{ expiresDate: '2026-11-20T00:00:00Z' }] },
+      ...((extra.grants || [])),
+    ],
   },
 });
 
-/** 按 URL 分发的假 fetch；init 支持按调用次序返回不同响应 */
-function mockFetch({ init = [], ent = res(200, entBody()), user = res(200, { success: true, data: { user_id: '1234567890' } }) } = {}) {
+function mockFetch({ points = [], identity = res(200, identityBody) } = {}) {
   const calls = [];
   let i = 0;
-  const fn = async (url, initOpts) => {
-    calls.push({ url, headers: initOpts?.headers });
-    if (url === MEOO_INIT_URL) { const r = init[Math.min(i, init.length - 1)]; i++; return r; }
-    if (url === MEOO_ENTITLEMENT_URL) return ent;
-    if (url === MEOO_USER_URL) return user;
-    throw new Error(`unexpected url: ${url}`);
+  const fn = async (url, init = {}) => {
+    calls.push({ url: String(url), headers: init.headers });
+    if (String(url).includes('/account/points')) return points[Math.min(i++, points.length - 1)];
+    if (String(url).includes('/account/identity')) return identity;
+    throw new Error('unexpected url: ' + url);
   };
   fn.calls = calls;
   return fn;
 }
 
-const account = { meta: { cookieSiteSession: { cookie: 'session=test' } } };
-const noSleep = async () => {};
-
-test('首登发放：dailyLoginGranted=true → checked-in +2000，并带回余额', async () => {
-  const f = mockFetch({ init: [res(200, { success: true, data: { initialized: true, dailyLoginGranted: true, dailyLoginGrantAmount: 2000, inviteRewardArrivals: [] } })] });
-  const r = await checkinMeoo(account, { fetchImpl: f, sleep: noSleep });
-  assert.equal(r.status, 'checked-in');
-  assert.equal(r.claimedAmount, 2000);
-  assert.equal(r.balanceAfter, 4000);
-  assert.match(r.message, /\+2000/);
-  // 会话 cookie 原样带上，Referer/Origin 为 meoo.com
-  assert.equal(f.calls[0].headers.Cookie, 'session=test');
-  assert.equal(f.calls[0].headers.Origin, 'https://meoo.com');
+test('控制面身份：identity 取 uid/昵称，请求头带 cli 标记', async () => {
+  const f = mockFetch();
+  const r = await fetchMeooIdentity(TOKEN, { fetchImpl: f });
+  assert.equal(r.ok, true);
+  assert.equal(r.uid, '1234567890');
+  assert.equal(r.name, 'Techysy');
+  assert.equal(f.calls[0].headers.Authorization, `Bearer ${TOKEN}`);
+  assert.equal(f.calls[0].headers['X-Meoo-Client'], 'cli');
+  assert.equal(f.calls[0].headers['X-Meoo-CLI-Version'], '0.5.8');
 });
 
-test('当日已初始化且无发放 → already（不报虚假 +N）', async () => {
-  const f = mockFetch({ init: [res(200, { success: true, data: { initialized: true, dailyLoginGranted: false, dailyLoginGrantAmount: 0 } })] });
-  const r = await checkinMeoo(account, { fetchImpl: f, sleep: noSleep });
-  assert.equal(r.status, 'already');
-  assert.equal(r.claimedAmount, undefined);
+test('401 判凭据失效（auth=false）', async () => {
+  const r = await fetchMeooIdentity('meoo_ak_dead', { fetchImpl: () => res(401, { errCode: 'UNAUTHORIZED' }) });
+  assert.equal(r.auth, false);
 });
 
-test('initialized=false 按前端同款退避重查，就绪后发放', async () => {
-  const f = mockFetch({ init: [
-    res(200, { success: true, data: { initialized: false } }),
-    res(200, { success: true, data: { initialized: true, dailyLoginGranted: true, dailyLoginGrantAmount: 2000 } }),
-  ] });
-  const r = await checkinMeoo(account, { fetchImpl: f, sleep: noSleep });
-  assert.equal(r.status, 'checked-in');
-  assert.equal(f.calls.filter((c) => c.url === MEOO_INIT_URL).length, 2);
+test('积分账面：balance/totalGranted/grants 逐包（批次到期日取最近）', async () => {
+  const f = mockFetch({ points: [res(200, pointsBody(5000, 4300, { grants: [
+    { sourceTypeName: '订阅', totalInitialAmount: 3000, totalRemainingAmount: 2500, grantDetails: [{ expiresDate: '2026-12-10T00:00:00Z' }] },
+  ] })) ] });
+  const r = await fetchMeooPoints(TOKEN, { fetchImpl: f });
+  assert.equal(r.balance, 4300);
+  assert.equal(r.totalGranted, 5000);
+  assert.equal(r.grants.length, 2);
+  assert.equal(r.grants[0].remaining, 1800);
+  assert.equal(r.grants[0].expiresAt, '2026-11-20T00:00:00.000Z');
+  assert.equal(r.grants[1].recurring, true, '订阅来源 recurring');
 });
 
-test('initialized 一直 false → failed（下轮自动重试），重查次数有上限', async () => {
-  const f = mockFetch({ init: [res(200, { success: true, data: { initialized: false } })] });
-  const r = await checkinMeoo(account, { fetchImpl: f, sleep: noSleep });
-  assert.equal(r.status, 'failed');
-  assert.ok(f.calls.filter((c) => c.url === MEOO_INIT_URL).length <= 4);
-});
-
-test('NEED_LOGIN（401）→ failed + authExpired，提示重新登录捕获，不抛异常', async () => {
-  const f = mockFetch({ init: [res(401, NEED_LOGIN)] });
-  const r = await checkinMeoo(account, { fetchImpl: f, sleep: noSleep });
-  assert.equal(r.status, 'failed');
-  assert.equal(r.authExpired, true);
-  assert.match(r.message, /NEED_LOGIN/);
-  assert.match(r.message, /重新登录/);
-});
-
-test('HTTP 200 但业务码 NEED_LOGIN 同样判会话失效', async () => {
-  const f = mockFetch({ init: [res(200, NEED_LOGIN)] });
-  const r = await checkinMeoo(account, { fetchImpl: f, sleep: noSleep });
-  assert.equal(r.status, 'failed');
-  assert.equal(r.authExpired, true);
-});
-
-test('无会话 cookie → failed，不发请求', async () => {
-  const f = mockFetch({ init: [res(200, {})] });
-  const r = await checkinMeoo({ meta: {} }, { fetchImpl: f, sleep: noSleep });
-  assert.equal(r.status, 'failed');
-  assert.equal(f.calls.length, 0);
-});
-
-test('权益接口：余额 / 套餐 / 每日首登额度 / 逐笔发放（带到期日）', async () => {
-  const ent = res(200, entBody(4000, { activeGrants: [
-    { sourceType: 'DAILY_LOGIN', grantDetails: [
-      { remainingAmount: 2000, grantAmount: 2000, effectiveDate: '2026-11-12', expiresDate: '2026-11-19' },
-      { remainingAmount: 0, grantAmount: 2000, effectiveDate: '2026-11-11', expiresDate: '2026-11-18' },
-    ] },
-    { sourceType: 'INVITE_REWARD', grantDetails: [{ remainingAmount: 2000, grantAmount: 2000, expiresDate: '2026-12-01' }] },
-  ] }));
-  const e = await fetchMeooEntitlement('session=test', { fetchImpl: mockFetch({ ent }) });
-  assert.equal(e.auth, true);
-  assert.equal(e.balance, 4000);
-  assert.equal(e.planCode, 'free');
-  assert.equal(e.dailyLoginQuota, 2000);
-  assert.equal(e.grants.length, 3);
-  assert.deepEqual(e.grants[0], { source: 'DAILY_LOGIN', remaining: 2000, total: 2000, effectiveAt: '2026-11-12', expireAt: '2026-11-19' });
-
-  const q = await fetchMeooQuota(account, { fetchImpl: mockFetch({ ent }) });
-  assert.equal(q.remaining, 4000);
-  assert.equal(q.parts.length, 3);
-  assert.equal(q.parts[1].used, 2000);
-  assert.ok(q.parts[0].expiresAt.startsWith('2026-11-19'));
-  assert.equal(q.parts[0].unit, '秒悟积分');
-});
-
-test('权益接口无逐笔明细时 quota 兜底单行余额', async () => {
-  const q = await fetchMeooQuota(account, { fetchImpl: mockFetch() });
-  assert.equal(q.total, 4000);
+test('额度（quota 口径）：total=累计发放 used=累计消耗 remaining=余额', async () => {
+  const f = mockFetch({ points: [res(200, pointsBody(5000, 4300))] });
+  const q = await fetchMeooQuota({ token: TOKEN }, { fetchImpl: f });
+  assert.equal(q.unit, '积分');
+  assert.equal(q.total, 5000);
+  assert.equal(q.used, 100);
+  assert.equal(q.remaining, 4300);
   assert.equal(q.parts.length, 1);
-  assert.equal(q.empty, false);
+  assert.equal(q.parts[0].name, '每日赠送');
 });
 
-test('quota 遇 NEED_LOGIN 抛 auth 错误', async () => {
-  await assert.rejects(
-    () => fetchMeooQuota(account, { fetchImpl: mockFetch({ ent: res(401, NEED_LOGIN) }) }),
-    (e) => e.auth === true && /NEED_LOGIN/.test(e.message),
-  );
+test('签到：账面涨了 → checked-in +delta；没涨 → already（绝不假装成功）', async () => {
+  // 第一次：before=5000 → 动作 → after=7000（+2000）
+  const f1 = mockFetch({ points: [res(200, pointsBody(5000, 4300)), res(200, pointsBody(7000, 6300))] });
+  const r1 = await checkinMeoo({ token: TOKEN }, { fetchImpl: f1, sleep: async () => {} });
+  assert.equal(r1.status, 'checked-in');
+  assert.equal(r1.claimedAmount, 2000);
+  assert.equal(r1.balanceAfter, 6300);
+  // 触发动作 = 身份读在 before 之后
+  assert.ok(f1.calls[1].url.includes('/account/identity'));
+
+  // 第二次：账面不动 → already（10R 同口径：今日可能已领取也算闭环）
+  const f2 = mockFetch({ points: [res(200, pointsBody(7000, 6300)), res(200, pointsBody(7000, 6300)), res(200, pointsBody(7000, 6300)), res(200, pointsBody(7000, 6300))] });
+  const r2 = await checkinMeoo({ token: TOKEN }, { fetchImpl: f2, sleep: async () => {} });
+  assert.equal(r2.status, 'already');
 });
 
-test('身份：user/me 取 user_id；need_login=true 判失效；展示脱敏', async () => {
-  const ok = await fetchMeooIdentity('session=test', { fetchImpl: mockFetch() });
-  assert.equal(ok.userId, '1234567890');
-  const dead = await fetchMeooIdentity('session=test', { fetchImpl: mockFetch({ user: res(200, { success: true, data: { need_login: true } }) }) });
-  assert.equal(dead.auth, false);
-  assert.equal(maskMeooUserId('1234567890'), '123****890');
-  assert.equal(maskMeooUserId('12345'), '1****5');
-  assert.equal(maskMeooUserId('12'), '****');
+test('签到：基线 401 → failed + authExpired', async () => {
+  const f = mockFetch({ points: [res(401, { errCode: 'UNAUTHORIZED' })] });
+  const r = await checkinMeoo({ token: TOKEN }, { fetchImpl: f, sleep: async () => {} });
+  assert.equal(r.status, 'failed');
+  assert.equal(r.authExpired, true);
 });
 
-test('接线：站点表 / provider / 产品线 / 签到实现均已登记', () => {
-  const site = getSite('meoo');
-  assert.ok(site);
-  assert.equal(site.provider, 'meoo');
-  assert.equal(site.verify, 'api');
-  assert.equal(site.no10rSync, true);
-  assert.deepEqual(site.cookieUrls, ['https://meoo.com']);
+test('项目 AK 预解析：projects → cloud/environment', async () => {
+  const f = async (url) => {
+    if (String(url).includes('/projects?')) return res(200, { success: true, data: { projects: [{ urlId: 'proj-1', name: 'demo' }] } });
+    if (String(url).includes('/projects/proj-1/cloud/environment')) return res(200, { success: true, data: { meooProjectApiKey: { enabled: true, apiKey: 'mk-ak-xyz' } } });
+    throw new Error('unexpected url ' + url);
+  };
+  const r = await resolveMeooProjectAk(TOKEN, { fetchImpl: f });
+  assert.equal(r.urlId, 'proj-1');
+  assert.equal(r.apiKey, 'mk-ak-xyz');
+  assert.equal(r.akStatus, 'active');
+});
+
+test('Meoo 独立产品线登记：不走网页会话 + 10R 映射 + blob Key 行不放 accessToken', () => {
   assert.ok(PROVIDERS.includes('meoo'));
   assert.equal(productOf('meoo'), 'meoo');
-  assert.equal(typeof productImpl('meoo').checkin, 'function');
-  assert.equal(typeof productImpl('meoo').quota, 'function');
+  assert.equal(TENROUTER_PROVIDER_MAP.meoo, 'meoo');
+  assert.equal(getSite('meoo'), null, '网页会话条目已移除');
+
+  const impl = productImpl('meoo');
+  assert.equal(typeof impl.checkin, 'function');
+  assert.equal(typeof impl.quota, 'function');
+  assert.equal(typeof impl.verify, 'function');
+
+  // Key 行：blob 不带 accessToken，凭证在 psd.meooControlKey（10R 00cde6b7 接收口径）
+  const keyAcc = { provider: 'meoo', token: 'meoo_ak_abc', uid: 'u1', name: 'Meoo (Techysy)', meta: { meooProject: { urlId: 'p1', apiKey: 'mk-1', akStatus: 'active' } } };
+  const payload = buildExportPayload([keyAcc]);
+  const row = payload.accounts[0];
+  assert.equal(row.accessToken, undefined);
+  assert.equal(row.providerSpecificData.meooControlKey, 'meoo_ak_abc');
+  assert.equal(row.providerSpecificData.projectUrlId, 'p1');
+  assert.equal(row.providerSpecificData.projectApiKey, 'mk-1');
+  assert.equal(row.providerSpecificData.creditDaddySync, true);
+  assert.equal(maskMeooUserId('1234567890'), '123****890');
+
+  // OAuth 行：token 照常进 accessToken
+  const oauthAcc = { provider: 'meoo', token: 'oauth-tok', refreshToken: 'rf', uid: 'u2', name: 'Meoo' };
+  const row2 = buildExportPayload([oauthAcc]).accounts[0];
+  assert.equal(row2.accessToken, 'oauth-tok');
+  assert.equal(row2.refreshToken, 'rf');
+});
+
+test('脱敏：maskMeooUserId 同灵犀口径', () => {
+  assert.equal(maskMeooUserId('1234567'), '123****567');
+  assert.equal(maskMeooUserId('12345'), '1****5');
+  assert.equal(maskMeooUserId('12'), '****');
 });
