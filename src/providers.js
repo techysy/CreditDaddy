@@ -267,7 +267,7 @@ const PRODUCTS = {
     quota: (account) => fetchMeooQuota(account),
   },
   dumate: {
-    label: 'DuMate 百度搭子',
+    label: 'DuMate',
     // 凭据 = console.bce.baidu.com 会话 Cookie（BDUSS + bce-user-info），三条线同形：
     // 本机导入（解密客户端 auth.json）/ 扫码登录（纯 HTTP 二维码）/ 网页会话捕获（登录窗）。
     // 「签到」= 调控制台 loginBonus 领取每日登录赠送积分；验证 = user/info 取 bceUserId 身份。

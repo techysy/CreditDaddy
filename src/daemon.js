@@ -954,7 +954,7 @@ async function handleApi(req, res, url) {
       const ident = await fetchDumateIdentity(header).catch(() => null);
       const uid = ident?.ok && ident.uid ? String(ident.uid) : undefined;
       const name = (ident?.ok && ident.displayName) ? `DuMate (${ident.displayName})`
-        : (s.account ? `DuMate 百度搭子（${s.account}）` : 'DuMate (扫码)');
+        : (s.account ? `DuMate（${s.account}）` : 'DuMate (扫码)');
       const { account } = await addAccount({
         provider: 'dumate', token: header, name, uid, source: 'qr-login',
         meta: { dumateQr: true, capturedAt: new Date().toISOString() },

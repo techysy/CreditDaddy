@@ -2025,7 +2025,6 @@
   "积分余额": "Points balance",
   "积分余额 ": "Points balance ",
   "（最早 ": " (earliest expires ",
-  "DuMate 百度搭子": "DuMate (Baidu)",
   "登录百度智能云控制台后捕获会话；CD 每日自动领取登录赠送积分并验证网关可用性，Cookie 只存本机，可直接同步到 10Router 作为 dumate 渠道。": "Sign in to Baidu BCE console and capture session; CD automatically claims daily login bonus points and verifies gateway availability. Cookie stays local and can be synced to 10Router as dumate provider.",
   "DuMate 会话已失效，请重新登录捕获": "DuMate session expired, please sign in and capture again",
   "{name} 就地重探通过（{identity}，网关正常）": "{name} re-probe passed ({identity}, gateway operational)",

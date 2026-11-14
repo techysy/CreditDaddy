@@ -57,7 +57,7 @@ export const PROVIDER_LABEL = {
   loomy: '讯飞 Loomy',
   lingxi: 'WPS 灵犀',
   meoo: 'Meoo 秒悟',
-  dumate: 'DuMate 百度搭子',
+  dumate: 'DuMate',
 };
 /** provider → 产品线（qoder / workbuddy / zcode / mirasim / catpaw / trae / minimax / tokenharbor / xiaomi-mimo / river） */
 export const productOf = (provider) => {

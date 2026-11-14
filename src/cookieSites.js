@@ -202,9 +202,9 @@ export const COOKIE_SITES = [
   },
   {
     id: 'dumate',
-    name: 'DuMate 百度搭子',
+    name: 'DuMate',
     provider: 'dumate',
-    label: 'DuMate 百度搭子',
+    label: 'DuMate',
     // 独立的浏览器登录线（网页会话）：个人版登录入口 = 客户端 login-config 现网值
     // （from=oa_dumate 标记个人版渠道，登录成功落 console.bce.baidu.com 会话）。
     // 与「本机导入」（本地解密客户端 auth.json）互为两条独立凭据线，凭据同形可互认归户。
@@ -212,7 +212,7 @@ export const COOKIE_SITES = [
     homeUrl: 'https://www.dumate.cn',
     verify: 'api',
     cookieUrls: ['https://console.bce.baidu.com', 'https://login.bce.baidu.com', 'https://www.dumate.cn'],
-    accountName: 'DuMate 百度搭子',
+    accountName: 'DuMate',
     hint: '浏览器登录线：在登录窗完成个人版登录（login.bce.baidu.com/?from=oa_dumate）后自动捕获会话；也可在 DuMate 页「添加账号 → 本机导入」直接读客户端凭据。CD 每日自动领取登录赠送积分，Cookie 只存本机，可一键同步到 10Router 作为 dumate 渠道。',
   },
   // ⚠ 码道 CodeArts（issue #40）已于 2026-10-30 撤下，不再提供：
