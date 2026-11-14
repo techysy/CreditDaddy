@@ -1983,4 +1983,14 @@ function refreshTrayMenu() {
 app.on('window-all-closed', () => {
   // 保持在托盘运行，自动领取不中断
 });
-app.on('before-quit', () => { quitting = true; });
+app.on('before-quit', (e) => {
+  quitting = true;
+  // 退出链兜底（test.11 用户实测「无法关闭程序」）：close 放行后若 render/子窗/回环
+  // server 残留，quit 会被悬着的 handle 拖住——here 强制清场：销毁全部窗口（含 Meoo
+  // 授权失败窗等 authWin）与托盘，quit 不再依赖优雅关闭；1.2s 后仍没退就 app.exit(0) 硬退。
+  setTimeout(() => {
+    try { BrowserWindow.getAllWindows().forEach((w) => { if (!w.isDestroyed()) w.destroy(); }); } catch {}
+    try { tray?.destroy(); } catch {}
+    setTimeout(() => { try { app.exit(0); } catch {} }, 1200).unref();
+  }, 0);
+});
