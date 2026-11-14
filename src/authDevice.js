@@ -30,6 +30,7 @@ import { t } from './i18n.js';
 import { startWorkbuddyLogin, pollWorkbuddyLogin } from './workbuddyAuth.js';
 import { startZcodeLogin, pollZcodeLogin } from './zcodeAuth.js';
 import { startMiniMaxLogin, pollMiniMaxLogin } from './minimaxAuth.js';
+import { startMeooLogin, pollMeooLogin } from './meooAuth.js';
 import { startTraeLogin, pollTraeLogin } from './traeAuth.js';
 
 const FETCH_TIMEOUT_MS = 15000;
@@ -135,6 +136,8 @@ const FLOWS = {
   // Trae：授权码 + PKCE 的本地回调流（与设备码轮询不同，poll 查的是本机回调监听抓没抓到）；
   // trae-intl 走国际站（www.trae.ai，同协议同 client_id，#99 10R 侧全链验证）
   trae: { start: startTraeLogin, poll: pollTraeLogin },
+  // Meoo：OAuth PKCE 回环流（issue #65，官方 CLI 公开客户端，本机回环抓授权码）
+  meoo: { start: startMeooLogin, poll: pollMeooLogin },
   'trae-intl': { start: startTraeLogin, poll: pollTraeLogin },
 };
 export const LOGIN_KINDS = Object.keys(FLOWS);

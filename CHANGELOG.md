@@ -4,6 +4,30 @@
 
 ---
 
+## [1.8.0] (2026-11-15)
+
+本版主题:**新增 DuMate 百度搭子与 Meoo 秒悟两条产品线（DuMate：本机导入 / 扫码登录 / 硬切换 / 积分额度全链路；Meoo：CLI 控制面 API + OAuth PKCE 回环 + 增量核验签到）+ Loomy 邀请码同步 + Trae Linux/macOS 本机导入与同机多账号签到修复**.
+Theme: **Two new product lines — DuMate (Baidu companion) and Meoo (independent line: CLI control-plane API + OAuth PKCE loopback + incremental-verification check-in) — plus Loomy invite-code sync and Trae Linux/macOS local import & same-machine multi-account check-in fixes**.
+
+- **新增 DuMate 百度搭子产品线**：百度搭子个人版全链路接入——
+  - **登录三线**：本机导入（同 Loomy 客户端凭据收割）+ **扫码登录**（百度 Passport tangram 二维码流程完整移植：getqrcode 取图转 data URI → unicast 长轮询（scanned/confirming）→ qrbdusslogin 换票（u 单次编码 + SDK 参数补齐 + 单引号 JSON 正则兜底）→ 跟随回跳链拿 bce-sessionid，缺失时 wap 快捷登录链兜底；域感知 cookie 罐只留控制台会话与 Passport 集）+ 浏览器登录（个人版入口）；面板「添加账号」新增「扫码登录」tab（仅 DuMate，默认打开）：二维码展示 + 状态机文案 + 重新获取/取消，弹窗关闭自动中止 daemon 侧会话；
+  - **积分与额度**：接入真实 quota_overview 接口（按个人版时区与 desktop clientType 查询）——精确计算订阅 / 赠送 / 增购积分与最近到期日，修此前显示固定 100 分；签到走 loginBonus 每日登录赠送；额度条改逐包分段（同 WorkBuddy 多包条，文字行只报最近到期）；quota 派生付费套餐徽章——plan_pro/plan_max/plan_team 取最高档出紫色 PRO/Max/Team 徽章（hover 带到期日），plan_experience 免费体验不出；
+  - **本机账号切换**：硬切换写客户端 auth.json active 槽——顶层 cookies 以 AES-256-GCM 同款 iv||tag||ct 布局重加密 + 重写 activeProfileId/activeProviderType，切换前杀壳与全部 Go 服务（main-server/base-proxy/router/opencode/na），1.2s 延时复核防回写；依据：客户端启动 setCookieProvider 后 Go 代理直接消费 auth.json 注入 Cookie，冷状态写文件即完成切换（窗口 Chromium 罐残留旧 Cookie 时界面身份可能仍旧，以控制台 API 实际身份为准）；切完自动重开客户端（Loomy 同构，未安装报 DUMATE_NOT_INSTALLED 409 同口径）；
+  - **10Router 同步**：账号管理弹窗渠道表补 DuMate（账号同步链路收口）；渠道行改「仅连接」——额度卡由 10R 连接凭据自身出卡，CD 不重复推卡；
+  - 杂项：显示名缩短「DuMate 百度搭子」→「DuMate」（对齐 10R）；产品页 VIEWS 漏注册修复 + 官方图标；README 安全边界补多账号隔离与防关联口径（issue #64）。
+- **新增 Meoo 秒悟产品线（issue #65）**：网页会话 cookie 线仅存活一个迭代即升级为独立产品线（cookieSites meoo 条目与捕获分支摘除），改走 CLI 控制面——
+  - **控制面 API 客户端**：`/open/v1/cli-compat/*`（Bearer + `X-Meoo-Client: cli` + CLI-Version 0.5.8）：identity / points / projects / 项目 AK；额度口径 total=totalGranted、used=totalConsumed、remaining=availableBalance，parts 按来源逐包带批次到期日；
+  - **OAuth PKCE S256 回环浏览器登录**：官方 CLI 公开客户端同款（authorize/token + 127.0.0.1 回环监听抓授权码，trae 骨架同构）；redirect_uri 按官方 CLI 0.5.8 产物考古修正为 `/oauth/callback`（此前 `/callback` 被授权页拒 invalid_redirect_uri）；回环随机端口 + 回调响应纪律（404/400/200 + no-store）+ token 响应契约校验；新增 refreshMeooToken——签到触发动作升级为强制刷新一次令牌（刷新即登录信号，10R 同款），刷新结果回写账号库，复读用新凭据；
+  - **签到增量核验**：无领取端点 = 基线账面 → 身份读触发 → 复读（3×1.5s）→ totalGranted 增量裁决，绝不假装成功（10R meoo-daily-claim 同款算法）；已领过记 already 闭环；
+  - **面板与同步**：产品卡 / 导航 / 空态提示接线；添加账号双通道（OAuth 浏览器登录 + 粘贴 meoo_ak_）；额度卡 `meoo-free-<uid>` 单账号 display-only（余额 + 活动批次逐包含到期日）；10R 同步凭证入 psd.meooControlKey + 项目字段带齐（00cde6b7 接收口径），同步前 best-effort 预解析项目 AK；
+  - OAuth 登录身份读加重试：uid 归户键的首次身份读挂了会回落 openid——同账号下次登录（uid=user_id）合并不了，旧行随令牌轮换失效成 invalid_token 死卡；现重试 3 次仍失败才回落 openid。
+- **Loomy 邀请码**：推荐码弹窗 placeholder 同步当前随机候选码；邀请码池新增 4HT9MF6（随机均摊两个共享码）。
+- **Trae 修复**：
+  - **本机凭据探测补齐 Linux/macOS（PR #62，Ubuntu 26.04 + Trae CN 2.3.92182 实测）**：detectTrae 的 clientInstalled/clientPath/running 三字段此前硬编码 win32-only——Linux 下 storage.json 能解密却被判「客户端未安装」，面板不给本机导入入口。现 clientPathOf 补 darwin（/Applications/*.app）与 linux（PATH 常见目录 kebab-case bin + .desktop Name 匹配解析 Exec 兜底）；running 走 unixTraePids（Linux 读 /proc/<pid>/exe，macOS pgrep -x）；terminateTrae unix SIGTERM→轮询→SIGKILL；win32 行为零改动；
+  - **同机多账号签到 9074 收尾（issue #31）**：① 浏览器登录账号的 OAuth 设备号存 meta.traeDevice.deviceId 但签到只读 meta.deviceId——OAuth 账号永远走派生号，被服务端持续拒 9074；补 fallback 统一两条登录路径；② 同机多账号不再强制派生号（issue #28 旧口径退役）：同机导入的每个账号登录时都向服务端注册过该设备，真机号对所有账号有效——所有账号 attempt=0 走真机号，9074 再降级派生重试（兜底保留）；「设备今日已领」归 already（绿色徽标），不再红色失败。
+- **桌面壳退出链兜底（test.11 用户实测「无法关闭程序」）**：此前退出路径（quit → close 放行 → window-all-closed 空处理）依赖优雅销毁——Meoo 授权失败窗 / OAuth 回环 server 等悬着的 handle 会拖住 quit，程序关不掉。现 before-quit 异步强制 destroy 全部窗口（含 authWin）与托盘，1.2s 后仍未退出则 app.exit(0) 硬退——退出不再依赖任何 handle 自然清空。
+- **杂项**：桌面构建产物只留安装版（nsis），下线便携版 target（历史 Portable 产物全部清理）；新增 scripts/clean-dist.js 构建门禁——自动清理旧测试包（只保留最新 2 个测试版及所有正式版）；README 补 Trae 浏览器登录「同机授权」说明（回跳 127.0.0.1 本机回调是官方同款机制，NAS / 远程网页面板场景浏览器报无法访问属预期）与功能总览五家更正；测试 460/460 绿（新增 test/dumate.test.js 含加密往返 / active 槽 / 幂等 / 陌生账号拒绝 / 付费套餐徽章用例，test/meoo.test.js 重写 9 例含 blob Key 行形状断言）。
+
 ## [1.7.2] (2026-11-12)
 - **灵犀卡补「立即签到」按钮（issue #53 追加反馈）**：网页会话卡的 WPS 灵犀账号行此前只有「就地重探」，想手动签到没有入口（自动签到轮虽有，但签到时点不可控）。现账号行补 ▶ 按钮：走 `POST /api/accounts/:id/checkin` 代签每日任务，结果文案直接用 daemon 返回的 message（自带「灵点」单位）；已签自动跳过（先查任务状态，绝不盲打 claim）；签到成功后顺带就地重探一次，余额胶囊立即跟上 +100。豆包虽挂了 checkin 实现但定位是纯打开入口（CD 不代签），不在此列。
 - **灵犀签到口径三处修正（test.2 实测反馈）**：① 仪表盘「今日领取」KPI 与徽标补入网页会话签到线——`/api/status` 的 `todayByProduct` 补 lingxi 日界（0 点翻日，与产品行同一套 `todayDone` 比对），灵犀卡账号行复用产品行同一套 `statusOf` 徽标（今日已领 / 未领取 / 失败，带时间与消息 tooltip），手动与自动签到结果都落到卡片上，不再只留转瞬即逝的 toast；② 修「+N 虚报」——claim 响应的 `total_claimed_credits` 是**本轮周期累计**（实测连签第 3 天返回 300、余额实动 +100；第七天会虚报成 800），展示口径改取任务状态 `check_in_days[连签天数].reward`（每日 100 / 第七天 200），toast、徽标、daemon 日志三处同步；③ 领取日志单位按产品线（灵犀「灵点」、豆包「额度」），不再一律「Credits」。新增 `test/lingxi.test.js` 六例钉住当天额口径与「已签绝不盲打 claim」。

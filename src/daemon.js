@@ -68,6 +68,7 @@ import { liveToAccount as catpawLiveAccount, switchTo as catpawSwitchTo, current
 import { liveToAccount as traeLiveAccount, detectTrae, switchTo as traeSwitchTo, snapshotLive as traeSnapshotLive } from './traeLocal.js';
 import { liveToAccount as minimaxLiveAccount, detectMiniMax, detectMiniMaxBuildLang, currentMiniMaxUid, currentMiniMaxToken, currentMiniMaxRecordKey } from './minimaxLocal.js';
 import { liveToAccount as loomyLiveAccount, hardSwitchLoomy, currentLoomyUid, detectLoomy } from './loomyLocal.js';
+import { liveToAccount as dumateLiveAccount, detectDumate, readDumateCredential, hardSwitchDumate } from './dumateLocal.js';
 import * as minimaxGateway from './minimaxGateway.js';
 import * as traeGateway from './traeGateway.js';
 import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl, autoClaimEnabled, autoClaimUntil, setAutoClaimEnabled, claimIntervalMin, setClaimIntervalMin, claimWindowMin, setClaimWindowMin } from './zcodeClient.js';
@@ -83,7 +84,7 @@ import { detectInstalls, scanLocalTokens, putCandidate, peekCandidate } from './
 import { PROVIDER_LABEL, APP_VERSION, PROVIDERS, PROJECT_URL } from './constants.js';
 import { getLocale, setLocale, normalizeLocale, loadDict, t as tr } from './i18n.js';
 
-const PRODUCT_IDS = ['qoder', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'loomy'];
+const PRODUCT_IDS = ['qoder', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'loomy', 'dumate'];
 
 /** 面板访问密码：面板「设置」写入的 settings.json.panelKey 优先（可设 / 可关）；
  *  未设置（或被面板关闭）时回退环境变量 CREDITDADDY_PASSWORD（fnOS / 命令行部署注入），
@@ -387,17 +388,20 @@ async function reprobeCookieAccount(site, a) {
       logger.info('COOKIE-SITE', '{name} 就地重探通过（{identity}，签到{signed}，灵点 {balance}）', { name: site.name, identity: uid ? 'uid ' + uidMasked : '无 uid', signed: st.checkedIn ? '已签' : '未签', balance: Number.isFinite(st.balance) ? st.balance : '—' });
       return finish({ id: a.id, name: a.name, ok: true, identity: uid ? `uid:${uidMasked}` : null, balance: Number.isFinite(st.balance) ? st.balance : null, quotaSnapshot: Number.isFinite(st.balance) ? { used: 0, total: st.balance, isCreditBalance: true, at: now } : null });
     }
-    if (site.id === 'meoo') {
-      // Meoo 秒悟：权益接口即探测（只读，不调 entitlement/init——发放动作只走签到线），
-      // 刷新积分余额快照；身份走 user/me 的 user_id（老行缺失时回填 + 名字升级）
-      const { fetchMeooEntitlement, fetchMeooIdentity, maskMeooUserId } = await import('./meooClient.js');
-      const ent = await fetchMeooEntitlement(cookie).catch((e) => ({ auth: true, ok: false, code: e?.message || 'network' }));
-      if (!ent.auth) return finish({ id: a.id, name: a.name, ok: false, error: 'Meoo 会话已失效（NEED_LOGIN），请重新登录捕获' });
-      if (!ent.ok) return finish({ id: a.id, name: a.name, ok: false, error: '探测失败，请稍后再试或重新登录捕获' });
-      const ident = await fetchMeooIdentity(cookie).catch(() => null);
-      const userId = ident?.ok ? ident.userId : null;
-      const masked = userId ? maskMeooUserId(userId) : null;
-      const bal = Number.isFinite(ent.balance) ? ent.balance : null;
+    if (site.id === 'dumate') {
+      // DuMate 浏览器登录线（网页会话）：user/info 即探测（身份 + 连通性一步拿全，
+      // bceUserId 与本机导入同源，两条凭据线归户互认）；顺带刷新积分快照
+      const { fetchDumateIdentity, fetchDumateQuota, maskDumateUserId } = await import('./dumateClient.js');
+      const ident = await fetchDumateIdentity(cookie).catch((e) => ({ auth: true, ok: false, error: e?.message || 'network' }));
+      if (!ident.auth) return finish({ id: a.id, name: a.name, ok: false, error: ident.error || 'DuMate 会话已失效，请重新登录捕获' });
+      if (!ident.ok) return finish({ id: a.id, name: a.name, ok: false, error: ident.error || '探测失败，请稍后再试或重新登录捕获' });
+      const userId = ident.uid || null;
+      const masked = userId ? maskDumateUserId(userId) : null;
+      let balance = null;
+      try {
+        const q = await fetchDumateQuota({ token: cookie });
+        balance = Number.isFinite(q.remaining) ? q.remaining : null;
+      } catch { /* 积分查询失败不阻断重探 */ }
       await withAccounts((list) => {
         const hit = list.find((x) => x.id === a.id);
         if (!hit) return;
@@ -405,8 +409,7 @@ async function reprobeCookieAccount(site, a) {
           ...(hit.meta || {}),
           cookieSiteSession: { cookie, capturedAt: hit.meta?.cookieSiteSession?.capturedAt || now },
           ...(userId && !hit.meta?.identityHash ? { identityHash: identityHashOf(`uid:${userId}`) } : {}),
-          ...(ent.grants ? { meooGrants: { grants: ent.grants, at: now } } : {}),
-          ...(bal !== null ? { quotaSnapshot: { used: 0, total: bal, isCreditBalance: true, at: now } } : {}),
+          ...(balance !== null ? { quotaSnapshot: { used: 0, total: balance, isCreditBalance: true, at: now } } : {}),
         };
         if (userId) {
           hit.uid = String(userId);
@@ -414,8 +417,8 @@ async function reprobeCookieAccount(site, a) {
         }
         hit.updatedAt = now;
       });
-      logger.info('COOKIE-SITE', '{name} 就地重探通过（{identity}，积分 {balance}）', { name: site.name, identity: masked ? 'uid ' + masked : '无 uid', balance: bal ?? '—' });
-      return finish({ id: a.id, name: a.name, ok: true, identity: masked ? `uid:${masked}` : null, balance: bal, quotaSnapshot: bal !== null ? { used: 0, total: bal, isCreditBalance: true, at: now } : null });
+      logger.info('COOKIE-SITE', '{name} 就地重探通过（{identity}，积分 {balance}）', { name: site.name, identity: masked ? 'uid ' + masked : '无 uid', balance: balance ?? '—' });
+      return finish({ id: a.id, name: a.name, ok: true, identity: masked ? `uid:${masked}` : null, balance, quotaSnapshot: balance !== null ? { used: 0, total: balance, isCreditBalance: true, at: now } : null });
     }
     if (site.id === 'doubao') {
       // 豆包（issue #32）：detail 接口一次拿全（会话有效性 + 签到状态 + 累计点数），
@@ -794,7 +797,7 @@ async function handleApi(req, res, url) {
       // 单位标注：各家余额单位互异（Token / USD / CNY / 魔粒 / 积分）且都不是「积分」
       // 口径——带 unit 返回，面板 creditSum 按 unit 有无决定是否计入「剩余积分」合计
       //（有单位 = 不同量纲，不相加）。HTML 探针站（tokenharbor）是百分比，同样排除。
-      const UNIT_BY_SITE = { 'xiaomi-mimo': 'CNY', 'river': 'USD', 'longcat': 'Token', 'modelscope': '魔粒', 'lingxi': '灵点', 'meoo': '秒悟积分' };
+      const UNIT_BY_SITE = { 'xiaomi-mimo': 'CNY', 'river': 'USD', 'longcat': 'Token', 'modelscope': '魔粒', 'lingxi': '灵点', 'dumate': '积分' };
       const unit = UNIT_BY_SITE[site.id] || (hasTotal ? '' : '%');
       return json(res, 200, { quota: {
         total: hasTotal ? total : 100,
@@ -900,6 +903,83 @@ async function handleApi(req, res, url) {
       logger.warn('DAEMON', 'Loomy {name} 邀请码查询失败:{err}', { name: account.name, err: e.message });
       return json(res, e.auth ? 401 : 502, { error: e.message });
     }
+  }
+  // DuMate 扫码登录（纯 HTTP 二维码线，协议同 10R dumate/qr.js c50d22a6）：
+  // start 开会话 → 面板轮询 status（authorized 时守护进程就地入库+刷积分快照再置 success）→ cancel 中止
+  if (p === '/api/dumate/qr/start' && method === 'POST') {
+    const { startQrSession, pubQr } = await import('./dumateQr.js');
+    const s = startQrSession();
+    logger.info('DAEMON', 'DuMate 扫码会话已开启:{sid}', { sid: s.id });
+    return json(res, 200, { ok: true, ...pubQr(s) });
+  }
+  if (p === '/api/dumate/qr/status' && method === 'GET') {
+    const { getQrSession, pubQr, finishQr, credHeaderOf } = await import('./dumateQr.js');
+    const s = getQrSession(url.searchParams.get('sid'));
+    if (!s) return json(res, 404, { error: '扫码会话不存在或已过期' });
+    if (s.status !== 'authorized') return json(res, 200, pubQr(s));
+    // authorized → 守护进程收尾：入库（按 uid 归户）+ 刷真实积分快照 → success
+    try {
+      const header = credHeaderOf(s);
+      const { fetchDumateIdentity, fetchDumateQuota } = await import('./dumateClient.js');
+      const ident = await fetchDumateIdentity(header).catch(() => null);
+      const uid = ident?.ok && ident.uid ? String(ident.uid) : undefined;
+      const name = (ident?.ok && ident.displayName) ? `DuMate (${ident.displayName})`
+        : (s.account ? `DuMate（${s.account}）` : 'DuMate (扫码)');
+      const { account } = await addAccount({
+        provider: 'dumate', token: header, name, uid, source: 'qr-login',
+        meta: { dumateQr: true, capturedAt: new Date().toISOString() },
+      }, { trusted: true });
+      try {
+        const q = await fetchDumateQuota({ token: header });
+        if (Number.isFinite(q.remaining)) {
+          await withAccounts((list) => {
+            const hit = list.find((a) => a.id === account.id);
+            if (hit) hit.meta = { ...(hit.meta || {}), quotaSnapshot: { used: 0, total: q.remaining, isCreditBalance: true, at: new Date().toISOString() } };
+          });
+        }
+      } catch { /* 积分快照失败不阻断登录 */ }
+      finishQr(s, 'success');
+      logger.info('DAEMON', 'DuMate 扫码登录入库成功:{name}', { name: account.name || account.id });
+      return json(res, 200, { ...pubQr(s), account: { id: account.id, name: account.name, uid: account.uid || null }, already: false });
+    } catch (e) {
+      logger.warn('DAEMON', 'DuMate 扫码登录入库失败:{err}', { err: e.message });
+      finishQr(s, 'error', e.message || '入库失败');
+      return json(res, 200, pubQr(s));
+    }
+  }
+  if (p === '/api/dumate/qr/cancel' && method === 'POST') {
+    const body = await readBody(req).catch(() => ({}));
+    const { cancelQrSession } = await import('./dumateQr.js');
+    return json(res, 200, { ok: cancelQrSession(body?.sid) });
+  }
+  // DuMate 邀请码兑换：POST /api/dumate/invitation_code/redeem（个人版，双方各 +2000，每号仅一次）
+  const dumateInviteMatch = p.match(/^\/api\/accounts\/([\w-]+)\/dumate\/invite$/);
+  if (dumateInviteMatch && method === 'POST') {
+    const body = await readBody(req).catch(() => ({}));
+    const code = String(body?.code || '').trim();
+    if (!code) return json(res, 400, { error: '缺少邀请码' });
+    const accounts = await loadAccounts();
+    const account = accounts.find((a) => a.id === dumateInviteMatch[1] && a.provider === 'dumate');
+    if (!account) return json(res, 404, { error: 'DuMate 账号不存在' });
+    const { redeemDumateInviteCode } = await import('./dumateClient.js');
+    const r = await redeemDumateInviteCode(account.token, code);
+    if (!r.ok) {
+      logger.warn('DAEMON', 'DuMate {name} 邀请码兑换失败:{err}', { name: account.name, err: r.error });
+      return json(res, r.authExpired ? 401 : 400, { error: r.error });
+    }
+    logger.info('DAEMON', 'DuMate {name} 邀请码已兑换:{code}', { name: account.name, code });
+    return json(res, 200, { ok: true, message: r.message, result: r.result });
+  }
+  // DuMate 我的邀请码：GET /api/dumate/invitation_code/get
+  const dumateMyInviteMatch = p.match(/^\/api\/accounts\/([\w-]+)\/dumate\/my-invite-code$/);
+  if (dumateMyInviteMatch && method === 'GET') {
+    const accounts = await loadAccounts();
+    const account = accounts.find((a) => a.id === dumateMyInviteMatch[1] && a.provider === 'dumate');
+    if (!account) return json(res, 404, { error: 'DuMate 账号不存在' });
+    const { fetchDumateMyInviteCode } = await import('./dumateClient.js');
+    const r = await fetchDumateMyInviteCode(account.token);
+    if (!r.ok) return json(res, r.auth === false ? 401 : 502, { error: r.error });
+    return json(res, 200, { ok: true, code: r.code, type: r.type, activityId: r.activityId });
   }
   // 网络出口偏好（全局——Qoder/ZCode/cookie 探测等全部出口都走它）：默认「直连优先、代理兜底」，
   // 可切「代理优先、直连兜底」；代理地址可面板配置（存 zcode-net.json，0600；键名 zcode 前缀是历史遗留）
@@ -1105,6 +1185,23 @@ async function handleApi(req, res, url) {
       } catch (e) {
         logger.warn('DAEMON', 'Loomy 切换到 {name} 失败:{err}', { name: target.name || target.id, err: e.message });
         return json(res, e.loomyNotInstalled ? 409 : 400, { error: e.message, code: e.loomyNotInstalled ? 'LOOMY_NOT_INSTALLED' : undefined });
+      }
+    }
+    if (target.provider === 'dumate') {
+      try {
+        const live = await dumateLiveAccount();
+        if (live && live.token && live.token !== target.token) {
+          await addAccount(live, { trusted: true }).catch((e) => logger.warn('DAEMON', '同步 DuMate 当前登录失败:{err}', { err: e.message }));
+        }
+      } catch (e) {}
+      try {
+        // 硬切换：杀壳 + Go 服务 → 重写 auth.json active 槽 → 延时复核；面板收到 closedClient 后重开客户端
+        const r = await hardSwitchDumate(target);
+        logger.info('DAEMON', r.alreadyActive ? 'DuMate 当前已是 {name}' : r.verified ? 'DuMate 已切换到 {name}(凭据已写入并重开客户端;窗口 Chromium 罐残留旧 Cookie 时界面身份可能仍旧,以控制台 API 实际身份为准)' : 'DuMate 已切换到 {name},但凭据复核未落定(疑似有进程回写)', { name: target.name || target.id });
+        return json(res, 200, { ok: true, ...r });
+      } catch (e) {
+        logger.warn('DAEMON', 'DuMate 切换到 {name} 失败:{err}', { name: target.name || target.id, err: e.message });
+        return json(res, e.dumateNotInstalled ? 409 : 400, { error: e.message, code: e.dumateNotInstalled ? 'DUMATE_NOT_INSTALLED' : undefined });
       }
     }
     if (target.provider === 'qoder' || target.provider === 'qoder-cn') {
@@ -1527,34 +1624,35 @@ async function handleApi(req, res, url) {
       }
     }
 
-    // Meoo 秒悟：权益接口即探测（带 cookie 返 success:true，未登录 401 NEED_LOGIN）。
-    // 只读——不在捕获时调 entitlement/init，首登积分发放统一走签到线。身份 = user/me 的 user_id。
-    let meooUserId = null;
-    let meooMasked = null;
-    let meooGrants = null;
-    if (site.id === 'meoo') {
+    // DuMate 浏览器登录线（网页会话）：user/info 即探测（bceUserId 与本机导入同源归户）。
+    let dumateUserId = null;
+    let dumateMasked = null;
+    if (site.id === 'dumate') {
       try {
-        const { fetchMeooEntitlement, fetchMeooIdentity, maskMeooUserId } = await import('./meooClient.js');
+        const { fetchDumateIdentity, fetchDumateQuota, maskDumateUserId } = await import('./dumateClient.js');
         if (!cookie) {
           logger.warn('COOKIE-SITE', '{name} 未读到会话 cookie', { name: site.name });
-          return json(res, 400, { error: '未读到 Meoo 登录会话，请在登录窗完成登录后再关闭' });
+          return json(res, 400, { error: '未读到 DuMate 登录会话，请在登录窗完成登录后再关闭' });
         }
-        const ent = await fetchMeooEntitlement(cookie);
-        if (!ent.auth) {
-          logger.warn('COOKIE-SITE', '{name} 权益接口探测被拒:{code}', { name: site.name, code: ent.code });
-          return json(res, 401, { error: '会话不可用，请重新登录该站点后再捕获（探测 401/403）' });
+        const ident = await fetchDumateIdentity(cookie);
+        if (!ident.auth) {
+          logger.warn('COOKIE-SITE', '{name} user/info 探测被拒:{err}', { name: site.name, err: ident.error });
+          return json(res, 401, { error: '会话不可用，请重新登录百度搭子后再捕获（' + (ident.error || '') + '）' });
         }
-        if (!ent.ok) return json(res, 502, { error: '探测站点失败：' + (ent.code || '') });
-        const ident = await fetchMeooIdentity(cookie).catch(() => null);
-        meooUserId = ident?.ok ? ident.userId : null;
-        meooMasked = meooUserId ? maskMeooUserId(meooUserId) : null;
-        if (ent.grants) meooGrants = { grants: ent.grants, at: now };
-        identity = meooUserId ? `uid:${meooUserId}` : null;   // 有 user_id → 哈希归户；无 → 单例兜底
-        quotaSnapshot = { used: 0, total: Number(ent.balance) || 0, isCreditBalance: true };
-        logger.info('COOKIE-SITE', '{name} 探测通过（{identity}，积分 {balance}）', { name: site.name, identity: meooUserId ? 'uid ' + meooMasked : '无 uid（单例）', balance: Number.isFinite(ent.balance) ? ent.balance : '—' });
-      } catch (meooErr) {
-        logger.warn('COOKIE-SITE', '{name} 权益接口抓取异常:{err}', { name: site.name, err: meooErr.message });
-        return json(res, 502, { error: '探测站点失败：' + (meooErr.message || '') });
+        if (!ident.ok) return json(res, 502, { error: '探测站点失败：' + (ident.error || '') });
+        dumateUserId = ident.uid || null;
+        dumateMasked = dumateUserId ? maskDumateUserId(dumateUserId) : null;
+        identity = dumateUserId ? `uid:${dumateUserId}` : null;   // 与本机导入同 uid 源 → 哈希归户互认
+        let dmBalance = null;
+        try {
+          const q = await fetchDumateQuota({ token: cookie });
+          dmBalance = Number.isFinite(q.remaining) ? q.remaining : null;
+        } catch { /* 积分查询失败不阻断捕获 */ }
+        quotaSnapshot = { used: 0, total: dmBalance ?? 0, isCreditBalance: true };
+        logger.info('COOKIE-SITE', '{name} 探测通过（{identity}，积分 {balance}）', { name: site.name, identity: dumateUserId ? 'uid ' + dumateMasked : '无 uid（单例）', balance: dmBalance ?? '—' });
+      } catch (dmErr) {
+        logger.warn('COOKIE-SITE', '{name} 探测异常:{err}', { name: site.name, err: dmErr.message });
+        return json(res, 502, { error: '探测站点失败：' + (dmErr.message || '') });
       }
     }
 
@@ -1574,7 +1672,7 @@ async function handleApi(req, res, url) {
       else if (site.id === 'modelscope') accName = `ModelScope (${identity || '会话'})`;
       else if (site.id === 'longcat') accName = `LongCat (${identity || '会话'})`;
       else if (site.id === 'lingxi') accName = site.accountName + (lxUidMasked ? `(${lxUidMasked})` : '');   // uid 后缀脱敏（前3后3），归户仍用原始 uid
-      else if (site.id === 'meoo') accName = site.accountName + (meooMasked ? `(${meooMasked})` : '');   // user_id 脱敏后缀，归户仍用原始值
+      else if (site.id === 'dumate') accName = site.accountName + (dumateMasked ? `(${dumateMasked})` : '');   // bceUserId 脱敏后缀，与本机导入同源
       else accName = site.accountName + (identity ? `(${identity})` : '');
       // 自动行名只在「没手改过且现名属自动名家族」时写入（meta.renamed + isAutoGeneratedName 双闸）
       const autoName = (row) => { if (canAutoRename(site, row)) row.name = accName; };
@@ -1602,8 +1700,6 @@ async function handleApi(req, res, url) {
           ...(lxSnapshot ? { lingxiPacks: lxSnapshot } : {}),
         };
         if (lcSession?.userId) { hit.uid = String(lcSession.userId); autoName(hit); }
-        if (meooUserId) { hit.uid = String(meooUserId); autoName(hit); }
-        if (meooGrants) hit.meta.meooGrants = meooGrants;
         hit.updatedAt = now;
         accountId = hit.id;
       } else {
@@ -1612,7 +1708,7 @@ async function handleApi(req, res, url) {
           provider: site.provider,
           token: cred,
           expiresAt: site.id === 'river' ? (riverSession?.expiresAt || undefined) : undefined,
-          uid: mimoUserId || riverUid || (msSession?.id ? String(msSession.id) : undefined) || (lcSession?.userId ? String(lcSession.userId) : undefined) || (lxUid ? String(lxUid) : undefined) || (meooUserId ? String(meooUserId) : undefined) || undefined,
+          uid: mimoUserId || riverUid || (msSession?.id ? String(msSession.id) : undefined) || (lcSession?.userId ? String(lcSession.userId) : undefined) || (lxUid ? String(lxUid) : undefined) || (dumateUserId ? String(dumateUserId) : undefined) || undefined,
           source: 'web-session',
           meta: {
             cookieSiteId: site.id,
@@ -1627,7 +1723,6 @@ async function handleApi(req, res, url) {
           ...(lcPacks ? { longcatPacks: longcatSnapshot(lcPacks) } : {}),
           ...(lcSession ? { longcatSession: lcSession } : {}),
           ...(lxSnapshot ? { lingxiPacks: lxSnapshot } : {}),
-          ...(meooGrants ? { meooGrants } : {}),
           },
         });
         acc.verified = true;
@@ -1690,7 +1785,7 @@ async function handleApi(req, res, url) {
     // ——失败说明会话可能已死，恰好要把 message 状态卡推上去让 10R 卡面可见。
     const touchedSources = new Set();
     const sourceOf = async (a) => {
-      if (site.no10rSync === true) return null;   // 不推 10R 卡的站点（如 Meoo）不进推送名单
+      if (site.no10rSync === true) return null;   // 不推 10R 卡的站点不进推送名单
       if (site.id === 'tokenharbor') return 'tokenharbor';
       try {
         const m = await import(
@@ -1773,7 +1868,7 @@ async function handleApi(req, res, url) {
 
   // ── 本机检测 / 凭据扫描 ──
   if (p === '/api/local/detect' && method === 'GET') {
-    return json(res, 200, { apps: detectQoderApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), trae: detectTrae(), minimax: detectMiniMax(), loomy: detectLoomy(), legacy: detectInstalls() });
+    return json(res, 200, { apps: detectQoderApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), trae: detectTrae(), minimax: detectMiniMax(), loomy: detectLoomy(), dumate: detectDumate(), legacy: detectInstalls() });
   }
   if (p === '/api/local/scan' && method === 'POST') {
     const existing = await loadAccounts();
@@ -1860,6 +1955,11 @@ async function handleApi(req, res, url) {
       const lm = await loomyLiveAccount();
       if (lm) addRecord(lm, { source: 'Loomy 当前登录', current: true });
     } catch (e) { errors.push({ file: 'loomy/auth-session.json', error: e.message }); }
+    // 8.5) DuMate 百度搭子客户端：本地解密 qianfan-desktop-app/auth.json（AES-256-GCM，密钥不出本机）
+    try {
+      const dm = await dumateLiveAccount();
+      if (dm) addRecord(dm, { source: 'DuMate 当前登录', current: true });
+    } catch (e) { errors.push({ file: 'qianfan-desktop-app/auth.json', error: e.message }); }
     // 9) CodeBuddy IDE 桌面客户端（issue #51）：state.vscdb + Chromium Safe Storage。
     //    与 WorkBuddy 账号体系同源（token 由同一 realm 签发），provider 由 inspectToken 决定；
     //    存储却完全不同（SQLite + DPAPI 加密），所以单列一条线。国内版 / 国际版各试一次。
@@ -2134,6 +2234,7 @@ async function handleApi(req, res, url) {
         minimax: dayKey(Date.now(), 'minimax'),
         lingxi: dayKey(Date.now(), 'lingxi'),   // 网页会话签到线（#53）：0 点翻日，徽标/isDone 的日界比对用
         meoo: dayKey(Date.now(), 'meoo'),       // Meoo 首登积分线：同为 0 点翻日
+        dumate: dayKey(Date.now(), 'dumate'),   // DuMate 每日登录赠送积分：0 点翻日
       },
       scheduler: await getSchedulerInfo(),
       riskIdentity: riskIdentityAvailable(),
@@ -2173,6 +2274,8 @@ async function handleApi(req, res, url) {
       minimaxClient: (() => { const d = detectMiniMax('cn'); return { installed: d.installed, signedIn: d.signedIn, running: d.running, buildLang: d.buildLang }; })(),
       loomyCurrentUid: currentLoomyUid(),
       loomyClient: (() => { const d = detectLoomy(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
+      dumateClient: (() => { const d = detectDumate(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
+      dumateCurrentUid: readDumateCredential()?.uid || null,
       keyRequired: panelKeyRequired(),
     });
   }

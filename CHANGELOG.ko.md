@@ -4,6 +4,29 @@
 
 ---
 
+## [1.8.0] (2026-11-15)
+
+테마:**신규 제품 라인 DuMate(바이두 搭子)와 Meoo(독립 라인: CLI 컨트롤 플레인 API + OAuth PKCE 루프백 + 증분 검증 출석) 2개 추가 + Loomy 초대 코드 동기화 + Trae Linux/macOS 로컬 가져오기 및 동일 머신 다중 계정 출석 수정**.
+
+- **신규 DuMate(바이두 搭子) 제품 라인**: 바이두 개인 버전 컴패니언 클라이언트의 전체 체인 연동——
+  - **로그인 삼선**: 로컬 가져오기(Loomy와 동일한 클라이언트 자격증명 수확) + **QR 코드 로그인**(바이두 Passport tangram QR 플로 완전 이식: getqrcode 이미지 → data URI 변환 → unicast 롱폴링(scanned/confirming) → qrbdusslogin 표 교환(u 단회 인코딩 + SDK 파라미터 보완 + 홑따옴표 JSON 정규식 폴백) → 리다이렉트 체인을 따라 bce-sessionid 획득, 누락 시 wap 빠른 로그인 체인 폴백. 도메인 인식 cookie 통은 콘솔 세션 + Passport 계열만 보존) + 브라우저 로그인(개인 버전 입구); 패널 "계정 추가"에 "QR 로그인" 탭 추가(DuMate 전용, 기본 열림): QR 표시 + 상태 머신 문안 + 재획득/취소, 다이얼로그를 닫으면 daemon 측 세션 자동 중단;
+  - **포인트와 잔액**: 실제 quota_overview 엔드포인트 접속(개인 버전 타임존과 desktop clientType로 조회)——구독 / 지급 / 추가 구매 포인트와 최근 만기일을 정확히 계산하여 기존 고정 "100점" 표시 수정; 출석은 loginBonus 매일 로그인 포인트로 진행; 잔액 바는 패키지별 분할 표시(WorkBuddy 다중 패키지 바와 동일, 텍스트 행은 최근 만기만 보고); quota에서 유료 플랜 배지 파생——plan_pro/plan_max/plan_team은 최상위 등급만 보라색 PRO/Max/Team 배지(hover 시 만기일 표시), plan_experience(무료 체험)는 미출력;
+  - **로컬 계정 전환**: 하드 전환은 클라이언트 auth.json active 슬롯에 기록——최상위 cookies를 동일한 AES-256-GCM iv||tag||ct 레이아웃으로 재암호화하고 activeProfileId/activeProviderType를 다시 기록. 전환 전에 셸과 전체 Go 서비스(main-server/base-proxy/router/opencode/na)를 kill, 1.2초 지연 재확인으로 되쓰기 방어. 근거: 클라이언트 시작 시 setCookieProvider로 Go 프록시가 auth.json을 직접 소비해 Cookie를 주입하므로 콜드 상태 파일 기록만으로 전환 완료(윈도우 Chromium 통에 옛 Cookie가 남아 있으면 UI상 신원이 옛것일 수 있음——콘솔 API의 실제 신원이 기준); 전환 후 패널이 클라이언트를 자동 재실행(Loomy 동형, 미설치는 DUMATE_NOT_INSTALLED 409 동일 기준);
+  - **10Router 동기화**: 계정 관리 다이얼로그의 채널 표에 DuMate 추가(계정 동기화 체인 수렴); 채널 행은 "연결 전용"으로 변경——잔액 카드는 10R 측 연결 자격증명 자체가 내보내므로 CD는 중복 카드를 밀어넣지 않음;
+  - 기타: 표시명 "DuMate 百度搭子"→"DuMate"로 축약(10R 정합); 제품 페이지 VIEWS 누락 등록 수정 + 공식 아이콘; README 보안 경계에 다중 계정 격리·안티 연관 기준 추가(issue #64).
+- **신규 Meoo 제품 라인(issue #65)**: 웹 세션 cookie 라인은 1 이터레이션 만에 독립 제품 라인으로 승격(cookieSites의 meoo 항목과 캡처 분기 제거), CLI 컨트롤 플레인으로 이행——
+  - **컨트롤 플레인 API 클라이언트**: `/open/v1/cli-compat/*`(Bearer + `X-Meoo-Client: cli` + CLI-Version 0.5.8): identity / points / projects / 프로젝트 AK; 잔액 기준 total=totalGranted, used=totalConsumed, remaining=availableBalance, parts는 소스별로 배치 만기일 동봉;
+  - **OAuth PKCE S256 루프백 브라우저 로그인**: 공식 CLI 공개 클라이언트와 동형(authorize/token + 127.0.0.1 루프백 리스너로 인가 코드 수신, trae 골격 동형); redirect_uri는 공식 CLI 0.5.8 산물 고고학으로 `/oauth/callback`에 정정(기존 `/callback`은 인가 페이지가 invalid_redirect_uri로 거부); 루프백 랜덤 포트 + 콜백 응답 규율(404/400/200 + no-store) + token 응답 계약 검증; refreshMeooToken 신설——출석 트리거 동작을 토큰 강제 리프레시 1회로 승격(리프레시 자체가 로그인 신호, 10R 동일), 결과는 계정 저장소에 되돌려 쓰고 재독은 새 자격증명 사용;
+  - **출석 증분 검증**: 수령 엔드포인트 없음 = 기준 대장 → 신원 읽기로 트리거 → 재독(3×1.5초) → totalGranted 증분 재정, 결코 성공을 위장하지 않음(10R meoo-daily-claim 동일 알고리즘); 수령 완료는 already로 마감;
+  - **패널과 동기화**: 제품 카드 / 내비 / 빈 상태 표시 배선; 계정 추가 듀얼 채널(OAuth 브라우저 로그인 + meoo_ak_ 붙여넣기); 잔액 카드 `meoo-free-<uid>` 단일 계정 display-only(잔액 + 활동 배치별 만기일); 10R 동기화 자격증명은 psd.meooControlKey에 넣고 프로젝트 필드 완비(00cde6b7 수신 기준), 동기화 전 best-effort로 프로젝트 AK 사전 해석;
+  - OAuth 로그인 신원 읽기 재시도: uid 귀속 키가 되는 첫 신원 읽기가 실패하면 openid로 폴백——동일 계정 다음 로그인(uid=user_id)에서 합류 불가, 구행이 토큰 교체와 함께 invalid_token 죽은 행으로 잔존; 3회 재시도 후에도 실패할 때만 openid로 폴백하도록 변경.
+- **Loomy 초대 코드**: 추천 코드 다이얼로그 placeholder를 현재 랜덤 후보 코드에 동기화; 초대 코드 풀에 4HT9MF6 추가(랜덤 균등 배분으로 두 공유 코드).
+- **Trae 수정**:
+  - **로컬 자격증명 탐지 Linux/macOS 보완(PR #62, Ubuntu 26.04 + Trae CN 2.3.92182 실측)**: detectTrae의 clientInstalled/clientPath/running 3필드는 기존 win32 전용 하드코딩——Linux에서는 storage.json 복호화가 가능함에도 "클라이언트 미설치"로 판정되어 패널이 로컬 가져오기 입구를 내주지 않았음. clientPathOf에 darwin(/Applications/*.app)과 linux(PATH의 kebab-case bin + .desktop Name 해석 Exec 폴백) 추가; running은 unixTraePids 경유(Linux는 /proc/<pid>/exe, macOS는 pgrep -x); terminateTrae는 unix에서 SIGTERM→폴링→SIGKILL; win32 동작 무변경;
+  - **동일 머신 다중 계정 출석 9074 수습(issue #31)**: ① 브라우저 로그인 계정의 OAuth 기기 번호는 meta.traeDevice.deviceId에 저장되지만 출석은 meta.deviceId만 읽음——OAuth 계정은 항상 파생 번호가 되어 9074로 지속 거부; fallback 추가로 두 로그인 경로 통일. ② 동일 머신 다중 계정이 파생 번호를 강제받지 않도록(issue #28 구 기준 폐기): 동일 머신에서 가져온 모든 계정은 로그인 시 해당 기기를 서버에 등록했으므로 실기기 번호가 전 계정에서 유효——전 계정 attempt=0에서 실기기 번호 사용, 9074 시 파생 번호로 강등 재시도(폴백 보존); "기기 오늘 수령 완료"는 already(녹색 배지)로 분류, 적색 실패 처리하지 않음.
+- **데스크톱 셸 종료 체인 안전망(test.11 실측 "프로그램을 닫을 수 없음")**: 기존 종료 경로(quit → close 통과 → window-all-closed 빈 처리)는 우아한 파괴에 의존——Meoo 인가 실패 창 / OAuth 루프백 server 등 매달린 handle가 quit를 붙잡아 프로그램이 닫히지 않았음. before-quit에서 전체 창(authWin 포함)과 트레이를 비동기 강제 destroy하고, 1.2초 후에도 종료되지 않으면 app.exit(0) 하드 종료——종료는 더 이상 어떤 handle의 자연 정리에도 의존하지 않음.
+- **기타**: 데스크톱 빌드 산출물은 인스톨러(nsis)만 유지하고 포터블 target 폐기(역대 Portable 산출물 일괄 정리); scripts/clean-dist.js 빌드 게이트 신설——구 테스트 패키지 자동 청소(최신 2개 테스트 버전과 전체 정식 버전만 보존); README에 Trae 브라우저 로그인 "동일 머신 인가" 설명 추가(127.0.0.1 리다이렉트는 공식과 동일한 메커니즘, NAS / 원격 웹 패널에서 브라우저가 "접근 불가"를 보고하는 것은 예상 내)와 기능 개관 5사 정정; 테스트 460/460 그린(test/dumate.test.js 신설: 암호화 왕복 / active 슬롯 / 멱등 / 미지 계정 거부 / 유료 플랜 배지, test/meoo.test.js는 9케이스로 재작성, blob Key 행 형상 어서션 포함).
+
 ## [1.7.2] (2026-11-12)
 - **영희 카드에 "지금 출석 체크" 버튼 추가（issue #53 후속）**: 웹 세션 카드의 WPS 영희 계정 행에는 "재프로브"만 있어 수동 출석 체크할 방법이 없었습니다(자동 라운드는 있지만 시점을 제어할 수 없음). 행에 ▶ 버튼 추가: `POST /api/accounts/:id/checkin`으로 매일 작업을 대신 수행하고, 토스트는 daemon이 반환한 메시지를 그대로 표시("영점" 단위 포함). 이미 완료된 날은 자동 건너뜀(먼저 작업 상태를 확인, claim을 무분별하게 호출하지 않음). 성공 후 즉시 재프로브하여 잔액에 +100을 바로 반영. 豆包(doubao)는 checkin 구현이 있지만 순수 클라이언트 실행 진입로로 유지(CD가 대신 출석하지 않음)하므로 제외.
 - **영희 출석 표기 3곳 수정（test.2 실측 피드백）**: ① 대시보드 "오늘 수령" KPI와 배지에 웹 세션 출석 라인 추가——`/api/status`의 `todayByProduct`에 lingxi 일 경계(자정 기준)를 추가하고, 영희 카드 계정 행은 제품 행과 동일한 `statusOf` 배지 재사용(오늘 수령 / 미수령 / 실패, 시간·메시지 툴팁). 수동·자동 출석 결과가 카드에 남고 일회성 토스트만 남지 않음; ② "+N 과장" 수정——claim 응답의 `total_claimed_credits`는 **주기 누적값**(실측: 연속 3일째에 300 반환, 잔액은 +100만 이동; 7일째에는 800으로 과장). 표시는 작업 상태의 `check_in_days[연속일수].reward`(매일 100 / 7일째 200)로 통일하고 토스트·배지·daemon 로그 3곳 동기화; ③ 수령 로그 단위를 제품 라인별로(영희 "영점", 豆包 "额度"), 획일적 "Credits" 폐지. 신규 `test/lingxi.test.js`(6케이스)로 당일 수량 기준과 "이미 완료 시 claim 무분별 호출 금지" 고정.

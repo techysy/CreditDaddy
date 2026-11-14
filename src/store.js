@@ -248,7 +248,8 @@ export function publicAccount(a) {
       a.provider === 'catpaw' ||
       a.provider === 'trae' ||
       a.provider === 'trae-intl' ||
-      a.provider === 'loomy'
+      a.provider === 'loomy' ||
+      a.provider === 'dumate'
     ),
     canSwitchWorkbuddyClient: Boolean(meta.session?.account || (a.provider.startsWith('workbuddy') && Boolean(a.token))),
     canSwitchCodebuddyIde: Boolean(a.provider.startsWith('workbuddy') && Boolean(a.token)),

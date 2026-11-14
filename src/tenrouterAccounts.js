@@ -27,6 +27,8 @@ export const TENROUTER_PROVIDER_MAP = {
   'trae-intl': 'trae',                 // 国际线（浏览器 OAuth 登录，10R trae 条目缺省国际站）；连接同步走 transfer 管线
   tokenharbor: 'tokenharbor-free',   // #23：会话 cookie 只喂「额度监控卡」(freeTier,不走路由);tokenharbor 钱包卡留给 sk- 运输 key
   loomy: 'loomy',
+  dumate: 'dumate',                  // 10R #113：DuMate 百度搭子 web-cookie 渠道
+  meoo: 'meoo',                      // #65：Meoo 独立产品线 → 10R meoo（OAuth 行或控制面 Key 行）
   // zcode → glm：等 zcode 反代就绪后补一行（同步流程已就绪，无需改代码）
 };
 
@@ -130,6 +132,23 @@ async function syncViaProviders({ endpoint, key, groups }) {
  * - 通用站点 meta.cookieSiteSession（tokenharbor 等,10R 卡片直接读 creditDaddyWebSession）
  */
 export function buildConnPayload(a, target) {
+  // Meoo 控制面 Key 行（issue #65）：apiKey 字段不放 Key——10R transfer 侧按
+  // 「meoo 且无 accessToken」识别 Key 行，凭证读 providerSpecificData.meooControlKey；
+  // OAuth 行走默认形状（accessToken/refreshToken 由 blob 顶层承载）
+  if (a.provider === 'meoo' && String(a.token || '').startsWith('meoo_ak_')) {
+    return {
+      provider: target,
+      name: connName(a),
+      providerSpecificData: {
+        meooControlKey: a.token,
+        creditDaddySync: true,
+        userId: a.uid || null,
+        ...(a.meta?.meooProject?.urlId ? { projectUrlId: a.meta.meooProject.urlId } : {}),
+        ...(a.meta?.meooProject?.apiKey ? { projectApiKey: a.meta.meooProject.apiKey } : {}),
+        ...(a.meta?.meooProject?.akStatus ? { akStatus: a.meta.meooProject.akStatus } : {}),
+      },
+    };
+  }
   const body = { provider: target, apiKey: a.token, name: connName(a) };
   const qc = a.meta?.qoderWebSession?.cookie && String(a.provider).startsWith('qoder') ? a.meta.qoderWebSession : null;
   const sc = a.meta?.cookieSiteSession?.cookie ? a.meta.cookieSiteSession : null;
@@ -159,6 +178,16 @@ export async function syncAccountsTo10r({ endpoint, key, adminPassword, accounts
   if (!endpoint) throw Object.assign(new Error('尚未配置 10Router 地址'), { code: 'NOT_CONFIGURED' });
   if (!key && !adminPassword) throw Object.assign(new Error('尚未配置 10Router 虚拟 key'), { code: 'NOT_CONFIGURED' });
 
+  // Meoo Key 行 AK 预解析（issue #65）：推送前 best-effort 拿项目 urlId + 项目 AK，
+  // 连接落地即用（不解析则 10R 侧首次聊天/模型目录懒解析）。失败不阻断同步。
+  await Promise.all((accounts || []).filter((a) => a?.provider === 'meoo' && String(a.token || '').startsWith('meoo_ak_') && !a.meta?.meooProject?.apiKey)
+    .map(async (a) => {
+      try {
+        const { resolveMeooProjectAk } = await import('./meooClient.js');
+        a.meta = { ...(a.meta || {}), meooProject: await resolveMeooProjectAk(a.token) };
+      } catch { /* 懒解析兜底 */ }
+    }));
+
   // 按目标 10R 连接类型分组；无映射的产品（zcode/mirasim/catpaw 等）记入跳过原因
   const groups = new Map();
   const unmapped = new Map();
@@ -179,7 +208,7 @@ export async function syncAccountsTo10r({ endpoint, key, adminPassword, accounts
     if (!groups.has(target)) groups.set(target, []);
     groups.get(target).push(a);
   }
-  if (!groups.size) throw new Error('没有可同步的账号（qoder / WorkBuddy / MiniMax / Loomy / Trae 系列）；zcode 待反代就绪后支持');
+  if (!groups.size) throw new Error('没有可同步的账号（qoder / WorkBuddy / MiniMax / Loomy / Trae / Meoo 系列）；zcode 待反代就绪后支持');
 
   let channel = 'apikey';
   let cookie = null;

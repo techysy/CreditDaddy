@@ -184,21 +184,24 @@ export const COOKIE_SITES = [
     accountName: 'WPS 灵犀',
     hint: '每日自动签到（+100 灵点，七天一轮第七天 200）+ 推送 10Router 出余额卡，Cookie 只存本机。多号分别捕获即按 WPS 账号分行并存。',
   },
+  // ⚠ Meoo 秒悟已升级为独立产品线（issue #65）：OAuth PKCE 回环 + 控制面 Key 双登录，
+  //   控制面 API（/open/v1/cli-compat/*）承接身份/积分/项目 AK——不再走网页会话捕获，
+  //   网页会话条目已移除（meooClient.js 已重写为控制面 API 客户端）。
+
   {
-    id: 'meoo',
-    name: 'Meoo 秒悟',
-    provider: 'meoo',
-    label: 'Meoo 秒悟',
-    loginUrl: 'https://meoo.com',
-    homeUrl: 'https://meoo.com',
-    // 探测 = 权益接口本身（2026-11-13 实测）：带会话 cookie 返 { success:true, data:{ userPointInfo… } }；
-    // 未登录 401 { errCode:'NEED_LOGIN' }。身份走 /api/v1/user/me 的 user_id（多号归户）。
-    // 每日首登积分由 entitlement/init 触发（网页端登录后同款调用），CD 每日代调一次。
+    id: 'dumate',
+    name: 'DuMate',
+    provider: 'dumate',
+    label: 'DuMate',
+    // 独立的浏览器登录线（网页会话）：个人版登录入口 = 客户端 login-config 现网值
+    // （from=oa_dumate 标记个人版渠道，登录成功落 console.bce.baidu.com 会话）。
+    // 与「本机导入」（本地解密客户端 auth.json）互为两条独立凭据线，凭据同形可互认归户。
+    loginUrl: 'https://login.bce.baidu.com/?from=oa_dumate&redirect=https%3A%2F%2Fconsole.bce.baidu.com%2F',
+    homeUrl: 'https://www.dumate.cn',
     verify: 'api',
-    cookieUrls: ['https://meoo.com'],
-    accountName: 'Meoo 秒悟',
-    no10rSync: true,       // 首版不推 10Router 外部配额卡（积分只在 Meoo 内消费）
-    hint: '登录 meoo.com（阿里云账号手机号 + 短信）后捕获会话；CD 每日自动领取首登积分（当前 +2000/天，约 6~7 天后过期）并展示积分余额。会话失效（NEED_LOGIN）时请重新登录捕获，Cookie 只存本机。',
+    cookieUrls: ['https://console.bce.baidu.com', 'https://login.bce.baidu.com', 'https://www.dumate.cn'],
+    accountName: 'DuMate',
+    hint: '浏览器登录线：在登录窗完成个人版登录（login.bce.baidu.com/?from=oa_dumate）后自动捕获会话；也可在 DuMate 页「添加账号 → 本机导入」直接读客户端凭据。CD 每日自动领取登录赠送积分，Cookie 只存本机，可一键同步到 10Router 作为 dumate 渠道。',
   },
   // ⚠ 码道 CodeArts（issue #40）已于 2026-10-30 撤下，不再提供：
   //   华为云控制台会话受闲置超时 + WAF 指印（HWWAFSESID / browserCheckResult）绑定，
