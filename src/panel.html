@@ -1877,12 +1877,24 @@ function creditHtml(a) {
     if (pendingParts.length && !effParts.length) {
       return pendingLine + '<div class="bar"><span class="seg pending-ghost" style="flex:1 1 0"></span></div>';
     }
-    // 满额（100%）不再渲染灰色「已使用」尾段——它只占 0 宽也会造成几像素的灰边
+    // 紧凑口径（DuMate）条也逐包分段（同 WorkBuddy 多包条）：登录赠送积分逐日一包，
+    // 单段百分比条看不出包结构；其余带 unit 产品维持单段百分比条不变
+    let bar;
+    if (compactParts) {
+      bar = effParts.filter((x) => x.remaining > 0).map((x, i) =>
+        '<span class="seg" style="flex:' + (x.remaining / q.total).toFixed(4) + ' 1 0;--a:' + (x.recurring ? 1 : Math.max(.45, .85 - i * .05))
+        + '" title="' + esc(T(x.name)) + T('：剩余 ') + fmtNum(x.remaining) + ' / ' + fmtNum(x.total)
+        + (x.expiresAt ? (x.recurring ? T('，') + fmtTime(x.expiresAt).slice(0, 10) + T(' 重置') : T('，') + fmtTime(x.expiresAt).slice(0, 10) + T(' 到期')) : '') + '"></span>'
+      ).join('');
+      if (q.used > 0) bar += '<span class="seg used" style="flex:' + (q.used / q.total).toFixed(4) + ' 1 0" title="' + T('已使用 ') + fmtNum(q.used) + '"></span>';
+    } else {
+      // 满额（100%）不再渲染灰色「已使用」尾段——它只占 0 宽也会造成几像素的灰边
+      bar = '<span class="seg" style="flex:' + pct.toFixed(4) + ' 1 0"></span>'
+        + (pct < 0.9999 ? '<span class="seg used" style="flex:' + (1 - pct).toFixed(4) + ' 1 0"></span>' : '');
+    }
     return mainLine()
       + (pendingParts.length ? pendingLine : '')
-      + '<div class="bar"><span class="seg" style="flex:' + pct.toFixed(4) + ' 1 0"></span>'
-      + (pct < 0.9999 ? '<span class="seg used" style="flex:' + (1 - pct).toFixed(4) + ' 1 0"></span>' : '')
-      + '</div>';
+      + '<div class="bar">' + bar + '</div>';
   }
   const total = q.total || 0;
   let bar = '';
