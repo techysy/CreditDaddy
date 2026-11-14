@@ -268,11 +268,19 @@ const PRODUCTS = {
   },
   dumate: {
     label: 'DuMate 百度搭子',
-    // 网页会话捕获线：凭据是 console.bce.baidu.com 会话 Cookie（BDUSS + bce-user-info）。
-    // 「签到」= 调控制台 loginBonus 领取每日登录赠送积分；验证 = 调 /api/dumate/app/token/get 换网关 token。
+    // 凭据 = console.bce.baidu.com 会话 Cookie（BDUSS + bce-user-info），三条线同形：
+    // 本机导入（解密客户端 auth.json）/ 扫码登录（纯 HTTP 二维码）/ 网页会话捕获（登录窗）。
+    // 「签到」= 调控制台 loginBonus 领取每日登录赠送积分；验证 = user/info 取 bceUserId 身份。
     // 同步到 10Router 时直接作为 dumate 渠道的 apiKey 消费。
     checkin: (account) => checkinDumate(account),
     quota: (account) => fetchDumateQuota(account),
+    verify: async (account) => {
+      const { fetchDumateIdentity } = await import('./dumateClient.js');
+      const ident = await fetchDumateIdentity(account.meta?.cookieSiteSession?.cookie || account.token);
+      if (!ident.auth) { const e = new Error(ident.error || 'DuMate 会话已失效'); e.auth = true; throw e; }
+      if (!ident.ok) throw new Error(ident.error || 'DuMate 身份验证失败');
+      return { name: ident.displayName || null, uid: ident.uid ? String(ident.uid) : null };
+    },
   },
   loomy: {
     label: '讯飞 Loomy',

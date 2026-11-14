@@ -934,6 +934,54 @@ async function handleApi(req, res, url) {
       return json(res, e.auth ? 401 : 502, { error: e.message });
     }
   }
+  // DuMate 扫码登录（纯 HTTP 二维码线，协议同 10R dumate/qr.js c50d22a6）：
+  // start 开会话 → 面板轮询 status（authorized 时守护进程就地入库+刷积分快照再置 success）→ cancel 中止
+  if (p === '/api/dumate/qr/start' && method === 'POST') {
+    const { startQrSession, pubQr } = await import('./dumateQr.js');
+    const s = startQrSession();
+    logger.info('DAEMON', 'DuMate 扫码会话已开启:{sid}', { sid: s.id });
+    return json(res, 200, { ok: true, ...pubQr(s) });
+  }
+  if (p === '/api/dumate/qr/status' && method === 'GET') {
+    const { getQrSession, pubQr, finishQr, credHeaderOf } = await import('./dumateQr.js');
+    const s = getQrSession(url.searchParams.get('sid'));
+    if (!s) return json(res, 404, { error: '扫码会话不存在或已过期' });
+    if (s.status !== 'authorized') return json(res, 200, pubQr(s));
+    // authorized → 守护进程收尾：入库（按 uid 归户）+ 刷真实积分快照 → success
+    try {
+      const header = credHeaderOf(s);
+      const { fetchDumateIdentity, fetchDumateQuota } = await import('./dumateClient.js');
+      const ident = await fetchDumateIdentity(header).catch(() => null);
+      const uid = ident?.ok && ident.uid ? String(ident.uid) : undefined;
+      const name = (ident?.ok && ident.displayName) ? `DuMate (${ident.displayName})`
+        : (s.account ? `DuMate 百度搭子（${s.account}）` : 'DuMate (扫码)');
+      const { account } = await addAccount({
+        provider: 'dumate', token: header, name, uid, source: 'qr-login',
+        meta: { dumateQr: true, capturedAt: new Date().toISOString() },
+      }, { trusted: true });
+      try {
+        const q = await fetchDumateQuota({ token: header });
+        if (Number.isFinite(q.remaining)) {
+          await withAccounts((list) => {
+            const hit = list.find((a) => a.id === account.id);
+            if (hit) hit.meta = { ...(hit.meta || {}), quotaSnapshot: { used: 0, total: q.remaining, isCreditBalance: true, at: new Date().toISOString() } };
+          });
+        }
+      } catch { /* 积分快照失败不阻断登录 */ }
+      finishQr(s, 'success');
+      logger.info('DAEMON', 'DuMate 扫码登录入库成功:{name}', { name: account.name || account.id });
+      return json(res, 200, { ...pubQr(s), account: { id: account.id, name: account.name, uid: account.uid || null }, already: false });
+    } catch (e) {
+      logger.warn('DAEMON', 'DuMate 扫码登录入库失败:{err}', { err: e.message });
+      finishQr(s, 'error', e.message || '入库失败');
+      return json(res, 200, pubQr(s));
+    }
+  }
+  if (p === '/api/dumate/qr/cancel' && method === 'POST') {
+    const body = await readBody(req).catch(() => ({}));
+    const { cancelQrSession } = await import('./dumateQr.js');
+    return json(res, 200, { ok: cancelQrSession(body?.sid) });
+  }
   // DuMate 邀请码兑换：POST /api/dumate/invitation_code/redeem（个人版，双方各 +2000，每号仅一次）
   const dumateInviteMatch = p.match(/^\/api\/accounts\/([\w-]+)\/dumate\/invite$/);
   if (dumateInviteMatch && method === 'POST') {

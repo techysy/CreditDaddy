@@ -754,6 +754,7 @@
     <div class="modal-title"><span data-i18n="添加账号">添加账号</span><button class="close" data-close>✕</button></div>
     <div class="tabs">
       <button class="tab active" data-tab="local" data-i18n="本机导入">本机导入</button>
+      <button class="tab" data-tab="qr" data-i18n="扫码登录">扫码登录</button>
       <button class="tab" data-tab="sms" data-i18n="手机登录" id="tab-sms">手机登录</button>
       <button class="tab" data-tab="device" data-i18n="浏览器登录">浏览器登录</button>
       <button class="tab" data-tab="token" data-i18n="粘贴 Token">粘贴 Token</button>
@@ -763,6 +764,21 @@
       <div class="hint" id="local-hint"></div>
       <div class="row" style="margin-top:10px"><button class="btn primary" id="btn-scan" data-i18n="重新扫描">重新扫描</button><span class="hint" id="scan-status"></span></div>
       <div class="box" id="scan-result"><div class="hint" data-i18n="点击「重新扫描」">点击「重新扫描」</div></div>
+    </div>
+
+    <div class="pane" data-pane="qr">
+      <div class="hint" style="margin-bottom:10px">百度搭子扫码登录：用百度 App 扫码确认即可，无需打开浏览器或客户端，凭据全程不出本机。</div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:4px 0 2px">
+        <div style="background:#fff;border-radius:12px;padding:10px;border:1px solid var(--border-subtle)">
+          <img id="dumate-qr-img" alt="QR" style="width:180px;height:180px;display:block" hidden>
+          <div id="dumate-qr-empty" class="empty" style="width:180px;height:180px;display:flex;align-items:center;justify-content:center">…</div>
+        </div>
+        <span class="hint" id="dumate-qr-status"></span>
+        <div class="row">
+          <button class="btn" id="btn-dumate-qr-restart" style="display:none" data-i18n="重新获取">重新获取</button>
+          <button class="btn" id="btn-dumate-qr-cancel" style="display:none" data-i18n="取消">取消</button>
+        </div>
+      </div>
     </div>
 
     <div class="pane" data-pane="sms">
@@ -4036,6 +4052,82 @@ async function dumateMyInvite(id) {
     listEl.innerHTML = '<div class="empty" style="padding:18px">' + esc(e.message) + '</div>';
   }
 }
+
+// ── DuMate 扫码登录（纯 HTTP 二维码线，协议同 10R）：start → 2s 轮询 status → authorized 由守护进程入库 ──
+let dmQrGen = 0;
+const dmQrUi = () => ({ img: $('dumate-qr-img'), empty: $('dumate-qr-empty'), st: $('dumate-qr-status'), restart: $('btn-dumate-qr-restart'), cancel: $('btn-dumate-qr-cancel') });
+function dmQrShowRestart() {
+  const u = dmQrUi();
+  u.restart.style.display = ''; u.cancel.style.display = 'none'; dmQrSid = null;
+}
+let dmQrSid = null;
+async function dumateQrStart() {
+  const gen = ++dmQrGen;
+  const u = dmQrUi();
+  u.img.hidden = true; u.img.removeAttribute('src'); u.empty.style.display = 'flex'; u.empty.textContent = '…';
+  u.st.textContent = T('正在生成二维码…');
+  u.restart.style.display = 'none'; u.cancel.style.display = '';
+  try {
+    const r = await api('/api/dumate/qr/start', { method: 'POST' });
+    if (gen !== dmQrGen) return;
+    dmQrSid = r.sid;
+    pollDumateQr(r.sid, gen);
+  } catch (e) {
+    if (gen !== dmQrGen) return;
+    u.st.textContent = T('扫码登录失败：') + e.message;
+    dmQrShowRestart();
+  }
+}
+async function pollDumateQr(sid, gen) {
+  const u = dmQrUi();
+  while (gen === dmQrGen && $('m-add').classList.contains('show')) {
+    try {
+      const r = await api('/api/dumate/qr/status?sid=' + encodeURIComponent(sid));
+      if (gen !== dmQrGen) return;
+      if (r.qr && u.img.getAttribute('src') !== r.qr) { u.img.src = r.qr; u.img.hidden = false; u.empty.style.display = 'none'; }
+      if (r.status === 'waiting') u.st.textContent = T('请用百度 App 扫码');
+      else if (r.status === 'scanned' || r.status === 'confirming') u.st.textContent = T('已扫码，请在手机上确认');
+      else if (r.status === 'authorized') u.st.textContent = T('正在登录…');
+      else if (r.status === 'success') {
+        u.st.textContent = T('登录成功，已导入账号库');
+        toast((r.account?.name || T('DuMate')) + T(' 登录成功'), true);
+        dmQrGen++; dmQrSid = null;   // 停轮询
+        u.cancel.style.display = 'none';
+        await loadStatus(); await loadAccounts(); loadLogs(); render();
+        return;
+      } else if (r.status === 'expired') {
+        u.st.textContent = T('二维码已过期');
+        return dmQrShowRestart();
+      } else if (r.status === 'error') {
+        u.st.textContent = T('扫码登录失败：') + (r.error || '');
+        return dmQrShowRestart();
+      } else if (r.status === 'cancelled') {
+        u.st.textContent = T('已取消');
+        return dmQrShowRestart();
+      }
+    } catch (e) {
+      if (gen !== dmQrGen) return;
+      u.st.textContent = T('扫码登录失败：') + e.message;
+      return dmQrShowRestart();
+    }
+    await new Promise((ok) => setTimeout(ok, 2000));
+  }
+  // 弹窗已关 / 已切走：中止守护进程侧会话（免得长轮询白跑 10 分钟）
+  if (gen === dmQrGen && dmQrSid === sid) {
+    dmQrGen++; dmQrSid = null;
+    api('/api/dumate/qr/cancel', { method: 'POST', json: { sid } }).catch(() => {});
+  }
+}
+$('btn-dumate-qr-restart')?.addEventListener('click', () => dumateQrStart());
+$('btn-dumate-qr-cancel')?.addEventListener('click', async () => {
+  const u = dmQrUi();
+  u.st.textContent = T('已取消');
+  u.cancel.style.display = 'none';
+  if (dmQrSid) { api('/api/dumate/qr/cancel', { method: 'POST', json: { sid: dmQrSid } }).catch(() => {}); dmQrSid = null; }
+  dmQrGen++;
+  dmQrShowRestart();
+  u.st.textContent = T('已取消');
+});
 async function onCardClick(e) {
   const btn = e.target.closest('[data-act]');
   if (!btn) return;
@@ -4853,6 +4945,7 @@ function openAdd(product) {
   // 各产品支持的添加方式
   const tabShown = {
     local: true,
+    qr: product === 'dumate',   // DuMate 扫码登录（纯 HTTP 二维码线，同 10R）
     // trae：OAuth 授权码 + PKCE 浏览器登录已闭环（FLOWS.trae，国内站），入口与设备码线同窗
     device: product !== 'mirasim' && product !== 'catpaw' && product !== 'loomy' && product !== 'dumate',
     token: product !== 'zcode' && product !== 'mirasim' && product !== 'catpaw' && product !== 'trae' && product !== 'dumate',
@@ -4887,7 +4980,9 @@ function openAdd(product) {
   $('dev-hint').textContent = (hasIncognito() ? T('在内置隐私窗口里登录（不带出系统浏览器已登录的账号），') : T('在浏览器里登录并授权，'))
     + T('完成后账号自动添加。') + (product === 'qoder' ? '' : T('WorkBuddy / ZCode / Trae 用浏览器登录的账号同样可以一键切换客户端。'));
   openModal('m-add');
-  switchTab(isLoomy ? 'sms' : 'local');
+  if (isLoomy) switchTab('sms');
+  else if (product === 'dumate') { switchTab('qr'); dumateQrStart(); }
+  else switchTab('local');
   if (!isLoomy) localScan();
 }
 
