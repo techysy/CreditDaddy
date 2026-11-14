@@ -2131,5 +2131,15 @@
   "未读到 DuMate 客户端凭据库（auth.json / .cookie-key）": "DuMate credential store not found (auth.json / .cookie-key)",
   "目标账号不是本机 DuMate 客户端已登录的账号，无法写入切换（请先在客户端登录该账号后本机导入）": "Target account is not signed in to the local DuMate client — cannot switch (sign in on the client and local-import first)",
   "DuMate 目标账号凭据已过期（全部 Cookie 过期），请在客户端重新登录后再切换": "Target DuMate credentials expired (all cookies stale) — sign in on the client before switching",
-  "已重新打开 DuMate 客户端": "DuMate client reopened"
+  "已重新打开 DuMate 客户端": "DuMate client reopened",
+  "授权请求校验失败": "Authorization request verification failed",
+  "请回到 CreditDaddy 重新发起登录。": "Please start the sign-in again from CreditDaddy.",
+  "未完成授权": "Authorization not completed",
+  "你可以关闭此页面。": "You can close this page.",
+  "授权回调无效": "Invalid authorization callback",
+  "未收到授权码，请回到 CreditDaddy 重试。": "No authorization code received — retry from CreditDaddy.",
+  "授权成功": "Authorization successful",
+  "你可以关闭此页面并回到 CreditDaddy。": "You can close this page and return to CreditDaddy.",
+  "Meoo OAuth Token 响应格式无效": "Meoo OAuth token response format invalid",
+  "DuMate 付费套餐生效中": "DuMate paid plan active"
 }

@@ -1,12 +1,18 @@
 /**
- * Meoo OAuth PKCE 回环登录（issue #65 推荐线）—— 官方 CLI 同款公开客户端：
- *   client_id  meoo_app_tdWlRbpvAxN1EjmZ8XICxdTh（no secret，PKCE S256，scope cli.compat）
- *   authorize  https://meoo.com/oauth/authorize
- *   token      https://meoo.com/oauth/token
- *   redirect   http://127.0.0.1:<port>/callback（CD 是桌面托盘应用，与官方 CLI 同款合法）
+ * Meoo OAuth PKCE 回环登录（issue #65）—— 协议 1:1 对齐官方 CLI 0.5.8
+ * （@aliyun-meoo/cli dist/lib/oauth.js 考古，2026-11-15）：
+ *   client_id   meoo_app_tdWlRbpvAxN1EjmZ8XICxdTh（production，no secret）
+ *   scope       cli.compat
+ *   authorize   {base}/oauth/authorize（redirect_uri = http://127.0.0.1:<随机端口>/oauth/callback）
+ *   token       {base}/oauth/token（form-urlencoded；code 换票带 code_verifier，
+ *               刷新 grant_type=refresh_token——均无 client secret）
+ *   响应契约    access_token + refresh_token + token_type=Bearer + expires_in +
+ *               scope + openid + tenant_id（缺任一 = invalid_token_response）
  *
- * 骨架与 traeAuth 同构：本机回环监听抓授权码 → code + verifier 换令牌 →
- * 身份读补 uid/昵称。凭据只在本机会话内流转，日志不落 token。
+ * 2026-11-15 实测教训：redirect_uri 的注册路径是 "/oauth/callback"——
+ * 用 /callback 会被授权页拒「redirect_uri 未注册（invalid_redirect_uri）」。
+ * 端口随机（CLI listen(0) 同款），服务端按 loopback host 通配放行。
+ * 凭据只在本机会话内流转，日志不落 token。
  */
 
 import http from 'node:http';
@@ -14,12 +20,12 @@ import crypto from 'node:crypto';
 import { fetchMeooIdentity } from './meooClient.js';
 
 export const MEOO_CLIENT_ID = 'meoo_app_tdWlRbpvAxN1EjmZ8XICxdTh';
+export const MEOO_SCOPE = 'cli.compat';
 export const MEOO_AUTHORIZE_URL = 'https://meoo.com/oauth/authorize';
 export const MEOO_TOKEN_URL = 'https://meoo.com/oauth/token';
-export const MEOO_SCOPE = 'cli.compat';
+const CALLBACK_PATH = '/oauth/callback';
 
 const LOGIN_TIMEOUT_MS = 5 * 60_000;
-const CALLBACK_PORTS = [17480, 17481, 17482, 17483];   // 与 trae 的 3379/17388 错开
 
 const sessions = new Map();
 
@@ -28,47 +34,55 @@ function gcSessions() {
   for (const [k, s] of sessions) if (s.expiresAt < now || s.done) sessions.delete(k);
 }
 
-/** 解析回调 query（无依赖 URL 解析） */
-function parseCallbackQuery(raw) {
-  try {
-    const u = new URL(raw, 'http://127.0.0.1');
-    const out = {};
-    for (const [k, v] of u.searchParams) out[k] = v;
-    return out;
-  } catch { return {}; }
-}
+const securityHeaders = (type) => ({
+  'Content-Type': `${type || 'text/plain'}; charset=utf-8`,
+  'Cache-Control': 'no-store',
+  'X-Content-Type-Options': 'nosniff',
+});
 
-/** 回调监听：只绑 127.0.0.1；探测请求 200+CORS，凭据回调进会话后立刻收摊 */
+const callbackHtml = (title, body, ok) => `<!doctype html><meta charset="utf-8"><title>${title}</title>`
+  + '<body style="font-family:system-ui;display:grid;place-items:center;height:100vh;margin:0">'
+  + `<div style="text-align:center"><div style="font-size:42px">${ok ? '✅' : '⚠️'}</div>`
+  + `<p style="font-weight:600">${title}</p><p style="color:#666">${body}</p></div></body>`;
+
+/** 回调监听：只绑 127.0.0.1 随机端口；响应纪律照抄 CLI（404/400/200 + no-store） */
 function startCallbackServer(session) {
   const server = http.createServer((req, res) => {
-    const cors = {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': '*',
-    };
-    if (req.method === 'OPTIONS') { res.writeHead(204, cors); res.end(); return; }
-    const params = parseCallbackQuery(req.url || '');
+    const url = new URL(req.url || '/', 'http://127.0.0.1');
+    if (req.method !== 'GET' || url.pathname !== CALLBACK_PATH) {
+      res.writeHead(404, securityHeaders('text/plain'));
+      res.end('Not Found');
+      return;
+    }
     if (session.error || session.result) {
-      res.writeHead(200, { ...cors, 'Content-Type': 'text/plain' });
+      res.writeHead(200, securityHeaders('text/plain'));
       res.end('ok');
       return;
     }
-    if (!params.code) {
-      if (params.error) {
-        session.error = `授权被拒绝或失败（${params.error}）`;
-        finish(session);
-      }
-      res.writeHead(200, { ...cors, 'Content-Type': 'text/plain' });
-      res.end('ok');
+    const callbackState = url.searchParams.get('state') || '';
+    if (!callbackState || callbackState !== session.state) {
+      res.writeHead(400, securityHeaders('text/html'));
+      res.end(callbackHtml('授权请求校验失败', '请回到 CreditDaddy 重新发起登录。', false));
       return;
     }
-    session.result = params;
+    const oauthError = url.searchParams.get('error');
+    if (oauthError) {
+      session.error = `授权被拒绝或失败（${url.searchParams.get('error_description') || oauthError}）`;
+      finish(session);
+      res.writeHead(400, securityHeaders('text/html'));
+      res.end(callbackHtml('未完成授权', '你可以关闭此页面。', false));
+      return;
+    }
+    const code = url.searchParams.get('code') || '';
+    if (!code) {
+      res.writeHead(400, securityHeaders('text/html'));
+      res.end(callbackHtml('授权回调无效', '未收到授权码，请回到 CreditDaddy 重试。', false));
+      return;
+    }
+    session.result = { code };
     finish(session);
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end('<!doctype html><meta charset="utf-8"><title>Meoo 登录</title>'
-      + '<body style="font-family:system-ui;display:grid;place-items:center;height:100vh;margin:0">'
-      + '<div style="text-align:center"><div style="font-size:42px">✅</div>'
-      + '<p>授权成功，回到 CreditDaddy 面板即可（此页可以关掉）。</p></div></body>');
+    res.writeHead(200, securityHeaders('text/html'));
+    res.end(callbackHtml('授权成功', '你可以关闭此页面并回到 CreditDaddy。', true));
   });
   return server;
 }
@@ -78,49 +92,86 @@ function finish(session) {
   setTimeout(() => { try { session.server.close(); } catch {} }, 500).unref();
 }
 
-async function bindCallbackServer(session, ports) {
-  const errors = [];
-  for (const port of ports) {
-    try {
-      await new Promise((resolve, reject) => {
-        const onErr = (e) => { server.off('listening', onOk); reject(e); };
-        const onOk = () => { server.off('error', onErr); resolve(); };
-        const server = session.server;
-        server.once('error', onErr);
-        server.once('listening', onOk);
-        server.listen(port, '127.0.0.1');
-      });
-      return port;
-    } catch (e) {
-      errors.push(`${port}: ${e.code || e.message}`);
-    }
-  }
-  throw new Error(`Meoo 回调端口都被占用（${errors.join('；')}），请稍后重试`);
+/** 随机回环端口（CLI listen(0) 同款） */
+async function bindLoopback(server) {
+  await new Promise((resolve, reject) => {
+    const onErr = (e) => { server.off('listening', onOk); reject(e); };
+    const onOk = () => { server.off('error', onErr); resolve(); };
+    server.once('error', onErr);
+    server.once('listening', onOk);
+    server.listen(0, '127.0.0.1');
+  });
+  return server.address().port;
 }
 
 /** 发起一次 OAuth PKCE 授权登录 */
-export async function startMeooLogin(_kind, { ports = CALLBACK_PORTS } = {}) {
+export async function startMeooLogin(_kind) {
   gcSessions();
-  const verifier = crypto.randomBytes(48).toString('base64url');
+  const state = crypto.randomBytes(32).toString('base64url');
+  const verifier = crypto.randomBytes(32).toString('base64url');
   const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
-  const state = crypto.randomBytes(12).toString('base64url');
   const session = { verifier, state, result: null, error: null, settledAt: 0, deadline: Date.now() + LOGIN_TIMEOUT_MS };
   session.server = startCallbackServer(session);
-  const port = await bindCallbackServer(session, ports);
-  session.port = port;
-  session.redirectUri = `http://127.0.0.1:${port}/callback`;
+  const port = await bindLoopback(session.server);
+  session.redirectUri = `http://127.0.0.1:${port}${CALLBACK_PATH}`;
   const loginId = crypto.randomUUID();
   sessions.set(loginId, session);
   const url = MEOO_AUTHORIZE_URL + '?' + new URLSearchParams({
     client_id: MEOO_CLIENT_ID,
-    response_type: 'code',
     redirect_uri: session.redirectUri,
+    response_type: 'code',
     scope: MEOO_SCOPE,
+    state,
     code_challenge: challenge,
     code_challenge_method: 'S256',
-    state,
   }).toString();
   return { url, expiresInMs: LOGIN_TIMEOUT_MS, intervalMs: 1500, data: { loginId } };
+}
+
+/** token 响应契约校验（CLI requestToken 同款，缺任一字段即拒） */
+function validateTokenResponse(result) {
+  if (typeof result?.access_token !== 'string'
+    || typeof result?.refresh_token !== 'string'
+    || result?.token_type !== 'Bearer'
+    || !Number.isFinite(Number(result?.expires_in))
+    || Number(result.expires_in) <= 0
+    || typeof result?.scope !== 'string'
+    || typeof result?.openid !== 'string'
+    || typeof result?.tenant_id !== 'string') {
+    const err = new Error('Meoo OAuth Token 响应格式无效');
+    err.oauth = true;
+    throw err;
+  }
+}
+
+/** OAuth 换票 / 刷新（form-urlencoded，无 secret——CLI 同款） */
+export async function meooTokenRequest(parameters) {
+  let res;
+  try {
+    res = await fetch(MEOO_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+      body: new URLSearchParams(parameters).toString(),
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (e) {
+    throw new Error(`Meoo OAuth 请求失败：${e?.cause?.code || e.message}`);
+  }
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(`Meoo OAuth 失败：${result.error_description || result.error || `HTTP ${res.status}`}`);
+  }
+  validateTokenResponse(result);
+  return result;
+}
+
+/** 刷新令牌（签到触发动作 / 凭据续期共用） */
+export async function refreshMeooToken(refreshToken) {
+  return meooTokenRequest({
+    grant_type: 'refresh_token',
+    client_id: MEOO_CLIENT_ID,
+    refresh_token: refreshToken,
+  });
 }
 
 /**
@@ -145,47 +196,23 @@ export async function pollMeooLogin(data) {
 
   const params = session.result;
   sessions.delete(data.loginId);
-  if (params.state && session.state && params.state !== session.state) {
-    throw new Error('回调 state 与本次登录不匹配（CSRF 防护），请重新发起');
-  }
-  if (!params.code) throw new Error('回调里没有授权码，请重新发起');
+  const tok = await meooTokenRequest({
+    grant_type: 'authorization_code',
+    client_id: MEOO_CLIENT_ID,
+    code: params.code,
+    redirect_uri: session.redirectUri,
+    code_verifier: session.verifier,
+  });
 
-  // code + verifier → 令牌
-  let res;
-  try {
-    res = await fetch(MEOO_TOKEN_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        client_id: MEOO_CLIENT_ID,
-        code: params.code,
-        redirect_uri: session.redirectUri,
-        code_verifier: session.verifier,
-      }).toString(),
-      signal: AbortSignal.timeout(20_000),
-    });
-  } catch (e) {
-    throw new Error(`Meoo 换票失败：${e?.cause?.code || e.message}`);
-  }
-  const text = await res.text().catch(() => '');
-  let body = null;
-  try { body = text ? JSON.parse(text) : null; } catch { body = null; }
-  if (!res.ok || !body?.access_token) {
-    const msg = body?.error_description || body?.error || body?.message || `HTTP ${res.status}`;
-    throw new Error(`Meoo 换票失败：${msg}`);
-  }
-
-  const accessToken = String(body.access_token);
-  const refreshToken = body.refresh_token ? String(body.refresh_token) : null;
-  const expiresIn = Number(body.expires_in) || 0;
-  const expiresAt = expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : null;
+  const accessToken = tok.access_token;
+  const refreshToken = tok.refresh_token;
+  const expiresAt = new Date(Date.now() + Number(tok.expires_in) * 1000).toISOString();
 
   // 身份读补 uid/昵称（失败不阻断入库——addAccount 侧 verify 会再补一次）
-  let uid = null, name = null;
+  let uid = tok.openid || null, name = null;
   try {
     const ident = await fetchMeooIdentity(accessToken);
-    if (ident.ok) { uid = ident.uid; name = ident.name; }
+    if (ident.ok) { uid = ident.uid || uid; name = ident.name; }
   } catch { /* verify 兜底 */ }
 
   return {
@@ -199,7 +226,12 @@ export async function pollMeooLogin(data) {
       name: name ? `Meoo (${name})` : null,
       email: null,
       source: 'browser',
-      meta: { loginVia: 'oauth-authcode' },
+      meta: {
+        loginVia: 'oauth-authcode',
+        openid: tok.openid || null,
+        tenantId: tok.tenant_id || null,
+        scope: tok.scope || MEOO_SCOPE,
+      },
     },
   };
 }

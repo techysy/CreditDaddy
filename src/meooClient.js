@@ -198,14 +198,30 @@ export async function checkinMeoo(account, ctx = {}) {
     return { status: 'failed', message: t('Meoo 未返回积分账面数据，无法核验领取结果') };
   }
 
-  // ② 登录等价动作：一次带凭据的身份读（best-effort，成败由复读裁决）
-  try { await fetchMeooIdentity(token, { fetchImpl }); } catch { /* 触发动作本身不是裁决 */ }
+  // ② 登录等价动作：OAuth 行强制刷新一次令牌（10R 同款——刷新即登录信号），
+  //    Key 行做一次带凭据的身份读。都 best-effort，成败由复读裁决。
+  let credential = token;
+  if (account?.refreshToken) {
+    try {
+      const { refreshMeooToken } = await import('./meooAuth.js');
+      const tok = await refreshMeooToken(account.refreshToken);
+      credential = tok.access_token;
+      const refreshed = {
+        token: tok.access_token,
+        refreshToken: tok.refresh_token,
+        expiresAt: new Date(Date.now() + Number(tok.expires_in) * 1000).toISOString(),
+      };
+      // 刷新结果回写账号库（refreshContext），10R 同步行下次推新令牌
+      try { await ctx?.onRefresh?.(refreshed); } catch { /* 回写失败不阻断 */ }
+    } catch { /* 刷新失败不阻断——复读账面裁决 */ }
+  }
+  try { await fetchMeooIdentity(credential, { fetchImpl }); } catch { /* 触发动作本身不是裁决 */ }
 
   // ③ 复读账面（发放落账有延迟，短重试几拍）
   let after = before;
   for (let attempt = 0; attempt < 3; attempt++) {
     if (attempt > 0) await sleep(1500);
-    try { after = await fetchMeooPoints(token, { fetchImpl }); } catch { break; }
+    try { after = await fetchMeooPoints(credential, { fetchImpl }); } catch { break; }
     if (Number.isFinite(after?.totalGranted) && after.totalGranted > before.totalGranted) break;
   }
 

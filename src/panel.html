@@ -1927,6 +1927,10 @@ function cardHtml(a) {
     + '<div class="row1"><div class="name-group">'
     + T('<span class="name" data-act="rename" title="点击修改备注名">') + esc(maskName(a.name) || T('(未命名)')) + '</span>'
     + provBadges(a.provider, true, a.flavor)
+    + (a.product === 'dumate' && state.quotas[a.id]?.plan
+      ? '<span class="badge" style="color:#8b5cf6;background:rgba(139,92,246,.14);margin-left:4px" title="'
+        + esc(T('DuMate 付费套餐生效中') + (state.quotas[a.id].planExpiresAt ? T('，') + fmtTime(state.quotas[a.id].planExpiresAt).slice(0, 10) + T(' 到期') : '')) + '">'
+        + esc(state.quotas[a.id].plan) + '</span>' : '')
     + (isCurrent ? '<span class="pill cur" title="' + esc(CLIENT_LABEL[a.product] ? T(CLIENT_LABEL[a.product]) : '') + T(' 客户端当前登录的账号">客户端当前</span>') : '')
     + (a.product === 'zcode' && isGatewayCurrent(a) ? (zgwAccountCount() > 1
       ? T('<span class="pill gw" title="体验包接口最近 30 分钟内服役过的账号（{n} 个 ZCode 账号按轮转分摊请求，每个请求换一个，与客户端登录无关）">接口使用中</span>', { n: zgwAccountCount() })

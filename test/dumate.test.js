@@ -294,4 +294,20 @@ test('DuMate 积分明细 quota_overview 真实解析', async () => {
   assert.equal(q.parts[1].name, '登录赠送积分');
   assert.equal(q.parts[1].total, 500);
   assert.ok(q.expiresAt);
+
+  // 付费套餐徽章：plan_pro/plan_max/plan_team 出（取最高档），plan_experience 不出
+  const withPro = async (subscription) => {
+    const f2 = async () => res(200, { code: 0, success: true, result: { totalPoints: '10000.00', usedPoints: '0.00', subscription, incremental: [] } });
+    return fetchDumateQuota({ token: COOKIE_HEADER }, { fetchImpl: f2 });
+  };
+  const pro = await withPro([
+    { packageType: 'plan_experience', totalPoints: '5000', usedPoints: '0', status: 'active', expireDate: 1795182589 },
+    { packageType: 'plan_pro', totalPoints: '5000', usedPoints: '0', status: 'active', expireDate: 1797860989 },
+  ]);
+  assert.equal(pro.plan, 'PRO');
+  assert.ok(pro.planExpiresAt);
+  const free = await withPro([
+    { packageType: 'plan_experience', totalPoints: '5000', usedPoints: '0', status: 'active', expireDate: 1795182589 },
+  ]);
+  assert.equal(free.plan, null, '体验版不出付费徽章');
 });

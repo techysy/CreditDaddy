@@ -431,6 +431,13 @@ export async function fetchDumateQuota(account, { fetchImpl } = {}) {
     nearestExp = fmtDate(allActive[0].pointsExpireDate || allActive[0].expireDate);
   }
 
+  // 付费套餐（客户端同款 currentPlanType 口径）：plan_pro / plan_max / plan_team = 付费，
+  // plan_experience = 免费体验版不出徽章。取档位最高的一单。
+  const PLAN_RANK = { plan_max: 3, plan_pro: 2, plan_team: 2 };
+  const PLAN_LABEL = { plan_max: 'Max', plan_pro: 'PRO', plan_team: 'Team' };
+  const topPaid = [...subs].sort((a, b) => (PLAN_RANK[b.packageType] || 0) - (PLAN_RANK[a.packageType] || 0))[0];
+  const plan = topPaid && PLAN_RANK[topPaid.packageType] ? PLAN_LABEL[topPaid.packageType] : null;
+
   return {
     unit: '积分',
     total,
@@ -439,5 +446,7 @@ export async function fetchDumateQuota(account, { fetchImpl } = {}) {
     parts: parts.length > 0 ? parts : [{ name: t('可用积分'), total, used, remaining }],
     expiresAt: nearestExp,
     exceeded: remaining <= 0,
+    plan,
+    planExpiresAt: topPaid ? fmtDate(topPaid.expireDate || topPaid.pointsExpireDate) : null,
   };
 }
