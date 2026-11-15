@@ -264,8 +264,8 @@ const PRODUCTS = {
     // 走 CLI 控制面 API（/open/v1/cli-compat/*），不走网页会话。
     // 「签到」无领取端点 = 登录等价动作 + totalGranted 增量核验（10R 同款算法）；
     // 额度 = 积分账面（unit '积分' 计入剩余积分合计），parts 按来源逐包带批次到期日。
-    checkin: (account) => checkinMeoo(account),
-    quota: (account) => fetchMeooQuota(account),
+    checkin: (account, ctx) => checkinMeoo(account, ctx),
+    quota: (account, ctx) => fetchMeooQuota(account, ctx),
     verify: async (account) => {
       const { fetchMeooIdentity } = await import('./meooClient.js');
       const ident = await fetchMeooIdentity(account.token);

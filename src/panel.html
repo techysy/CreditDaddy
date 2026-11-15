@@ -3007,9 +3007,10 @@ function orderedFreeSites(sites) {
 function renderFreePool() {
   const body = $('free-pool-body');
   if (!body) return;
-  const sites = state.cookieSites;
   const canCapture = Boolean(window.creditdaddy && typeof window.creditdaddy.openAuthWindow === 'function');
-  if (!sites) { body.innerHTML = T('<div class="dim">加载中…</div>'); loadCookieSites().then(() => renderFreePool()); return; }
+  if (!state.cookieSites) { body.innerHTML = T('<div class="dim">加载中…</div>'); loadCookieSites().then(() => renderFreePool()); return; }
+  // hideFromWebPage（DuMate）：登录入口在其自身产品页，免费额度页站点池不再列出（捕获机制仍走全量列表）
+  const sites = state.cookieSites.filter((s) => !s.hideFromWebPage);
   const enabledSites = sites.filter((s) => s.disabled !== true);
   const totalAccounts = enabledSites.reduce((sum, s) => sum + (s.accounts?.length || 0), 0);
   if ($('free-total-count')) $('free-total-count').textContent = totalAccounts;

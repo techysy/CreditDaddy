@@ -2118,6 +2118,7 @@
   "已领取每日登录积分 +{n}": "매일 로그인 포인트 수령(+{n})",
   "Meoo 身份验证失败": "Meoo 신원 확인 실패",
   "没有可同步的账号（qoder / WorkBuddy / MiniMax / Loomy / Trae / Meoo 系列）；zcode 待反代就绪后支持": "동기화할 계정이 없습니다(qoder / WorkBuddy / MiniMax / Loomy / Trae / Meoo 계열). zcode는 게이트웨이 지원 후 가능",
+  "没有可同步的账号（qoder / WorkBuddy / MiniMax / Loomy / Trae / DuMate / 灵犀 / Meoo 系列）；zcode 待反代就绪后支持": "동기화할 계정이 없습니다(qoder / WorkBuddy / MiniMax / Loomy / Trae / DuMate / 영희 / Meoo 계열). zcode는 게이트웨이 지원 후 가능",
   "还没有 Meoo 账号。<br>点「添加账号 → 浏览器登录」走 Meoo OAuth（官方 CLI 同款 PKCE 回环，无需网页抓包），或在「粘贴 Token」里贴 meoo_ak_ 控制面 Key。每日登录积分自动增量核验领取，可一键同步给 10Router 网关。": "Meoo 계정이 아직 없습니다.<br>\"계정 추가 → 브라우저 로그인\"으로 Meoo OAuth(공식 CLI와 동일한 PKCE 루프백, 쿠키 수집 불필요)를 이용하거나 \"토큰 붙여넣기\"에서 meoo_ak_ 제어 평면 키를 붙여넣으세요. 매일 로그인 포인트는 원장 차이 검증으로 자동 수령되며 10Router 게이트웨이에 원클릭 동기화됩니다.",
   "粘贴控制面 Key（meoo.com → 设置 → API 密钥，meoo_ak_ 开头）直接入库；或走「浏览器登录」OAuth。同步 10Router 时自动预解析项目 AK。": "제어 평면 키(meoo.com → 설정 → API 키, meoo_ak_ 시작)를 붙여넣어 바로 추가하거나 \"브라우저 로그인\" OAuth를 이용하세요. 10Router 동기화 시 프로젝트 AK를 사전 해석합니다.",
   "今日可能已领取，或该权益需在 meoo.com 网页登录触发": "오늘 이미 수령했을 가능성이 있거나 meoo.com 웹 로그인이 필요한 혜택입니다",

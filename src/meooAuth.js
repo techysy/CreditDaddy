@@ -145,10 +145,10 @@ function validateTokenResponse(result) {
 }
 
 /** OAuth 换票 / 刷新（form-urlencoded，无 secret——CLI 同款） */
-export async function meooTokenRequest(parameters) {
+export async function meooTokenRequest(parameters, { fetchImpl } = {}) {
   let res;
   try {
-    res = await fetch(MEOO_TOKEN_URL, {
+    res = await (fetchImpl || fetch)(MEOO_TOKEN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
       body: new URLSearchParams(parameters).toString(),
@@ -166,12 +166,12 @@ export async function meooTokenRequest(parameters) {
 }
 
 /** 刷新令牌（签到触发动作 / 凭据续期共用） */
-export async function refreshMeooToken(refreshToken) {
+export async function refreshMeooToken(refreshToken, { fetchImpl } = {}) {
   return meooTokenRequest({
     grant_type: 'refresh_token',
     client_id: MEOO_CLIENT_ID,
     refresh_token: refreshToken,
-  });
+  }, { fetchImpl });
 }
 
 /**

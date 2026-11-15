@@ -132,13 +132,43 @@ export async function fetchMeooPoints(token, { fetchImpl } = {}) {
 }
 
 /**
+ * OAuth 行刷新一次令牌并经 ctx.onRefresh 回写（账号库 / 10R 同步行）。
+ * 返回新 access token；Key 行（无 refreshToken）或无 onRefresh 持久化钩子时返回 null——
+ * 刷新而不落盘有 refresh_token 轮换丢失的风险，宁可跳过。
+ */
+export async function refreshMeooCredential(account, ctx = {}) {
+  if (!account?.refreshToken || typeof ctx?.onRefresh !== 'function') return null;
+  try {
+    const { refreshMeooToken } = await import('./meooAuth.js');
+    const tok = await refreshMeooToken(account.refreshToken, { fetchImpl: ctx?.fetchImpl });
+    const refreshed = {
+      token: tok.access_token,
+      refreshToken: tok.refresh_token,
+      expiresAt: new Date(Date.now() + Number(tok.expires_in) * 1000).toISOString(),
+    };
+    if (Number.isFinite(Number(tok.refresh_expires_in)) && Number(tok.refresh_expires_in) > 0) {
+      refreshed.refreshExpiresAt = new Date(Date.now() + Number(tok.refresh_expires_in) * 1000).toISOString();
+    }
+    await ctx.onRefresh(refreshed);
+    return refreshed.token;
+  } catch { return null; }
+}
+
+/**
  * 额度（quota 口径）：total = 累计发放（容量口径），used = 累计消耗，
  * remaining = 可用余额；parts 按来源逐包（带批次到期日）。
+ * OAuth 行 access token 过期（invalid_token）→ 刷新一次重读——「凭据有效 · 自动续期」
+ * 徽章的兑现处；新凭据经 ctx.onRefresh 回写账号库。
  */
-export async function fetchMeooQuota(account, { fetchImpl } = {}) {
+export async function fetchMeooQuota(account, ctx = {}) {
+  const fetchImpl = ctx?.fetchImpl;
   const token = account?.token;
   if (!token) { const e = new Error(t('Meoo 凭据缺失，请重新登录或粘贴控制面 Key')); e.auth = true; throw e; }
-  const pts = await fetchMeooPoints(token, { fetchImpl });
+  let pts = await fetchMeooPoints(token, { fetchImpl });
+  if (!pts.auth && account.refreshToken) {
+    const fresh = await refreshMeooCredential(account, ctx);
+    if (fresh) pts = await fetchMeooPoints(fresh, { fetchImpl });
+  }
   if (!pts.auth) { const e = new Error(t('Meoo 凭据已失效（{code}），请重新登录或更换控制面 Key', { code: pts.code || '401' })); e.auth = true; throw e; }
   if (!pts.ok) throw new Error(pts.error || t('Meoo 积分查询失败'));
   const total = Number.isFinite(pts.totalGranted) ? pts.totalGranted : pts.balance;
@@ -183,37 +213,38 @@ export async function resolveMeooProjectAk(token, { fetchImpl } = {}) {
  * @returns {{ status: 'checked-in'|'already'|'failed', claimedAmount?, amount?, balanceAfter?, message?, authExpired? }}
  */
 export async function checkinMeoo(account, ctx = {}) {
-  const token = account?.token;
+  let token = account?.token;
   const fetchImpl = ctx?.fetchImpl;
   const sleep = ctx?.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
   if (!token) return { status: 'failed', message: t('Meoo 凭据缺失，请重新登录或粘贴控制面 Key') };
 
-  // ① 基线账面
+  // ① 基线账面；OAuth 行 access token 过期先刷新一次重读（新凭据经 ctx.onRefresh 回写账号库）
   let before;
   try { before = await fetchMeooPoints(token, { fetchImpl }); } catch (e) {
     return { status: 'failed', message: t('Meoo 积分账面读取失败：{err}', { err: e?.message || 'network' }) };
+  }
+  let refreshedOnce = false;
+  if (!before.auth && account?.refreshToken) {
+    const fresh = await refreshMeooCredential(account, ctx);
+    if (fresh) {
+      token = fresh;
+      refreshedOnce = true;
+      try { before = await fetchMeooPoints(token, { fetchImpl }); } catch (e) {
+        return { status: 'failed', message: t('Meoo 积分账面读取失败：{err}', { err: e?.message || 'network' }) };
+      }
+    }
   }
   if (!before.auth) return { status: 'failed', authExpired: true, message: t('Meoo 凭据已失效（{code}），请重新登录或更换控制面 Key', { code: before.code || '401' }) };
   if (!before.ok || !Number.isFinite(before.totalGranted)) {
     return { status: 'failed', message: t('Meoo 未返回积分账面数据，无法核验领取结果') };
   }
 
-  // ② 登录等价动作：OAuth 行强制刷新一次令牌（10R 同款——刷新即登录信号），
-  //    Key 行做一次带凭据的身份读。都 best-effort，成败由复读裁决。
+  // ② 登录等价动作：OAuth 行刷新一次令牌（10R 同款——刷新即登录信号；① 里刚刷新过的
+  //    直接沿用新令牌，不重复轮换）；Key 行做一次带凭据的身份读。都 best-effort，成败由复读裁决。
   let credential = token;
-  if (account?.refreshToken) {
-    try {
-      const { refreshMeooToken } = await import('./meooAuth.js');
-      const tok = await refreshMeooToken(account.refreshToken);
-      credential = tok.access_token;
-      const refreshed = {
-        token: tok.access_token,
-        refreshToken: tok.refresh_token,
-        expiresAt: new Date(Date.now() + Number(tok.expires_in) * 1000).toISOString(),
-      };
-      // 刷新结果回写账号库（refreshContext），10R 同步行下次推新令牌
-      try { await ctx?.onRefresh?.(refreshed); } catch { /* 回写失败不阻断 */ }
-    } catch { /* 刷新失败不阻断——复读账面裁决 */ }
+  if (!refreshedOnce && account?.refreshToken) {
+    const fresh = await refreshMeooCredential(account, ctx);
+    if (fresh) credential = fresh;
   }
   // ③ 触发动作重试一拍：网络抖动不该让本轮白跑（成败仍由复读裁决）
   for (let i = 0; i < 2; i++) {

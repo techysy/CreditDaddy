@@ -14,7 +14,7 @@ Theme: **Two new product lines — DuMate (Baidu companion) and Meoo (independen
   - **积分与额度**：接入真实 quota_overview 接口（按个人版时区与 desktop clientType 查询）——精确计算订阅 / 赠送 / 增购积分与最近到期日，修此前显示固定 100 分；签到走 loginBonus 每日登录赠送；额度条改逐包分段（同 WorkBuddy 多包条，文字行只报最近到期）；quota 派生付费套餐徽章——plan_pro/plan_max/plan_team 取最高档出紫色 PRO/Max/Team 徽章（hover 带到期日），plan_experience 免费体验不出；
   - **本机账号切换**：硬切换写客户端 auth.json active 槽——顶层 cookies 以 AES-256-GCM 同款 iv||tag||ct 布局重加密 + 重写 activeProfileId/activeProviderType，切换前杀壳与全部 Go 服务（main-server/base-proxy/router/opencode/na），1.2s 延时复核防回写；依据：客户端启动 setCookieProvider 后 Go 代理直接消费 auth.json 注入 Cookie，冷状态写文件即完成切换（窗口 Chromium 罐残留旧 Cookie 时界面身份可能仍旧，以控制台 API 实际身份为准）；切完自动重开客户端（Loomy 同构，未安装报 DUMATE_NOT_INSTALLED 409 同口径）；
   - **10Router 同步**：账号管理弹窗渠道表补 DuMate（账号同步链路收口）；渠道行改「仅连接」——额度卡由 10R 连接凭据自身出卡，CD 不重复推卡；
-  - 杂项：显示名缩短「DuMate 百度搭子」→「DuMate」（对齐 10R）；产品页 VIEWS 漏注册修复 + 官方图标；README 安全边界补多账号隔离与防关联口径（issue #64）；网页会话页不再列 DuMate——浏览器登录线入口迁至自身页「添加账号 → 网页版」tab（无痕窗捕获机制与已捕获账号不变）。
+  - 杂项：显示名缩短「DuMate 百度搭子」→「DuMate」（对齐 10R）；产品页 VIEWS 漏注册修复 + 官方图标；README 安全边界补多账号隔离与防关联口径（issue #64）；网页会话页与免费额度页站点池均不再列 DuMate（test.5 实测免费额度页漏网补齐）——浏览器登录线入口迁至自身页「添加账号 → 网页版」tab（无痕窗捕获机制与已捕获账号不变）。
 - **新增 Meoo 秒悟产品线（issue #65）**：网页会话 cookie 线仅存活一个迭代即升级为独立产品线（cookieSites meoo 条目与捕获分支摘除），改走 CLI 控制面——
   - **控制面 API 客户端**：`/open/v1/cli-compat/*`（Bearer + `X-Meoo-Client: cli` + CLI-Version 0.5.8）：identity / points / projects / 项目 AK；额度口径 total=totalGranted、used=totalConsumed、remaining=availableBalance，parts 按来源逐包带批次到期日；
   - **OAuth PKCE S256 回环浏览器登录**：官方 CLI 公开客户端同款（authorize/token + 127.0.0.1 回环监听抓授权码，trae 骨架同构）；redirect_uri 按官方 CLI 0.5.8 产物考古修正为 `/oauth/callback`（此前 `/callback` 被授权页拒 invalid_redirect_uri）；回环随机端口 + 回调响应纪律（404/400/200 + no-store）+ token 响应契约校验；新增 refreshMeooToken——签到触发动作升级为强制刷新一次令牌（刷新即登录信号，10R 同款），刷新结果回写账号库，复读用新凭据；
@@ -25,6 +25,7 @@ Theme: **Two new product lines — DuMate (Baidu companion) and Meoo (independen
   - 10R 不再重复推卡（自消费口径，test.2 实测反馈）：10R 原生支持 meoo 连接、额度由连接凭据自身出卡，CD 的 meoo-free 推送移除（同 DuMate「仅连接」），同账号不再两张同数值卡；顺带修掉推送路径孤儿引用 `MEOO_POINTS_URL` 的 ReferenceError——test.2「额度卡推送失败:MEOO_POINTS_URL is not defined」的根因；
   - 额度条并入紧凑口径（同 DuMate 多包条）：订阅 / 登录 / 邀请三类批次分段逐包展示，文字行只报最近到期 + 已用/共，全量明细进悬浮提示；
   - 签到健壮化：复读窗口放宽到 5 拍 ×2s（发放常滞后于触发）、触发动作重试一拍；复读全失败 = 状态不明记 failed，绝不把「不确定」伪装成 already 闭环。
+  - 自动续期（test.5 实测「凭据已失效 invalid_token」反馈）：额度 / 签到路径接上 OAuth 刷新——账面读 401（invalid_token）自动 refresh 一次重试，新凭据经 ctx.onRefresh 回写账号库（「凭据有效 · 自动续期」徽章的兑现处）；签到基线 401 同样先刷新重读再裁决；无 onRefresh 持久化钩子的路径不刷新（防 refresh_token 轮换丢失）；providers meoo 条目补传 ctx。顺带补 PR #66 漏登记的可同步列表报错四语词条。
 - **灵犀账号接入「同步到 10Router」（PR #66，接收端配套 10R #127/#128/#129）**：`TENROUTER_PROVIDER_MAP` 补 `lingxi → lingxi`（CD 的 token 即完整 WPS Cookie 罐，api-key 形态直推 10R 内置 lingxi 渠道）；transfer 行带 `authType:'cookie'`（灵犀/DuMate 同款）——修复 Cookie 罐行此前落成 oauth 形态、10R 的 webCookie executor 读不到凭据的问题（DuMate 同步链路同批修好）；可同步列表报错文案补 DuMate/灵犀；smoke 断言新增。
 - **Loomy 邀请码**：推荐码弹窗 placeholder 同步当前随机候选码；邀请码池新增 4HT9MF6（随机均摊两个共享码）。
 - **Trae 修复**：

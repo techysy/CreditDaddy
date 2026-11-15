@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   checkinMeoo, fetchMeooQuota, fetchMeooPoints, fetchMeooIdentity, maskMeooUserId,
+  refreshMeooCredential,
   MEOO_IDENTITY_URL, MEOO_POINTS_URL, resolveMeooProjectAk,
 } from '../src/meooClient.js';
 import { getSite } from '../src/cookieSites.js';
@@ -13,7 +14,7 @@ import { buildExportPayload } from '../src/transfer.js';
 const CP_HEADERS = { 'X-Meoo-Client': 'cli', 'X-Meoo-CLI-Version': '0.5.8' };
 const TOKEN = 'meoo_ak_test123';
 
-const res = (status, body) => ({ status, ok: status >= 200 && status < 300, text: async () => JSON.stringify(body) });
+const res = (status, body) => ({ status, ok: status >= 200 && status < 300, text: async () => JSON.stringify(body), json: async () => body });
 
 const identityBody = { success: true, data: { user_id: '1234567890', username: 'Techysy' } };
 const pointsBody = (granted, balance, extra = {}) => ({
@@ -28,13 +29,20 @@ const pointsBody = (granted, balance, extra = {}) => ({
   },
 });
 
-function mockFetch({ points = [], identity = res(200, identityBody) } = {}) {
+const tokenBody = { access_token: 'meoo_ak_new', refresh_token: 'meoo_rt_new', token_type: 'Bearer', expires_in: 3600, scope: 'cli.compat', openid: 'openid_x', tenant_id: 't1' };
+
+function mockFetch({ points = [], identity = res(200, identityBody), token = null } = {}) {
   const calls = [];
   let i = 0;
+  let t = 0;
   const fn = async (url, init = {}) => {
     calls.push({ url: String(url), headers: init.headers });
     if (String(url).includes('/account/points')) return points[Math.min(i++, points.length - 1)];
     if (String(url).includes('/account/identity')) return identity;
+    if (String(url).includes('/oauth/token')) {
+      if (!token) throw new Error('unexpected token request');
+      return token[Math.min(t++, token.length - 1)];
+    }
     throw new Error('unexpected url: ' + url);
   };
   fn.calls = calls;
@@ -110,6 +118,38 @@ test('签到：复读全失败 → failed（状态不明绝不记 already）', a
   const r = await checkinMeoo({ token: TOKEN }, { fetchImpl: f, sleep: async () => {} });
   assert.equal(r.status, 'failed');
   assert.equal(Number.isFinite(r.balanceAfter), true);
+});
+
+test('额度：token 过期 → 刷新一次重试，新凭据经 onRefresh 回写', async () => {
+  const saved = [];
+  const f = mockFetch({
+    points: [res(401, { errCode: 'invalid_token' }), res(200, pointsBody(5000, 4300))],
+    token: [res(200, tokenBody)],
+  });
+  const q = await fetchMeooQuota({ token: 'meoo_ak_dead', refreshToken: 'meoo_rt_old' }, { fetchImpl: f, onRefresh: async (c) => saved.push(c) });
+  assert.equal(q.remaining, 4300);
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].token, 'meoo_ak_new');
+  assert.equal(saved[0].refreshToken, 'meoo_rt_new');
+  assert.equal(typeof saved[0].expiresAt, 'string');
+});
+
+test('签到：基线 401 → 刷新重读 → 正常裁决（不再直接 failed）', async () => {
+  const saved = [];
+  const f = mockFetch({
+    points: [res(401, { errCode: 'invalid_token' }), res(200, pointsBody(5000, 4300)), res(200, pointsBody(5000, 4300)), res(200, pointsBody(5000, 4300))],
+    token: [res(200, tokenBody)],
+  });
+  const r = await checkinMeoo({ token: 'meoo_ak_dead', refreshToken: 'meoo_rt_old' }, { fetchImpl: f, sleep: async () => {}, onRefresh: async (c) => saved.push(c) });
+  assert.equal(r.status, 'already');
+  assert.equal(saved.length, 1, '① 里刷新过，② 不重复轮换');
+});
+
+test('刷新无 onRefresh 钩子 → 不刷新（防 refresh_token 轮换丢失）', async () => {
+  const f = mockFetch({ points: [res(401, { errCode: 'invalid_token' })] });
+  await assert.rejects(() => fetchMeooQuota({ token: 'meoo_ak_dead', refreshToken: 'meoo_rt_old' }, { fetchImpl: f }), (e) => e.auth === true);
+  assert.ok(!f.calls.some((c) => String(c.url).includes('/oauth/token')), '无持久化钩子不发刷新请求');
+  assert.equal(await refreshMeooCredential({ refreshToken: 'meoo_rt_old' }, {}), null);
 });
 
 test('项目 AK 预解析：projects → cloud/environment', async () => {
