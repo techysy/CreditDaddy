@@ -3253,16 +3253,19 @@ function renderCookieSites() {
 const AM_CHANNELS = [
   { provider: 'minimax', label: 'MiniMax 国内版', syncable: true },
   { provider: 'minimax-global', label: 'MiniMax 国际版', syncable: true },
-  { provider: 'tokenharbor', label: 'Token Harbor', syncable: true },
+  // tokenharbor：sk- key 来源（网页会话捕获 key）——只喂额度监控卡，10R 无连接概念
+  { provider: 'tokenharbor', label: 'Token Harbor', syncable: false },
   { provider: 'xiaomi-mimo', label: '小米 MiMo', syncable: false },
   { provider: 'river', label: 'River AI', syncable: false },
   { provider: 'modelscope', label: 'ModelScope 魔搭', syncable: false },
   { provider: 'longcat', label: 'LongCat', syncable: false },
   { provider: 'qoder', label: 'Qoder 国际版', syncable: true },
   { provider: 'qoder-cn', label: 'Qoder 国内版', syncable: true },
-  { provider: 'workbuddy', label: 'WorkBuddy 国内版', syncable: true },
-  { provider: 'workbuddy-intl', label: 'WorkBuddy 国际版', syncable: true },
-  { provider: 'loomy', label: '讯飞 Loomy', syncable: true },
+  // workbuddy 双线 / loomy：10R 的 codebuddy-cn / codebuddy-intl / loomy 连接自身出卡——
+  // CD 额度卡推送本就没有这几个渠道的分支（主勾是死的），pushable:false 如实标注
+  { provider: 'workbuddy', label: 'WorkBuddy 国内版', syncable: true, pushable: false },
+  { provider: 'workbuddy-intl', label: 'WorkBuddy 国际版', syncable: true, pushable: false },
+  { provider: 'loomy', label: '讯飞 Loomy', syncable: true, pushable: false },
   // dumate 只同步连接、不推额度卡：10R 用连接凭据原生拉 quota_overview 出卡（PR #116 修双计），
   // CD 再推一份免费卡纯属重复——pushable:false = 渠道行不出「额度卡推送」主勾，保存时恒记排除
   { provider: 'dumate', label: 'DuMate', syncable: true, pushable: false },
@@ -3310,8 +3313,15 @@ function renderAmChannels() {
     const pushCtl = pushable
       ? '<label class="check" style="gap:5px"><input type="checkbox" data-am-push="' + ch.provider + '"' + (pushOn ? ' checked' : '') + '> <span>额度卡</span></label>'
       : '';
-    const syncCtl = '<label class="check" style="gap:5px"><input type="checkbox" data-am-sync="' + ch.provider + '"' + (syncOn ? ' checked' : '') + (!ch.syncable || !enabled ? ' disabled' : '') + '> <span' + (!ch.syncable ? ' class="dim"' : '') + '>连接</span></label>';
-    const badge = pushable ? '' : '<span class="dim" style="font-size:11px;margin-left:auto;flex:none">' + T('10R 自身出卡') + '</span>';
+    // 「连接」只在真正可同步的渠道出现（tokenharbor 是 key 来源、小米/River/魔搭/LongCat 是
+    // 网页会话额度源——都没有连接概念，不渲染禁用勾选框装样子）
+    const syncCtl = syncable
+      ? '<label class="check" style="gap:5px"><input type="checkbox" data-am-sync="' + ch.provider + '"' + (syncOn ? ' checked' : '') + (!enabled ? ' disabled' : '') + '> <span>连接</span></label>'
+      : '';
+    // 渠道形态角标：纯连接渠道「10R 自身出卡」；纯额度卡来源（Key / 网页会话）「仅额度卡」
+    const badge = !pushable
+      ? '<span class="dim" style="font-size:11px;margin-left:auto;flex:none">' + T('10R 自身出卡') + '</span>'
+      : (!syncable ? '<span class="dim" style="font-size:11px;margin-left:auto;flex:none">' + T('仅额度卡') + '</span>' : '');
     return '<div class="am-ch-card">'
       + '<div style="display:flex;align-items:center;gap:8px;min-width:0">' + mark
       + '<span style="font-weight:600;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(T(ch.label)) + '</span>' + badge + '</div>'
