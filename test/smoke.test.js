@@ -100,6 +100,18 @@ test('Loomy 同步载荷带 authType:apikey——10R 原生 loomy 行就是 apik
   assert.equal(q.authType, undefined);
 });
 
+test('灵犀/DuMate 网页会话行带 authType:cookie——10R 导入端据此把凭据落 apiKey（webCookie executor 读取字段）', () => {
+  const lx = transfer.buildExportPayload([
+    store.normalizeAccountInput({ provider: 'lingxi', token: 'wps_sid=abc; uid=1927751197', uid: '1927751197' }),
+  ]).accounts[0];
+  assert.equal(lx.authType, 'cookie');
+  assert.ok(lx.accessToken.startsWith('wps_sid='));
+  const dm = transfer.buildExportPayload([
+    store.normalizeAccountInput({ provider: 'dumate', token: 'dt-cookie-jar' }),
+  ]).accounts[0];
+  assert.equal(dm.authType, 'cookie');
+});
+
 test('Qoder 网页会话随导出进 providerSpecificData，回导入恢复进 meta', () => {
   const a = store.normalizeAccountInput({ provider: 'qoder-cn', token: 'dt-web-sync', uid: 'u-web' });
   a.meta = { qoderWebSession: { cookie: 'session=abc; x=1', capturedAt: '2026-09-30T11:47:56.904Z' } };
