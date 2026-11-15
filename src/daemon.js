@@ -300,7 +300,6 @@ async function reprobeCookieAccount(site, a) {
           cookieSiteSession: { cookie, capturedAt: hit.meta?.cookieSiteSession?.capturedAt || now },
           longcatPacks: longcatSnapshot(packs.packs),
           ...(lcSession ? { longcatSession: lcSession } : {}),
-          ...(lxSnapshot ? { lingxiPacks: lxSnapshot } : {}),
           quotaSnapshot: { used: 0, total: lcTotal, isCreditBalance: true, at: now },
         };
         if (lcSession?.userId) hit.uid = String(lcSession.userId);
@@ -408,6 +407,7 @@ async function reprobeCookieAccount(site, a) {
           cookieSiteSession: { cookie, capturedAt: hit.meta?.cookieSiteSession?.capturedAt || now },
           ...(uid && !hit.meta?.identityHash ? { identityHash: identityHashOf(`uid:${uid}`) } : {}),
           ...(Number.isFinite(st.balance) ? { quotaSnapshot: { used: 0, total: st.balance, isCreditBalance: true, at: now } } : {}),
+          ...(Array.isArray(st.packs) && st.packs.length ? { lingxiPacks: { packs: st.packs, at: now } } : {}),
         };
         if (uid) {
           hit.uid = String(uid);
@@ -1648,6 +1648,7 @@ async function handleApi(req, res, url) {
         }
         identity = lxUid ? `uid:${lxUid}` : null;   // 有 uid → 哈希归户；无 → 单例兜底
         quotaSnapshot = { used: 0, total: Number(lxStatus.balance) || 0, isCreditBalance: true };
+        lxSnapshot = Array.isArray(lxStatus.packs) && lxStatus.packs.length ? { packs: lxStatus.packs, at: now } : null;
         logger.info('COOKIE-SITE', '{name} 探测通过（{identity}，签到{signed}，灵点 {balance}）', { name: site.name, identity: lxUid ? 'uid ' + lxUidMasked : '无 uid（单例）', signed: lxStatus.checkedIn ? '已签' : '未签', balance: Number.isFinite(lxStatus.balance) ? lxStatus.balance : '—' });
       } catch (lxErr) {
         logger.warn('COOKIE-SITE', '{name} 任务列表抓取异常:{err}', { name: site.name, err: lxErr.message });

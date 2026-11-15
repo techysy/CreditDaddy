@@ -3112,8 +3112,9 @@ function renderFreePool() {
         const bal = acc.quota?.total;
         if (Number.isFinite(bal)) {
           const packs = acc.longcatPacks?.packs;
+          const earliest = Array.isArray(packs) ? (packs.map((p) => p.expireAt).filter(Boolean).sort()[0] || '').slice(0, 10) : '';
           const detail = Array.isArray(packs) && packs.length
-            ? '<span class="dim" style="font-size:11px">' + T('（') + packs.length + T(' 个资源包）') + '</span>'
+            ? '<span class="dim" style="font-size:11px">' + T('（') + packs.length + T(' 个资源包 · 至 ') + esc(earliest) + T(' 到期）') + '</span>'
             : '';
           return '<span class="pill ok" style="font-weight:600">' + T('Token 余额 ') + Number(bal).toLocaleString() + '</span>' + detail;
         }
