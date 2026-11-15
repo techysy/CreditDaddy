@@ -365,6 +365,8 @@
   .nav button.active { background: var(--active); color: var(--text); }
   .nav .nav-mark { width: 22px; height: 22px; border-radius: 6px; flex-shrink: 0; display: block; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
   .nav .nav-mark-img { width: 22px; height: 22px; border-radius: 6px; flex-shrink: 0; display: block; object-fit: contain; }
+  .am-ch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+  .am-ch-card { border: 1px solid var(--border-subtle); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; background: var(--surface); }
   .dot.prod-mark-img { width: 20px; height: 20px; border-radius: 5px; flex-shrink: 0; display: inline-block; object-fit: contain; vertical-align: middle; }
   .nav .nav-ico { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; flex-shrink: 0; }
   /* 账号数角标：图标右侧的小灰胶囊（低调不抢视觉，此前是主题色大胶囊太显眼、右上角角标又太跳） */
@@ -3264,7 +3266,11 @@ const AM_CHANNELS = [
   // dumate 只同步连接、不推额度卡：10R 用连接凭据原生拉 quota_overview 出卡（PR #116 修双计），
   // CD 再推一份免费卡纯属重复——pushable:false = 渠道行不出「额度卡推送」主勾，保存时恒记排除
   { provider: 'dumate', label: 'DuMate', syncable: true, pushable: false },
-  { provider: 'meoo', label: 'Meoo 秒悟', syncable: true },
+  // meoo 同 dumate 口径：meoo-free 推送已移除（test.3），主勾是死的——10R 连接凭据自身出卡
+  { provider: 'meoo', label: 'Meoo 秒悟', syncable: true, pushable: false },
+  // lingxi 同口径：10R #127 起原生 lingxi 渠道（webCookie executor 出卡）+ PR #66 连接同步，
+  // CD 的 lingxi-<hash> 灵点卡停推（quotaPushDisabledProviders 恒排除，三条推送路径都认）
+  { provider: 'lingxi', label: 'WPS 灵犀', syncable: true, pushable: false },
 ];
 
 function openTrAccountManage() {
@@ -3290,24 +3296,30 @@ function renderAmChannels() {
   if (!box) return;
   const rows = AM_CHANNELS.filter((ch) => have.has(ch.provider)).map((ch) => {
     // 勾选语义 = 推送该渠道：账号同步看 accountSync（总开关关了整组禁用），
-    // 额度卡看 quotaPushDisabledProviders 反集；pushable:false 的渠道（dumate）
-    // 不出主勾——额度卡由 10R 连接凭据自身出卡，CD 推一份纯属重复
+    // 额度卡看 quotaPushDisabledProviders 反集；pushable:false 的渠道（dumate / meoo / lingxi）
+    // 不出「额度卡」开关——额度卡由 10R 连接凭据自身出卡，CD 推一份纯属重复
     const syncOn = enabled && ((c.accountSync?.providers || []).length
       ? (c.accountSync.providers.includes(ch.provider)) : ch.syncable);
     const pushable = ch.pushable !== false;
     const pushOn = !excluded.includes(ch.provider);
-    const labelHtml = esc(T(ch.label)) + (pushable
-      ? ''
-      : '<span class="dim" style="font-size:11px;margin-left:4px">' + T('10R 自身出卡') + '</span>');
-    return '<label class="check" style="display:flex;gap:6px;align-items:center">'
-      + (pushable ? '<input type="checkbox" data-am-push="' + ch.provider + '"' + (pushOn ? ' checked' : '') + '> ' : '<span style="width:16px;flex:none"></span> ')
-      + labelHtml
-      + '<label class="check" style="margin-left:auto;gap:4px"><input type="checkbox" data-am-sync="' + ch.provider + '"' + (syncOn ? ' checked' : '') + (!ch.syncable || !enabled ? ' disabled' : '') + '> <span class="dim">连接</span></label>'
-      + '</label>';
+    const icon = PROD_ICONS[ch.provider.replace(/-(cn|intl|global)$/, '')] || '';
+    const mark = icon
+      ? '<img src="' + icon + '" class="nav-mark-img" style="width:20px;height:20px;border-radius:5px" alt="">'
+      : '<span class="dot ' + esc(ch.provider.replace(/-(cn|intl|global)$/, '')) + '" style="width:14px;height:14px;border-radius:4px"></span>';
+    const pushCtl = pushable
+      ? '<label class="check" style="gap:5px"><input type="checkbox" data-am-push="' + ch.provider + '"' + (pushOn ? ' checked' : '') + '> <span>额度卡</span></label>'
+      : '<label class="check" style="gap:5px"><span style="width:16px;flex:none"></span><span class="dim">额度卡</span></label>';
+    const syncCtl = '<label class="check" style="gap:5px"><input type="checkbox" data-am-sync="' + ch.provider + '"' + (syncOn ? ' checked' : '') + (!ch.syncable || !enabled ? ' disabled' : '') + '> <span' + (!ch.syncable ? ' class="dim"' : '') + '>连接</span></label>';
+    const badge = pushable ? '' : '<span class="dim" style="font-size:11px;margin-left:auto;flex:none">' + T('10R 自身出卡') + '</span>';
+    return '<div class="am-ch-card">'
+      + '<div style="display:flex;align-items:center;gap:8px;min-width:0">' + mark
+      + '<span style="font-weight:600;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(T(ch.label)) + '</span>' + badge + '</div>'
+      + '<div style="display:flex;gap:16px;align-items:center">' + pushCtl + syncCtl + '</div>'
+      + '</div>';
   });
   box.innerHTML = rows.length
-    ? '<div class="hint" style="margin-bottom:4px">' + T('勾选 = 同步该渠道（「连接」= 账号连接；主勾 = 额度卡推送）。10Router 已单独配了同源渠道时，取消对应渠道即可去掉重复卡片。') + '</div>'
-      + '<div style="display:grid;gap:4px">' + rows.join('') + '</div>'
+    ? '<div class="hint" style="margin-bottom:4px">' + T('勾选 = 同步该渠道：「连接」= 账号连接，「额度卡」= 额度卡推送。10Router 已单独配了同源渠道时，取消对应渠道即可去掉重复卡片。') + '</div>'
+      + '<div class="am-ch-grid">' + rows.join('') + '</div>'
       + '<div style="margin-top:6px"><button class="btn" id="am-channels-save">' + T('保存渠道设置') + '</button></div>'
     : '';
   $('am-channels-save')?.addEventListener('click', saveAmChannels);

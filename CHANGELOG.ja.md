@@ -25,6 +25,7 @@
   - 残高バーをコンパクト分割方式に統合（DuMate 複数パッケージバーと同じ）：サブスクリプション / 毎日ログイン / 招待の 3 種バッチをパッケージ別セグメントで表示し、文字行は直近期限 + 使用済/合計のみ報告、全量明細は hover で；
   - サインインの堅牢化：再読ウィンドウを 5 拍 ×2 秒に拡大（発放はトリガより遅れることが多い）、トリガ動作は 1 回リトライ。再読が全て失敗した場合は failed と記録——「不明」を already の閉環に偽装しない。
   - 自動更新（test.5 実測「凭据已失效 invalid_token」フィードバック）：残高 / サインイン経路に OAuth リフレッシュを接続——台帳読取が 401（invalid_token）なら refresh を一度挟んで再読し、新しい凭据は ctx.onRefresh でアカウント庫に書き戻す（「凭据有効・自動更新」バッジの実装個所）。サインイン基線の 401 も先にリフレッシュ再読してから裁定。onRefresh 永続化フックのない経路はリフレッシュしない（refresh_token ローテーション喪失を防御）。providers の meoo エントリも ctx を渡すよう変更。PR #66 で漏れた同期リストエラーの四語辞書登録も追加。
+  - チャネル推送の収口 + アカウント管理ダイアログのチャネルリストをカード化：Meoo に pushable:false を追加（meoo-free 推送は廃止済みでチェックは死に筋）し、WPS 霊犀行を新設（pushable:false）——10R は #127 から lingxi チャネルをネイティブ対応（webCookie executor がカードを出す）し PR #66 の接続同期もあるため、CD の lingxi-<hash> 霊点カードは推送停止（quotaPushDisabledProviders に恒常排除、バックグラウンド推送 / 無料残高ページ webSessionOnly / 単卡リフレッシュ 410 の 3 経路すべてが従う）。チャネルリストはカードグリッドに再構成（製品アイコン + 「额度卡」「接続」の 2 スイッチ + 「10R 自身出卡」バッジ）、説明文は新口径で四語登録；
 - **霊犀アカウントが「10Router へ同期」に接続（PR #66、受け側は 10R #127/#128/#129）**：`TENROUTER_PROVIDER_MAP` に `lingxi → lingxi` を追加（CD の token は完全な WPS Cookie 缶で、api-key 形態で 10R 内蔵 lingxi チャネルへ直送）；transfer 行は `authType:'cookie'` を持つ（霊犀/DuMate 同様）——従来 Cookie 缶行が oauth 形態で落ち、10R の webCookie executor が凭据を読めなかった問題を修復（DuMate 同期リンクも同時修復）；同期可能リストのエラー文言に DuMate/霊犀を追記；smoke アサーション新設。
 - **Loomy 招待コード**：紹介コードダイアログの placeholder を現在のランダム候補コードに同期；招待コードプールに 4HT9MF6 を追加（ランダム均等割りで 2 つの共有コード）。
 - **Trae 修正**：

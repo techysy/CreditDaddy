@@ -25,6 +25,7 @@
   - 잔액 바를 컴팩트 분할 방식에 통합(DuMate 다중 패키지 바와 동일): 구독 / 매일 로그인 / 초대 3종 배치를 패키지별 세그먼트로 표시하고 텍스트 행은 최근 만기 + 사용/합계만 보고, 전체 명세는 hover에서;
   - 출석 견고화: 재독 윈도우를 5회 ×2초로 확대(발급은 트리거보다 늦을 때가 많음), 트리거 동작 1회 재시도. 재독이 모두 실패하면 failed로 기록——"불명"을 already 마감으로 위장하지 않음.
   - 자동 갱신(test.5 실측 "凭据已失效 invalid_token" 피드백): 잔액 / 출석 경로에 OAuth 리프레시 연결——대장 읽기가 401(invalid_token)이면 refresh를 한 번 거쳐 재독하고, 새 자격증명은 ctx.onRefresh로 계정 저장소에 기록("자격증명 유효·자동 갱신" 배지의 실현 지점). 출석 기선의 401도 먼저 갱신·재독 후 판정. onRefresh 영속화 훅이 없는 경로는 갱신하지 않음(refresh_token 교체 손실 방지). providers의 meoo 항목도 ctx를 전달하도록 변경. PR #66에서 누락된 동기화 목록 오류의 4개 언어 사전 등록도 추가.
+  - 채널 푸시 기준 수렴 + 계정 관리 다이얼로그의 채널 목록 카드화: Meoo에 pushable:false 추가(meoo-free 푸시는 폐지되어 체크박스가 죽은 상태)하고 WPS 영희 행 신설(pushable:false)——10R는 #127부터 lingxi 채널을 네이티브 지원(webCookie executor가 카드 발행)하고 PR #66 연결 동기화도 있으므로, CD의 lingxi-<hash> 영점 카드는 푸시 중단(quotaPushDisabledProviders 상시 제외, 백그라운드 푸시 / 무료 잔액 페이지 webSessionOnly / 단일 카드 리프레시 410의 세 경로 모두 준수). 채널 목록은 카드 그리드로 재구성(제품 아이콘 + "额度卡" "연결" 이중 스위치 + "10R 자체 발행" 배지), 안내 문안은 신기준으로 4개 언어 등록;
 - **영희 계정 "10Router 동기화" 연결(PR #66, 수신 측 10R #127/#128/#129)**: `TENROUTER_PROVIDER_MAP`에 `lingxi → lingxi` 추가(CD의 token은 완전한 WPS Cookie 통으로, api-key 형태로 10R 내장 lingxi 채널에 직송); transfer 행은 `authType:'cookie'` 보유(영희/DuMate 동일)——기존 Cookie 통 행이 oauth 형태로 기록되어 10R의 webCookie executor가 자격증명을 읽지 못하던 문제 수습(DuMate 동기화 체인도 동시 수습); 동기화 가능 목록 오류 문안에 DuMate/영희 추가; smoke 어서션 신설.
 - **Loomy 초대 코드**: 추천 코드 다이얼로그 placeholder를 현재 랜덤 후보 코드에 동기화; 초대 코드 풀에 4HT9MF6 추가(랜덤 균등 배분으로 두 공유 코드).
 - **Trae 수정**:

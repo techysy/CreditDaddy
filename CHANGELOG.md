@@ -26,6 +26,7 @@ Theme: **Two new product lines — DuMate (Baidu companion) and Meoo (independen
   - 额度条并入紧凑口径（同 DuMate 多包条）：订阅 / 登录 / 邀请三类批次分段逐包展示，文字行只报最近到期 + 已用/共，全量明细进悬浮提示；
   - 签到健壮化：复读窗口放宽到 5 拍 ×2s（发放常滞后于触发）、触发动作重试一拍；复读全失败 = 状态不明记 failed，绝不把「不确定」伪装成 already 闭环。
   - 自动续期（test.5 实测「凭据已失效 invalid_token」反馈）：额度 / 签到路径接上 OAuth 刷新——账面读 401（invalid_token）自动 refresh 一次重试，新凭据经 ctx.onRefresh 回写账号库（「凭据有效 · 自动续期」徽章的兑现处）；签到基线 401 同样先刷新重读再裁决；无 onRefresh 持久化钩子的路径不刷新（防 refresh_token 轮换丢失）；providers meoo 条目补传 ctx。顺带补 PR #66 漏登记的可同步列表报错四语词条。
+  - 渠道推送口径收口 + 账号管理弹窗渠道列表卡片化：Meoo 补 pushable:false（meoo-free 推送已移除，主勾是死的）并新增 WPS 灵犀行（pushable:false）——10R #127 起原生 lingxi 渠道（webCookie executor 出卡）+ PR #66 连接同步，CD 的 lingxi-<hash> 灵点卡停推（quotaPushDisabledProviders 恒排除，后台推送 / 免费额度页 webSessionOnly / 单卡刷新 410 三条路径都认）；渠道列表重构为卡片网格（产品图标 + 「额度卡」「连接」双开关 + 「10R 自身出卡」角标），提示语换新口径四语登记；
 - **灵犀账号接入「同步到 10Router」（PR #66，接收端配套 10R #127/#128/#129）**：`TENROUTER_PROVIDER_MAP` 补 `lingxi → lingxi`（CD 的 token 即完整 WPS Cookie 罐，api-key 形态直推 10R 内置 lingxi 渠道）；transfer 行带 `authType:'cookie'`（灵犀/DuMate 同款）——修复 Cookie 罐行此前落成 oauth 形态、10R 的 webCookie executor 读不到凭据的问题（DuMate 同步链路同批修好）；可同步列表报错文案补 DuMate/灵犀；smoke 断言新增。
 - **Loomy 邀请码**：推荐码弹窗 placeholder 同步当前随机候选码；邀请码池新增 4HT9MF6（随机均摊两个共享码）。
 - **Trae 修复**：
