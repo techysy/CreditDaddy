@@ -120,13 +120,9 @@ export function buildExportPayload(accounts, { provider, product } = {}) {
       name: a.name || a.email || null,
       email: a.email || null,
       uid: a.uid || null,
-      // Meoo 控制面 Key 行（issue #65）：不放 accessToken/token——10R 接收侧按
-      // 「meoo 且无 accessToken」识别 Key 行，凭证读 psd.meooControlKey（00cde6b7）
-      ...(a.provider === 'meoo' && String(a.token || '').startsWith('meoo_ak_') ? {} : {
-        accessToken: a.token,
-        token: a.token,
-        refreshToken: a.refreshToken || null,
-      }),
+      accessToken: a.token,
+      token: a.token,
+      refreshToken: a.refreshToken || null,
       expiresAt: a.expiresAt || null,
       createdAt: a.createdAt,
       // 10Router 原生 Loomy 行是 authType:'apikey'（apiKey=session，sms-login 路由同款）；
@@ -137,15 +133,7 @@ export function buildExportPayload(accounts, { provider, product } = {}) {
       // 连接行的 authType 也与 10R 本地捕获创建的连接一致（#128 的 cookie 徽章口径）。
       ...(a.provider === 'lingxi' || a.provider === 'dumate' ? { authType: 'cookie' } : {}),
       providerSpecificData: {
-        ...(a.provider === 'meoo' && String(a.token || '').startsWith('meoo_ak_')
-          ? {
-              meooControlKey: a.token,
-              // 项目字段随 Key 行带齐（10R 粘贴 Key 同款形态）——连接落地即用，无需懒解析
-              ...(a.meta?.meooProject?.urlId ? { projectUrlId: a.meta.meooProject.urlId } : {}),
-              ...(a.meta?.meooProject?.apiKey ? { projectApiKey: a.meta.meooProject.apiKey } : {}),
-              ...(a.meta?.meooProject?.akStatus ? { akStatus: a.meta.meooProject.akStatus } : {}),
-            }
-          : { authMethod: a.token.startsWith('pt-') ? 'pat' : 'device' }),
+        authMethod: a.token.startsWith('pt-') ? 'pat' : 'device',
         userId: a.uid || null,
         // CreditDaddy 同步来源标记：10R 连接行据此亮「CD Sync」徽章（CodeBuddy 等无网页会话的连接也可见）
         creditDaddySync: true,

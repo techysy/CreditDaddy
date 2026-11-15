@@ -362,6 +362,36 @@ async function reprobeCookieAccount(site, a) {
       logger.info('COOKIE-SITE', '{name} 就地重探通过（{balance} USD）', { name: site.name, balance: bal.balance });
       return finish({ id: a.id, name: a.name, ok: true, identity: null, balance: bal.balance, quotaSnapshot: { used: 0, total: bal.balance, isCreditBalance: true, at: now } });
     }
+    if (site.id === 'meoo') {
+      // Meoo 秒悟：权益接口即探测（只读，不调 entitlement/init——发放动作只走签到线），
+      // 刷新积分余额快照；身份走 user/me 的 user_id（老行缺失时回填 + 名字升级）
+      const { fetchMeooEntitlement, fetchMeooIdentity, maskMeooUserId } = await import('./meooClient.js');
+      const ent = await fetchMeooEntitlement(cookie).catch((e) => ({ auth: true, ok: false, code: e?.message || 'network' }));
+      if (!ent.auth) return finish({ id: a.id, name: a.name, ok: false, error: 'Meoo 会话已失效（NEED_LOGIN），请重新登录捕获' });
+      if (!ent.ok) return finish({ id: a.id, name: a.name, ok: false, error: '探测失败，请稍后再试或重新登录捕获' });
+      const ident = await fetchMeooIdentity(cookie).catch(() => null);
+      const userId = ident?.ok ? ident.userId : null;
+      const masked = userId ? maskMeooUserId(userId) : null;
+      const bal = Number.isFinite(ent.balance) ? ent.balance : null;
+      await withAccounts((list) => {
+        const hit = list.find((x) => x.id === a.id);
+        if (!hit) return;
+        hit.meta = {
+          ...(hit.meta || {}),
+          cookieSiteSession: { cookie, capturedAt: hit.meta?.cookieSiteSession?.capturedAt || now },
+          ...(userId && !hit.meta?.identityHash ? { identityHash: identityHashOf(`uid:${userId}`) } : {}),
+          ...(ent.grants ? { meooGrants: { grants: ent.grants, at: now } } : {}),
+          ...(bal !== null ? { quotaSnapshot: { used: 0, total: bal, isCreditBalance: true, at: now } } : {}),
+        };
+        if (userId) {
+          hit.uid = String(userId);
+          if (canAutoRename(site, hit)) hit.name = `${site.accountName}(${masked})`;
+        }
+        hit.updatedAt = now;
+      });
+      logger.info('COOKIE-SITE', '{name} 就地重探通过（{identity}，积分 {balance}）', { name: site.name, identity: masked ? 'uid ' + masked : '无 uid', balance: bal ?? '—' });
+      return finish({ id: a.id, name: a.name, ok: true, identity: masked ? `uid:${masked}` : null, balance: bal, quotaSnapshot: bal !== null ? { used: 0, total: bal, isCreditBalance: true, at: now } : null });
+    }
     if (site.id === 'lingxi') {
       // 灵犀（issue #53）：任务列表 + 余额一次拿全，重探 = 刷新签到状态与灵点快照；
       // 顺带从会话罐解析 uid（多号归户身份，2026-11-09 起）——老行缺失时回填 + 名字升级
@@ -797,7 +827,7 @@ async function handleApi(req, res, url) {
       // 单位标注：各家余额单位互异（Token / USD / CNY / 魔粒 / 积分）且都不是「积分」
       // 口径——带 unit 返回，面板 creditSum 按 unit 有无决定是否计入「剩余积分」合计
       //（有单位 = 不同量纲，不相加）。HTML 探针站（tokenharbor）是百分比，同样排除。
-      const UNIT_BY_SITE = { 'xiaomi-mimo': 'CNY', 'river': 'USD', 'longcat': 'Token', 'modelscope': '魔粒', 'lingxi': '灵点', 'dumate': '积分' };
+      const UNIT_BY_SITE = { 'xiaomi-mimo': 'CNY', 'river': 'USD', 'longcat': 'Token', 'modelscope': '魔粒', 'lingxi': '灵点', 'meoo': '秒悟积分', 'dumate': '积分' };
       const unit = UNIT_BY_SITE[site.id] || (hasTotal ? '' : '%');
       return json(res, 200, { quota: {
         total: hasTotal ? total : 100,
@@ -1625,6 +1655,37 @@ async function handleApi(req, res, url) {
       }
     }
 
+    // Meoo 秒悟：权益接口即探测（带 cookie 返 success:true，未登录 401 NEED_LOGIN）。
+    // 只读——不在捕获时调 entitlement/init，首登积分发放统一走签到线。身份 = user/me 的 user_id。
+    let meooUserId = null;
+    let meooMasked = null;
+    let meooGrants = null;
+    if (site.id === 'meoo') {
+      try {
+        const { fetchMeooEntitlement, fetchMeooIdentity, maskMeooUserId } = await import('./meooClient.js');
+        if (!cookie) {
+          logger.warn('COOKIE-SITE', '{name} 未读到会话 cookie', { name: site.name });
+          return json(res, 400, { error: '未读到 Meoo 登录会话，请在登录窗完成登录后再关闭' });
+        }
+        const ent = await fetchMeooEntitlement(cookie);
+        if (!ent.auth) {
+          logger.warn('COOKIE-SITE', '{name} 权益接口探测被拒:{code}', { name: site.name, code: ent.code });
+          return json(res, 401, { error: '会话不可用，请重新登录该站点后再捕获（探测 401/403）' });
+        }
+        if (!ent.ok) return json(res, 502, { error: '探测站点失败：' + (ent.code || '') });
+        const ident = await fetchMeooIdentity(cookie).catch(() => null);
+        meooUserId = ident?.ok ? ident.userId : null;
+        meooMasked = meooUserId ? maskMeooUserId(meooUserId) : null;
+        if (ent.grants) meooGrants = { grants: ent.grants, at: now };
+        identity = meooUserId ? `uid:${meooUserId}` : null;   // 有 user_id → 哈希归户；无 → 单例兜底
+        quotaSnapshot = { used: 0, total: Number(ent.balance) || 0, isCreditBalance: true };
+        logger.info('COOKIE-SITE', '{name} 探测通过（{identity}，积分 {balance}）', { name: site.name, identity: meooUserId ? 'uid ' + meooMasked : '无 uid（单例）', balance: Number.isFinite(ent.balance) ? ent.balance : '—' });
+      } catch (meooErr) {
+        logger.warn('COOKIE-SITE', '{name} 权益接口抓取异常:{err}', { name: site.name, err: meooErr.message });
+        return json(res, 502, { error: '探测站点失败：' + (meooErr.message || '') });
+      }
+    }
+
     // DuMate 浏览器登录线（网页会话）：user/info 即探测（bceUserId 与本机导入同源归户）。
     let dumateUserId = null;
     let dumateMasked = null;
@@ -1674,6 +1735,7 @@ async function handleApi(req, res, url) {
       else if (site.id === 'longcat') accName = `LongCat (${identity || '会话'})`;
       else if (site.id === 'lingxi') accName = site.accountName + (lxUidMasked ? `(${lxUidMasked})` : '');   // uid 后缀脱敏（前3后3），归户仍用原始 uid
       else if (site.id === 'dumate') accName = site.accountName + (dumateMasked ? `(${dumateMasked})` : '');   // bceUserId 脱敏后缀，与本机导入同源
+      else if (site.id === 'meoo') accName = site.accountName + (meooMasked ? `(${meooMasked})` : '');   // user_id 脱敏后缀，归户仍用原始
       else accName = site.accountName + (identity ? `(${identity})` : '');
       // 自动行名只在「没手改过且现名属自动名家族」时写入（meta.renamed + isAutoGeneratedName 双闸）
       const autoName = (row) => { if (canAutoRename(site, row)) row.name = accName; };
@@ -1700,6 +1762,8 @@ async function handleApi(req, res, url) {
           ...(lcSession ? { longcatSession: lcSession } : {}),
           ...(lxSnapshot ? { lingxiPacks: lxSnapshot } : {}),
         };
+        if (meooUserId) { hit.uid = String(meooUserId); autoName(hit); }
+        if (meooGrants) hit.meta.meooGrants = meooGrants;
         if (lcSession?.userId) { hit.uid = String(lcSession.userId); autoName(hit); }
         hit.updatedAt = now;
         accountId = hit.id;
@@ -1709,13 +1773,14 @@ async function handleApi(req, res, url) {
           provider: site.provider,
           token: cred,
           expiresAt: site.id === 'river' ? (riverSession?.expiresAt || undefined) : undefined,
-          uid: mimoUserId || riverUid || (msSession?.id ? String(msSession.id) : undefined) || (lcSession?.userId ? String(lcSession.userId) : undefined) || (lxUid ? String(lxUid) : undefined) || (dumateUserId ? String(dumateUserId) : undefined) || undefined,
+          uid: mimoUserId || riverUid || (msSession?.id ? String(msSession.id) : undefined) || (lcSession?.userId ? String(lcSession.userId) : undefined) || (lxUid ? String(lxUid) : undefined) || (dumateUserId ? String(dumateUserId) : undefined) || (meooUserId ? String(meooUserId) : undefined) || undefined,
           source: 'web-session',
           meta: {
             cookieSiteId: site.id,
             cookieSiteSession: { cookie, capturedAt: now },
             ...(ih ? { identityHash: ih } : {}),
             ...quotaMeta,
+            ...(meooGrants ? { meooGrants } : {}),
             ...(mimoUserId ? { userId: mimoUserId } : {}),
             ...(mimoBalance ? { mimoBalance } : {}),
             ...(riverSession ? { workosSession: riverSession, workosUser: riverSession.user || {} } : {}),

@@ -184,9 +184,26 @@ export const COOKIE_SITES = [
     accountName: 'WPS 灵犀',
     hint: '每日自动签到（+100 灵点，七天一轮第七天 200）+ 推送 10Router 出余额卡，Cookie 只存本机。多号分别捕获即按 WPS 账号分行并存。',
   },
-  // ⚠ Meoo 秒悟已升级为独立产品线（issue #65）：OAuth PKCE 回环 + 控制面 Key 双登录，
-  //   控制面 API（/open/v1/cli-compat/*）承接身份/积分/项目 AK——不再走网页会话捕获，
-  //   网页会话条目已移除（meooClient.js 已重写为控制面 API 客户端）。
+  // Meoo 秒悟回退网页会话线（1.8.0 实测：OAuth refresh token 单次轮换，与 10R 共享后
+  // 任一侧轮换即作废另一侧副本——CD 端恒 invalid_token 无法自动续期）。凭据 =
+  // meoo.com 网页会话 Cookie（阿里云 SSO 手机号 + 短信登录后由浏览器写入），
+  // 不支持 Meoo CLI 的 OAuth Bearer。会话失效统一 401 / NEED_LOGIN，重新登录捕获即可。
+  {
+    id: 'meoo',
+    name: 'Meoo 秒悟',
+    provider: 'meoo',
+    label: 'Meoo 秒悟',
+    loginUrl: 'https://meoo.com',
+    homeUrl: 'https://meoo.com',
+    // 探测 = 权益接口本身（2026-11-13 实测）：带会话 cookie 返 { success:true, data:{ userPointInfo… } }；
+    // 未登录 401 { errCode:'NEED_LOGIN' }。身份走 /api/v1/user/me 的 user_id（多号归户）。
+    // 每日首登积分由 entitlement/init 触发（网页端登录后同款调用），CD 每日代调一次。
+    verify: 'api',
+    cookieUrls: ['https://meoo.com'],
+    accountName: 'Meoo 秒悟',
+    no10rSync: true,       // 10R 的 meoo 连接由 10R 侧自行管理（扫码 / 控制面 Key），CD 不重复出卡
+    hint: '登录 meoo.com（阿里云账号手机号 + 短信）后捕获会话；CD 每日自动领取首登积分（当前 +2000/天，约 6~7 天后过期）并展示积分余额。会话失效（NEED_LOGIN）时请重新登录捕获，Cookie 只存本机。',
+  },
 
   {
     id: 'dumate',
