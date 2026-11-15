@@ -4,7 +4,7 @@
 
 ---
 
-## [1.8.0] (2026-11-15)
+## [1.8.0] (2026-11-16)
 
 テーマ:**新製品ライン DuMate（百度搭子）と Meoo（独立ライン: CLI コントロールプレーン API + OAuth PKCE ループバック + 増分検証サインイン）の 2 本追加 + Loomy 招待コード同期 + Trae Linux/macOS ローカル取り込みと同一マシン複数アカウントのサインイン修正**.
 
@@ -28,6 +28,7 @@
   - チャネル推送の収口 + アカウント管理ダイアログのチャネルリストをカード化：Meoo に pushable:false を追加（meoo-free 推送は廃止済みでチェックは死に筋）し、WPS 霊犀行を新設（pushable:false）——10R は #127 から lingxi チャネルをネイティブ対応（webCookie executor がカードを出す）し PR #66 の接続同期もあるため、CD の lingxi-<hash> 霊点カードは推送停止（quotaPushDisabledProviders に恒常排除、バックグラウンド推送 / 無料残高ページ webSessionOnly / 単卡リフレッシュ 410 の 3 経路すべてが従う）。チャネルリストはカードグリッドに再構成（製品アイコン + 「额度卡」「接続」の 2 スイッチ + 「10R 自身出卡」バッジ）、説明文は新口径で四語登録；
 - **ウェブセッション行に「最短期限」表示を追加（WPS 霊犀 / LongCat、Meoo と同口径）**：霊犀の lingxiPacks 保存は #53 から配線が切れていました——lxSnapshot は宣言されるだけで一度も代入されず（常に null）、パック/期限データは一切保存されず、霊犀行のパック明細は一度も表示されていなかった。取得/再探測で lxStatus.packs の保存を追加（残高エンドポイントは元々パックごとの expireAt を返している）。LongCat のパック行に「～ <最短期限>」の日付を追加（データは元々 expireAt を持っていたが未表示だった）。加えて LongCat 再探測分岐に残っていた未宣言 lxSnapshot 参照を削除——手動「ポイント更新」（live=1）は必ず ReferenceError 502 になる地雷でした；
 - **meoo をウェブセッション線に回帰（test.13 実測で更新が不可能と判明したアーキテクチャ決定、issue #65 は要約付きでクローズ）**
+- **開発インフラ：パネル起動スモーク scripts/panel-boot-smoke.cjs（ゼロ依存 vm 実行スタブ）**——ブラウザなしのサンドボックスで panel.html のインラインスクリプトを実行：HTML の実 id 集合を収集（未知 id への照会は null を返し、欠落ノード参照バグは起動時に即座に発覚）、fetch を URL ごとにモック、起動チェーンを通し、描画産物（ウェブセッション行の期限表記を含む）を断言。今ラウンドで描画層の漏れ 1 件を検出済み。test/panel-smoke.test.js（子プロセス）として CI に組込；
 - **DuMate QRログインの受取修復（コミュニティ PR #67、by lu8010252）**：QR 経路が console.bce.baidu.com/dumate/channel を通ると、セッションには BDUSS / bce-sessionid しかなく、コンソールのランディングページは bce-user-info を発行しません。一方、受取エンドポイントは csrftoken（値 = bce-user-info の原文）を必要とするため、毎日の受取が常に「Cookie 缺少 bce-user-info」で失敗していました。healDumateCookies() を追加：bce-user-info が無い場合に /api/dumate/app/token/get を呼び、Set-Cookie の bce-login-accountid からアカウント ID を補完（bce-login-display-name / bce-device-token もセッションに統合）。3 箇所に配線——QR ログインの保存前に補完（取り込まれた凭据は完全）、verify/受取前にフォールバック補完（本機取り込み / ウェブ取得の壊れたジャーも救済）、API がポイント数を返さない場合のログは +undefined を出力しない；：独立製品ラインを撤除——OAuth PKCE ログイン、制御プレーンキー貼り付け、CLI 制御プレーン API クライアント（meooAuth.js / meooClient の制御プレーン実装 / authDevice FLOWS / アカウント追加のデュアルチャネル）を丸ごと摘除。meoo は cookieSites ウェブセッション項目（ウェブ取得 / user_id 照合 / entitlement 探測）+ FREE_CHECKIN_SITES サインイン線 + 秒悟積分の独立単位に回帰。10R 同期は既に停止（リフレッシュトークン競合）——10R 側は制御プレーンキーで自ら接続を管理。既存 OAuth アカウントの凭据は無効のため、ウェブセッションページで再取得してください；
   - チャネル能力表の検証・修正（test.7 実測による指摘）：残高カード推送が実際にカバーするのは tokenharbor / minimax(-global) / Xiaomi MiMo / River / ModelScope / LongCat / 霊犀——WorkBuddy / Loomy / Qoder / DuMate / Meoo には CD の推送分岐が最初からなく、チェックは死に筋。WorkBuddy 両線と Loomy は pushable:false に（10R の codebuddy-cn / codebuddy-intl / loomy 接続が自らカードを出す）、Token Harbor は syncable:false に（sk- キー源で接続概念なし）。「接続」スイッチは本当に同期可能なチャネルにのみ表示し、「仅额度卡」「10R 自身出卡」バッジが各チャネルの形態を正直に示す；
 - **meoo の 10R 同期を停止（test.12 実測「凭据无法保存」の根因）**：CD と 10R は同一リフレッシュトークンを共有し、どちらかの側でローテーション（単回使用）されると他方のコピーが無効化される——同期済みアカウントは CD 側で恒常的に invalid_token に。meoo 行をチャネル表と同期マップから丸ごと摘除。10R 側の meoo 接続は 10R 自身で管理（QR / 制御プレーンキー）、CD 側で一度 OAuth 再ログインすれば自動更新が復活；

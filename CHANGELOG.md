@@ -4,7 +4,7 @@
 
 ---
 
-## [1.8.0] (2026-11-15)
+## [1.8.0] (2026-11-16)
 
 本版主题:**新增 DuMate 百度搭子与 Meoo 秒悟两条产品线（DuMate：本机导入 / 扫码登录 / 硬切换 / 积分额度全链路；Meoo：CLI 控制面 API + OAuth PKCE 回环 + 增量核验签到）+ Loomy 邀请码同步 + Trae Linux/macOS 本机导入与同机多账号签到修复**.
 Theme: **Two new product lines — DuMate (Baidu companion) and Meoo (independent line: CLI control-plane API + OAuth PKCE loopback + incremental-verification check-in) — plus Loomy invite-code sync and Trae Linux/macOS local import & same-machine multi-account check-in fixes**.
@@ -28,6 +28,7 @@ Theme: **Two new product lines — DuMate (Baidu companion) and Meoo (independen
   - 自动续期（test.5 实测「凭据已失效 invalid_token」反馈）：额度 / 签到路径接上 OAuth 刷新——账面读 401（invalid_token）自动 refresh 一次重试，新凭据经 ctx.onRefresh 回写账号库（「凭据有效 · 自动续期」徽章的兑现处）；签到基线 401 同样先刷新重读再裁决；无 onRefresh 持久化钩子的路径不刷新（防 refresh_token 轮换丢失）；providers meoo 条目补传 ctx。顺带补 PR #66 漏登记的可同步列表报错四语词条。
   - 渠道推送口径收口 + 账号管理弹窗渠道列表卡片化
 - **meoo 回退网页会话线（test.13 实测续期不可行的架构决定，issue #65 随之关闭）**
+- **开发基建：面板启动冒烟桩 scripts/panel-boot-smoke.cjs（零依赖 vm 执行桩）**——在无浏览器的沙箱里执行 panel.html 内联脚本：收集 HTML 真实 id 集合（对未知 id 的 $() 查询返回 null，空引用类 bug 启动即抛）、fetch 按 URL mock、启动链全跑通后断言渲染产物（网页会话行的到期口径在内）。本轮已据此抓到渲染层遗漏。test/panel-smoke.test.js 子进程封装入 CI；
 - **网页会话行「最早到期」口径补全（WPS 灵犀 / LongCat，与 Meoo 同款）**：灵犀的 lingxiPacks 存储自 #53 起接线断裂——lxSnapshot 声明后从未赋值（恒 null），资源包/到期日从未落库，灵犀行的资源包与到期明细从未显示过；现捕获/重探补上 lxStatus.packs 落库（余额接口本就返回逐包 expireAt）。LongCat 资源包行补「至 <最早到期>」日期（数据本就带 expireAt，只是没渲染）；顺带修掉 LongCat 重探分支里残留的未声明 lxSnapshot 引用——手动「刷新积分」（live=1）必 ReferenceError 502 的隐藏雷；
 - **DuMate 扫码登录领取修复（社区 PR #67，by lu8010252）**：扫码链路走完 console.bce.baidu.com/dumate/channel 后会话里只有 BDUSS / bce-sessionid，控制台首页不下发 bce-user-info，而领取接口需要 csrftoken（值 = bce-user-info 原文）——每日领取恒报「Cookie 缺少 bce-user-info」。新增 healDumateCookies()：缺 bce-user-info 时调 /api/dumate/app/token/get，从 Set-Cookie 的 bce-login-accountid 取账户 ID 补齐（一并合并 bce-login-display-name / bce-device-token）；三处接线——扫码登录落库前补齐（入库账号凭据完整）、verify/领取前兜底一次（本机导入 / 网页捕获的存量坏罐同样受益）、签到日志对未返回积分数量的情况不再打印 +undefined；：独立产品线撤除——OAuth PKCE 登录、控制面 Key 粘贴、CLI 控制面 API 客户端（meooAuth.js / meooClient 控制面实现 / authDevice FLOWS / 添加账号双通道）整体摘除；meoo 回归 cookieSites 网页会话条目（网页版捕获 / user_id 归户 / entitlement 探测）+ FREE_CHECKIN_SITES 签到线 + 秒悟积分独立单位；10R 同步此前已摘除（rt 轮换竞争），10R 侧用控制面 Key 自行建连；存量 OAuth 账号凭据已失效，请在网页会话页重新捕获；：Meoo 补 pushable:false（meoo-free 推送已移除，主勾是死的）并新增 WPS 灵犀行（pushable:false）——10R #127 起原生 lingxi 渠道（webCookie executor 出卡）+ PR #66 连接同步，CD 的 lingxi-<hash> 灵点卡停推（quotaPushDisabledProviders 恒排除，后台推送 / 免费额度页 webSessionOnly / 单卡刷新 410 三条路径都认）；渠道列表重构为卡片网格（产品图标 + 「额度卡」「连接」双开关 + 「10R 自身出卡」角标），提示语换新口径四语登记；
   - 渠道能力表核实修正（test.7 实测纠偏）：额度卡推送实际覆盖 = tokenharbor / minimax(-global) / 小米 / River / 魔搭 / LongCat / 灵犀——WorkBuddy / Loomy / Qoder / DuMate / Meoo 从来没有 CD 推送分支，主勾是死的。现 WorkBuddy 双线与讯飞 Loomy 改 pushable:false（10R 的 codebuddy-cn / codebuddy-intl / loomy 连接自身出卡）；Token Harbor 改 syncable:false（sk- key 来源，无连接概念）——「连接」开关只在真正可同步的渠道出现，「仅额度卡」「10R 自身出卡」角标如实标注渠道形态；

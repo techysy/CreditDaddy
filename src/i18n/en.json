@@ -2151,5 +2151,6 @@
   "Meoo OAuth Token 响应格式无效": "Meoo OAuth token response format invalid",
   "DuMate 付费套餐生效中": "DuMate paid plan active",
   "还没有 Meoo 账号。<br>到「网页会话」页点 Meoo 行的「网页版」登录 meoo.com（阿里云账号手机号 + 短信）后自动捕获，每日首登积分自动领取。": "No Meoo accounts yet.<br>On the Web Sessions page, click \"Web sign-in\" on the Meoo row and sign in to meoo.com (Alibaba account phone + SMS) — the session is captured automatically, and daily login points are claimed for you.",
-  "{label} 领取成功（接口未返回积分数量）": "{label} claim succeeded (the API did not return a points amount)"
+  "{label} 领取成功（接口未返回积分数量）": "{label} claim succeeded (the API did not return a points amount)",
+  "Cookie 罐已补齐回写": "Cookie jar healed and written back"
 }

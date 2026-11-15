@@ -4,7 +4,7 @@
 
 ---
 
-## [1.8.0] (2026-11-15)
+## [1.8.0] (2026-11-16)
 
 테마:**신규 제품 라인 DuMate(바이두 搭子)와 Meoo(독립 라인: CLI 컨트롤 플레인 API + OAuth PKCE 루프백 + 증분 검증 출석) 2개 추가 + Loomy 초대 코드 동기화 + Trae Linux/macOS 로컬 가져오기 및 동일 머신 다중 계정 출석 수정**.
 
@@ -28,6 +28,7 @@
   - 채널 푸시 기준 수렴 + 계정 관리 다이얼로그의 채널 목록 카드화: Meoo에 pushable:false 추가(meoo-free 푸시는 폐지되어 체크박스가 죽은 상태)하고 WPS 영희 행 신설(pushable:false)——10R는 #127부터 lingxi 채널을 네이티브 지원(webCookie executor가 카드 발행)하고 PR #66 연결 동기화도 있으므로, CD의 lingxi-<hash> 영점 카드는 푸시 중단(quotaPushDisabledProviders 상시 제외, 백그라운드 푸시 / 무료 잔액 페이지 webSessionOnly / 단일 카드 리프레시 410의 세 경로 모두 준수). 채널 목록은 카드 그리드로 재구성(제품 아이콘 + "额度卡" "연결" 이중 스위치 + "10R 자체 발행" 배지), 안내 문안은 신기준으로 4개 언어 등록;
 - **웹 세션 행에 "최초 만기" 표시 추가(WPS 영희 / LongCat, Meoo와 동일 기준)**: 영희의 lingxiPacks 저장은 #53부터 배선이 끊겨 있었습니다——lxSnapshot은 선언만 되고 한 번도 할당되지 않아(항상 null) 팩/만기 데이터가 저장되지 않았고, 영희 행의 팩 명세는 한 번도 표시되지 않았음. 캡처/재탐지에서 lxStatus.packs 저장 추가(잔액 엔드포인트는 원래 팩별 expireAt를 반환). LongCat 팩 행에 "~ <최초 만기>" 날짜 추가(데이터는 원래 expireAt를 갖고 있었으나 미표시). 아울러 LongCat 재탐지 분기에 남아 있던 미선언 lxSnapshot 참조 제거——수동 "포인트 갱신"(live=1)은 반드시 ReferenceError 502였던 지뢰;
 - **meoo를 웹 세션 라인으로 회귀(test.13 실측에서 갱신이 불가능함이 확인된 아키텍처 결정, issue #65은 요약과 함께 종료)**
+- **개발 인프라: 패널 부트 스모크 scripts/panel-boot-smoke.cjs(제로 의존 vm 실행 스텁)**——브라우저 없는 샌드박스에서 panel.html의 인라인 스크립트를 실행: HTML의 실제 id 집합을 수집(알 수 없는 id 조회는 null 반환, 누락 노드 참조 버그는 부트 시 즉시 발각), fetch를 URL별로 모킹, 부트 체인을 전부 통과한 뒤 렌더링 산출물(웹 세션 행의 만기 표기 포함)을 단언. 이번 라운드에서 렌더링 계층 누락 1건을 이미 포착. test/panel-smoke.test.js(자식 프로세스)로 CI에 편입;
 - **DuMate QR 로그인 수령 수정(커뮤니티 PR #67, by lu8010252)**: QR 경로가 console.bce.baidu.com/dumate/channel을 통과하면 세션에는 BDUSS / bce-sessionid만 있고 콘솔 랜딩 페이지는 bce-user-info를 발행하지 않으며, 수령 엔드포인트는 csrftoken(값 = bce-user-info 원문)을 필요로 하므로 매일 수령이 항상 "Cookie 缺少 bce-user-info"로 실패했습니다. healDumateCookies() 추가: bce-user-info가 없으면 /api/dumate/app/token/get를 호출해 Set-Cookie의 bce-login-accountid에서 계정 ID를 보완(bce-login-display-name / bce-device-token도 세션에 통합). 세 곳에 배선——QR 로그인 저장 전 보완(저장된 자격증명 완전), verify/수령 전 폴백 보완(로컬 가져오기 / 웹 캡처의 깨진 항아리도 구제), API가 포인트 수를 반환하지 않는 경우 로그가 +undefined를 출력하지 않음;: 독립 제품 라인 철거——OAuth PKCE 로그인, 제어 평면 키 붙여넣기, CLI 제어 평면 API 클라이언트(meooAuth.js / meooClient 제어 평면 구현 / authDevice FLOWS / 계정 추가 듀얼 채널)를 모두 제거. meoo는 cookieSites 웹 세션 항목(웹 캡처 / user_id 키잉 / entitlement 탐지) + FREE_CHECKIN_SITES 출석 라인 + 秒悟积分 독립 단위로 회귀. 10R 동기화는 이미 중단(리프레시 토큰 경쟁)——10R 측은 제어 평면 키로 자체 연결 관리. 기존 OAuth 계정의 자격증명은 무효이므로 웹 세션 페이지에서 다시 캡처하세요;
   - 채널 능력 표 검증·수정(test.7 실측 지적): 잔액 카드 푸시가 실제 커버하는 것은 tokenharbor / minimax(-global) / 샤오미 MiMo / River / ModelScope / LongCat / 영희——WorkBuddy / Loomy / Qoder / DuMate / Meoo에는 CD 푸시 분기가 애초에 없어 체크박스는 죽은 상태. WorkBuddy 양 라인과 Loomy는 pushable:false로(10R의 codebuddy-cn / codebuddy-intl / loomy 연결이 자체 카드 발행), Token Harbor는 syncable:false로(sk- 키 소스, 연결 개념 없음). "연결" 스위치는 실제 동기화 가능한 채널에만 표시되고, "仅额度卡" "10R 자체 발행" 배지가 각 채널 형태를 정직하게 표시;
 - **meoo의 10R 동기화 중단(test.12 실측 "凭据无法保存" 원인)**: CD와 10R는 동일한 리프레시 토큰을 공유하며, 어느 한 쪽에서 교체(단회용)되면 다른 쪽 사본이 무효화됨——동기화된 계정은 CD 측에서 상시 invalid_token. meoo 행을 채널 표와 동기화 맵에서 완전 제거. 10R 측 meoo 연결은 10R 자체 관리(QR / 제어 평면 키), CD 측에서 한 번 OAuth 재로그인하면 자동 갱신 복구;
