@@ -295,7 +295,12 @@ async function runTickInner(opts) {
       if (outcome.status === 'checked-in') {
         memo[account.id] = todayFor;
         account.lastCheckin = new Date().toISOString();
-        logger.info('CHECKIN', '{label} 领取成功 +{amount} {unit}', { label, amount: outcome.claimedAmount, unit: CHECKIN_UNIT[account.provider] || 'Credits' });
+        const amount = Number.isFinite(outcome.claimedAmount) ? outcome.claimedAmount : null;
+        if (amount === null) {
+          logger.info('CHECKIN', '{label} 领取成功（接口未返回积分数量）', { label });
+        } else {
+          logger.info('CHECKIN', '{label} 领取成功 +{amount} {unit}', { label, amount, unit: CHECKIN_UNIT[account.provider] || 'Credits' });
+        }
       } else if (outcome.status === 'already') {
         memo[account.id] = todayFor;
         account.lastCheckin = account.lastCheckin || new Date().toISOString();
