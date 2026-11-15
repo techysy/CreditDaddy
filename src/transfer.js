@@ -132,6 +132,10 @@ export function buildExportPayload(accounts, { provider, product } = {}) {
       // 10Router 原生 Loomy 行是 authType:'apikey'（apiKey=session，sms-login 路由同款）；
       // 不带这个字段，10R 导入端按默认 oauth 落库、不写 apiKey 字段，loomy 运行时读不到凭据
       ...(a.provider === 'loomy' ? { authType: 'apikey' } : {}),
+      // 灵犀 / DuMate：token 是网页会话 Cookie 罐（非 OAuth 对）。10R 导入端对
+      // authType:'cookie' 的行把凭据落到 apiKey（webCookie executor 读取的字段），
+      // 连接行的 authType 也与 10R 本地捕获创建的连接一致（#128 的 cookie 徽章口径）。
+      ...(a.provider === 'lingxi' || a.provider === 'dumate' ? { authType: 'cookie' } : {}),
       providerSpecificData: {
         ...(a.provider === 'meoo' && String(a.token || '').startsWith('meoo_ak_')
           ? {

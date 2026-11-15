@@ -28,6 +28,7 @@ export const TENROUTER_PROVIDER_MAP = {
   tokenharbor: 'tokenharbor-free',   // #23：会话 cookie 只喂「额度监控卡」(freeTier,不走路由);tokenharbor 钱包卡留给 sk- 运输 key
   loomy: 'loomy',
   dumate: 'dumate',                  // 10R #113：DuMate 百度搭子 web-cookie 渠道
+  lingxi: 'lingxi',                  // 10R #127：WPS 灵犀 web 会话渠道（token=完整 WPS Cookie 罐，api-key 形态直推）
   meoo: 'meoo',                      // #65：Meoo 独立产品线 → 10R meoo（OAuth 行或控制面 Key 行）
   // zcode → glm：等 zcode 反代就绪后补一行（同步流程已就绪，无需改代码）
 };
@@ -208,7 +209,7 @@ export async function syncAccountsTo10r({ endpoint, key, adminPassword, accounts
     if (!groups.has(target)) groups.set(target, []);
     groups.get(target).push(a);
   }
-  if (!groups.size) throw new Error('没有可同步的账号（qoder / WorkBuddy / MiniMax / Loomy / Trae / Meoo 系列）；zcode 待反代就绪后支持');
+  if (!groups.size) throw new Error('没有可同步的账号（qoder / WorkBuddy / MiniMax / Loomy / Trae / DuMate / 灵犀 / Meoo 系列）；zcode 待反代就绪后支持');
 
   let channel = 'apikey';
   let cookie = null;
