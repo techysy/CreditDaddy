@@ -322,6 +322,9 @@ export function convertRouterRow(row, dbPath, tag = 'creditdaddy') {
     model: row.model || 'unknown',
     connectionId: null,   // 源实例的连接 uuid 对聚合端无意义，只留在 meta 里
     apiKey: row.apiKey || null,
+    // 掩码 apiKey 必须带 hash——聚合端 apiKeyIdentity 对「掩码且无 hash」整批 400
+    //（test.5 实测「Masked usage apiKey requires apiKeyHash」的根因）
+    apiKeyHash: row.apiKeyHash || null,
     endpoint: row.endpoint || null,
     promptTokens: row.promptTokens ?? tokens.prompt_tokens ?? tokens.input_tokens ?? 0,
     completionTokens: row.completionTokens ?? tokens.completion_tokens ?? tokens.output_tokens ?? 0,
@@ -347,23 +350,32 @@ function collectRouter(files, endpoint) {
   }
   const out = [];
   let noTs = 0;
+  let maskedNoHash = 0;
   for (const f of files) {
     withSnapshot(f, (db) => {
       let rows;
+      // apiKeyHash 列 10R issue #9 起才有：旧库回退 NULL（掩码行会被下方过滤跳过）
+      let hashCol = 'NULL AS apiKeyHash';
       try {
-        rows = db.prepare('SELECT timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta FROM usageHistory ORDER BY id ASC').all();
+        if (db.prepare('PRAGMA table_info(usageHistory)').all().some((c) => c.name === 'apiKeyHash')) hashCol = 'apiKeyHash';
+      } catch { /* 探测失败按无列处理 */ }
+      try {
+        rows = db.prepare(`SELECT timestamp, provider, model, connectionId, apiKey, ${hashCol}, endpoint, promptTokens, completionTokens, cost, status, tokens, meta FROM usageHistory ORDER BY id ASC`).all();
       } catch {
         rows = db.prepare('SELECT timestamp, provider, model, promptTokens, completionTokens, tokens FROM usageHistory ORDER BY id ASC').all();
       }
       for (const r of rows) {
         // NULL 时间戳的行会让服务端按「当下」回填，每次签名都不同，去重失效——绝不发
         if (!r.timestamp) { noTs++; continue; }
+        // 掩码 apiKey 且无 hash：聚合端 apiKeyIdentity 必拒且是整批 400——无法验身份的行不发
+        if (r.apiKey && !r.apiKeyHash && String(r.apiKey).includes('***')) { maskedNoHash++; continue; }
         out.push(convertRouterRow(r, f));
       }
     });
   }
   const notes = [];
   if (noTs) notes.push(`跳过 ${noTs} 行无时间戳（会导致去重失效）`);
+  if (maskedNoHash) notes.push(`跳过 ${maskedNoHash} 行掩码 apiKey 无 apiKeyHash（聚合端无法验证身份）`);
   out.sort((x, y) => (x.timestamp < y.timestamp ? -1 : 1));
   return { entries: out, notes, files: files.length };
 }

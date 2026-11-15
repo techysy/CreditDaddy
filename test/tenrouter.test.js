@@ -507,7 +507,7 @@ test('配置版本迁移：旧来源快照自动并入新增来源，显式保�
 test('10Router 本机来源：行转换带 gatewaySync 标记与出处（同 10router-sync 插件）', () => {
   const native = us.convertRouterRow({
     timestamp: '2026-09-29T10:00:00.000Z', provider: 'zcode-free', model: 'glm-5.3-flash',
-    connectionId: 'conn-1', apiKey: null, endpoint: 'http://127.0.0.1:47860/gateway',
+    connectionId: 'conn-1', apiKey: 'sk-496f00***aa00', apiKeyHash: 'b'.repeat(64), endpoint: 'http://127.0.0.1:47860/gateway',
     promptTokens: 100, completionTokens: 20, cost: 0.5, status: 'ok',
     tokens: JSON.stringify({ prompt_tokens: 100, completion_tokens: 20 }),
     meta: null,
@@ -517,6 +517,7 @@ test('10Router 本机来源：行转换带 gatewaySync 标记与出处（同 10r
   assert.equal(native.meta.sourceDbPath, 'C:/appdata/10router/db/data.sqlite');
   assert.equal(native.meta.sourceConnectionId, 'conn-1');
   assert.equal(native.connectionId, null, '源实例的连接 uuid 不进列');
+  assert.equal(native.apiKeyHash, 'b'.repeat(64), '掩码 apiKey 必须随行带 hash（聚合端 apiKeyIdentity 校验）');
   assert.equal(native.promptTokens, 100);
   assert.equal(native.cost, 0.5, '原生行的真实计费原样保留');
 
@@ -538,19 +539,20 @@ test('10Router 本机来源：读实例库、跳过无时间戳行；回环地�
     : path.join(home, '.10router', 'db');
   fs.mkdirSync(dir, { recursive: true });
   const db = new DatabaseSync(path.join(dir, 'data.sqlite'));
-  db.exec('CREATE TABLE usageHistory (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, provider TEXT, model TEXT, connectionId TEXT, apiKey TEXT, endpoint TEXT, promptTokens INTEGER, completionTokens INTEGER, cost REAL, status TEXT, tokens TEXT, meta TEXT)');
-  const ins = db.prepare('INSERT INTO usageHistory (timestamp, provider, model, connectionId, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
-  ins.run('2026-09-29T10:00:00.000Z', 'zcode-free', 'glm-5.3-flash', 'c1', 'http://127.0.0.1:47860/gateway', 100, 20, 0, 'ok', '{}', null);
-  ins.run(null, 'zcode-free', 'glm-5.3-flash', 'c2', 'x', 1, 1, 0, 'ok', '{}', null);   // 无时间戳
-  ins.run('2026-09-29T10:01:00.000Z', 'zcode-bigmodel', 'GLM-5', 'c3', 'x', 5, 1, 0, 'ok', '{}', JSON.stringify({ source: 'zcode', imported: true }));
+  db.exec('CREATE TABLE usageHistory (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, provider TEXT, model TEXT, connectionId TEXT, apiKey TEXT, apiKeyHash TEXT, endpoint TEXT, promptTokens INTEGER, completionTokens INTEGER, cost REAL, status TEXT, tokens TEXT, meta TEXT)');
+  const ins = db.prepare('INSERT INTO usageHistory (timestamp, provider, model, connectionId, apiKey, apiKeyHash, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)');
+  ins.run('2026-09-29T10:00:00.000Z', 'zcode-free', 'glm-5.3-flash', 'c1', 'sk-496f00***aa00', 'a'.repeat(64), 'http://127.0.0.1:47860/gateway', 100, 20, 0, 'ok', '{}', null);
+  ins.run(null, 'zcode-free', 'glm-5.3-flash', 'c2', null, null, 'x', 1, 1, 0, 'ok', '{}', null);   // 无时间戳
+  ins.run('2026-09-29T10:01:00.000Z', 'zcode-bigmodel', 'GLM-5', 'c3', 'sk-dead00***beef', null, 'x', 5, 1, 0, 'ok', '{}', JSON.stringify({ source: 'zcode', imported: true }));   // 掩码无 hash：聚合端必拒，跳过
   db.close();
 
   // 地址指向远端聚合端 → 正常同步
   const r = await us.collectSource('10r', { endpoint: 'http://192.168.31.101:20127' });
-  assert.equal(r.entries.length, 2, '无时间戳的行应被跳过');
+  assert.equal(r.entries.length, 1, '无时间戳与「掩码 apiKey 无 hash」的行都应被跳过');
+  assert.equal(r.entries[0].apiKeyHash, 'a'.repeat(64), 'apiKeyHash 随行透传（聚合端掩码校验必需）');
   assert.ok(r.entries[0].meta.gatewaySync, '原生行带 gatewaySync');
-  assert.ok(!r.entries[1].meta.gatewaySync, '已导入行不带 gatewaySync');
   assert.match(r.notes.join(''), /无时间戳/);
+  assert.match(r.notes.join(''), /掩码/);
 
   // 地址指向本机 → 同实例防护：自己导自己只会把存量行打成 imported
   const guard = await us.collectSource('10r', { endpoint: 'http://127.0.0.1:20128' });
