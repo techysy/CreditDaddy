@@ -40,10 +40,15 @@ const securityHeaders = (type) => ({
   'X-Content-Type-Options': 'nosniff',
 });
 
-const callbackHtml = (title, body, ok) => `<!doctype html><meta charset="utf-8"><title>${title}</title>`
-  + '<body style="font-family:system-ui;display:grid;place-items:center;height:100vh;margin:0">'
-  + `<div style="text-align:center"><div style="font-size:42px">${ok ? '✅' : '⚠️'}</div>`
-  + `<p style="font-weight:600">${title}</p><p style="color:#666">${body}</p></div></body>`;
+// 回调页图标：内联 SVG 圆徽（不依赖系统 emoji 字体，各平台渲染一致）
+const ICON_OK = '<svg width="72" height="72" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="36" cy="36" r="34" fill="#22c55e"/><path d="M22 37.5 31.5 47 50 27" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const ICON_WARN = '<svg width="72" height="72" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="36" cy="36" r="34" fill="#f59e0b"/><path d="M36 20v22" stroke="#fff" stroke-width="5" stroke-linecap="round"/><circle cx="36" cy="50" r="3.5" fill="#fff"/></svg>';
+const callbackHtml = (title, body, ok) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>`
+  + '<body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#fafafa;font-family:system-ui,-apple-system,\'Segoe UI\',sans-serif">'
+  + '<div style="text-align:center;padding:36px 44px;background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,.06)">'
+  + (ok ? ICON_OK : ICON_WARN)
+  + `<p style="margin:18px 0 6px;font-size:17px;font-weight:600;color:#111827">${title}</p>`
+  + `<p style="margin:0;font-size:14px;color:#6b7280">${body}</p></div></body>`;
 
 /** 回调监听：只绑 127.0.0.1 随机端口；响应纪律照抄 CLI（404/400/200 + no-store） */
 function startCallbackServer(session) {
