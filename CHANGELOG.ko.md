@@ -24,6 +24,7 @@
   - 10R 중복 카드 푸시 폐지(자가 소비 기준, test.2 실측 피드백): 10R는 meoo 연결을 네이티브 지원하고 잔액 카드는 연결 자격증명 자체가 내보내므로 CD의 meoo-free 푸시를 제거(DuMate "연결 전용"과 동일 기준)——동일 계정에 같은 수치의 카드 2장이 나오지 않음. 푸시 경로의 홀로 참조 `MEOO_POINTS_URL`로 인한 ReferenceError(test.2의 "잔액 카드 푸시 실패" 원인)도 동시 수습;
   - 잔액 바를 컴팩트 분할 방식에 통합(DuMate 다중 패키지 바와 동일): 구독 / 매일 로그인 / 초대 3종 배치를 패키지별 세그먼트로 표시하고 텍스트 행은 최근 만기 + 사용/합계만 보고, 전체 명세는 hover에서;
   - 출석 견고화: 재독 윈도우를 5회 ×2초로 확대(발급은 트리거보다 늦을 때가 많음), 트리거 동작 1회 재시도. 재독이 모두 실패하면 failed로 기록——"불명"을 already 마감으로 위장하지 않음.
+- **영희 계정 "10Router 동기화" 연결(PR #66, 수신 측 10R #127/#128/#129)**: `TENROUTER_PROVIDER_MAP`에 `lingxi → lingxi` 추가(CD의 token은 완전한 WPS Cookie 통으로, api-key 형태로 10R 내장 lingxi 채널에 직송); transfer 행은 `authType:'cookie'` 보유(영희/DuMate 동일)——기존 Cookie 통 행이 oauth 형태로 기록되어 10R의 webCookie executor가 자격증명을 읽지 못하던 문제 수습(DuMate 동기화 체인도 동시 수습); 동기화 가능 목록 오류 문안에 DuMate/영희 추가; smoke 어서션 신설.
 - **Loomy 초대 코드**: 추천 코드 다이얼로그 placeholder를 현재 랜덤 후보 코드에 동기화; 초대 코드 풀에 4HT9MF6 추가(랜덤 균등 배분으로 두 공유 코드).
 - **Trae 수정**:
   - **로컬 자격증명 탐지 Linux/macOS 보완(PR #62, Ubuntu 26.04 + Trae CN 2.3.92182 실측)**: detectTrae의 clientInstalled/clientPath/running 3필드는 기존 win32 전용 하드코딩——Linux에서는 storage.json 복호화가 가능함에도 "클라이언트 미설치"로 판정되어 패널이 로컬 가져오기 입구를 내주지 않았음. clientPathOf에 darwin(/Applications/*.app)과 linux(PATH의 kebab-case bin + .desktop Name 해석 Exec 폴백) 추가; running은 unixTraePids 경유(Linux는 /proc/<pid>/exe, macOS는 pgrep -x); terminateTrae는 unix에서 SIGTERM→폴링→SIGKILL; win32 동작 무변경;

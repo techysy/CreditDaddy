@@ -24,6 +24,7 @@
   - 10R への重複カード推送を廃止（自己消費口径、test.2 実測フィードバック）：10R は meoo 接続をネイティブで support し残高カードは接続凭据自身が出すため、CD の meoo-free 推送を削除（DuMate「接続のみ」と同口径）——同一アカウントに同数値のカードが 2 枚出ることはなくなる。推送経路の浮遊参照 `MEOO_POINTS_URL` による ReferenceError（test.2 の「残高カード推送失敗」の根因）も同時修復；
   - 残高バーをコンパクト分割方式に統合（DuMate 複数パッケージバーと同じ）：サブスクリプション / 毎日ログイン / 招待の 3 種バッチをパッケージ別セグメントで表示し、文字行は直近期限 + 使用済/合計のみ報告、全量明細は hover で；
   - サインインの堅牢化：再読ウィンドウを 5 拍 ×2 秒に拡大（発放はトリガより遅れることが多い）、トリガ動作は 1 回リトライ。再読が全て失敗した場合は failed と記録——「不明」を already の閉環に偽装しない。
+- **霊犀アカウントが「10Router へ同期」に接続（PR #66、受け側は 10R #127/#128/#129）**：`TENROUTER_PROVIDER_MAP` に `lingxi → lingxi` を追加（CD の token は完全な WPS Cookie 缶で、api-key 形態で 10R 内蔵 lingxi チャネルへ直送）；transfer 行は `authType:'cookie'` を持つ（霊犀/DuMate 同様）——従来 Cookie 缶行が oauth 形態で落ち、10R の webCookie executor が凭据を読めなかった問題を修復（DuMate 同期リンクも同時修復）；同期可能リストのエラー文言に DuMate/霊犀を追記；smoke アサーション新設。
 - **Loomy 招待コード**：紹介コードダイアログの placeholder を現在のランダム候補コードに同期；招待コードプールに 4HT9MF6 を追加（ランダム均等割りで 2 つの共有コード）。
 - **Trae 修正**：
   - **ローカル認証情報検出の Linux/macOS 対応（PR #62、Ubuntu 26.04 + Trae CN 2.3.92182 で実測）**：detectTrae の clientInstalled/clientPath/running の 3 字段は従来 win32 限定のハードコード——Linux では storage.json を復号できるのに「クライアント未インストール」と判定され、パネルがローカル取り込み入口を出さなかった。clientPathOf に darwin（/Applications/*.app）と linux（PATH 上の kebab-case bin + .desktop の Name 解析による Exec フォールバック）を追加；running は unixTraePids 経由（Linux は /proc/<pid>/exe、macOS は pgrep -x）；terminateTrae は unix で SIGTERM→ポーリング→SIGKILL；win32 の挙動は無変更；
