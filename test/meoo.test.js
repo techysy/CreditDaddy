@@ -164,10 +164,10 @@ test('项目 AK 预解析：projects → cloud/environment', async () => {
   assert.equal(r.akStatus, 'active');
 });
 
-test('Meoo 独立产品线登记：不走网页会话 + 10R 映射 + blob Key 行不放 accessToken', () => {
+test('Meoo 独立产品线登记：不走网页会话 + 不同步 10R（rt 轮换竞争）+ blob Key 行不放 accessToken', () => {
   assert.ok(PROVIDERS.includes('meoo'));
   assert.equal(productOf('meoo'), 'meoo');
-  assert.equal(TENROUTER_PROVIDER_MAP.meoo, 'meoo');
+  assert.equal(TENROUTER_PROVIDER_MAP.meoo, undefined, 'meoo 不同步 10R——CD/10R 共享 rt 会被对侧轮换作废');
   assert.equal(getSite('meoo'), null, '网页会话条目已移除');
 
   const impl = productImpl('meoo');

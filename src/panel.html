@@ -3269,8 +3269,7 @@ const AM_CHANNELS = [
   // dumate 只同步连接、不推额度卡：10R 用连接凭据原生拉 quota_overview 出卡（PR #116 修双计），
   // CD 再推一份免费卡纯属重复——pushable:false = 渠道行不出「额度卡推送」主勾，保存时恒记排除
   { provider: 'dumate', label: 'DuMate', syncable: true, pushable: false },
-  // meoo 同 dumate 口径：meoo-free 推送已移除（test.3），主勾是死的——10R 连接凭据自身出卡
-  { provider: 'meoo', label: 'Meoo 秒悟', syncable: true, pushable: false },
+  // meoo 不再同步 10R（rt 轮换竞争，test.12 实测）——渠道行整体摘除
   // lingxi 同口径：10R #127 起原生 lingxi 渠道（webCookie executor 出卡）+ PR #66 连接同步，
   // CD 的 lingxi-<hash> 灵点卡停推（quotaPushDisabledProviders 恒排除，三条推送路径都认）
   { provider: 'lingxi', label: 'WPS 灵犀', syncable: true, pushable: false },
