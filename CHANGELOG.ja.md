@@ -18,9 +18,12 @@
   - **コントロールプレーン API クライアント**：`/open/v1/cli-compat/*`（Bearer + `X-Meoo-Client: cli` + CLI-Version 0.5.8）：identity / points / projects / プロジェクト AK；残高の口径は total=totalGranted、used=totalConsumed、remaining=availableBalance、parts はソース別にバッチ期限日付き；
   - **OAuth PKCE S256 ループバックブラウザログイン**：公式 CLI 公開クライアントと同型（authorize/token + 127.0.0.1 ループバックリスナで認可コードを受領、trae 骨格と同構造）；redirect_uri は公式 CLI 0.5.8 産物の考古により `/oauth/callback` に修正（従来の `/callback` は認可ページに invalid_redirect_uri で拒否）；ループバックはランダムポート + コールバック応答規律（404/400/200 + no-store）+ token レスポンス契約検証；refreshMeooToken を新設——サインインのトリガ動作をトークン強制リフレッシュ 1 回に格上げ（リフレッシュ自体がログイン信号、10R 同様）、結果はアカウント庫に書き戻し、再読は新認証情報を使用；
   - **サインイン増分検証**：受取エンドポイントなし = 基準台帳 → 身份読取でトリガ → 再読（3×1.5 秒）→ totalGranted 増分裁定、決して成功を偽装しない（10R meoo-daily-claim と同じアルゴリズム）；受取済みは already で閉環；
-  - **パネルと同期**：製品カード / ナビ / 空状態表示の配線；アカウント追加のデュアルチャネル（OAuth ブラウザログイン + meoo_ak_ 貼り付け）；残高カード `meoo-free-<uid>` 単一アカウント display-only（残高 + 活動バッチごとの期限日）；10R 同期の認証情報は psd.meooControlKey に入れプロジェクト欄を完全装填（00cde6b7 受入口径）、同期前に best-effort でプロジェクト AK を事前解析；
+  - **パネルと同期**：製品カード / ナビ / 空状態表示の配線；アカウント追加のデュアルチャネル（OAuth ブラウザログイン + meoo_ak_ 貼り付け）；10R 同期の認証情報は psd.meooControlKey に入れプロジェクト欄を完全装填（00cde6b7 受入口径）、同期前に best-effort でプロジェクト AK を事前解析；
   - アイコン：CD ナビ / 製品カードと 10Router の providers アイコンを meoo.com の現行 favicon に変更（公式ブランド資産、128×128 で lingxi/dumate のサイズ慣例に整合）——CD の紫ドット占位と 10R の 288 フルブリード版は廃止；
   - OAuth ログインの身份読取リトライ：uid 照合キーとなる初回の身份読取が失敗すると openid にフォールバック——同一アカウントの次回ログイン（uid=user_id）で合流できず、旧行がトークン輪番とともに invalid_token の死行として残存；3 回リトライしても失敗してから openid にフォールバックするように変更。
+  - 10R への重複カード推送を廃止（自己消費口径、test.2 実測フィードバック）：10R は meoo 接続をネイティブで support し残高カードは接続凭据自身が出すため、CD の meoo-free 推送を削除（DuMate「接続のみ」と同口径）——同一アカウントに同数値のカードが 2 枚出ることはなくなる。推送経路の浮遊参照 `MEOO_POINTS_URL` による ReferenceError（test.2 の「残高カード推送失敗」の根因）も同時修復；
+  - 残高バーをコンパクト分割方式に統合（DuMate 複数パッケージバーと同じ）：サブスクリプション / 毎日ログイン / 招待の 3 種バッチをパッケージ別セグメントで表示し、文字行は直近期限 + 使用済/合計のみ報告、全量明細は hover で；
+  - サインインの堅牢化：再読ウィンドウを 5 拍 ×2 秒に拡大（発放はトリガより遅れることが多い）、トリガ動作は 1 回リトライ。再読が全て失敗した場合は failed と記録——「不明」を already の閉環に偽装しない。
 - **Loomy 招待コード**：紹介コードダイアログの placeholder を現在のランダム候補コードに同期；招待コードプールに 4HT9MF6 を追加（ランダム均等割りで 2 つの共有コード）。
 - **Trae 修正**：
   - **ローカル認証情報検出の Linux/macOS 対応（PR #62、Ubuntu 26.04 + Trae CN 2.3.92182 で実測）**：detectTrae の clientInstalled/clientPath/running の 3 字段は従来 win32 限定のハードコード——Linux では storage.json を復号できるのに「クライアント未インストール」と判定され、パネルがローカル取り込み入口を出さなかった。clientPathOf に darwin（/Applications/*.app）と linux（PATH 上の kebab-case bin + .desktop の Name 解析による Exec フォールバック）を追加；running は unixTraePids 経由（Linux は /proc/<pid>/exe、macOS は pgrep -x）；terminateTrae は unix で SIGTERM→ポーリング→SIGKILL；win32 の挙動は無変更；

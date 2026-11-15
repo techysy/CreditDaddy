@@ -215,18 +215,25 @@ export async function checkinMeoo(account, ctx = {}) {
       try { await ctx?.onRefresh?.(refreshed); } catch { /* 回写失败不阻断 */ }
     } catch { /* 刷新失败不阻断——复读账面裁决 */ }
   }
-  try { await fetchMeooIdentity(credential, { fetchImpl }); } catch { /* 触发动作本身不是裁决 */ }
+  // ③ 触发动作重试一拍：网络抖动不该让本轮白跑（成败仍由复读裁决）
+  for (let i = 0; i < 2; i++) {
+    try { await fetchMeooIdentity(credential, { fetchImpl }); break; } catch { if (i === 0) await sleep(1000); }
+  }
 
-  // ③ 复读账面（发放落账有延迟，短重试几拍）
-  let after = before;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt > 0) await sleep(1500);
-    try { after = await fetchMeooPoints(credential, { fetchImpl }); } catch { break; }
+  // ④ 复读账面（发放落账常滞后于触发）：窗口放宽到 5 拍 ×2s，单拍失败继续重试不提前收卷
+  let after = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if (attempt > 0) await sleep(2000);
+    try { after = await fetchMeooPoints(credential, { fetchImpl }); } catch { continue; }
     if (Number.isFinite(after?.totalGranted) && after.totalGranted > before.totalGranted) break;
   }
 
-  // ④ 账面裁决
-  const delta = Number.isFinite(after?.totalGranted) ? after.totalGranted - before.totalGranted : 0;
+  // ⑤ 账面裁决：一次成功的复读都没有 = 状态不明，记 failed——「没涨 → already」只在
+  //    复读成功且账面无增量时成立，绝不把「不确定」伪装成已领闭环
+  if (!after || !Number.isFinite(after?.totalGranted)) {
+    return { status: 'failed', message: t('Meoo 未返回积分账面数据，无法核验领取结果'), balanceAfter: before.balance };
+  }
+  const delta = after.totalGranted - before.totalGranted;
   const balance = Number.isFinite(after?.balance) ? after.balance : before.balance;
   if (delta > 0) {
     ctx?.log?.(t('Meoo 每日登录积分已到账'));

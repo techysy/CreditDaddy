@@ -104,6 +104,14 @@ test('签到：基线 401 → failed + authExpired', async () => {
   assert.equal(r.authExpired, true);
 });
 
+test('签到：复读全失败 → failed（状态不明绝不记 already）', async () => {
+  // 基线成功，之后复读全部 500 → 一次成功复读都没有，不得伪装成 already 闭环
+  const f = mockFetch({ points: [res(200, pointsBody(5000, 4300)), res(500, { errCode: 'SERVER_ERROR' })] });
+  const r = await checkinMeoo({ token: TOKEN }, { fetchImpl: f, sleep: async () => {} });
+  assert.equal(r.status, 'failed');
+  assert.equal(Number.isFinite(r.balanceAfter), true);
+});
+
 test('项目 AK 预解析：projects → cloud/environment', async () => {
   const f = async (url) => {
     if (String(url).includes('/projects?')) return res(200, { success: true, data: { projects: [{ urlId: 'proj-1', name: 'demo' }] } });

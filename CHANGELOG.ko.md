@@ -18,9 +18,12 @@
   - **컨트롤 플레인 API 클라이언트**: `/open/v1/cli-compat/*`(Bearer + `X-Meoo-Client: cli` + CLI-Version 0.5.8): identity / points / projects / 프로젝트 AK; 잔액 기준 total=totalGranted, used=totalConsumed, remaining=availableBalance, parts는 소스별로 배치 만기일 동봉;
   - **OAuth PKCE S256 루프백 브라우저 로그인**: 공식 CLI 공개 클라이언트와 동형(authorize/token + 127.0.0.1 루프백 리스너로 인가 코드 수신, trae 골격 동형); redirect_uri는 공식 CLI 0.5.8 산물 고고학으로 `/oauth/callback`에 정정(기존 `/callback`은 인가 페이지가 invalid_redirect_uri로 거부); 루프백 랜덤 포트 + 콜백 응답 규율(404/400/200 + no-store) + token 응답 계약 검증; refreshMeooToken 신설——출석 트리거 동작을 토큰 강제 리프레시 1회로 승격(리프레시 자체가 로그인 신호, 10R 동일), 결과는 계정 저장소에 되돌려 쓰고 재독은 새 자격증명 사용;
   - **출석 증분 검증**: 수령 엔드포인트 없음 = 기준 대장 → 신원 읽기로 트리거 → 재독(3×1.5초) → totalGranted 증분 재정, 결코 성공을 위장하지 않음(10R meoo-daily-claim 동일 알고리즘); 수령 완료는 already로 마감;
-  - **패널과 동기화**: 제품 카드 / 내비 / 빈 상태 표시 배선; 계정 추가 듀얼 채널(OAuth 브라우저 로그인 + meoo_ak_ 붙여넣기); 잔액 카드 `meoo-free-<uid>` 단일 계정 display-only(잔액 + 활동 배치별 만기일); 10R 동기화 자격증명은 psd.meooControlKey에 넣고 프로젝트 필드 완비(00cde6b7 수신 기준), 동기화 전 best-effort로 프로젝트 AK 사전 해석;
+  - **패널과 동기화**: 제품 카드 / 내비 / 빈 상태 표시 배선; 계정 추가 듀얼 채널(OAuth 브라우저 로그인 + meoo_ak_ 붙여넣기); 10R 동기화 자격증명은 psd.meooControlKey에 넣고 프로젝트 필드 완비(00cde6b7 수신 기준), 동기화 전 best-effort로 프로젝트 AK 사전 해석;
   - 아이콘: CD 내비 / 제품 카드와 10Router providers 아이콘을 meoo.com 현행 favicon으로 교체(공식 브랜드 자산, 128×128로 lingxi/dumate 크기 관례에 정합)——CD 보라 점 placeholder와 10R 288 풀블리드版은 폐기;
   - OAuth 로그인 신원 읽기 재시도: uid 귀속 키가 되는 첫 신원 읽기가 실패하면 openid로 폴백——동일 계정 다음 로그인(uid=user_id)에서 합류 불가, 구행이 토큰 교체와 함께 invalid_token 죽은 행으로 잔존; 3회 재시도 후에도 실패할 때만 openid로 폴백하도록 변경.
+  - 10R 중복 카드 푸시 폐지(자가 소비 기준, test.2 실측 피드백): 10R는 meoo 연결을 네이티브 지원하고 잔액 카드는 연결 자격증명 자체가 내보내므로 CD의 meoo-free 푸시를 제거(DuMate "연결 전용"과 동일 기준)——동일 계정에 같은 수치의 카드 2장이 나오지 않음. 푸시 경로의 홀로 참조 `MEOO_POINTS_URL`로 인한 ReferenceError(test.2의 "잔액 카드 푸시 실패" 원인)도 동시 수습;
+  - 잔액 바를 컴팩트 분할 방식에 통합(DuMate 다중 패키지 바와 동일): 구독 / 매일 로그인 / 초대 3종 배치를 패키지별 세그먼트로 표시하고 텍스트 행은 최근 만기 + 사용/합계만 보고, 전체 명세는 hover에서;
+  - 출석 견고화: 재독 윈도우를 5회 ×2초로 확대(발급은 트리거보다 늦을 때가 많음), 트리거 동작 1회 재시도. 재독이 모두 실패하면 failed로 기록——"불명"을 already 마감으로 위장하지 않음.
 - **Loomy 초대 코드**: 추천 코드 다이얼로그 placeholder를 현재 랜덤 후보 코드에 동기화; 초대 코드 풀에 4HT9MF6 추가(랜덤 균등 배분으로 두 공유 코드).
 - **Trae 수정**:
   - **로컬 자격증명 탐지 Linux/macOS 보완(PR #62, Ubuntu 26.04 + Trae CN 2.3.92182 실측)**: detectTrae의 clientInstalled/clientPath/running 3필드는 기존 win32 전용 하드코딩——Linux에서는 storage.json 복호화가 가능함에도 "클라이언트 미설치"로 판정되어 패널이 로컬 가져오기 입구를 내주지 않았음. clientPathOf에 darwin(/Applications/*.app)과 linux(PATH의 kebab-case bin + .desktop Name 해석 Exec 폴백) 추가; running은 unixTraePids 경유(Linux는 /proc/<pid>/exe, macOS는 pgrep -x); terminateTrae는 unix에서 SIGTERM→폴링→SIGKILL; win32 동작 무변경;

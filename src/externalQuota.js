@@ -570,62 +570,8 @@ export async function runQuotaPush({ endpoint, key, accounts, fetchImpl, onlySou
     }
   }
 
-  // Meoo（issue #65 独立产品线）：display-only 积分卡（不携带凭证）——余额 + 活动批次
-  // 逐包（批次有效期）。单账号单卡（minimax-free 同款 per-account source）。
-  const meooAccounts = (accounts || []).filter((a) => a.provider === 'meoo' && a.token);
-  if (meooAccounts.length) {
-    const { fetchMeooPoints } = await import('./meooClient.js');
-    const meooSource = (a) => {
-      const clean = String(a.uid || a.id || 'default').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 18);
-      return `meoo-free-${clean || 'acc'}`.slice(0, 32);
-    };
-    for (const a of meooAccounts) {
-      const source = meooSource(a);
-      if (only && !only.includes(source)) continue;
-      const skipDead = !only && deadSkip(a);
-      let pts = null;
-      if (skipDead) {
-        pts = { ok: false, error: '凭据已失效（后台低频重试等待中，跳过本轮 live 拉取）', authExpired: true };
-      } else {
-        try { pts = await fetchMeooPoints(a.token); } catch (e) { pts = { ok: false, error: e.message }; }
-        probeMark(a, Boolean(pts?.ok), pts?.error || (pts?.auth === false ? '401' : ''));
-      }
-      const expired = pts?.auth === false;
-      const payload = { provider: 'meoo-free', label: String(a.name || 'Meoo').slice(0, 100), plan: 'Points' };
-      if (pts?.ok) {
-        const rows = {};
-        (pts.grants && pts.grants.length ? pts.grants : [{ name: '积分', total: pts.totalGranted ?? pts.balance, remaining: pts.balance, expiresAt: null }])
-          .slice(0, MAX_ROWS).forEach((g, i) => {
-            rows[rowKey(i)] = {
-              name: String(g.name || '积分').slice(0, 80),
-              used: Math.max(0, Number(g.total) - Number(g.remaining)) || 0,
-              total: Number(g.remaining) || 0.000001,
-              displayRemaining: true,
-              isCreditBalance: true,
-              recurring: Boolean(g.recurring),
-              ...(g.expiresAt ? { resetAt: String(g.expiresAt).slice(0, 64) } : {}),
-            };
-          });
-        payload.quotas = rows;
-        persistLive(a, { quotaSnapshot: { used: pts.totalConsumed ?? 0, total: pts.totalGranted ?? pts.balance, isCreditBalance: true, at: new Date().toISOString() } });
-      } else {
-        payload.message = expired
-          ? t('Meoo 凭据已失效，请在 CreditDaddy 重新登录（OAuth）或更换控制面 Key')
-          : (pts?.error || t('Meoo 积分账面暂不可查，稍后自动重试'));
-        if (expired) markRateLimited(a, '401');
-      }
-      try {
-        assertScalarOnly(payload, source);
-        const r = await pushOne({ endpoint, key, source, payload, fetchImpl, refreshUrl: await rurl(source) });
-        results.push({ source, status: 'ok', entries: r.entries });
-        logger.info('10R', '额度卡已推送：{source}（{n} 行）', { source, n: r.entries ?? (Object.keys(payload.quotas || {}).length || 0) });
-      } catch (e) {
-        results.push({ source, status: 'failed', error: e.message });
-        logger.warn('10R', '额度卡推送失败 {source}:{err}', { source, err: e.message });
-      }
-      void MEOO_POINTS_URL;
-    }
-  }
-
+  // Meoo 不在此推送：10R 已原生支持 meoo 连接、额度由连接凭据自身出卡（自消费口径），
+  // CD 再推 meoo-free 会对同一账号出两张同数值卡——与 DuMate「仅连接」同口径。
+  // 面板侧 meoo live 数据走 providers 路径（fetchMeooQuota），不依赖本函数。
   return { results };
 }

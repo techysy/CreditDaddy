@@ -19,9 +19,12 @@ Theme: **Two new product lines — DuMate (Baidu companion) and Meoo (independen
   - **控制面 API 客户端**：`/open/v1/cli-compat/*`（Bearer + `X-Meoo-Client: cli` + CLI-Version 0.5.8）：identity / points / projects / 项目 AK；额度口径 total=totalGranted、used=totalConsumed、remaining=availableBalance，parts 按来源逐包带批次到期日；
   - **OAuth PKCE S256 回环浏览器登录**：官方 CLI 公开客户端同款（authorize/token + 127.0.0.1 回环监听抓授权码，trae 骨架同构）；redirect_uri 按官方 CLI 0.5.8 产物考古修正为 `/oauth/callback`（此前 `/callback` 被授权页拒 invalid_redirect_uri）；回环随机端口 + 回调响应纪律（404/400/200 + no-store）+ token 响应契约校验；新增 refreshMeooToken——签到触发动作升级为强制刷新一次令牌（刷新即登录信号，10R 同款），刷新结果回写账号库，复读用新凭据；
   - **签到增量核验**：无领取端点 = 基线账面 → 身份读触发 → 复读（3×1.5s）→ totalGranted 增量裁决，绝不假装成功（10R meoo-daily-claim 同款算法）；已领过记 already 闭环；
-  - **面板与同步**：产品卡 / 导航 / 空态提示接线；添加账号双通道（OAuth 浏览器登录 + 粘贴 meoo_ak_）；额度卡 `meoo-free-<uid>` 单账号 display-only（余额 + 活动批次逐包含到期日）；10R 同步凭证入 psd.meooControlKey + 项目字段带齐（00cde6b7 接收口径），同步前 best-effort 预解析项目 AK；
+  - **面板与同步**：产品卡 / 导航 / 空态提示接线；添加账号双通道（OAuth 浏览器登录 + 粘贴 meoo_ak_）；10R 同步凭证入 psd.meooControlKey + 项目字段带齐（00cde6b7 接收口径），同步前 best-effort 预解析项目 AK；
   - 图标：CD 导航 / 产品卡与 10Router providers 图标换 meoo.com 现役 favicon（官方品牌资产，128×128 对齐 lingxi/dumate 尺寸惯例）——CD 紫点占位与 10R 288 全出血版退役；
   - OAuth 登录身份读加重试：uid 归户键的首次身份读挂了会回落 openid——同账号下次登录（uid=user_id）合并不了，旧行随令牌轮换失效成 invalid_token 死卡；现重试 3 次仍失败才回落 openid。
+  - 10R 不再重复推卡（自消费口径，test.2 实测反馈）：10R 原生支持 meoo 连接、额度由连接凭据自身出卡，CD 的 meoo-free 推送移除（同 DuMate「仅连接」），同账号不再两张同数值卡；顺带修掉推送路径孤儿引用 `MEOO_POINTS_URL` 的 ReferenceError——test.2「额度卡推送失败:MEOO_POINTS_URL is not defined」的根因；
+  - 额度条并入紧凑口径（同 DuMate 多包条）：订阅 / 登录 / 邀请三类批次分段逐包展示，文字行只报最近到期 + 已用/共，全量明细进悬浮提示；
+  - 签到健壮化：复读窗口放宽到 5 拍 ×2s（发放常滞后于触发）、触发动作重试一拍；复读全失败 = 状态不明记 failed，绝不把「不确定」伪装成 already 闭环。
 - **Loomy 邀请码**：推荐码弹窗 placeholder 同步当前随机候选码；邀请码池新增 4HT9MF6（随机均摊两个共享码）。
 - **Trae 修复**：
   - **本机凭据探测补齐 Linux/macOS（PR #62，Ubuntu 26.04 + Trae CN 2.3.92182 实测）**：detectTrae 的 clientInstalled/clientPath/running 三字段此前硬编码 win32-only——Linux 下 storage.json 能解密却被判「客户端未安装」，面板不给本机导入入口。现 clientPathOf 补 darwin（/Applications/*.app）与 linux（PATH 常见目录 kebab-case bin + .desktop Name 匹配解析 Exec 兜底）；running 走 unixTraePids（Linux 读 /proc/<pid>/exe，macOS pgrep -x）；terminateTrae unix SIGTERM→轮询→SIGKILL；win32 行为零改动；

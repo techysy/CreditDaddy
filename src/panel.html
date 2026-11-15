@@ -1864,9 +1864,10 @@ function creditHtml(a) {
       if (x.pending && x.startsAt) return base + T('（') + fmtTime(x.startsAt).slice(5, 16) + T(' 生效）');
       return base + (x.expiresAt ? T('（') + fmtTime(x.expiresAt).slice(5, 16) + (x.recurring ? T(' 重置）') : T(' 到期）')) : '');
     }).join(' · ');
-    // 紧凑口径（DuMate）：登录赠送积分逐日一包、包数只增不减，行内全列出来会无限变长——
-    // 文字行同 WorkBuddy 只报「最近一个到期 + 已用/共」，全量明细进悬浮提示，分段条逐包展示
-    const compactParts = a.product === 'dumate';
+    // 紧凑口径（DuMate / Meoo）：DuMate 登录赠送积分逐日一包、包数只增不减，行内全列出来会
+    // 无限变长；Meoo 订阅/登录/邀请三类批次同理——文字行同 WorkBuddy 只报「最近一个到期 +
+    // 已用/共」，全量明细进悬浮提示，分段条逐包展示
+    const compactParts = a.product === 'dumate' || a.product === 'meoo';
     const soonPart = effParts.filter((x) => x.remaining > 0 && !x.recurring && x.expiresAt).sort((x, y) => x.expiresAt.localeCompare(y.expiresAt))[0];
     const atText = q.pendingAt ? fmtTime(q.pendingAt) : '';
     const isToday = atText.slice(0, 10) === fmtTime(new Date().toISOString()).slice(0, 10);
@@ -1888,7 +1889,7 @@ function creditHtml(a) {
     if (pendingParts.length && !effParts.length) {
       return pendingLine + '<div class="bar"><span class="seg pending-ghost" style="flex:1 1 0"></span></div>';
     }
-    // 紧凑口径（DuMate）条也逐包分段（同 WorkBuddy 多包条）：登录赠送积分逐日一包，
+    // 紧凑口径（DuMate / Meoo）条也逐包分段（同 WorkBuddy 多包条）：登录赠送积分逐日一包，
     // 单段百分比条看不出包结构；其余带 unit 产品维持单段百分比条不变
     let bar;
     if (compactParts) {
