@@ -113,6 +113,56 @@ export function extractDumateUserId(cookies) {
 }
 
 /**
+ * 补齐 bce-user-info：扫码登录、本机导入拿到的会话常常只有 BDUSS / bce-sessionid，
+ * 而领取接口需要 csrftoken，其值就是 bce-user-info 的原文（等于 bce 账户 ID）。
+ * 控制台首页不一定下发该 cookie，这里调 /api/dumate/app/token/get，
+ * 从 Set-Cookie 的 bce-login-accountid 取账户 ID 补上。
+ * @returns {Promise<Array|null>} 补好后的 cookie 数组；无需补或失败返回 null
+ */
+export async function healDumateCookies(cookies, fetchImpl) {
+  const list = Array.isArray(cookies) ? cookies : parseDumateCookies(cookies);
+  if (list.some((c) => c.name === 'bce-user-info' && c.value)) return null;
+  const doIt = fetchImpl || ((u, init) => fetchJsonRace(u, { ...init, timeoutMs: FETCH_TIMEOUT_MS }));
+  try {
+    const res = await doIt(`${DUMATE_CONSOLE_ORIGIN}/api/dumate/app/token/get`, {
+      headers: {
+        Cookie: buildDumateCookieHeader(list),
+        Accept: 'application/json',
+        Origin: DUMATE_CONSOLE_ORIGIN,
+        Referer: `${DUMATE_CONSOLE_ORIGIN}/dumate/channel`,
+        'User-Agent': DUMATE_USER_AGENT,
+      },
+      redirect: 'manual',
+    });
+    if (res.status < 200 || res.status >= 300) return null;
+    const raw = typeof res.headers?.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
+    const extra = [];
+    let accountId = '';
+    for (const item of raw) {
+      const [pair] = String(item).split(';');
+      const i = pair.indexOf('=');
+      if (i <= 0) continue;
+      const name = pair.slice(0, i).trim();
+      const value = pair.slice(i + 1).trim();
+      if (!name) continue;
+      if (name === 'bce-login-accountid') {
+        try {
+          accountId = decodeURIComponent(value);
+        } catch {
+          accountId = value;
+        }
+      }
+      extra.push({ name, value, domain: DUMATE_CONSOLE_HOST });
+    }
+    if (!accountId) return null;
+    const kept = list.filter((c) => !extra.some((e) => e.name === c.name));
+    return [...kept, ...extra, { name: 'bce-user-info', value: accountId, domain: DUMATE_CONSOLE_HOST }];
+  } catch {
+    return null;
+  }
+}
+
+/**
  * 账号脱敏掩码显示
  */
 export function maskDumateUserId(id) {
@@ -196,8 +246,17 @@ export async function verifyDumateSession(credentialInput, { fetchImpl } = {}) {
  */
 export async function checkinDumate(account, { fetchImpl } = {}) {
   const cookie = account?.meta?.cookieSiteSession?.cookie || account?.token || '';
-  const cookies = parseDumateCookies(cookie);
-  const csrftoken = extractDumateCsrfToken(cookies);
+  let cookies = parseDumateCookies(cookie);
+  let csrftoken = extractDumateCsrfToken(cookies);
+
+  // 会话里缺 bce-user-info 时先补齐（扫码登录、本机导入常见）
+  if (!csrftoken) {
+    const healed = await healDumateCookies(cookies, fetchImpl).catch(() => null);
+    if (healed) {
+      cookies = healed;
+      csrftoken = extractDumateCsrfToken(cookies);
+    }
+  }
 
   if (!csrftoken) {
     return { status: 'failed', error: t('Cookie 缺少 bce-user-info（无法生成 csrftoken）') };

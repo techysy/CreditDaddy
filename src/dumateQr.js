@@ -31,6 +31,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { FETCH_TIMEOUT_MS } from './constants.js';
+import { healDumateCookies } from './dumateClient.js';
 
 export const DUMATE_QR_CONSOLE_URL = 'https://console.bce.baidu.com/dumate/channel';
 export const DUMATE_QR_UA =
@@ -161,7 +162,15 @@ export async function qrQuickLogin(pp) {
     if (!loc) {
       const onConsole = /^https:\/\/console\.bce\.baidu\.com\//.test(url);
       const hasSess = jar.has('bce-sessionid');
-      if (onConsole && r.status === 200 && hasSess) return { cookies: jar.all(), account: pf.username };
+      if (onConsole && r.status === 200 && hasSess) {
+        // 控制台首页不一定下发 bce-user-info，缺了就用 dumate 应用 token 接口补齐账户 ID
+        let cookies = jar.all();
+        if (!jar.has('bce-user-info')) {
+          const healed = await healDumateCookies(cookies).catch(() => null);
+          if (healed) cookies = healed;
+        }
+        return { cookies, account: pf.username };
+      }
       break;
     }
     url = new URL(loc, url).href;
