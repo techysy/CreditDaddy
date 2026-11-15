@@ -3303,18 +3303,20 @@ function renderAmChannels() {
     const pushable = ch.pushable !== false;
     const pushOn = !excluded.includes(ch.provider);
     const icon = PROD_ICONS[ch.provider.replace(/-(cn|intl|global)$/, '')] || '';
-    const mark = icon
-      ? '<img src="' + icon + '" class="nav-mark-img" style="width:20px;height:20px;border-radius:5px" alt="">'
-      : '<span class="dot ' + esc(ch.provider.replace(/-(cn|intl|global)$/, '')) + '" style="width:14px;height:14px;border-radius:4px"></span>';
+    // 无产品图标的渠道不画占位——灰方块形似禁用勾选框，观感即「有选项但不可用」
+    const mark = icon ? '<img src="' + icon + '" class="nav-mark-img" style="width:20px;height:20px;border-radius:5px" alt="">' : '';
+    // pushable:false（dumate / meoo / lingxi）：卡片上不出现「额度卡」字样——纯连接，
+    // 额度由 10R 连接凭据自身出卡；再渲染一个灰掉的「额度卡」位等于暗示还有额度选项
     const pushCtl = pushable
       ? '<label class="check" style="gap:5px"><input type="checkbox" data-am-push="' + ch.provider + '"' + (pushOn ? ' checked' : '') + '> <span>额度卡</span></label>'
-      : '<label class="check" style="gap:5px"><span style="width:16px;flex:none"></span><span class="dim">额度卡</span></label>';
+      : '';
     const syncCtl = '<label class="check" style="gap:5px"><input type="checkbox" data-am-sync="' + ch.provider + '"' + (syncOn ? ' checked' : '') + (!ch.syncable || !enabled ? ' disabled' : '') + '> <span' + (!ch.syncable ? ' class="dim"' : '') + '>连接</span></label>';
     const badge = pushable ? '' : '<span class="dim" style="font-size:11px;margin-left:auto;flex:none">' + T('10R 自身出卡') + '</span>';
     return '<div class="am-ch-card">'
       + '<div style="display:flex;align-items:center;gap:8px;min-width:0">' + mark
       + '<span style="font-weight:600;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(T(ch.label)) + '</span>' + badge + '</div>'
-      + '<div style="display:flex;gap:16px;align-items:center">' + pushCtl + syncCtl + '</div>'
+      + (pushCtl ? '<div style="display:flex;gap:16px;align-items:center">' + pushCtl + syncCtl + '</div>'
+                 : '<div style="display:flex;align-items:center">' + syncCtl + '</div>')
       + '</div>';
   });
   box.innerHTML = rows.length

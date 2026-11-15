@@ -1797,7 +1797,6 @@
   "该渠道的额度卡推送已关闭（CreditDaddy 账号管理弹窗可重新开启）": "이 채널의 잔액 카드 푸시가 꺼져 있습니다(CreditDaddy 계정 관리 대화상자에서 다시 켤 수 있음)",
   "> <span class=\"dim\">连接</span></label>": "> <span class=\"dim\">연결</span></label>",
   "> <span>额度卡</span></label>": "> <span>잔액 카드</span></label>",
-  "<label class=\"check\" style=\"gap:5px\"><span style=\"width:16px;flex:none\"></span><span class=\"dim\">额度卡</span></label>": "<label class=\"check\" style=\"gap:5px\"><span style=\"width:16px;flex:none\"></span><span class=\"dim\">잔액 카드</span></label>",
   ">连接</span></label>": ">연결</span></label>",
   "勾选 = 同步该渠道（「连接」= 账号连接；主勾 = 额度卡推送）。10Router 已单独配了同源渠道时，取消对应渠道即可去掉重复卡片。": "체크 = 이 채널 동기화(\"연결\" = 계정 연결, 메인 체크 = 잔액 카드 푸시). 10Router에 같은 소스 채널이 이미 있으면 여기서 해제하여 중복 카드를 없앨 수 있습니다.",
   "勾选 = 同步该渠道：「连接」= 账号连接，「额度卡」= 额度卡推送。10Router 已单独配了同源渠道时，取消对应渠道即可去掉重复卡片。": "체크 = 이 채널 동기화: \"연결\" = 계정 연결, \"额度卡\" = 잔액 카드 푸시. 10Router에 같은 소스 채널이 이미 있으면 여기서 해제하여 중복 카드를 없앨 수 있습니다.",

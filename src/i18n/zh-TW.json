@@ -1797,7 +1797,6 @@
   "该渠道的额度卡推送已关闭（CreditDaddy 账号管理弹窗可重新开启）": "該渠道的額度卡推送已關閉（CreditDaddy 賬號管理彈窗可重新開啟）",
   "> <span class=\"dim\">连接</span></label>": "> <span class=\"dim\">連接</span></label>",
   "> <span>额度卡</span></label>": "> <span>額度卡</span></label>",
-  "<label class=\"check\" style=\"gap:5px\"><span style=\"width:16px;flex:none\"></span><span class=\"dim\">额度卡</span></label>": "<label class=\"check\" style=\"gap:5px\"><span style=\"width:16px;flex:none\"></span><span class=\"dim\">額度卡</span></label>",
   ">连接</span></label>": ">連接</span></label>",
   "勾选 = 同步该渠道（「连接」= 账号连接；主勾 = 额度卡推送）。10Router 已单独配了同源渠道时，取消对应渠道即可去掉重复卡片。": "勾選 = 同步該渠道（「連接」= 賬號連接；主勾 = 額度卡推送）。10Router 已單獨配了同源渠道時，取消對應渠道即可去掉重複卡片。",
   "勾选 = 同步该渠道：「连接」= 账号连接，「额度卡」= 额度卡推送。10Router 已单独配了同源渠道时，取消对应渠道即可去掉重复卡片。": "勾選 = 同步該渠道：「連接」= 賬號連接，「額度卡」= 額度卡推送。10Router 已單獨配了同源渠道時，取消對應渠道即可去掉重複卡片。",
