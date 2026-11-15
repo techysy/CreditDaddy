@@ -3304,6 +3304,7 @@ function renderAmChannels() {
     const syncOn = enabled && ((c.accountSync?.providers || []).length
       ? (c.accountSync.providers.includes(ch.provider)) : ch.syncable);
     const pushable = ch.pushable !== false;
+    const syncable = ch.syncable !== false;
     const pushOn = !excluded.includes(ch.provider);
     const icon = PROD_ICONS[ch.provider.replace(/-(cn|intl|global)$/, '')] || '';
     // 无产品图标的渠道不画占位——灰方块形似禁用勾选框，观感即「有选项但不可用」
