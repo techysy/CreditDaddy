@@ -125,6 +125,7 @@ export async function healDumateCookies(cookies, fetchImpl) {
   const doIt = fetchImpl || ((u, init) => fetchJsonRace(u, { ...init, timeoutMs: FETCH_TIMEOUT_MS }));
   try {
     const res = await doIt(`${DUMATE_CONSOLE_ORIGIN}/api/dumate/app/token/get`, {
+      method: 'GET',
       headers: {
         Cookie: buildDumateCookieHeader(list),
         Accept: 'application/json',
@@ -244,7 +245,7 @@ export async function verifyDumateSession(credentialInput, { fetchImpl } = {}) {
  * 每日领取登录积分：
  * @returns {Promise<{ status: 'checked-in'|'already'|'failed', claimedAmount?: number, message?: string, error?: string, authExpired?: boolean }>}
  */
-export async function checkinDumate(account, { fetchImpl } = {}) {
+export async function checkinDumate(account, { fetchImpl, persistCookieJar } = {}) {
   const cookie = account?.meta?.cookieSiteSession?.cookie || account?.token || '';
   let cookies = parseDumateCookies(cookie);
   let csrftoken = extractDumateCsrfToken(cookies);
@@ -255,6 +256,11 @@ export async function checkinDumate(account, { fetchImpl } = {}) {
     if (healed) {
       cookies = healed;
       csrftoken = extractDumateCsrfToken(cookies);
+      // heal 出的完整罐回写账号库（persistCookieJar 由 refreshContext 提供）——
+      // 不落库的话每次领取都得现补一轮 token/get
+      if (typeof persistCookieJar === 'function') {
+        try { await persistCookieJar(buildDumateCookieHeader(cookies)); } catch { /* 回写失败不阻断领取 */ }
+      }
     }
   }
 

@@ -182,5 +182,20 @@ export function refreshContext(account, log) {
         } catch (e) { log?.('同步到 WorkBuddy 客户端失败：' + e.message); }
       }
     },
+    // Cookie 罐补齐/heal 的回写（dumate 等网页会话线）：完整罐回写账号 token 与
+    // cookieSiteSession——heal 出的新罐不落库的话，每次领取都得现补一轮
+    persistCookieJar: async (cookieHeader) => {
+      if (!cookieHeader) return;
+      account.token = cookieHeader;
+      if (account.meta?.cookieSiteSession) account.meta.cookieSiteSession.cookie = cookieHeader;
+      await withAccounts((list) => {
+        const cur = list.find((a) => a.id === account.id);
+        if (!cur) return;
+        cur.token = cookieHeader;
+        if (cur.meta?.cookieSiteSession) cur.meta.cookieSiteSession.cookie = cookieHeader;
+        cur.updatedAt = new Date().toISOString();
+      });
+      log?.('Cookie 罐已补齐回写');
+    },
   };
 }

@@ -280,7 +280,7 @@ const PRODUCTS = {
     // 本机导入（解密客户端 auth.json）/ 扫码登录（纯 HTTP 二维码）/ 网页会话捕获（登录窗）。
     // 「签到」= 调控制台 loginBonus 领取每日登录赠送积分；验证 = user/info 取 bceUserId 身份。
     // 同步到 10Router 时直接作为 dumate 渠道的 apiKey 消费。
-    checkin: (account) => checkinDumate(account),
+    checkin: (account, ctx) => checkinDumate(account, ctx),
     quota: (account) => fetchDumateQuota(account),
     verify: async (account) => {
       const { fetchDumateIdentity } = await import('./dumateClient.js');

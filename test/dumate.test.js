@@ -101,6 +101,42 @@ test('DuMate 每日登录积分签到：成功领取', async () => {
   assert.match(r.message, /已领取今日登录/);
 });
 
+test('DuMate 签到：罐里缺 bce-user-info → heal 补齐并回写账号库（persistCookieJar）', async () => {
+  const saved = [];
+  const healRes = res(200, { code: 0, success: true, result: { token: 'gw-heal', expired_at: '2026-11-16T05:16:00Z' } });
+  healRes.headers = { getSetCookie: () => ['bce-login-accountid=12345', 'bce-login-display-name=dumate-user', 'bce-device-token=dev-1'] };
+  const mockFetch = async (url, init) => {
+    if (url === DUMATE_TOKEN_URL) {
+      assert.equal(init.method, 'GET');
+      return healRes;
+    }
+    if (url === DUMATE_LOGIN_BONUS_URL) {
+      // heal 后的罐必须带上 bce-user-info（csrftoken 源）才能过领取接口
+      assert.ok(init.headers.Cookie.includes('bce-user-info=12345'), 'heal 后的罐缺 bce-user-info');
+      assert.ok(init.headers.csrftoken, 'heal 后应有 csrftoken');
+      return res(200, { code: 0, success: true, result: true });
+    }
+    throw new Error('unexpected url');
+  };
+
+  const account = { meta: { cookieSiteSession: { cookie: 'BDUSS=x; bce-sessionid=y' } } };
+  const r = await checkinDumate(account, { fetchImpl: mockFetch, sleep: async () => {}, persistCookieJar: async (h) => saved.push(h) });
+  assert.equal(r.status, 'checked-in');
+  assert.equal(saved.length, 1, 'heal 出的完整罐应回写一次');
+  assert.match(saved[0], /bce-user-info=12345/);
+
+  // 无 persistCookieJar 钩子时不回写（对外接口不强加依赖）
+  const saved2 = [];
+  const f2 = mockFetch;
+  const mockNoPersist = async (url, init) => {
+    if (url === DUMATE_TOKEN_URL) return healRes;
+    if (url === DUMATE_LOGIN_BONUS_URL) return res(200, { code: 0, success: true, result: true });
+    throw new Error('unexpected url');
+  };
+  const r2 = await checkinDumate({ token: 'BDUSS=x; bce-sessionid=y' }, { fetchImpl: mockNoPersist, sleep: async () => {} });
+  assert.equal(r2.status, 'checked-in');
+});
+
 test('DuMate 本机凭据：AES-256-GCM（iv||tag||ct）解密 + 个人版过滤 + 导入形状', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dumate-local-'));
   const key = crypto.randomBytes(32);
