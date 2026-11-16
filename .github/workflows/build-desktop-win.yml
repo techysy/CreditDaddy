@@ -169,8 +169,7 @@ jobs:
           set -euo pipefail
           mkdir -p release-files
           cp desktop/dist/CreditDaddy-Win-Setup-*.exe release-files/
-          cp desktop/dist/CreditDaddy-Win-Portable-*.exe release-files/
-          # electron-updater 按 latest.yml 发现新版本（NSIS 自更新；Portable 不参与）
+          # electron-updater 按 latest.yml 发现新版本（NSIS 自更新）；便携版 1.8.0 起下线
           cp desktop/dist/latest.yml release-files/
           # #21 构建身份资产:同版本平局裁决的对照物(进口在 desktop checkFallbackSilently)
           node scripts/gen-build-info.js release-files/build-info.json
@@ -184,7 +183,7 @@ jobs:
           set -euo pipefail
           ls -lh release-files/
           N=$(ls release-files/*.exe release-files/*.yml release-files/SHA256SUMS-desktop.txt 2>/dev/null | wc -l)
-          [ "$N" -ge 4 ] || { echo "ERROR: expected >=4 files (2 exe + latest.yml + checksums), found $N"; exit 1; }
+          [ "$N" -ge 3 ] || { echo "ERROR: expected >=3 files (Setup exe + latest.yml + checksums), found $N"; exit 1; }
           gh release upload "${{ github.ref_name }}" \
             release-files/*.exe \
             release-files/latest.yml \
