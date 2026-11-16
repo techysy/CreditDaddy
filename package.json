@@ -27,7 +27,7 @@
     "release-check": "bash scripts/release-check.sh",
     "prepack": "node scripts/gen-build-info.js build.json"
   },
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "devDependencies": {
     "opencc-js": "1.4.2"
   }

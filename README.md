@@ -13,7 +13,7 @@
 [![Platform](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20fnOS-6b7280)](#下载)
 [![Platform](https://img.shields.io/badge/%E5%85%A8%E5%B9%B3%E5%8F%B0%20%E5%AE%89%E8%A3%85-npm%20i%20--g%20creditdaddy-cb3837?logo=npm&logoColor=white)](#下载)
 [![Node](https://img.shields.io/badge/Node.js-%E2%89%A5%2020-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
-[![License](https://img.shields.io/github/license/techysy/CreditDaddy?label=%E8%AE%B8%E5%8F%AF&color=f59e0b)](LICENSE)
+[![License](https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF-AGPL--3.0%20(v1.8.1%E8%B5%B7)-a3552d)](LICENSE)
 
 [下载](#下载) · [架构](#%EF%B8%8F-架构) · [功能](#功能) · [10Router 集成](#10router-集成) · [产品线说明](#产品线说明) · [快速开始](#快速开始) · [HTTP API](#本地-http-api) · [相关项目](#-相关项目) · [贡献者致谢](#-贡献者致谢) · [许可证](#-许可证)
 
@@ -58,6 +58,10 @@
 </picture>
 
 </div>
+
+> 🔒 **数据与隐私**：所有账号凭据、Cookie、Token 与状态数据**只存本机**（`~/.creditdaddy`，0600 权限 + 原子写 + 串行锁），**不上传、不外发、无遥测、无第三方依赖**。守护进程**仅监听 `127.0.0.1` 本机回环**，严格校验 Host 头防 DNS 重绑定、拦截跨站 Origin 杜绝 CSRF——面板即使开放到局域网也无法被外部利用。
+>
+> 本项目自 v1.8.1 起采用 **AGPL-3.0** 开源许可（v1.8.0 及更早版本维持 [MIT](https://github.com/techysy/CreditDaddy/blob/v1.8.0/LICENSE)，不可溯及）：源码完全开放，任何二次利用——包括以网络服务形态对外提供——都必须以同协议开源。这样选的根据不是「本地工具」而是**血缘**：签到能力移植自的 [10router](https://github.com/techysy/10router) 自 v1.8.1 起同为 AGPL-3.0，两个仓库的代码流是双向的（CD ← 10R 的 qoderCheckin 头构造与设备码登录、10R ← CD 的 Trae 签到链），同家族同协议后双向移植永远干净，无需逐笔核对作者与时间线的许可记账。MIT 时期的派生声明按其条款保留在 [LICENSE](LICENSE) 中，详见下方许可证段。
 
 ---
 
@@ -442,4 +446,9 @@ npm test
 
 ## 📄 许可证
 
-[MIT](LICENSE)
+**AGPL-3.0**（自 v1.8.1 起）— 本项目在 v1.8.0 及更早版本使用 [MIT](https://github.com/techysy/CreditDaddy/blob/v1.8.0/LICENSE)；自 v1.8.1 起改用 **GNU Affero General Public License v3.0**。
+
+- **为什么**：本仓库的大量实现（WorkBuddy / CatPaw / DuMate 扫码 / meoo OAuth / qoder 9074 风控等协议逆向与签到链路）是真机调试的成果。AGPL 要求任何二次利用——包括网络服务形态——必须同样开源，防止这些成果被闭源拿走；而已发布的 MIT 版本不受影响。这与 [10Router](https://github.com/techysy/10router) 的选择同步（其自 v1.8.1 起 AGPL-3.0）：两个仓库代码流双向（CD ← 10R 的 qoder 签到头与设备码登录、10R ← CD 的 Trae 签到链），同家族同协议让双向移植永远免许可记账。
+- **为什么不以「本地工具」为由留 MIT**：AGPL §13 对面板 / 守护进程 / 本机 HTTP API 照样有约束（网络交互须供源）——「仅监听 127.0.0.1 所以无触发面」的理由不成立，不再使用。真正的理由是上面的血缘与保护。
+- **方向不变**：[decolua/9router](https://github.com/decolua/9router) 为 MIT，吸收上游实现始终合法；本仓库 10R / 9R 派生部分（MIT 时期取得）的 MIT 声明按其条款保留在 [LICENSE](LICENSE) 中。
+- **边界**：日常使用、自部署完全不受影响——AGPL 只约束二次利用（含网络服务形态）须同协议开源。对完整 LICENSE 的任何疑问或商业授权需求，请提 issue。
