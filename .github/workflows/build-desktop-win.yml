@@ -44,7 +44,7 @@ jobs:
             echo "| 渠道 | 说明 |"
             echo "| --- | --- |"
             echo "| fnOS / NAS | \`CreditDaddy-FnOS-${VERSION}-x86.fpk\` / \`CreditDaddy-FnOS-${VERSION}-arm.fpk\`(新标签页)、\`CreditDaddy-FnOS-Window-${VERSION}-*.fpk\`(桌面多窗口),在飞牛应用中心安装 |"
-            echo "| Windows | \`CreditDaddy-Win-Setup-${VERSION}.exe\`(推荐,支持应用内检查更新)/ \`CreditDaddy-Win-Portable-${VERSION}.exe\`(免安装) |"
+            echo "| Windows | \`CreditDaddy-Win-Setup-${VERSION}.exe\`(推荐,支持应用内检查更新) |"
             echo "| macOS | \`CreditDaddy-Mac-Setup-${VERSION}-arm64.dmg\`(Apple 芯片)/ \`CreditDaddy-Mac-Setup-${VERSION}-x64.dmg\`(Intel),未公证,首次右键打开 |"
             echo "| npm CLI | \`npm i -g creditdaddy@${VERSION}\` |"
             echo
