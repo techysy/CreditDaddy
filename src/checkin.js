@@ -14,6 +14,7 @@ import { clearQuotaMark } from './zcodeGateway.js';
 import {
   autoClaimEnabled, autoClaimUntil, enableAutoClaimFor, setAutoClaimEnabled,
   claimIntervalMin, claimWindowMin,
+  dailyClaimPlan, markDailyClaimRan,
   warmZcodeAppVersion,
 } from './zcodeClient.js';
 import { warmWorkbuddyClientPath } from './workbuddyLocal.js';
@@ -66,8 +67,74 @@ export async function getSchedulerInfo() {
       nextTickAt: enabled ? zcodeNextTickAt : null,
       lastTick: zcodeLastTick,
       ticking: zcodeTicking,
+      dailyPlan: zcodeDailyPlanInfo(),
     },
   };
+}
+
+// ── ZCode 每日定时计划：每天 HH:MM 自动开启一轮「自动领取计划」窗口（issue: 用户要求 8 点定时轮询）──
+// 与手动「保存并启用」同一条链路（enableZcodeAutoClaimWindow），只是到点自动按下那个按钮。
+// 时钟独立于自动领取开关：即使当前窗口正在运行（或已手动关闭），时钟照走，次日照常触发。
+let dailyPlanTimerHandle = null;
+let dailyPlanNextAt = null;
+
+/** 本地日历日 key（防同日重触发；与签到业务日无关——计划锚的是用户挂机的本地时钟） */
+function localDayKey(nowMs = Date.now()) {
+  const d = new Date(nowMs);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** 距今天 HH:MM 的毫秒数（已过则取明天同一时刻） */
+function msUntilDailyPlanTime(nowMs = Date.now()) {
+  const { hour, minute } = dailyClaimPlan();
+  const d = new Date(nowMs);
+  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate(), hour, minute, 0, 0);
+  if (target.getTime() <= nowMs) target.setDate(target.getDate() + 1);
+  return target.getTime() - nowMs;
+}
+
+function zcodeDailyPlanInfo() {
+  const plan = dailyClaimPlan();
+  return { ...plan, nextRunAt: plan.enabled ? dailyPlanNextAt : null };
+}
+
+function clearDailyPlanTimers() {
+  if (dailyPlanTimerHandle) clearTimeout(dailyPlanTimerHandle);
+  dailyPlanTimerHandle = null;
+  dailyPlanNextAt = null;
+}
+
+/** 每日计划时钟：enabled 才排；到点时若本业务日还没跑过 → 拉起一轮窗口并记账。
+ *  时刻对不上（比如触发瞬间进程刚起）没关系——下一分钟重排永远兜得住。 */
+function syncDailyPlanScheduler() {
+  clearDailyPlanTimers();
+  if (!dailyClaimPlan().enabled) return;
+  const delay = Math.min(Math.max(msUntilDailyPlanTime(), 1000), 60 * 60 * 1000);
+  dailyPlanNextAt = new Date(Date.now() + delay).toISOString();
+  dailyPlanTimerHandle = setTimeout(() => {
+    dailyPlanTimerHandle = null;
+    dailyPlanNextAt = null;
+    try {
+      const plan = dailyClaimPlan();
+      const today = localDayKey();
+      const now = new Date();
+      const due = now.getHours() === plan.hour || (now.getHours() * 60 + now.getMinutes()) >= plan.hour * 60 + plan.minute;
+      if (due && plan.lastRunDay !== today) {
+        markDailyClaimRan(today);
+        enableZcodeAutoClaimWindow();
+        logger.info('ZCODE-CLAIM', '每日定时计划 {hh}:{mm} 触发——自动领取窗口已开启（周期 {iv} 分钟，{win}）', { hh: String(plan.hour).padStart(2, '0'), mm: String(plan.minute).padStart(2, '0'), iv: claimIntervalMin(), win: claimWindowMin() > 0 ? '运行 ' + claimWindowMin() + ' 分钟' : '一直运行' });
+      }
+    } catch (err) {
+      logger.warn('ZCODE-CLAIM', '每日定时计划触发失败:{err}', { err: err?.message || err });
+    }
+    syncDailyPlanScheduler();
+  }, delay);
+  dailyPlanTimerHandle.unref?.();
+}
+
+/** 面板 / API 改了每日计划后重排（enableZcodeAutoClaimWindow 同款对外入口）。 */
+export function refreshZcodeDailyPlan() {
+  syncDailyPlanScheduler();
 }
 
 /** 签到业务日。Qoder 以 10:00 (UTC+8) 为界，其余产品以 00:00 (UTC+8) 为界；默认 Qoder 口径（/api/status 展示用）。 */
@@ -157,7 +224,7 @@ function syncZcodeScheduler(startFresh = false) {
   }
 }
 
-function runZcodeTick(accountIds, { force = false } = {}) {
+function runZcodeTick(accountIds, { force = false, manual = false } = {}) {
   const run = zcodeQueue.then(async () => {
     if (!force && !autoClaimEnabled()) return { results: [], summary: 'ZCode 自动领取已关闭' };
     zcodeTicking = true;
@@ -170,7 +237,7 @@ function runZcodeTick(accountIds, { force = false } = {}) {
         if (!force && !autoClaimEnabled()) break;
         const label = account.name || account.uid || account.id;
         try {
-          const outcome = await zcodeAutoClaim(account);
+          const outcome = await zcodeAutoClaim(account, { source: manual ? 'manual' : 'auto' });
           if (!outcome) continue;
           if (outcome.status === 'checked-in' || outcome.status === 'partial') {
             claimedIds.push(account.id);
@@ -205,8 +272,11 @@ function runZcodeTick(accountIds, { force = false } = {}) {
 }
 
 /** 手动触发一次 ZCode 资格轮询（面板单账号 / 全部领取走这里），与定时轮共用同一队列；手动轮不受开关限制。 */
+/** 手动轮（用户点卡片「立即领取」/「领取全部 ZCode」）：source='manual' 绕过暂休窗口——
+ *  1005 额满暂休与验证码退避只保护自动轮不空打，不该挡用户的手（手动被静默吞掉、
+ *  连结果都不给，比多打一次 claim 更伤信任；2026-11-17 用户实测反馈）。 */
 export function pollZcodeNow(accountIds) {
-  return runZcodeTick(accountIds && accountIds.length ? new Set(accountIds) : null, { force: true });
+  return runZcodeTick(accountIds && accountIds.length ? new Set(accountIds) : null, { force: true, manual: true });
 }
 
 async function getDoneMap(state) {
@@ -398,6 +468,8 @@ export async function startScheduler() {
     logger.info('CHECKIN', '自动签到已关闭（面板设置可开启）');
   }
   syncZcodeScheduler();
+  // 每日定时计划时钟：enabled 时到点自动拉起一轮领取窗口（重启后从 zcode-net.json 恢复）
+  syncDailyPlanScheduler();
 }
 
 /** 面板修改全局自动签到开关 / 频率后重同步（daemon PUT /api/settings 调用）。 */
@@ -412,6 +484,7 @@ export function stopScheduler() {
   timerHandle = null;
   nextTickAt = null;
   clearZcodeTimers();
+  clearDailyPlanTimers();
 }
 
 

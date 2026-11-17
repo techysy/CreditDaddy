@@ -100,14 +100,27 @@ function netPref() {
       autoClaimUntil: Number.isFinite(j.autoClaimUntil) ? j.autoClaimUntil : null,
       claimIntervalMin: Number.isFinite(j.claimIntervalMin) ? Number(j.claimIntervalMin) : null,
       claimWindowMin: Number.isFinite(j.claimWindowMin) ? Number(j.claimWindowMin) : null,
+      dailyPlanEnabled: j.dailyPlan?.enabled === true,
+      dailyPlanHour: Number.isFinite(j.dailyPlan?.hour) ? Math.round(j.dailyPlan.hour) : null,
+      dailyPlanMinute: Number.isFinite(j.dailyPlan?.minute) ? Math.round(j.dailyPlan.minute) : null,
+      dailyPlanLastDay: typeof j.dailyPlan?.lastRunDay === 'string' ? j.dailyPlan.lastRunDay : null,
     };
-  } catch { netPrefCache = { proxyFirst: false, proxyUrl: null, autoClaim: false, autoClaimUntil: null, claimIntervalMin: null, claimWindowMin: null }; }
+  } catch { netPrefCache = { proxyFirst: false, proxyUrl: null, autoClaim: false, autoClaimUntil: null, claimIntervalMin: null, claimWindowMin: null, dailyPlanEnabled: false, dailyPlanHour: null, dailyPlanMinute: null, dailyPlanLastDay: null }; }
   return netPrefCache;
 }
 function writeNetPref(p) {
   netPrefCache = p;
   fs.mkdirSync(codeHome(), { recursive: true, mode: 0o700 });
-  fs.writeFileSync(NET_PREFS_FILE(), JSON.stringify({ proxyFirst: p.proxyFirst, proxyUrl: p.proxyUrl, autoClaim: p.autoClaim, autoClaimUntil: p.autoClaimUntil || null, claimIntervalMin: p.claimIntervalMin ?? null, claimWindowMin: p.claimWindowMin ?? null }, null, 2), { mode: 0o600 });
+  fs.writeFileSync(NET_PREFS_FILE(), JSON.stringify({
+    proxyFirst: p.proxyFirst, proxyUrl: p.proxyUrl, autoClaim: p.autoClaim, autoClaimUntil: p.autoClaimUntil || null,
+    claimIntervalMin: p.claimIntervalMin ?? null, claimWindowMin: p.claimWindowMin ?? null,
+    dailyPlan: {
+      enabled: p.dailyPlanEnabled === true,
+      hour: p.dailyPlanHour ?? 8,
+      minute: p.dailyPlanMinute ?? 0,
+      lastRunDay: p.dailyPlanLastDay || null,
+    },
+  }, null, 2), { mode: 0o600 });
 }
 export function proxyFirst() { return netPref().proxyFirst; }
 export function proxyUrl() { return netPref().proxyUrl; }
@@ -157,6 +170,46 @@ export function setClaimWindowMin(v) {
   const n = Math.round(Number(v));
   if (!Number.isFinite(n) || n < 0 || n > 1440 || (n > 0 && n < 5)) throw new Error('运行时长需为 0（一直运行）或 5–1440 分钟');
   writeNetPref({ ...netPref(), claimWindowMin: n });
+}
+
+// ── 每日定时计划：每天 HH:MM 到点自动开启一轮「自动领取计划」窗口（复用轮询周期/运行时长）──
+// 动机：活动包由服务端在每日 0 点左右刷新放出，用户想让机器在每天早上 8 点自动开始轮询，
+// 而不是每天手动点一次「保存并启用」。计划本身落 zcode-net.json（0600），重启后仍生效。
+// 防重跑：lastRunDay 记业务日（本地日历日），一天只触发一次；手动停用不受影响——
+// 计划到点会重新拉起窗口，用户手动关掉的是「这一轮」，第二天计划照常。
+
+/** 每日计划配置。hour 0–23（默认 8），minute 0–59（默认 0）；enabled 默认关 */
+export function dailyClaimPlan() {
+  const p = netPref();
+  const hour = Number.isFinite(p.dailyPlanHour) && p.dailyPlanHour >= 0 && p.dailyPlanHour <= 23 ? p.dailyPlanHour : 8;
+  const minute = Number.isFinite(p.dailyPlanMinute) && p.dailyPlanMinute >= 0 && p.dailyPlanMinute <= 59 ? p.dailyPlanMinute : 0;
+  return { enabled: p.dailyPlanEnabled === true, hour, minute, lastRunDay: p.dailyPlanLastDay };
+}
+export function setDailyClaimPlan({ enabled, hour, minute } = {}) {
+  const cur = dailyClaimPlan();
+  let h = cur.hour;
+  let m = cur.minute;
+  if (hour !== undefined) {
+    const n = Math.round(Number(hour));
+    if (!Number.isFinite(n) || n < 0 || n > 23) throw new Error('计划时间的小时需在 0–23 之间');
+    h = n;
+  }
+  if (minute !== undefined) {
+    const n = Math.round(Number(minute));
+    if (!Number.isFinite(n) || n < 0 || n > 59) throw new Error('计划时间的分钟需在 0–59 之间');
+    m = n;
+  }
+  writeNetPref({
+    ...netPref(),
+    dailyPlanEnabled: enabled !== undefined ? enabled === true : cur.enabled,
+    dailyPlanHour: h,
+    dailyPlanMinute: m,
+    dailyPlanLastDay: cur.lastRunDay,
+  });
+}
+/** 记录「业务日 <day> 已按计划跑过」（防同日重触发；重启后状态仍在文件里） */
+export function markDailyClaimRan(day) {
+  writeNetPref({ ...netPref(), dailyPlanLastDay: String(day || '') });
 }
 export function setProxyFirst(v) { writeNetPref({ ...netPref(), proxyFirst: v === true }); }
 export function setProxyUrl(u) {

@@ -204,3 +204,37 @@ test('fetchJsonRace：NO_PROXY 命中与 loopback 不走代理；都失败时抛
     assert.deepEqual(log, ['direct'], 'loopback 不尝试代理');
   } finally { restore(); }
 });
+
+// ── 每日定时计划（enabled/hour/minute + lastRunDay 防重跑）──
+
+test('dailyClaimPlan：默认关、8:00；setDailyClaimPlan 校验范围并落盘；markDailyClaimRan 记业务日', () => {
+  const plan0 = zc.dailyClaimPlan();
+  assert.equal(plan0.enabled, false);
+  assert.equal(plan0.hour, 8);
+  assert.equal(plan0.minute, 0);
+
+  zc.setDailyClaimPlan({ enabled: true, hour: 8, minute: 30 });
+  let plan = zc.dailyClaimPlan();
+  assert.deepEqual({ enabled: plan.enabled, hour: plan.hour, minute: plan.minute }, { enabled: true, hour: 8, minute: 30 });
+
+  // 范围校验
+  assert.throws(() => zc.setDailyClaimPlan({ hour: 24 }), /0–23/);
+  assert.throws(() => zc.setDailyClaimPlan({ hour: -1 }), /0–23/);
+  assert.throws(() => zc.setDailyClaimPlan({ minute: 60 }), /0–59/);
+  // 部分更新：只改 minute 不动 hour/enabled
+  zc.setDailyClaimPlan({ minute: 15 });
+  plan = zc.dailyClaimPlan();
+  assert.equal(plan.hour, 8);
+  assert.equal(plan.minute, 15);
+  assert.equal(plan.enabled, true);
+
+  // 防重跑记账落盘（重启后可读回）
+  zc.markDailyClaimRan('2026-11-16');
+  assert.equal(zc.dailyClaimPlan().lastRunDay, '2026-11-16');
+  const onDisk = JSON.parse(fs.readFileSync(path.join(process.env.CREDITDADDY_HOME, 'zcode-net.json'), 'utf8'));
+  assert.deepEqual(onDisk.dailyPlan, { enabled: true, hour: 8, minute: 15, lastRunDay: '2026-11-16' });
+
+  // 收尾：关掉计划，不影响别的用例
+  zc.setDailyClaimPlan({ enabled: false });
+  assert.equal(zc.dailyClaimPlan().enabled, false);
+});

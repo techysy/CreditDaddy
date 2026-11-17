@@ -71,10 +71,20 @@ import { liveToAccount as loomyLiveAccount, hardSwitchLoomy, currentLoomyUid, de
 import { liveToAccount as dumateLiveAccount, detectDumate, readDumateCredential, hardSwitchDumate } from './dumateLocal.js';
 import * as minimaxGateway from './minimaxGateway.js';
 import * as traeGateway from './traeGateway.js';
-import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl, autoClaimEnabled, autoClaimUntil, setAutoClaimEnabled, claimIntervalMin, setClaimIntervalMin, claimWindowMin, setClaimWindowMin } from './zcodeClient.js';
+import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl, autoClaimEnabled, autoClaimUntil, setAutoClaimEnabled, claimIntervalMin, setClaimIntervalMin, claimWindowMin, setClaimWindowMin, dailyClaimPlan, setDailyClaimPlan } from './zcodeClient.js';
 import { exportAccounts, buildExportPayload, parseImport, TransferError } from './transfer.js';
 import { syncAccountsTo10r } from './tenrouterAccounts.js';
-import { runCheckinTick, getSchedulerInfo, dayKey, enableZcodeAutoClaimWindow, refreshZcodeScheduler, pollZcodeNow, resyncAutoCheckinScheduler } from './checkin.js';
+import { runCheckinTick, getSchedulerInfo, dayKey, enableZcodeAutoClaimWindow, refreshZcodeScheduler, refreshZcodeDailyPlan, pollZcodeNow, resyncAutoCheckinScheduler } from './checkin.js';
+/** 每日定时计划的对外形状（GET/PUT /api/zcode/net 都回它；nextRunAt 由 checkin.js 时钟维护） */
+const getSchedulerDailyPlan = () => {
+  const plan = dailyClaimPlan();
+  return { ...plan, nextRunAt: plan.enabled ? getSchedulerInfoZcodeDailyNext() : null };
+};
+/** 从调度器状态里取 nextRunAt（避免 checkin.js 再出一个只读 getter） */
+let schedulerInfoCache = null;
+function getSchedulerInfoZcodeDailyNext() {
+  return schedulerInfoCache?.zcode?.dailyPlan?.nextRunAt || null;
+}
 import { detectQoderApps, readQoderAppAccounts, riskIdentityAvailable, riskIdentitySource, switchTo as qoderSwitchTo, qoderRunningCached, terminateQoder } from './qoderApp.js';
 import { umidInfo, installUmid } from './qoderUmid.js';
 import * as tenrouter from './tenrouter.js';
@@ -1094,6 +1104,7 @@ async function handleApi(req, res, url) {
       proxyFirst: proxyFirst(), proxyUrlMasked: masked,
       autoClaim: ac, autoClaimUntil: ac ? autoClaimUntil() : null,
       claimIntervalMin: claimIntervalMin(), claimWindowMin: claimWindowMin(),
+      dailyPlan: getSchedulerDailyPlan(),
       hasEnvProxy: Boolean(process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy),
     });
   }
@@ -1106,9 +1117,25 @@ async function handleApi(req, res, url) {
       if (body?.claimIntervalMin !== undefined) setClaimIntervalMin(body.claimIntervalMin);
       if (body?.claimWindowMin !== undefined) setClaimWindowMin(body.claimWindowMin);
       if (body?.claimIntervalMin !== undefined || body?.claimWindowMin !== undefined) refreshZcodeScheduler();
+      // 每日定时计划（enabled / hour / minute）：落 zcode-net.json，时钟独立重排
+      if (body?.dailyPlan !== undefined && typeof body.dailyPlan === 'object') {
+        setDailyClaimPlan(body.dailyPlan);
+        refreshZcodeDailyPlan();
+      }
       if (body?.autoClaim !== undefined) {
         if (body.autoClaim === true) enableZcodeAutoClaimWindow();       // 开 = 按「自动领取计划」启动（2 分钟后首轮）
-        else { setAutoClaimEnabled(false); refreshZcodeScheduler(); }    // 关 = 立即停表
+        else {
+          // 关 = 立即停表。用户手动停用的意图是「别再撞了」（2026-11-17 实测：账号无法
+          // 领取还在被每日计划反复拉起撞接口）——同一次请求里没有显式重开计划时，
+          // 把每日定时计划一并关掉；明天要继续就再到弹窗里勾上，不搞隔夜复活。
+          setAutoClaimEnabled(false);
+          refreshZcodeScheduler();
+          if (body?.dailyPlan === undefined && dailyClaimPlan().enabled) {
+            setDailyClaimPlan({ enabled: false });
+            refreshZcodeDailyPlan();
+            logger.info('DAEMON', 'ZCode 每日定时计划已随手动停用一并关闭（防隔夜复活继续撞接口）', {});
+          }
+        }
       }
     } catch (e) { return json(res, 400, { error: e.message }); }
     const ac = autoClaimEnabled();
@@ -1116,6 +1143,7 @@ async function handleApi(req, res, url) {
     return json(res, 200, {
       proxyFirst: proxyFirst(), autoClaim: ac, autoClaimUntil: ac ? autoClaimUntil() : null,
       claimIntervalMin: claimIntervalMin(), claimWindowMin: claimWindowMin(),
+      dailyPlan: getSchedulerDailyPlan(),
     });
   }
 
@@ -2312,7 +2340,7 @@ async function handleApi(req, res, url) {
         meoo: dayKey(Date.now(), 'meoo'),       // Meoo 首登积分线：同为 0 点翻日
         dumate: dayKey(Date.now(), 'dumate'),   // DuMate 每日登录赠送积分：0 点翻日
       },
-      scheduler: await getSchedulerInfo(),
+      scheduler: (schedulerInfoCache = await getSchedulerInfo()),
       riskIdentity: riskIdentityAvailable(),
       riskSource: riskIdentitySource(),
       umid: umidInfo(),
