@@ -1015,6 +1015,22 @@
     <div class="modal-actions"><button class="btn" data-close>取消</button><button class="btn" id="dlg-alt" style="display:none">备选</button><button class="btn primary" id="dlg-ok" data-i18n="确定">确定</button></div>
   </div>
 </div>
+<!-- 会话池（网页会话站点的多登录槽管理） -->
+<div class="mask" id="m-pool">
+  <div class="modal sm">
+    <div class="modal-title"><span id="pool-title"></span><button class="close" data-close>✕</button></div>
+    <div id="pool-body" style="display:grid;gap:8px;max-height:70vh;overflow:auto;margin-top:8px"></div>
+    <div class="modal-actions"><button class="btn" data-close data-i18n="关闭">关闭</button></div>
+  </div>
+</div>
+<!-- 选择会话（「网页版」在多槽在用时先弹：Chrome 启动选账号式） -->
+<div class="mask" id="m-pick">
+  <div class="modal sm">
+    <div class="modal-title"><span id="pick-title"></span><button class="close" data-close>✕</button></div>
+    <div id="pick-body" style="display:grid;gap:8px;margin-top:8px"></div>
+    <div class="modal-actions"><button class="btn" id="pick-manage" data-i18n="管理会话池">管理会话池</button><button class="btn" data-close data-i18n="取消">取消</button></div>
+  </div>
+</div>
 
 <!-- Loomy 我的邀请码 -->
 <div class="mask" id="m-my-invite">
@@ -1038,7 +1054,15 @@
       <label data-i18n="单次运行时长（分钟，0 = 一直运行直到手动关闭）">单次运行时长（分钟，0 = 一直运行直到手动关闭）</label>
       <input class="input" id="zac-window" type="number" min="0" max="1440" step="5">
     </div>
-    <div class="hint" data-i18n="开启后按此周期检查活动资格并自动领取（首次检查在开启 2 分钟后开始）。活动包由服务端在每日 0 点左右刷新放出——若运行时段没有覆盖 0 点，会错过当次领取，建议把运行时长设为 0，或让时段跨过 0 点。需要验证码时无法自动通过，卡片上会提示手动领取。">开启后按此周期检查活动资格并自动领取（首次检查在开启 2 分钟后开始）。活动包由服务端在每日 0 点左右刷新放出——若运行时段没有覆盖 0 点，会错过当次领取，建议把运行时长设为 0，或让时段跨过 0 点。需要验证码时无法自动通过，卡片上会提示手动领取。</div>
+    <div class="field">
+      <label class="check"><input type="checkbox" id="zac-daily-on"> <span data-i18n="每日定时开启（到点自动开始一轮上面的轮询）">每日定时开启（到点自动开始一轮上面的轮询）</span></label>
+      <div id="zac-daily-fields" style="display:flex;gap:8px;align-items:center;margin-top:6px">
+        <span class="dim" style="font-size:12px;flex:none" data-i18n="每天">每天</span>
+        <input class="input" id="zac-daily-time" type="time" style="width:120px">
+        <span class="dim" id="zac-daily-state" style="font-size:11.5px"></span>
+      </div>
+    </div>
+    <div class="hint" data-i18n="开启后按此周期检查活动资格并自动领取（首次检查在开启 2 分钟后开始）。活动包由服务端在每日 0 点左右刷新放出——若运行时段没有覆盖 0 点，会错过当次领取，建议把运行时长设为 0，或让时段跨过 0 点，或用「每日定时开启」每天固定时刻拉起一轮。需要验证码时无法自动通过，卡片上会提示手动领取。">开启后按此周期检查活动资格并自动领取（首次检查在开启 2 分钟后开始）。活动包由服务端在每日 0 点左右刷新放出——若运行时段没有覆盖 0 点，会错过当次领取，建议把运行时长设为 0，或让时段跨过 0 点，或用「每日定时开启」每天固定时刻拉起一轮。需要验证码时无法自动通过，卡片上会提示手动领取。</div>
     <div class="modal-actions"><button class="btn" id="zac-off" style="display:none" data-i18n="停用">停用</button><button class="btn" data-close>取消</button><button class="btn primary" id="zac-ok" data-i18n="保存并启用">保存并启用</button></div>
   </div>
 </div>
@@ -2169,9 +2193,19 @@ function renderProd() {
   $('z-actions').style.display = prod === 'zcode' ? 'contents' : 'none';
   if (prod === 'zcode') {
     const acOn = state.zAutoClaim === true;
+    const dp = state.zDailyPlan || null;
+    const dpOn = dp && dp.enabled === true;
     const gwOn = state.zGateway === true;
-    $('zt-ac').innerHTML = dot(acOn) + T('自动领取');
-    $('zt-ac').title = acOn ? T('自动领取运行中——点我调整轮询周期 / 运行时长') : T('自动领取已关闭——点我设置轮询周期与运行时长并开启');
+    // 状态灯双源：运行窗口（zAutoClaim）或每日计划已排（dpOn）都点亮——
+    // 「保存并启用」后窗口 60 分钟就到期熄灯，但计划还挂着；只有灯不反映它，用户无法分辨
+    // 复选框是否生效（2026-11-17 实测反馈）。计划带下次触发时刻进 tooltip。
+    const dpText = dpOn
+      ? T('；每日 ') + String(dp.hour).padStart(2, '0') + ':' + String(dp.minute).padStart(2, '0') + T(' 定时开启一轮') + (dp.nextRunAt ? T('（下次 ') + esc(String(dp.nextRunAt).slice(5, 16).replace('T', ' ')) + T('）') : '')
+      : '';
+    $('zt-ac').innerHTML = dot(acOn || dpOn) + T('自动领取');
+    $('zt-ac').title = acOn ? T('自动领取运行中') + dpText + T('——点我调整轮询周期 / 运行时长')
+      : dpOn ? T('自动领取当前关闭，每日定时计划已排') + dpText + T('——点我调整')
+      : T('自动领取已关闭——点我设置轮询周期与运行时长并开启');
     $('zt-gw').innerHTML = dot(gwOn) + T('接口') + (gwOn && state.zGatewayLan === true ? T('·局域网') : '');
     $('zt-gw').title = T('体验包接口：开关、局域网开放与 IP 白名单');
     const zc = (state.status && state.status.zcodeClient) || {};
@@ -2471,8 +2505,20 @@ function renderStatus() {
     const ac = state.zAutoClaim === true;
     const ziv = state.zClaimIntervalMin || 2;
     const zwin = state.zClaimWindowMin === 0 ? 0 : (state.zClaimWindowMin || 60);
+    const dp = state.zDailyPlan || null;
+    const dpOn = dp && dp.enabled === true;
+    // 每日计划状态进横幅：nextRunAt 直读 scheduler（30s 轮询刷新），保存后立刻可见
+    const schZc = (s.scheduler && s.scheduler.zcode) || {};
+    const schDp = schZc.dailyPlan || dp || {};
+    const dpText = (dpOn || schDp.enabled === true)
+      ? T('；每日 ') + String(schDp.hour ?? 8).padStart(2, '0') + ':' + String(schDp.minute ?? 0).padStart(2, '0') + T(' 定时开启一轮')
+        + (schDp.nextRunAt ? T('，下次 ') + esc(String(schDp.nextRunAt).slice(5, 16).replace('T', ' ')) : '')
+      : '';
     n.innerHTML = T('<div class="z-row"><span class="z-label">活动领取</span><span class="z-text">活动包积分，每日 0 点左右刷新（无每日签到）。自动领取')
-      + (ac ? T('每 ') + ziv + T(' 分钟检查资格') + (zwin > 0 ? T('，本次运行 ') + zwin + T(' 分钟') : T('，持续运行')) : T('未开启（右上角设置轮询计划）'))
+      + (ac ? T('每 ') + ziv + T(' 分钟检查资格') + (zwin > 0 ? T('，本次运行 ') + zwin + T(' 分钟') : T('，持续运行')) : T('未开启'))
+      + dpText
+      + (!ac && dpOn ? T('（计划到点自动拉起；手动停用会连计划一起关）') : '')
+      + (ac || dpOn ? '' : T('（右上角设置轮询计划）'))
       + T('；礼物图标 = 手动临时领。</span></div>');
   } else if (state.view === 'workbuddy' && s.workbuddyClient && s.workbuddyClient.installed === false) {
     // WorkBuddy 客户端未安装：切换线是死路（写凭据没人应用），进页就明说而不是切了才失败
@@ -2643,9 +2689,18 @@ document.addEventListener('click', async (e) => {
     return;
   }
   if (e.target.closest('#zt-ac')) {
-    // 自动领取计划弹窗：周期 / 运行时长由用户决定
+    // 自动领取计划弹窗：周期 / 运行时长 / 每日定时计划由用户决定
     $('zac-interval').value = state.zClaimIntervalMin || 2;
     $('zac-window').value = state.zClaimWindowMin === 0 ? 0 : (state.zClaimWindowMin || 60);
+    const dp = state.zDailyPlan || {};
+    $('zac-daily-on').checked = dp.enabled === true;
+    $('zac-daily-time').value = String(dp.hour ?? 8).padStart(2, '0') + ':' + String(dp.minute ?? 0).padStart(2, '0');
+    // 计划当前态直读 scheduler（nextRunAt 是时钟实排的，state.zDailyPlan 可能滞后 30s 轮询）
+    const schDp = ((state.status && state.status.scheduler && state.status.scheduler.zcode) || {}).dailyPlan || dp;
+    $('zac-daily-state').textContent = schDp.enabled === true
+      ? (schDp.nextRunAt ? T('已排 · 下次 ') + String(schDp.nextRunAt).slice(5, 16).replace('T', ' ') : T('已排'))
+      : T('未排');
+    syncZacDailyFields();
     $('zac-off').style.display = state.zAutoClaim === true ? '' : 'none';
     $('zac-ok').textContent = state.zAutoClaim === true ? T('保存') : T('保存并启用');
     openModal('m-zac');
@@ -2675,6 +2730,7 @@ async function loadZNet() {
     state.zAutoClaim = d.autoClaim === true;
     state.zClaimIntervalMin = d.claimIntervalMin;
     state.zClaimWindowMin = d.claimWindowMin;
+    state.zDailyPlan = d.dailyPlan || null;
     state.zHasEnvProxy = d.hasEnvProxy === true;
     if (state.view === 'zcode') { renderStatus(); render(); }
   } catch (e) {}
@@ -3049,20 +3105,22 @@ function renderFreePool() {
     const btn = siteDisabled
       ? T('<button class="btn" disabled title="网页 cookie 无法参与该站活动（活动校验客户端环境）">网页版（暂不可用）</button>')
       : canCapture
-        ? '<button class="btn primary" data-capture-site="' + esc(site.id) + '">' + I.plus + T('网页版') + '</button>'
+        ? '<button class="btn primary" data-capture-site="' + esc(site.id) + '" title="' + T('多槽在用时先弹「选择会话」；单槽直接用已存会话开窗（有会话直接进控制台，没有则先登录）') + '">' + I.plus + T('网页版') + '</button>'
         : T('<button class="btn" disabled title="需要桌面版 CreditDaddy(无痕登录窗)">网页版</button>');
     // 「粘贴捕获」：部分站点（小米账号 SSO）登录态挂设备指纹，CD 无痕窗也会被静默 SSO
     // 拉回同一账号——多号并存走系统浏览器登录新号后手动粘 cookie（不依赖登录窗）。
     const pasteBtn = ' <button class="btn" data-paste-capture="' + esc(site.id) + '" title="' + T('在其他浏览器登录该站点后，把会话 cookie 粘贴进来捕获（多账号并存的可靠路径）') + '">' + T('粘贴捕获') + '</button>';
-    // 「清除已存会话」：登录窗是持久分区（本机留存登录态，换号/多账号时需要清除）——
-    // 桌面版环境下始终出示，方便用户即使未捕获成功（如登录了一半或被卡在旧态）也能重置。
-    const clearBtn = canCapture
-      ? ' <button class="btn" data-clear-session="' + esc(site.id) + '" title="' + T('抹掉本机为该站点留存的登录会话（下次捕获需要重新登录）') + '">' + T('清除已存会话') + '</button>'
+    // 「会话池」：Chrome 多 profile 式登录槽管理——同一站点最多 9 个独立持久登录分区，
+    // 每槽可登录不同账号并排养号（换号 = 选另一槽开窗，不再来回清除登录态）。
+    // 原「清除已存会话」收进池子（每槽单独清），主行不再占一个按钮位。
+    const poolBtn = canCapture
+      ? ' <button class="btn" data-session-pool="' + esc(site.id) + '" title="' + T('管理该站点的登录会话池：多槽各自登录不同账号、改名备注或清除') + '">' + T('会话池') + '</button>'
       : '';
     // 站点级红字警示（site.warnHtml，站点配置声明、此处统一渲染）：
     // 用于「接入该站点有工具之外的代价」这类必须前置告知的情况（如注册新号可能被电话推广）
     const warn = site.warnHtml ? '<div style="margin:2px 0 6px;font-size:12px;font-weight:600;color:var(--danger,#e5484d)">' + site.warnHtml + '</div>' : '';
-    const hint = site.hint ? '<div class="hint" style="margin:2px 0 6px">' + esc(T(site.hint)) + '</div>' : '';
+    // hint 两行截断（-webkit-line-clamp）：翻译后仍可能溢出的兜底，悬浮 title 看全量
+    const hint = site.hint ? '<div class="hint" style="margin:2px 0 6px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;cursor:default" title="' + esc(T(site.hint)) + '">' + esc(T(site.hint)) + '</div>' : '';
 
     const fmtBalanceText = (acc) => {
       const v = acc.quota?.total
@@ -3161,9 +3219,14 @@ function renderFreePool() {
           // 手动/自动签到的结果都落到卡片行上，不只靠转瞬即逝的 toast
           const accFull = state.accounts.find((x) => x.id === acc.id);
           const st = accFull && FREE_CHECKIN_SITES.has(site.id) ? statusOf(accFull) : null;
-          const stBadgeHtml = st && st.text
-            ? '<span class="pill ' + st.cls + '" title="' + esc((accFull.lastResult ? fmtTime(accFull.lastResult.at) + ' · ' : '') + (st.msg || accFull.lastResult?.message || st.text)) + '">' + esc(st.text) + '</span>'
+          // 会话槽徽章（会话 N）：Chrome 多 profile 式多池——行上标明它来自哪个登录槽，
+          // 槽 1 不标（= 缺省存量行不添噪）
+          const slotHtml = Number(acc.cookieSlot) > 1
+            ? '<span class="pill" title="' + esc(T('此会话来自登录槽 {n}（独立的持久登录分区，与其它会话互不可见）', { n: acc.cookieSlot })) + '">' + T('会话 {n}', { n: acc.cookieSlot }) + '</span>'
             : '';
+          const stBadgeHtml = (st && st.text
+            ? '<span class="pill ' + st.cls + '" title="' + esc((accFull.lastResult ? fmtTime(accFull.lastResult.at) + ' · ' : '') + (st.msg || accFull.lastResult?.message || st.text)) + '">' + esc(st.text) + '</span>'
+            : '') + slotHtml;
           // 探活灯三态（meta.lastProbe）：无记录=绿（新捕获即探过）、warn=黄（探测失败）、
           // dead=红（会话失效需重捕）；tooltip 带失败原因与时间，鼠标悬停即可知病因
           const lp = acc.lastProbe;
@@ -3197,7 +3260,7 @@ function renderFreePool() {
       + '<span style="font-size:14px;font-weight:700">' + esc(site.label || site.name) + '</span>'
       + stateTxt
       + '</div>'
-      + '<div style="display:flex;align-items:center;gap:6px">' + btn + pasteBtn + clearBtn + eyeBtn + '</div>'
+      + '<div style="display:flex;align-items:center;gap:6px">' + btn + pasteBtn + poolBtn + eyeBtn + '</div>'
       + '</div>'
       + warn
       + hint
@@ -3226,10 +3289,11 @@ function renderCookieSites() {
       ? '<button class="btn" data-capture-site="' + esc(site.id) + '">' + T('网页版') + '</button>'
       : T('<button class="btn" disabled title="需要桌面版 CreditDaddy(无痕登录窗)">网页版</button>');
     const warn = site.warnHtml ? '<div style="font-size:12px;font-weight:600;color:var(--danger,#e5484d)">' + site.warnHtml + '</div>' : '';
-    const hint = site.hint ? T('<div class="hint">') + esc(site.hint) + '</div>' : '';
+    // hint 两行截断（同 renderFreePool）：悬浮 title 看全量
+    const hint = site.hint ? T('<div class="hint" style="display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;cursor:default" title="{t}">{t}</div>', { t: esc(site.hint) }) : '';
     const accRows = rows.map((acc) =>
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px">'
-      + '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(acc.name) + '">' + esc(acc.name) + '</span>'
+      + '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(acc.name) + '">' + esc(acc.name) + (Number(acc.cookieSlot) > 1 ? ' <span class="pill">' + T('会话 {n}', { n: acc.cookieSlot }) + '</span>' : '') + '</span>'
       + '<span class="dim" style="flex:none">' + (acc.capturedAt ? esc(fmtTime(acc.capturedAt)) : '–') + '</span></div>').join('');
     return '<div style="border:1px solid var(--border-subtle);border-radius:10px;padding:10px 12px;display:grid;gap:6px">'
       + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">'
@@ -3383,14 +3447,22 @@ async function trSyncAccountsFromModal() {
 }
 document.getElementById('m-am')?.addEventListener('click', (e) => {
   const b = e.target.closest && e.target.closest('[data-capture-site]');
-  if (b) cookieSiteCapture(b.dataset.captureSite);
+  // slot 传 0：cookieSiteCapture 内部判定「多槽在用 → 先弹选择会话；单槽直接开」
+  if (b) cookieSiteCapture(b.dataset.captureSite, 0);
 });
 $('view-free')?.addEventListener('click', (e) => {
   const b = e.target.closest && e.target.closest('[data-capture-site]');
-  if (b) { cookieSiteCapture(b.dataset.captureSite); return; }
+  if (b) { cookieSiteCapture(b.dataset.captureSite, 0); return; }
   const pb = e.target.closest && e.target.closest('[data-paste-capture]');
   if (pb) { cookieSitePasteCapture(pb.dataset.pasteCapture); return; }
-  // 「清除已存会话」：抹掉该站点持久登录分区（下次捕获需重新登录），二次确认防误触
+  // 「会话池」：Chrome 多 profile 式登录槽管理（每槽独立持久分区，可各自登录不同账号）
+  const pool = e.target.closest && e.target.closest('[data-session-pool]');
+  if (pool) {
+    renderSessionPool(pool.dataset.sessionPool);
+    openModal('m-pool');
+    return;
+  }
+  // 「清除已存会话」（账号管理弹窗里的网页会话行仍用）：抹掉该站点槽 1 的持久登录分区
   const clr = e.target.closest && e.target.closest('[data-clear-session]');
   if (clr) {
     const sid = clr.dataset.clearSession;
@@ -3482,13 +3554,140 @@ $('free-settings-push-now')?.addEventListener('click', async () => {
   btn.disabled = false;
 });
 
-async function cookieSiteCapture(siteId) {
+async function cookieSiteCapture(siteId, slot = 1) {
   const site = (state.cookieSites || []).find((x) => x.id === siteId);
   if (!site || !window.creditdaddy || typeof window.creditdaddy.openAuthWindow !== 'function') return;
-  // cookie-site 站点走持久登录分区：本窗登录一次，下一轮捕获/重探复用会话（免二次登录，
-  // 谷歌 SSO 场景免重复验证码）。若要换号，点卡片上的「清除已存会话」即可抹掉已存登录态重新登录。
-  const r = await window.creditdaddy.openAuthWindow(site.loginUrl, { persistKey: 'cookie-site-' + siteId });
+  // 多槽在用（>1 个槽有已捕获账号）→ 先弹「选择会话」（Chrome 启动选账号式）；单槽直接开
+  const used = [...cookieSiteSlotAccounts(siteId).keys()];
+  if (!slot && used.length > 1) return openSessionPicker(siteId);
+  // cookie-site 站点走持久登录分区（槽 1 = cookie-site-<id>，槽 N≥2 = cookie-site-<id>-sN）：
+  // 本窗登录一次，下一轮捕获/重探复用会话（免二次登录，谷歌 SSO 场景免重复验证码）。
+  // 每个槽是独立的持久分区——多槽各自登录不同账号即 Chrome 多 profile 式多池并存；
+  // 换号 = 选另一槽开窗。清除单个槽请用「会话池」。
+  const n = Number(slot) >= 1 && Number(slot) <= 9 ? Math.trunc(Number(slot)) : 1;
+  const persistKey = 'cookie-site-' + siteId + (n > 1 ? '-s' + n : '');
+  const r = await window.creditdaddy.openAuthWindow(site.loginUrl, { persistKey });
   if (!r || r.ok !== true) toast(T('打开登录窗口失败：') + ((r && r.error) || ''), false);
+}
+
+// 「选择会话」弹窗（Chrome 多 profile 启动式）：多槽在用时「网页版」先弹它——
+// 每个在用槽一行（槽号 + 该槽账号名），另有「新会话槽」与「管理会话池」两个次入口。
+let sessionPickerSite = null;
+function openSessionPicker(siteId) {
+  const site = (state.cookieSites || []).find((x) => x.id === siteId);
+  if (!site) return;
+  sessionPickerSite = siteId;
+  $('pick-title').textContent = T('选择{name}的会话', { name: site.label || site.name });
+  const body = $('pick-body');
+  const occupied = cookieSiteSlotAccounts(siteId);
+  const slots = [...occupied.keys()].sort((a, b) => a - b);
+  body.innerHTML = slots.map((s) => {
+    const rows = occupied.get(s) || [];
+    const names = rows.map((a) => a.name || '').filter(Boolean).join('、');
+    return '<button class="btn" data-pick-slot="' + s + '" style="width:100%;justify-content:flex-start;text-align:left;display:flex;align-items:center;gap:8px;padding:10px 12px">'
+      + '<span style="font-weight:700;flex:none">' + T('会话 {n}', { n: s }) + '</span>'
+      + '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" class="dim">' + esc(names || T('（无备注名）')) + '</span>'
+      + '</button>';
+  }).join('')
+    + '<button class="btn" data-pick-slot="0" style="width:100%;justify-content:flex-start;text-align:left;padding:10px 12px">' + T('用新会话槽登录…') + '</button>';
+  body.onclick = (e) => {
+    const b = e.target.closest && e.target.closest('[data-pick-slot]');
+    if (!b) return;
+    closeModal('m-pick');
+    const s = Number(b.dataset.pickSlot);
+    // 0 = 新槽：取第一个空槽（2 起找，9 满则提示走池子删槽腾位）
+    const n = s === 0
+      ? ([2, 3, 4, 5, 6, 7, 8, 9].find((k) => !occupied.has(k)) || null)
+      : s;
+    if (n === null) { toast(T('会话槽已满（1~9）——请到「会话池」清除不用的槽后再试'), false); return; }
+    cookieSiteCapture(siteId, n);
+  };
+  $('pick-manage').onclick = () => { closeModal('m-pick'); renderSessionPool(siteId); openModal('m-pool'); };
+  openModal('m-pick');
+}
+
+// ── 会话池（Chrome 多 profile 式登录槽管理）──
+// 每站点最多 9 个登录槽；每槽 = 一个独立持久 Chromium 分区（互不可见，各自养一个登录态）。
+// 槽内账号行显示备注名（池内改名 = 账号行备注名，meta.renamed 守卫既有口径）。
+function cookieSiteSlotAccounts(siteId) {
+  const site = (state.cookieSites || []).find((x) => x.id === siteId);
+  const map = new Map();   // slot → rows[]
+  for (const acc of site?.accounts || []) {
+    const s = Number(acc.cookieSlot) >= 1 && Number(acc.cookieSlot) <= 9 ? Math.trunc(Number(acc.cookieSlot)) : 1;
+    if (!map.has(s)) map.set(s, []);
+    map.get(s).push(acc);
+  }
+  return map;
+}
+async function renderSessionPool(siteId) {
+  const site = (state.cookieSites || []).find((x) => x.id === siteId);
+  if (!site) return;
+  const body = $('pool-body');
+  if (!body) return;
+  $('pool-title').textContent = T('{name} · 会话池', { name: site.label || site.name });
+  const occupied = cookieSiteSlotAccounts(siteId);
+  let html = '';
+  for (let s = 1; s <= 9; s++) {
+    const rows = occupied.get(s) || [];
+    const key = 'cookie-site-' + siteId + (s > 1 ? '-s' + s : '');
+    const accRow = rows.length
+      ? rows.map((a) => '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:2px 0">'
+        + '<span data-pool-rename="' + esc(a.id) + '" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" title="' + esc(T('点击修改备注名') + '：' + (a.name || '')) + '">' + esc(a.name) + '</span>'
+        + '<span class="dim" style="flex:none">' + (a.capturedAt ? esc(fmtTime(a.capturedAt)) : '–') + '</span></div>').join('')
+      : '';
+    html += '<div style="border:1px solid var(--border-subtle);border-radius:10px;padding:10px 12px;display:grid;gap:6px'
+      + (rows.length ? '' : ';opacity:.72') + '">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">'
+      + '<div style="display:flex;align-items:center;gap:8px;min-width:0">'
+      + '<span style="font-weight:700;font-size:13px">' + T('会话 {n}', { n: s }) + '</span>'
+      + (rows.length
+        ? '<span class="badge ok">' + T('{n} 个账号', { n: rows.length }) + '</span>'
+        : '<span class="badge limited">' + T('空') + '</span>')
+      + '</div>'
+      + '<div style="display:flex;align-items:center;gap:6px;flex:none">'
+      + '<button class="btn" data-pool-open="' + s + '">' + T(rows.length ? '打开登录' : '登录') + '</button>'
+      + (rows.length
+        ? '<button class="icon-btn" data-pool-clear="' + s + '" title="' + T('抹掉本会话槽留存的登录态（下次打开需重新登录；已捕获的账号数据不受影响）') + '">' + I.trash + '</button>'
+        : '')
+      + '</div></div>'
+      + (accRow || '<div class="hint" style="padding:2px 0">' + T('尚未使用——登录后本槽的会话与其它槽互不可见。') + '</div>')
+      + '</div>';
+  }
+  body.innerHTML = html
+    + '<div class="hint" style="margin-top:4px">' + T('每个「会话」是一个独立的持久登录分区（本机留存登录态）：把常用账号固定在会话 1、小号放会话 2…，换号时选对应槽「打开登录」即可直接进入控制台，无需反复登录。') + '</div>';
+  // 槽按钮事件（弹窗内容整体重渲，直接挂 body 上代理一次）
+  body.onclick = (e) => {
+    const open = e.target.closest && e.target.closest('[data-pool-open]');
+    if (open) { cookieSiteCapture(siteId, Number(open.dataset.poolOpen)); return; }
+    const clr = e.target.closest && e.target.closest('[data-pool-clear]');
+    if (clr) {
+      const s = Number(clr.dataset.poolClear);
+      uiConfirm(T('清除会话 {n} 在本机留存的登录态？已捕获的账号数据不受影响，仅该槽下次打开需要重新登录。', { n: s }), T('清除会话'), T('清除'))
+        .then(async (yes) => {
+          if (!yes) return;
+          const r = await window.creditdaddy.clearCookieSiteSession('cookie-site-' + siteId + (s > 1 ? '-s' + s : ''));
+          if (r && r.ok) toast(T('已清除会话 {n} 的登录态', { n: s }), true);
+          else toast(T('清除失败：') + ((r && r.error) || ''), false);
+        });
+      return;
+    }
+    const ren = e.target.closest && e.target.closest('[data-pool-rename]');
+    if (ren) { poolRenameAccount(siteId, ren.dataset.poolRename); }
+  };
+}
+// 池内改名：复用账号备注名通道（PATCH /api/accounts/:id，meta.renamed 守卫自动名覆盖）
+async function poolRenameAccount(siteId, accId) {
+  const a = (state.cookieSites || []).flatMap((x) => x.accounts || []).find((x) => x.id === accId)
+    || state.accounts.find((x) => x.id === accId);
+  const name = await uiPrompt(T('修改备注名'), (a && a.name) || '', { okText: T('保存') });
+  if (name === null) return;
+  try {
+    await api('/api/accounts/' + encodeURIComponent(accId), { method: 'PATCH', json: { name } });
+    await loadAccounts();
+    await loadCookieSites(true);
+    renderSessionPool(siteId);
+    if (state.view === 'free') renderFreePool();
+  } catch (err) { toast(err.message, false); }
 }
 // 「粘贴捕获」：用户在系统浏览器（与 CD 无关的 profile）登录站点后，F12 → Application →
 // Cookies 复制整串（name=value; ...）粘进来——daemon 走与收割器同一条 capture 端点
@@ -3537,6 +3736,8 @@ if (window.creditdaddy && typeof window.creditdaddy.onCookieCaptured === 'functi
         if (state.view === 'free') renderFreePool();
         renderCookieSites();
         renderDash();
+        // 会话池弹窗开着时同步刷新（新捕获的账号行/槽徽章立刻出现）
+        if ($('m-pool')?.classList.contains('show') && payload?.site) renderSessionPool(payload.site);
         // 收割时余额快照已随账号落库——账号卡上的余额读 state.quotas 缓存，
         // 不重拉就显示旧数字（实测：小米收割成功后卡面 ¥0.00 挂到手动刷新）。
         // 非 live 读快照零网络，成本可忽略；只刷 cookie-site 型账号。
@@ -4884,16 +5085,34 @@ if (updBridge && typeof updBridge.onChangelogOpen === 'function') {
   updBridge.onChangelogOpen(openChangelogModal);
 }
 
-// ZCode 自动领取计划：保存（按新配置启用）/ 停用
+// ZCode 自动领取计划：保存（按新配置启用）/ 停用；每日定时计划随同一请求落盘
+// 复选框即时反馈：取消勾选时时间行置灰（不隐藏，避免布局跳动）
+function syncZacDailyFields() {
+  const off = !$('zac-daily-on').checked;
+  $('zac-daily-time').disabled = off;
+  $('zac-daily-fields').style.opacity = off ? '.45' : '';
+}
+$('zac-daily-on').addEventListener('change', syncZacDailyFields);
+function zacDailyPlanPayload() {
+  const t = /^(\d{1,2}):(\d{2})$/.exec(String($('zac-daily-time').value || '').trim());
+  return {
+    enabled: $('zac-daily-on').checked === true,
+    hour: t ? Math.min(23, Number(t[1])) : 8,
+    minute: t ? Math.min(59, Number(t[2])) : 0,
+  };
+}
 $('zac-ok').addEventListener('click', async () => {
   try {
-    const r = await api('/api/zcode/net', { method: 'PUT', json: { autoClaim: true, claimIntervalMin: Number($('zac-interval').value), claimWindowMin: Number($('zac-window').value) } });
+    const r = await api('/api/zcode/net', { method: 'PUT', json: { autoClaim: true, claimIntervalMin: Number($('zac-interval').value), claimWindowMin: Number($('zac-window').value), dailyPlan: zacDailyPlanPayload() } });
     state.zAutoClaim = r.autoClaim === true;
     state.zClaimIntervalMin = r.claimIntervalMin;
     state.zClaimWindowMin = r.claimWindowMin;
+    state.zDailyPlan = r.dailyPlan || null;
     renderStatus(); render();
     closeModal('m-zac');
-    toast(T('自动领取已开启：每 ') + r.claimIntervalMin + T(' 分钟检查') + (r.claimWindowMin > 0 ? T('，运行 ') + r.claimWindowMin + T(' 分钟后自动关闭') : T('，一直运行直到手动关闭')));
+    const dp = r.dailyPlan || {};
+    toast(T('自动领取已开启：每 ') + r.claimIntervalMin + T(' 分钟检查') + (r.claimWindowMin > 0 ? T('，运行 ') + r.claimWindowMin + T(' 分钟后自动关闭') : T('，一直运行直到手动关闭'))
+      + (dp.enabled ? T('；每日 ') + String(dp.hour).padStart(2, '0') + ':' + String(dp.minute).padStart(2, '0') + T(' 定时开启一轮') : ''));
   } catch (err) { toast(err.message, false); }
 });
 $('zac-off').addEventListener('click', async () => {
@@ -5630,9 +5849,15 @@ function autoCheckinHint() {
   const sch = state.status && state.status.scheduler;
   const next = sch && sch.nextTickAt ? T('，下次执行 ') + esc(String(sch.nextTickAt).slice(11, 16)) : '';
   const zc = sch && sch.zcode;
+  const dp = zc && zc.dailyPlan;
+  const dpText = dp && dp.enabled
+    ? T('；每日定时计划 ') + String(dp.hour).padStart(2, '0') + ':' + String(dp.minute).padStart(2, '0') + T(' 自动开启一轮（下次 ') + (dp.nextRunAt ? esc(String(dp.nextRunAt).slice(5, 16).replace('T', ' ')) : '——') + T('）')
+    : '';
   const zcText = zc && zc.enabled
-    ? T('ZCode 自动领取运行中（每 ') + (zc.intervalMin || 2) + T(' 分钟') + (zc.autoOffAt ? T('，约 ') + Math.max(1, Math.ceil((new Date(zc.autoOffAt).getTime() - Date.now()) / 60000)) + T(' 分钟后自动关闭') : T('，一直运行')) + T('），周期可在 ZCode 页「自动领取计划」里改')
-    : T('ZCode 活动领取默认关闭，可在 ZCode 页「自动领取计划」里开启并配置轮询周期');
+    ? T('ZCode 自动领取运行中（每 ') + (zc.intervalMin || 2) + T(' 分钟') + (zc.autoOffAt ? T('，约 ') + Math.max(1, Math.ceil((new Date(zc.autoOffAt).getTime() - Date.now()) / 60000)) + T(' 分钟后自动关闭') : T('，一直运行')) + dpText + T('），周期可在 ZCode 页「自动领取计划」里改')
+    : (dpText
+      ? T('ZCode 活动领取当前关闭，但每日定时计划已排：到点自动开启一轮') + T('（') + dpText.replace('；每日定时计划 ', '').replace('；', '') + T('），配置在 ZCode 页「自动领取计划」')
+      : T('ZCode 活动领取默认关闭，可在 ZCode 页「自动领取计划」里开启并配置轮询周期'));
   return T('守护进程每 ~2 小时自动扫描执行一轮全部账号') + next + T('。各产品「业务日」刷新时点（UTC+8）：<b>Qoder 每日 10:00</b>（每台设备每日限领一个国际版账号）、<b>WorkBuddy 每日 00:00</b>，其余产品按 00:00；已领成功的账号按对应业务日记忆跳过，跨过刷新点后当天照常重试。') + esc(zcText) + T('。');
 }
 

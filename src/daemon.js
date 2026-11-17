@@ -1439,6 +1439,7 @@ async function handleApi(req, res, url) {
             lingxiPacks: a.meta?.lingxiPacks || null,   // 智点资源包快照（issue #53）
             meooGrants: a.meta?.meooGrants || null,     // Meoo 积分逐笔发放快照（带到期日）
             lastProbe: a.meta?.lastProbe || null,   // 呼吸灯数据源：ok / warn / dead + 失败原因
+            cookieSlot: Number(a.meta?.cookieSlot) > 1 ? Math.trunc(Number(a.meta?.cookieSlot)) : 1,   // 会话槽号（槽 1 = 既有分区，老行缺省）
           }));
         const latest = rows.reduce((t, r) => (r.capturedAt && (!t || r.capturedAt > t) ? r.capturedAt : t), null);
         return {
@@ -1456,6 +1457,11 @@ async function handleApi(req, res, url) {
     const site = getSite(siteId);
     if (!site) return json(res, 404, { error: `站点 ${siteId} 未配置` });
     const body = await readBody(req).catch(() => ({}));
+    // 会话槽（Chrome 多 profile 等价物）：槽 1 = 既有分区 cookie-site-<id>（存量登录态零迁移），
+    // 槽 N≥2 = cookie-site-<id>-sN。捕获窗登录在哪个槽，收割上报就带哪个 slot——落账号
+    // meta.cookieSlot，行上显示「会话 N」徽章；不同槽各自是独立的持久登录分区（多池并存）。
+    const cookieSlot = Number(body?.slot) === Number(body?.slot) && Number(body?.slot) >= 1 && Number(body?.slot) <= 9
+      ? Math.trunc(Number(body?.slot)) : 1;
     const cookie = String(body?.cookie || '').trim();
     // localStorage 凭据线（river = WorkOS SPA 会话）：cookie 无关，探测走站点自有 API
     const storage = (body?.storage && typeof body.storage === 'object' && !Array.isArray(body.storage)) ? body.storage : {};
@@ -1726,6 +1732,7 @@ async function handleApi(req, res, url) {
     let accountId = null;
     await withAccounts((list) => {
       const hit = list.find((a) => a.provider === site.provider && a.meta?.cookieSiteId === site.id
+        && (Number(a.meta?.cookieSlot) > 1 ? Math.trunc(Number(a.meta?.cookieSlot)) : 1) === cookieSlot
         && (ih ? a.meta?.identityHash === ih : !a.meta?.identityHash));
       // 自动行名：按站点取「产品名 (身份)」形状。此前是四层嵌套三元，增删一个站点就得数括号
       // （撤码道时正是因此改出语法错误）——改成 if 链，增删站点只动一行
@@ -1742,6 +1749,7 @@ async function handleApi(req, res, url) {
       const autoName = (row) => { if (canAutoRename(site, row)) row.name = accName; };
       if (hit) {
         hit.token = cred;
+        hit.meta.cookieSlot = cookieSlot > 1 ? cookieSlot : undefined;   // 槽 1 是默认（不落标记，老行零迁移）
         if (mimoUserId) { hit.uid = mimoUserId; autoName(hit); }
         if (riverUid) { hit.uid = riverUid; autoName(hit); }
         if (riverSession?.expiresAt) hit.expiresAt = riverSession.expiresAt;
@@ -1778,6 +1786,7 @@ async function handleApi(req, res, url) {
           source: 'web-session',
           meta: {
             cookieSiteId: site.id,
+            ...(cookieSlot > 1 ? { cookieSlot } : {}),   // 槽 1 不落标记（=缺省，老行零迁移）
             cookieSiteSession: { cookie, capturedAt: now },
             ...(ih ? { identityHash: ih } : {}),
             ...quotaMeta,

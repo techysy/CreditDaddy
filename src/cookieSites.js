@@ -87,7 +87,7 @@ export const COOKIE_SITES = [
     // issue #24：捕获时顺手解析网页读数，存 meta.quotaSnapshot 供额度推送消费
     quota: { fromHtml: parseTokenHarborQuota },
     accountName: 'Token Harbor',
-    hint: '登录后 dashboard 才有 Free allowance 配额；凭据只存本机（账号库加密），同步到 10Router 时按 creditDaddyWebSession 形状传输。',
+    hint: '登录后 dashboard 才有 Free allowance 配额；凭据只存本机，同步到 10Router 点亮卡片。',
   },
   {
     id: 'xiaomi-mimo',
@@ -102,7 +102,7 @@ export const COOKIE_SITES = [
       accept: 'application/json, text/plain, */*',
     },
     accountName: '小米 MiMo',
-    hint: '登录后自动抓取 UID 与控制台充值余额；通过外部配额（issue #24/26）推送到 10Router 配额追踪器显示余额卡片。',
+    hint: '登录后自动抓取 UID 与充值余额；推送到 10Router 显示余额卡片。',
   },
   {
     id: 'modelscope',
@@ -117,7 +117,7 @@ export const COOKIE_SITES = [
     verify: 'api',
     accountName: 'ModelScope',
     identity: { fromHtml: /[\w.+-]+@[\w-]+\.[\w.]+/ },
-    hint: '登录魔搭后自动抓取魔方（Magicube）余额；每日额度自动发放无需签到，token 只存本机，余额数字推 10Router 出卡（同名认领可挂连接卡）。',
+    hint: '登录后自动抓取魔方（Magicube）余额；每日额度自动发放无需签到，余额数字推 10Router 出卡。',
   },
   {
     id: 'river',
@@ -135,7 +135,7 @@ export const COOKIE_SITES = [
     cookieUrls: ['https://console.river.ai', 'https://auth.console.river.ai', 'https://login.console.river.ai'],
     verify: 'api',
     accountName: 'River AI',
-    hint: '登录 console.river.ai 后自动抓取 WorkOS 会话与 Billing 余额（$25 免费额度）；token 只存本机，推送 10Router 只带余额数字，会话过期自动刷新（单次轮换即时落盘）。',
+    hint: '登录后自动抓取会话与 Billing 余额（$25 免费额度）；推送 10Router 只带余额数字，会话过期自动刷新。',
   },
   {
     id: 'longcat',
@@ -152,7 +152,7 @@ export const COOKIE_SITES = [
     },
     verify: 'api',
     accountName: 'LongCat',
-    hint: '登录 longcat.chat 后自动抓取 Token 资源包余量与逐包明细（当前包 + 其他包，按官方消耗顺序排列）；推送 10Router 只带 token 数字，会话 cookie 只存本机。',
+    hint: '登录后自动抓取 Token 资源包余量与逐包明细；推送 10Router 只带 token 数字，会话 cookie 只存本机。',
   },
   {
     id: 'doubao',
@@ -168,7 +168,7 @@ export const COOKIE_SITES = [
     // 返回残缺数据（额度恒 0、签到状态不可信），额度可见也做不实——不加会话捕获探测，
     // 只在面板出示快捷按钮。
     entryOnly: true,       // 只出「打开豆包」按钮，无会话捕获 / 无探测 / 无账号行
-    hint: '在豆包客户端（或网页）登录后捕获会话，CD 只读展示体验额度与每日签到状态（+200/天）；签到请在「打开豆包」里手动完成——活动在客户端内，CD 不代签；仅个人账号可参与（飞书企业号被排除），凭据只存本机。'
+    hint: '登录后捕获会话，CD 只读展示体验额度与签到状态（+200/天）；签到请在「打开豆包」里手动完成（活动在客户端内，CD 不代签）。凭据只存本机。'
   },
   {
     id: 'lingxi',
@@ -182,7 +182,7 @@ export const COOKIE_SITES = [
     verify: 'api',
     cookieUrls: ['https://lingxi.kdocs.cn', 'https://www.kdocs.cn'],
     accountName: 'WPS 灵犀',
-    hint: '每日自动签到（+100 灵点，七天一轮第七天 200）+ 推送 10Router 出余额卡，Cookie 只存本机。多号分别捕获即按 WPS 账号分行并存。',
+    hint: '每日自动签到（+100 灵点，七天一轮第七天 200）+ 推送 10Router 出余额卡。多号分别捕获即分行并存。',
   },
   // Meoo 秒悟回退网页会话线（1.8.0 实测：OAuth refresh token 单次轮换，与 10R 共享后
   // 任一侧轮换即作废另一侧副本——CD 端恒 invalid_token 无法自动续期）。凭据 =
@@ -202,7 +202,7 @@ export const COOKIE_SITES = [
     cookieUrls: ['https://meoo.com'],
     accountName: 'Meoo 秒悟',
     no10rSync: true,       // 10R 的 meoo 连接由 10R 侧自行管理（扫码 / 控制面 Key），CD 不重复出卡
-    hint: '登录 meoo.com（阿里云账号手机号 + 短信）后捕获会话；CD 每日自动领取首登积分（当前 +2000/天，约 6~7 天后过期）并展示积分余额。会话失效（NEED_LOGIN）时请重新登录捕获，Cookie 只存本机。',
+    hint: '登录 meoo.com（阿里云账号 + 短信）后捕获会话；CD 每日自动领取首登积分并展示余额。会话失效时请重新登录捕获，Cookie 只存本机。',
   },
 
   {
@@ -220,7 +220,7 @@ export const COOKIE_SITES = [
     verify: 'api',
     cookieUrls: ['https://console.bce.baidu.com', 'https://login.bce.baidu.com', 'https://www.dumate.cn'],
     accountName: 'DuMate',
-    hint: '浏览器登录线：在登录窗完成个人版登录（login.bce.baidu.com/?from=oa_dumate）后自动捕获会话；也可在 DuMate 页「添加账号 → 本机导入」直接读客户端凭据。CD 每日自动领取登录赠送积分，Cookie 只存本机，可一键同步到 10Router 作为 dumate 渠道。',
+    hint: '在登录窗完成个人版登录后自动捕获会话；也可走「添加账号 → 本机导入」。CD 每日自动领取登录赠送积分，可一键同步到 10Router。',
     hideFromWebPage: true,
   },
   // ⚠ 码道 CodeArts（issue #40）已于 2026-10-30 撤下，不再提供：

@@ -288,6 +288,100 @@ test('手改备注名不被捕获/重探的自动名覆盖（含历史无标记�
   }
 });
 
+test('会话槽（会话池）：slot 随捕获落 meta.cookieSlot；同身份异槽分行并存；GET 回显槽号', async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'creditdaddy-csite-slot-'));
+  await fs.writeFile(path.join(home, 'settings.json'), JSON.stringify({ panelKey: '', panelKeyHash: '' }));
+  const fake = http.createServer((req, res) => {
+    if (req.headers.cookie?.includes('alive=1')) { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end('<html>yang@a.com <h1>Free allowance 10%</h1></html>'); }
+    else { res.writeHead(401); res.end('no'); }
+  });
+  await new Promise((r) => fake.listen(0, '127.0.0.1', r));
+  const probePort = fake.address().port;
+  const savedHome = process.env.CREDITDADDY_HOME;
+  const savedProbe = process.env.CD_PROBE_TOKENHARBOR;
+  process.env.CREDITDADDY_HOME = home;
+  process.env.CD_PROBE_TOKENHARBOR = `http://127.0.0.1:${probePort}/dashboard`;
+  let daemon;
+  try {
+    daemon = await import('../src/daemon.js');
+    const { server, port } = await daemon.startDaemon(0, '127.0.0.1');
+    try {
+      const call = (method, p, body) => new Promise((resolve, reject) => {
+        const req = http.request({ host: '127.0.0.1', port, path: p, method, headers: { 'Content-Type': 'application/json' } }, (res) => {
+          const chunks = [];
+          res.on('data', (c) => chunks.push(c));
+          res.on('end', () => resolve({ status: res.statusCode, body: JSON.parse(Buffer.concat(chunks).toString('utf8')) }));
+        });
+        req.on('error', reject);
+        req.end(body ? JSON.stringify(body) : undefined);
+      });
+
+      // 槽 1（缺省）：不落 cookieSlot 标记（老行零迁移）
+      const s1 = await call('POST', '/api/cookie-sites/tokenharbor/capture', {
+        cookie: 'alive=1', slot: 1, diag: { cookieCount: 1 },
+        probeHtml: '<html>yang@a.com <h1>Free allowance 10%</h1></html>',
+      });
+      assert.equal(s1.status, 200);
+      const id1 = s1.body.accountId;
+
+      // 槽 2 同身份：必须成新行（异槽不合并——「主号/小号各占一槽」的根基）
+      const s2 = await call('POST', '/api/cookie-sites/tokenharbor/capture', {
+        cookie: 'alive=1', slot: 2, diag: { cookieCount: 1 },
+        probeHtml: '<html>yang@a.com <h1>Free allowance 20%</h1></html>',
+      });
+      assert.equal(s2.status, 200);
+      assert.notEqual(s2.body.accountId, id1, '同身份异槽必须分行并存');
+      const id2 = s2.body.accountId;
+
+      // 槽 2 重复捕获：原位轮换，不重行
+      const s2b = await call('POST', '/api/cookie-sites/tokenharbor/capture', {
+        cookie: 'alive=1', slot: 2, diag: { cookieCount: 1 },
+        probeHtml: '<html>yang@a.com <h1>Free allowance 30%</h1></html>',
+      });
+      assert.equal(s2b.body.accountId, id2, '同槽同身份=凭证轮换');
+
+      // 槽 3 无身份（probeHtml 缺失走 Node 探测→无身份单例）：与槽 1 的无身份单例也不合并
+      // ——但本用例槽 1 已有身份（probeHtml 带邮箱），这里 slot:3 无 probeHtml → 401 探测拒绝
+      // （fake 站按 cookie 放行，无 probeHtml 走 verifySiteCookie 探测 → 活着）→ 无身份单例落槽 3
+      const s3 = await call('POST', '/api/cookie-sites/tokenharbor/capture', {
+        cookie: 'alive=1', slot: 3, diag: { cookieCount: 1 },
+      });
+      assert.equal(s3.status, 200);
+      assert.notEqual(s3.body.accountId, id1, '无身份行按槽隔离');
+
+      const accs = JSON.parse(await fs.readFile(path.join(home, 'accounts.json'), 'utf8'));
+      const rows = accs.filter((a) => a.provider === 'tokenharbor');
+      assert.equal(rows.length, 3, '三槽三行');
+      const slotOf = (id) => rows.find((a) => a.id === id)?.meta?.cookieSlot;
+      assert.equal(slotOf(id1), undefined, '槽 1 不落标记（缺省 = 既有分区）');
+      assert.equal(slotOf(id2), 2, '槽 2 落 cookieSlot=2');
+      assert.equal(slotOf(s3.body.accountId), 3, '槽 3 落 cookieSlot=3');
+
+      // 越界槽号 → 归 1（守卫）
+      const bad = await call('POST', '/api/cookie-sites/tokenharbor/capture', {
+        cookie: 'alive=1', slot: 99, diag: { cookieCount: 1 },
+        probeHtml: '<html>yang@a.com <h1>Free allowance 40%</h1></html>',
+      });
+      assert.equal(bad.status, 200);
+      assert.equal(bad.body.accountId, id1, '越界槽号归 1，与槽 1 原位轮换');
+
+      // GET /api/cookie-sites 回显槽号（槽 1 缺省也显式回 1，面板徽章零特判）
+      const sites = await call('GET', '/api/cookie-sites');
+      const row = sites.body.sites.find((x) => x.id === 'tokenharbor');
+      const slots = row.accounts.map((a) => a.cookieSlot).sort();
+      assert.deepEqual(slots, [1, 2, 3], '槽号回显（槽 1 无标记行回 1；越界轮换未增行）');
+    } finally {
+      await new Promise((r) => server.close(r));
+    }
+  } finally {
+    process.env.CREDITDADDY_HOME = savedHome;
+    if (savedProbe === undefined) delete process.env.CD_PROBE_TOKENHARBOR;
+    else process.env.CD_PROBE_TOKENHARBOR = savedProbe;
+    fake.close();
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
 test('网页会话账号「刷新积分」（/quota 端点）走重探语义：lastProbe 更新 + 余额回填（回归：原 productImpl undefined 崩 502、呼吸灯不动）', async () => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'creditdaddy-quota-csite-'));
   await fs.writeFile(path.join(home, 'settings.json'), JSON.stringify({ panelKey: '', panelKeyHash: '' }));
