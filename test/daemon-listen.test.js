@@ -112,3 +112,37 @@ test('系统管理接口：POST /api/system/restart 触发已注册的 restartHa
 });
 
 test.after(() => closeArchiveStream());
+
+test('畸形请求行回 400 而不是崩进程（10router#114 同款崩溃面：async handler 里 new URL 同步 throw → unhandledRejection → Node ≥15 杀进程）', async () => {
+  const { server, port } = await startDaemon(0, '127.0.0.1');
+  const rejections = [];
+  const onRejection = (e) => rejections.push(String(e?.message || e));
+  process.on('unhandledRejection', onRejection);
+  try {
+    // 原始 socket 发一条 URL 里带空格的畸形请求行（new URL 必抛），
+    // 随后立即再发一条正常请求——进程若被杀，第二条永远不会回来
+    const raw = await new Promise((resolve, reject) => {
+      const sock = net.connect(port, '127.0.0.1');
+      let buf = '';
+      sock.setEncoding('utf8');
+      sock.on('data', (d) => { buf += d; });
+      sock.on('error', reject);
+      sock.on('close', () => resolve(buf));
+      sock.on('connect', () => {
+        sock.write('GET /bad request-line HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n');
+        setTimeout(() => sock.end(), 300);
+      });
+    });
+    assert.ok(raw.includes('400'), '畸形请求行应回 400，实际: ' + JSON.stringify(raw.slice(0, 60)));
+
+    // 进程还活着：正常请求可达（若 handler 抛了 unhandledRejection 且没兜住，这里是拿不到响应的）
+    const alive = await fetch(`http://127.0.0.1:${port}/api/cookie-sites`);
+    assert.ok(alive.status === 200 || alive.status === 401, '后续正常请求应可达（进程未被杀）');
+    // 给漏网的 rejection 一拍浮出的机会
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(rejections.length, 0, '不得产生 unhandledRejection: ' + rejections.join(' | '));
+  } finally {
+    process.removeListener('unhandledRejection', onRejection);
+    server.close();
+  }
+});

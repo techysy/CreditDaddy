@@ -2529,7 +2529,15 @@ export async function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
   fs.readFile(PANEL_FILE, 'utf8').then((h) => { panelHtml = h; }).catch(() => {});
 
   const server = http.createServer(async (req, res) => {
-    const url = new URL(req.url, 'http://localhost');
+    // URL 解析必须独立收口（10router#114 同款崩溃面）：畸形请求行让 new URL 同步 throw，
+    // 在 async handler 里变成 unhandledRejection → Node ≥15 默认杀进程——面板进程被杀
+    // = 全部签到调度器丢失。坏请求一律 400，不让它离开这里。
+    let url;
+    try {
+      url = new URL(req.url, 'http://localhost');
+    } catch {
+      return json(res, 400, { error: 'malformed request line' });
+    }
     try {
       const denied = rejectForeignRequest(req.headers, host, url.pathname);
       if (denied) {

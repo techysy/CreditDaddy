@@ -105,6 +105,12 @@ function installShutdown({ server, background }) {
   // 关掉终端会发 SIGHUP。后台实例（stdout 不是 TTY）本来就该在终端消失后活着，
   // 照着这个忽略；前台则当作用户要收摊。
   process.on('SIGHUP', () => { if (process.stdout.isTTY) shutdown('SIGHUP'); });
+  // 最后防线（10router#114 同款）：async handler 里漏网的同步 throw 会变
+  // unhandledRejection，Node ≥15 默认直接杀进程——daemon 被杀 = 签到调度器丢失、
+  // 状态文件原地（下次 start 误判已在运行）。只记日志不退出，进程活着就有救。
+  process.on('unhandledRejection', (e) => {
+    try { logger.error('CLI', '未处理的 Promise 拒绝（进程保持运行）:{err}', { err: e instanceof Error ? (e.stack || e.message) : String(e) }); } catch {}
+  });
 }
 
 async function main() {
