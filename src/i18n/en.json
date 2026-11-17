@@ -2216,5 +2216,11 @@
   "（右上角设置轮询计划）": " (set the polling plan at the top right)",
   "已排 · 下次 ": "Scheduled · next ",
   "已排": "Scheduled",
-  "未排": "Not scheduled"
+  "未排": "Not scheduled",
+  "保存定时": "Save schedule",
+  "两处各自保存：上面的周期/时长归「保存并启用」（单次窗口），每日定时归「保存定时」——保存定时只存计划、不立即开跑，到点才自动开启一轮。活动包由服务端在每日 0 点左右刷新放出，运行时段没覆盖 0 点会错过当次领取（建议时长设 0 或跨过 0 点）。需要验证码时无法自动通过，卡片上会提示手动领取。": "The two sections save separately: interval/duration above belong to \"Save & enable\" (the single-run window); the daily schedule belongs to \"Save schedule\" — which only stores the plan and does not start a run; a round auto-starts at the set time. Activity packs refresh around midnight (server-side); a running window that doesn't cover midnight misses that day's pack (set duration to 0 or span midnight). Captcha cannot be solved automatically; the card will prompt for manual claiming.",
+  "每日定时已保存：每天 ": "Daily schedule saved: every day at ",
+  " 自动开启一轮（到点才跑，不影响当前）": " auto-starts a round (runs only at that time, current state untouched)",
+  "每日定时已取消": "Daily schedule removed",
+  "ZCode 自动领取：已关闭（每日定时计划一并停用）": "ZCode auto-claim: off (daily schedule disabled along with it)"
 }
