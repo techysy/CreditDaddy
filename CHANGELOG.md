@@ -4,7 +4,7 @@
 
 ---
 
-## [1.8.1] (2026-11-17)
+## [1.8.1] (2026-11-18)
 
 本版主题:**许可证随 10Router 转 AGPL-3.0（v1.8.0 及更早维持 MIT 不溯及）+ 网页会话「会话池」Chrome 多 profile 式多登录槽 + ZCode 自动领取每日定时计划与防封号退避 + 守护进程畸形请求防崩**.
 Theme: **License follows 10Router to AGPL-3.0 (v1.8.0 and earlier stay MIT, no retroaction) + web-session "session pool" with per-site login slots + ZCode auto-claim daily schedule & ban-safe captcha backoff + daemon hardening against malformed request lines**.
