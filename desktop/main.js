@@ -707,15 +707,21 @@ function zcodePlanCompletion({ captchaCfg, jwt, rawBody, headers = {} }) {
  * 登录窗口。两种会话形态：
  *  - 隐私（默认）：全新内存态 session 分区（不带 persist: 前缀 = 不落盘），与系统浏览器
  *    及其它登录会话完全隔离；关闭时清空该 session 的存储 —— 每次捕获都要重新登录。
- *  - 持久（persistKey = 'cookie-site-<id>'）：`persist:` 分区按站点落盘——**用户在本窗登录
- *    一次后，下一轮重捕/重探直接复用活着的社会Cookie会话，免二次登录**（站点 SSO 场景
- *    每登录一次都要过一遭谷歌验证码，这是最高频的痛点）。落盘位置与账号库同在用户数据目录
- *    （本机自有凭据，同一份 0600 纪律），面板「清除已存会话」可随时抹掉。Qoder 专属线不用它。
+ *  - 持久（persistKey = 'cookie-site-<id>' / 'cookie-site-<id>-s<N>'）：`persist:` 分区按
+ *    站点+会话槽落盘——**用户在本窗登录一次后，下一轮重捕/重探直接复用活着的会话，
+ *    免二次登录**（站点 SSO 场景每登录一次都要过一遭谷歌验证码，这是最高频的痛点）。
+ *    槽 N≥2 是「Chrome 多 profile」等价物：同一站点可以并排养多个登录池（主号/小号各占
+ *    一槽，各自分区互不可见），换号 = 选另一个槽开窗，不再来回清除登录态。落盘位置与
+ *    账号库同在用户数据目录（本机自有凭据，同一份 0600 纪律），面板「会话池」可随时抹掉
+ *    单个槽。Qoder 专属线不用它。
  */
 async function openIncognitoWindow(url, { persistKey } = {}) {
   const partition = persistKey ? 'persist:' + persistKey : 'incognito-' + crypto.randomUUID();
   const ses = session.fromPartition(partition);   // 无 persist: 前缀 → 内存态，进程退出即消失
   const isPersist = Boolean(persistKey);
+  // 会话槽号（持久分区才有意义）：cookie-site-<id>-sN → N；基础分区 = 槽 1。
+  // 收割上报要带它（daemon 落 meta.cookieSlot），面板行上才能按槽显示「会话 N」。
+  const cookieSlot = (() => { const m = /-s([2-9])$/.exec(persistKey || ''); return m ? Number(m[1]) : 1; })();
   // 按 IP 识别地区的站点（qoder.com 国际版 + cookie-site 捕获窗，如 Token Harbor 对大陆/港澳封锁）：
   // 配置了出口代理时登录窗显式走它；未配置则保持默认（Electron 窗口本来就跟随系统代理，不覆盖）。
   // 登录窗与 daemon 探测同走「网络出口（全局）」——两边出口 IP 一致，避免窗内登录成功、
@@ -731,8 +737,8 @@ async function openIncognitoWindow(url, { persistKey } = {}) {
     width: 480,
     height: 720,
     // 标题区分两种窗（用户可辨，不再靠猜）：持久窗复用已存登录态（可能直接进控制台）、
-    // 无痕窗全新会话（必然是登录页）。
-    title: Tt(isPersist ? '登录（会话复用）' : '登录（无痕窗口）'),
+    // 无痕窗全新会话（必然是登录页）；槽 N≥2 追加「会话 N」——多槽并开时分辨谁的窗。
+    title: Tt(isPersist ? (cookieSlot > 1 ? '登录（会话 {n} · 复用）' : '登录（会话复用）') : '登录（无痕窗口）', { n: cookieSlot }),
     icon: iconPath(),
     autoHideMenuBar: true,
     // 故意不设 parent：Windows 的 owner 级联（electron#26031/#12142）会在子窗销毁时连带
@@ -789,7 +795,7 @@ async function openIncognitoWindow(url, { persistKey } = {}) {
     // 收割永远是空的（国际版「缺网页会话」长期修不好的根因）。
     const jobs = [];
     if (isQoderUrl) jobs.push(harvestQoderWebSession(ses));
-    if (cookieSite) jobs.push(harvestCookieSiteSession(ses, cookieSite));
+    if (cookieSite) jobs.push(harvestCookieSiteSession(ses, cookieSite, cookieSlot));
     Promise.allSettled(jobs)
       .catch(() => {})
       .finally(() => {
@@ -923,8 +929,9 @@ async function harvestSiteStorage(ses, site) {
   finally { try { if (w && !w.isDestroyed()) w.destroy(); } catch { /* ignore */ } }
 }
 
-/** #23：通用 cookie 站点收割——隐私会话里的全量 cookie 串成 plain string,交给 daemon 探测入库 */
-async function harvestCookieSiteSession(ses, site) {
+/** #23：通用 cookie 站点收割——隐私会话里的全量 cookie 串成 plain string,交给 daemon 探测入库。
+ *  slot：登录窗用的会话槽号（默认 1）——随上报落账号 meta.cookieSlot，面板按槽显示「会话 N」 */
+async function harvestCookieSiteSession(ses, site, slot = 1) {
   // 全量 cookie（不过滤 URL）：带 Path 域的会话 cookie（如 /user_management 下的刷新 cookie）
   // 按 URL 过滤会被丢掉——2026-10-14 实测 river 刷新兑换「Missing refresh token」的根因之一
   const all = await ses.cookies.get({}).catch(() => []);
@@ -971,6 +978,7 @@ async function harvestCookieSiteSession(ses, site) {
     body: JSON.stringify({
       cookie,
       storage,
+      slot: Number(slot) >= 1 && Number(slot) <= 9 ? Math.trunc(Number(slot)) : 1,
       // 名字 only（值不进日志）——刷新兑换失败时一眼看出会话 cookie 在不在
       diag: { cookieCount: (all || []).length, storageCount, cookieNames: (all || []).map((c) => c.name) },
       probeHtml,
@@ -1610,12 +1618,14 @@ function registerAuthWindowIpc() {
     try { shell.openExternal(String(url)); } catch {}
   });
   // 唤起小窗显示更新日志摘要（任何入口统一走 openChangelogBrief；IPC 只注册一次）
-  ipcMain.handle('open-changelog-brief', () => openChangelogBrief());  ipcMain.handle('open-auth-window', async (_e, url, opts) => {
+  ipcMain.handle('open-changelog-brief', () => openChangelogBrief());
+  ipcMain.handle('open-auth-window', async (_e, url, opts) => {
     if (typeof url !== 'string' || !url.toLowerCase().startsWith('https://')) {
       return { ok: false, error: Tt('只允许打开 https 链接') };
     }
-    // persistKey 只接受内部约定的命名（cookie-site-<站点id>），不透传任意值
-    const persistKey = opts && typeof opts.persistKey === 'string' && /^cookie-site-[a-z0-9-]+$/.test(opts.persistKey)
+    // persistKey 只接受内部约定的命名（cookie-site-<站点id> / cookie-site-<站点id>-s<槽号>），
+    // 不透传任意值。槽 1 不带后缀（= 既有分区，存量登录态零迁移），槽 N≥2 带 -sN。
+    const persistKey = opts && typeof opts.persistKey === 'string' && /^cookie-site-[a-z0-9]+(-s[2-9])?$/.test(opts.persistKey)
       ? opts.persistKey : null;
     try { await openIncognitoWindow(url, { persistKey }); return { ok: true }; }
     catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
@@ -1623,7 +1633,8 @@ function registerAuthWindowIpc() {
   // 「清除已存会话」：抹掉某站点的持久登录分区存储（面板站点行入口；nodeIntegration 关闭，
   // 主进程代为执行）。返回是否确实存在过该分区。
   ipcMain.handle('clear-cookie-site-session', async (_e, persistKey) => {
-    if (typeof persistKey !== 'string' || !/^cookie-site-[a-z0-9-]+$/.test(persistKey)) {
+    // 槽 N≥2 的分区（cookie-site-<id>-sN）一并接受——「会话池」可清单个槽
+    if (typeof persistKey !== 'string' || !/^cookie-site-[a-z0-9]+(-s[2-9])?$/.test(persistKey)) {
       return { ok: false, error: Tt('无效的会话标识') };
     }
     // 同名窗还开着时先关掉（否则清完它一份内存缓存又写回去）

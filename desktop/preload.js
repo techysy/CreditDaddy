@@ -11,7 +11,8 @@ contextBridge.exposeInMainWorld('creditdaddy', {
   /**
    * @param {string} url 必须是 https:// 开头
    * @param {{persistKey?: string}} [opts] persistKey='cookie-site-<id>' → 持久登录分区
-   *   （本窗登录一次，下一轮捕获/重探复用会话免二次登录）；缺省 = 一次性隐私窗。
+   *   （本窗登录一次，下一轮捕获/重探复用会话免二次登录）；'cookie-site-<id>-s<N>'（N 2~9）
+   *   → 该站点的第 N 个会话槽（Chrome 多 profile 式多登录池并存）；缺省 = 一次性隐私窗。
    * @returns {Promise<{ok: boolean, error?: string}>}
    */
   openAuthWindow: (url, opts) => ipcRenderer.invoke('open-auth-window', String(url || ''), opts),

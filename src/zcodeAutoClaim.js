@@ -27,6 +27,34 @@ function snoozeUntilMs(account) {
   return Math.max(meta, proc);
 }
 
+// ── 验证码失败退避（2026-11-17 用户实测「验证码失败还重复尝试，有封号风险」）──
+// 3007 两轮验证码全拒后（needManual 路径），原实现只标卡片、不设任何退避——下一个
+// tick（最短 1 分钟）原样再撞一轮，用户配 5 分钟周期时一天空撞 288 次失败验证码 + claim,
+// 正是风控眼里的「高频失败画像」，有封号风险。现按连续失败轮数指数退避：
+//   1 轮失败 → 30 分钟；2 轮 → 1 小时；3 轮 → 2 小时；封顶 6 小时。
+// 退避只压自动轮询（手动领取照常直进，见 zcodeAutoClaim 的 source 参数）；成功或 1003
+// 即清零。进程内缓存即可——重启清零重新从 30 分钟起步，比落盘更保守也更简单。
+const CAPTCHA_BACKOFF_MS = [0, 30 * 60_000, 60 * 60_000, 120 * 60_000, 360 * 60_000];
+const captchaFailCount = new Map();   // accountId → 连续「两轮验证码全拒」次数
+const captchaBackoffUntil = new Map();  // accountId → ms 时间戳
+
+function captchaBackoffMs(account) {
+  return captchaBackoffUntil.get(account.id) || 0;
+}
+
+function recordCaptchaFailure(account) {
+  const n = (captchaFailCount.get(account.id) || 0) + 1;
+  captchaFailCount.set(account.id, n);
+  const ms = CAPTCHA_BACKOFF_MS[Math.min(n, CAPTCHA_BACKOFF_MS.length - 1)];
+  captchaBackoffUntil.set(account.id, Date.now() + ms);
+  return { fails: n, backoffMin: Math.round(ms / 60_000) };
+}
+
+function recordCaptchaSuccess(account) {
+  captchaFailCount.delete(account.id);
+  captchaBackoffUntil.delete(account.id);
+}
+
 // 桌面版（Electron 主进程）注册的隐藏窗口验证码实现；NAS / CLI 为 null（走「需手动领取」分支）
 let captchaProvider = null;
 export function setZcodeCaptchaProvider(fn) { captchaProvider = typeof fn === 'function' ? fn : null; }
@@ -34,20 +62,34 @@ export function hasZcodeCaptchaProvider() { return Boolean(captchaProvider); }
 export function getZcodeCaptchaProvider() { return captchaProvider; }
 
 /** 账号被删除时清掉额满暂休缓存（daemon DELETE /api/accounts/:id 调用；落盘份随账号一起删） */
-export function forgetAccount(id) { snoozeUntil.delete(id); }
+export function forgetAccount(id) {
+  snoozeUntil.delete(id);
+  captchaFailCount.delete(id);
+  captchaBackoffUntil.delete(id);
+}
+
+/** 测试辅助：清空全部进程内暂休/退避状态（跨用例状态泄漏防线） */
+export function _resetBackoffForTests() {
+  snoozeUntil.clear();
+  captchaFailCount.clear();
+  captchaBackoffUntil.clear();
+}
 
 const grantsText = (plan) => (plan.grants && plan.grants.length ? plan.grants.join('；') : '');
 
 /**
  * 为单个 ZCode 账号执行一次自动领取。
+ * @param {{ source?: 'auto'|'manual' }} opts source='manual'（用户手动点领取）跳过暂休窗口——
+ *   暂休只保护自动轮询不空打，不该挡用户的手（手动被静默吞掉比多打一次 claim 更伤信任）。
  * @returns {null | { status, message, claims: Array }} null = preview 为空或查询失败（已记日志，不上卡片）
  */
-export async function zcodeAutoClaim(account) {
+export async function zcodeAutoClaim(account, { source = 'auto' } = {}) {
   const label = account.name || account.uid || account.id;
-  {
-    const until = snoozeUntilMs(account);
+  if (source !== 'manual') {
+    const until = Math.max(snoozeUntilMs(account), captchaBackoffMs(account));
     if (until && until > Date.now()) {
-        logger.debug('ZCODE-CLAIM', '{label} 名额已领完,跳过直到 {until}(服务端计划结束点)', { label, until: new Date(until).toISOString() });
+      const isBackoff = captchaBackoffMs(account) > Date.now();
+      logger.debug('ZCODE-CLAIM', '{label} 自动轮询暂休到 {until}（{why}）', { label, until: new Date(until).toISOString(), why: isBackoff ? '验证码连续失败退避' : '服务端计划结束点' });
       return null;
     }
   }
@@ -80,12 +122,14 @@ export async function zcodeAutoClaim(account) {
       // 「待生效」，用户以为没领上。
       claims.push({ plan: planName, via: 'direct', ok: true, startsAt: r?.startsAt || null });
       anySuccess = true;
+      recordCaptchaSuccess(account);   // 任何成功都清验证码退避计数
             logger.info('ZCODE-CLAIM', '{label} 已领取「{plan}」(免验证码){grants}', { label, plan: planName, grants: grantsText(plan) ? ':' + grantsText(plan) : '' });
       continue;
     } catch (e) {
       if (e.code === 1003) {
         claims.push({ plan: planName, ok: true, already: true });
                 logger.info('ZCODE-CLAIM', '{label}「{plan}」已领取过', { label, plan: planName });
+        recordCaptchaSuccess(account);   // 已领过=服务端认识这个号,清退避
         continue;
       }
       if (e.code === 1005 && e.nextAt) {
@@ -125,6 +169,7 @@ export async function zcodeAutoClaim(account) {
       }
       claims.push({ plan: planName, via: 'captcha', ok: true, startsAt: r2?.startsAt || null });
       anySuccess = true;
+      recordCaptchaSuccess(account);
             logger.info('ZCODE-CLAIM', '{label} 已领取「{plan}」(静默验证码){grants}', { label, plan: planName, grants: grantsText(plan) ? ':' + grantsText(plan) : '' });
     } catch (e2) {
       if (e2.code === 1005 && e2.nextAt) {
@@ -134,9 +179,11 @@ export async function zcodeAutoClaim(account) {
       //（claim 前置校验比验证码本身更严），如实带原始报错引导用户去客户端
       needManual = true;
       claims.push({ plan: planName, ok: false, needManual: true, message: e2.message });
-            logger.warn('ZCODE-CLAIM', '{label}「{plan}」验证码未完成:{err}(可在面板手动领取或到官方客户端领取)', { label, plan: planName, err: e2.message });
+      const bf = recordCaptchaFailure(account);   // 指数退避：连续全拒自动轮逐轮拉长间隔（防高频失败画像触发风控/封号）
+            logger.warn('ZCODE-CLAIM', '{label}「{plan}」验证码未完成:{err}(可在面板手动领取或到官方客户端领取)。自动轮退避 {min} 分钟（连续第 {n} 轮全拒）', { label, plan: planName, err: e2.message, min: bf.backoffMin, n: bf.fails });
     }
   }
+  // 验证码退避优先级高于 1005 暂休（退避更短更保守，取较早到期者由两把锁共同约束）
   // 1005 名额已满 → 按服务端 ends_at 将本账号挂进跳过窗口，下一轮自动轮询在该时间点前不再空打
   if (snoozeAt > 0) {
     snoozeUntil.set(account.id, snoozeAt);

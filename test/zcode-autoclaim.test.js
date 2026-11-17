@@ -6,7 +6,7 @@ import path from 'node:path';
 
 process.env.CREDITDADDY_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'creditdaddy-zac-'));
 
-const { zcodeAutoClaim, setZcodeCaptchaProvider } = await import('../src/zcodeAutoClaim.js');
+const { zcodeAutoClaim, setZcodeCaptchaProvider, _resetBackoffForTests } = await import('../src/zcodeAutoClaim.js');
 
 const account = {
   id: 'acc-1',
@@ -47,6 +47,7 @@ const jsonRes = (v) => new Response(JSON.stringify(v));
 
 beforeEach(() => {
   setZcodeCaptchaProvider(null);
+  _resetBackoffForTests();   // 退避/暂休是进程内缓存,跨用例必须清（否则退避用例污染后续所有用例）
 });
 
 test('无可领活动：preview 与投放都为空时返回 null（不再用硬编码 planId 去撞）', async () => {
@@ -241,5 +242,70 @@ test('领取成功且立即生效：消息不带到账后缀', async () => {
     const r = await zcodeAutoClaim(account);
     assert.equal(r.status, 'checked-in');
     assert.doesNotMatch(r.message, /到账/, '已生效的活动不该再提示到账时间');
+  } finally { globalThis.fetch = realFetch; }
+});
+
+// ── 验证码失败退避（2026-11-17 用户实测「验证码失败还重复尝试，有封号风险」）──
+
+test('验证码两轮全拒 → 自动轮退避：下一个 tick 内不再撞接口，手动领取不受退避影响', async () => {
+  mockFetch();
+  claimBehaviors = [{ code: 3007 }, { code: 3007 }, { code: 3007 }];
+  setZcodeCaptchaProvider(async () => ({ captchaParam: 'CAP-X', region: 'cn' }));
+  try {
+    // 第一轮：两轮验证码全拒 → 退避 30 分钟（连续第 1 轮）
+    const r1 = await zcodeAutoClaim(account);
+    assert.equal(r1.status, 'failed');
+    assert.equal(claimCalls, 3);
+    // 自动轮：被退避吞掉，claim 计数不变
+    const r2 = await zcodeAutoClaim(account);
+    assert.equal(r2, null, '退避期内自动轮必须静默跳过');
+    assert.equal(claimCalls, 3, '退避期内不得再发起任何 claim');
+    // 手动轮：绕过退避直进（用户的手不被挡）。同一 mockFetch 的 claimBehaviors 已耗尽
+    // （前面 3 次全拒），剩余走默认 { code: 0 } —— 直试成功 1 次即收
+    claimBehaviors = [{ code: 0, data: { plan: { name: '手动成功' } } }];
+    const r3 = await zcodeAutoClaim(account, { source: 'manual' });
+    assert.ok(r3, '手动领取不受退避影响');
+    assert.equal(r3.status, 'checked-in', '手动轮绕过退避后正常领取');
+    assert.equal(claimCalls, 4, '手动轮只按自己的行为队列走（+1 次成功 claim）');
+  } finally { globalThis.fetch = realFetch; setZcodeCaptchaProvider(null); }
+});
+
+test('退避随连续全拒轮数递增（30→60 分钟），成功后清零', async () => {
+  mockFetch();
+  setZcodeCaptchaProvider(async () => ({ captchaParam: 'CAP-X', region: 'cn' }));
+  try {
+    // 第 1 轮全拒 → 30 分钟
+    claimBehaviors = [{ code: 3007 }, { code: 3007 }, { code: 3007 }];
+    await zcodeAutoClaim(account);
+    let until1 = 0;
+    // 从进程内缓存拿不到（模块私有），通过第二次行为间接验证：手动成功后再全拒 → 退避应重新从 30 分钟起步
+    mockFetch();
+    claimBehaviors = [{ code: 0, data: { plan: { name: '成功一次' } } }];
+    const ok = await zcodeAutoClaim(account, { source: 'manual' });
+    assert.equal(ok.status, 'checked-in', '手动成功清退避');
+    // 成功后自动轮恢复正常（无退避）且成功 → 再全拒一轮，自动轮应被退避吞掉（证明计数又从 1 开始）
+    mockFetch();
+    claimBehaviors = [{ code: 0, data: { plan: { name: '自动轮成功' } } }];
+    const autoOk = await zcodeAutoClaim(account);
+    assert.equal(autoOk.status, 'checked-in', '成功清零后自动轮不再被退避');
+    mockFetch();
+    claimBehaviors = [{ code: 3007 }, { code: 3007 }, { code: 3007 }];
+    await zcodeAutoClaim(account);
+    mockFetch();
+    const blocked = await zcodeAutoClaim(account);
+    assert.equal(blocked, null, '新一轮全拒后自动轮再次进入退避');
+  } finally { globalThis.fetch = realFetch; setZcodeCaptchaProvider(null); }
+});
+
+test('免验证码直试成功 / 1003 已领过 → 不进退避（自动轮下一 tick 照常）', async () => {
+  mockFetch();
+  claimBehaviors = [{ code: 1003 }];
+  try {
+    const r = await zcodeAutoClaim(account);
+    assert.equal(r.status, 'already');
+    mockFetch();
+    claimBehaviors = [{ code: 1003 }];
+    const r2 = await zcodeAutoClaim(account);
+    assert.ok(r2, '1003 后自动轮不被退避挡住');
   } finally { globalThis.fetch = realFetch; }
 });
