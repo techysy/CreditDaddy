@@ -93,7 +93,22 @@ function msUntilDailyPlanTime(nowMs = Date.now()) {
   return target.getTime() - nowMs;
 }
 
-function zcodeDailyPlanInfo() {
+/** 每日计划下一次实际触发时刻（展示用）：今天未跑且 HH:MM 未到 → 今天到点；
+ *  已过点未跑 → 下一次唤醒（≤1h 内补跑）；今天已跑 → 明天同一时刻。
+ *  必须与 setTimeout 的 1h 钳制解耦——2026-11-17 实测：把「下次唤醒」当 nextRunAt
+ *  展示，用户设 20:00 面板却显示 13:03，误以为计划没保存、要「保存并启用」才行。 */
+function nextDailyPlanRunAt(nowMs = Date.now()) {
+  const plan = dailyClaimPlan();
+  const d = new Date(nowMs);
+  const todayTarget = new Date(d.getFullYear(), d.getMonth(), d.getDate(), plan.hour, plan.minute, 0, 0).getTime();
+  if (plan.lastRunDay !== localDayKey(nowMs)) {
+    if (todayTarget > nowMs) return todayTarget;
+    return nowMs + 60 * 60 * 1000;   // 已过点未跑：下一次（≤1h）唤醒补跑
+  }
+  return todayTarget + 24 * 3600 * 1000;   // 今天已跑：明天同一时刻
+}
+
+export function zcodeDailyPlanInfo() {
   const plan = dailyClaimPlan();
   return { ...plan, nextRunAt: plan.enabled ? dailyPlanNextAt : null };
 }
@@ -110,7 +125,7 @@ function syncDailyPlanScheduler() {
   clearDailyPlanTimers();
   if (!dailyClaimPlan().enabled) return;
   const delay = Math.min(Math.max(msUntilDailyPlanTime(), 1000), 60 * 60 * 1000);
-  dailyPlanNextAt = new Date(Date.now() + delay).toISOString();
+  dailyPlanNextAt = new Date(nextDailyPlanRunAt()).toISOString();
   dailyPlanTimerHandle = setTimeout(() => {
     dailyPlanTimerHandle = null;
     dailyPlanNextAt = null;

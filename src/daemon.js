@@ -74,17 +74,10 @@ import * as traeGateway from './traeGateway.js';
 import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl, autoClaimEnabled, autoClaimUntil, setAutoClaimEnabled, claimIntervalMin, setClaimIntervalMin, claimWindowMin, setClaimWindowMin, dailyClaimPlan, setDailyClaimPlan } from './zcodeClient.js';
 import { exportAccounts, buildExportPayload, parseImport, TransferError } from './transfer.js';
 import { syncAccountsTo10r } from './tenrouterAccounts.js';
-import { runCheckinTick, getSchedulerInfo, dayKey, enableZcodeAutoClaimWindow, refreshZcodeScheduler, refreshZcodeDailyPlan, pollZcodeNow, resyncAutoCheckinScheduler } from './checkin.js';
-/** 每日定时计划的对外形状（GET/PUT /api/zcode/net 都回它；nextRunAt 由 checkin.js 时钟维护） */
-const getSchedulerDailyPlan = () => {
-  const plan = dailyClaimPlan();
-  return { ...plan, nextRunAt: plan.enabled ? getSchedulerInfoZcodeDailyNext() : null };
-};
-/** 从调度器状态里取 nextRunAt（避免 checkin.js 再出一个只读 getter） */
-let schedulerInfoCache = null;
-function getSchedulerInfoZcodeDailyNext() {
-  return schedulerInfoCache?.zcode?.dailyPlan?.nextRunAt || null;
-}
+import { runCheckinTick, getSchedulerInfo, dayKey, enableZcodeAutoClaimWindow, refreshZcodeScheduler, refreshZcodeDailyPlan, pollZcodeNow, resyncAutoCheckinScheduler, zcodeDailyPlanInfo } from './checkin.js';
+/** 每日定时计划的对外形状（GET/PUT /api/zcode/net 都回它；nextRunAt 由 checkin.js 时钟维护）。
+ *  直读时钟而非 /api/status 的缓存——PUT 保存后面板要立刻看到实排的下次触发时刻。 */
+const getSchedulerDailyPlan = () => zcodeDailyPlanInfo();
 import { detectQoderApps, readQoderAppAccounts, riskIdentityAvailable, riskIdentitySource, switchTo as qoderSwitchTo, qoderRunningCached, terminateQoder } from './qoderApp.js';
 import { umidInfo, installUmid } from './qoderUmid.js';
 import * as tenrouter from './tenrouter.js';
@@ -2340,7 +2333,7 @@ async function handleApi(req, res, url) {
         meoo: dayKey(Date.now(), 'meoo'),       // Meoo 首登积分线：同为 0 点翻日
         dumate: dayKey(Date.now(), 'dumate'),   // DuMate 每日登录赠送积分：0 点翻日
       },
-      scheduler: (schedulerInfoCache = await getSchedulerInfo()),
+      scheduler: await getSchedulerInfo(),
       riskIdentity: riskIdentityAvailable(),
       riskSource: riskIdentitySource(),
       umid: umidInfo(),

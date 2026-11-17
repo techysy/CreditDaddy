@@ -1042,29 +1042,37 @@
   </div>
 </div>
 
-<!-- ZCode 自动领取计划 -->
+<!-- ZCode 自动领取计划：每日定时与单次窗口两条独立路径、各自保存（2026-11-17 实测：底部主按钮让用户以为不定时+启用就存不上定时） -->
 <div class="mask" id="m-zac">
   <div class="modal sm">
     <div class="modal-title"><span data-i18n="ZCode 自动领取计划">ZCode 自动领取计划</span><button class="close" data-close>✕</button></div>
-    <div class="field">
-      <label data-i18n="轮询周期（分钟，1–720）">轮询周期（分钟，1–720）</label>
-      <input class="input" id="zac-interval" type="number" min="1" max="720" step="1">
-    </div>
-    <div class="field">
-      <label data-i18n="单次运行时长（分钟，0 = 一直运行直到手动关闭）">单次运行时长（分钟，0 = 一直运行直到手动关闭）</label>
-      <input class="input" id="zac-window" type="number" min="0" max="1440" step="5">
-    </div>
-    <div class="field">
-      <label class="check"><input type="checkbox" id="zac-daily-on"> <span data-i18n="每日定时开启（到点自动开始一轮上面的轮询）">每日定时开启（到点自动开始一轮上面的轮询）</span></label>
-      <div id="zac-daily-fields" style="display:flex;gap:8px;align-items:center;margin-top:6px">
+    <div style="border:1px solid var(--border-subtle);border-radius:10px;padding:10px 12px;margin-bottom:10px">
+      <label class="check"><input type="checkbox" id="zac-daily-on"> <span data-i18n="每日定时：每天到点自动开跑一轮">每日定时：每天到点自动开跑一轮</span></label>
+      <div id="zac-daily-fields" style="display:flex;gap:8px;align-items:center;margin-top:8px">
         <span class="dim" style="font-size:12px;flex:none" data-i18n="每天">每天</span>
         <input class="input" id="zac-daily-time" type="time" style="width:120px">
-        <button class="btn" id="zac-daily-save" style="flex:none" data-i18n="保存定时">保存定时</button>
+        <button class="btn primary" id="zac-daily-save" style="flex:none" data-i18n="保存定时">保存定时</button>
         <span class="dim" id="zac-daily-state" style="font-size:11.5px"></span>
       </div>
+      <div class="hint" style="margin-top:6px" data-i18n="点「保存定时」即已保存生效，无需再点其他按钮；到点自动开跑一轮（按下面单次窗口的参数）。">点「保存定时」即已保存生效，无需再点其他按钮；到点自动开跑一轮（按下面单次窗口的参数）。</div>
     </div>
-    <div class="hint" data-i18n="两处各自保存：上面的周期/时长归「保存并启用」（单次窗口），每日定时归「保存定时」——保存定时只存计划、不立即开跑，到点才自动开启一轮。活动包由服务端在每日 0 点左右刷新放出，运行时段没覆盖 0 点会错过当次领取（建议时长设 0 或跨过 0 点）。需要验证码时无法自动通过，卡片上会提示手动领取。">两处各自保存：上面的周期/时长归「保存并启用」（单次窗口），每日定时归「保存定时」——保存定时只存计划、不立即开跑，到点才自动开启一轮。活动包由服务端在每日 0 点左右刷新放出，运行时段没覆盖 0 点会错过当次领取（建议时长设 0 或跨过 0 点）。需要验证码时无法自动通过，卡片上会提示手动领取。</div>
-    <div class="modal-actions"><button class="btn" id="zac-off" style="display:none" data-i18n="停用">停用</button><button class="btn" data-close>取消</button><button class="btn primary" id="zac-ok" data-i18n="保存并启用">保存并启用</button></div>
+    <div style="border:1px solid var(--border-subtle);border-radius:10px;padding:10px 12px">
+      <div style="font-size:12.5px;font-weight:650;margin-bottom:8px" data-i18n="单次窗口：现在立即开跑（与每日定时互不影响）">单次窗口：现在立即开跑（与每日定时互不影响）</div>
+      <div class="field">
+        <label data-i18n="轮询周期（分钟，1–720）">轮询周期（分钟，1–720）</label>
+        <input class="input" id="zac-interval" type="number" min="1" max="720" step="1">
+      </div>
+      <div class="field">
+        <label data-i18n="单次运行时长（分钟，0 = 一直运行直到手动关闭）">单次运行时长（分钟，0 = 一直运行直到手动关闭）</label>
+        <input class="input" id="zac-window" type="number" min="0" max="1440" step="5">
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn primary" id="zac-ok" data-i18n="立即开跑">立即开跑</button>
+        <span class="dim" style="font-size:11.5px" data-i18n="马上按上面参数开跑一轮；只影响本次，不改每日定时">马上按上面参数开跑一轮；只影响本次，不改每日定时</span>
+      </div>
+    </div>
+    <div class="hint" style="margin-top:10px" data-i18n="活动包由服务端在每日 0 点左右刷新放出，运行时段没覆盖 0 点会错过当次领取（建议时长设 0 或跨过 0 点）。需要验证码时无法自动通过，卡片上会提示手动领取。">活动包由服务端在每日 0 点左右刷新放出，运行时段没覆盖 0 点会错过当次领取（建议时长设 0 或跨过 0 点）。需要验证码时无法自动通过，卡片上会提示手动领取。</div>
+    <div class="modal-actions"><button class="btn" id="zac-off" style="display:none" data-i18n="停用">停用</button><button class="btn" data-close>取消</button></div>
   </div>
 </div>
 
@@ -2201,7 +2209,7 @@ function renderProd() {
     // 「保存并启用」后窗口 60 分钟就到期熄灯，但计划还挂着；只有灯不反映它，用户无法分辨
     // 复选框是否生效（2026-11-17 实测反馈）。计划带下次触发时刻进 tooltip。
     const dpText = dpOn
-      ? T('；每日 ') + String(dp.hour).padStart(2, '0') + ':' + String(dp.minute).padStart(2, '0') + T(' 定时开启一轮') + (dp.nextRunAt ? T('（下次 ') + esc(String(dp.nextRunAt).slice(5, 16).replace('T', ' ')) + T('）') : '')
+      ? T('；每日 ') + String(dp.hour).padStart(2, '0') + ':' + String(dp.minute).padStart(2, '0') + T(' 定时开启一轮') + (dp.nextRunAt ? T('（下次 ') + esc(fmtTime(dp.nextRunAt).slice(5, 16)) + T('）') : '')
       : '';
     // 今日全部领完 → 黄灯（任务已完成、自动轮实际无事可做）：逐号看 26h 内的
     // lastResult（checked-in/already/partial 都算领到），与卡片徽标同口径。
@@ -2217,8 +2225,9 @@ function renderProd() {
     $('zt-ac').title = allClaimed && (acOn || dpOn)
       ? T('今日已全部领取，自动轮已无事可做（窗口/计划仍挂着，次日刷新后照常）') + dpText + T('——点我调整')
       : acOn ? T('自动领取运行中') + dpText + T('——点我调整轮询周期 / 运行时长')
-      : dpOn ? T('自动领取当前关闭，每日定时计划已排') + dpText + T('——点我调整')
-      : T('自动领取已关闭——点我设置轮询周期与运行时长并开启');
+      : dpOn ? T('每日定时已排：') + T('每天 ') + String(dp.hour).padStart(2, '0') + ':' + String(dp.minute).padStart(2, '0') + T(' 自动开跑一轮')
+        + (dp.nextRunAt ? T('，下次 ') + esc(fmtTime(dp.nextRunAt).slice(5, 16)) : '') + T('（已保存即生效，无需「启用」）') + T('——点我调整')
+      : T('自动领取已关闭——点我排每日定时，或立即开跑');
     $('zt-gw').innerHTML = dot(gwOn) + T('接口') + (gwOn && state.zGatewayLan === true ? T('·局域网') : '');
     $('zt-gw').title = T('体验包接口：开关、局域网开放与 IP 白名单');
     const zc = (state.status && state.status.zcodeClient) || {};
@@ -2520,18 +2529,22 @@ function renderStatus() {
     const zwin = state.zClaimWindowMin === 0 ? 0 : (state.zClaimWindowMin || 60);
     const dp = state.zDailyPlan || null;
     const dpOn = dp && dp.enabled === true;
-    // 每日计划状态进横幅：nextRunAt 直读 scheduler（30s 轮询刷新），保存后立刻可见
+    // 每日计划状态进横幅：nextRunAt 直读 scheduler（30s 轮询刷新），保存后立刻可见。
+    // 2026-11-17 实测：横幅先说「自动领取未开启」再说定时，用户误读成「计划没保存、要启用才行」
+    // ——已排定时就把定时放主语，不再用「未开启」打头。
     const schZc = (s.scheduler && s.scheduler.zcode) || {};
     const schDp = schZc.dailyPlan || dp || {};
     const dpText = (dpOn || schDp.enabled === true)
-      ? T('；每日 ') + String(schDp.hour ?? 8).padStart(2, '0') + ':' + String(schDp.minute ?? 0).padStart(2, '0') + T(' 定时开启一轮')
-        + (schDp.nextRunAt ? T('，下次 ') + esc(String(schDp.nextRunAt).slice(5, 16).replace('T', ' ')) : '')
+      ? T('每天 ') + String(schDp.hour ?? 8).padStart(2, '0') + ':' + String(schDp.minute ?? 0).padStart(2, '0') + T(' 自动开跑一轮')
+        + (schDp.nextRunAt ? T('，下次 ') + esc(fmtTime(schDp.nextRunAt).slice(5, 16)) : '')
       : '';
-    n.innerHTML = T('<div class="z-row"><span class="z-label">活动领取</span><span class="z-text">活动包积分，每日 0 点左右刷新（无每日签到）。自动领取')
-      + (ac ? T('每 ') + ziv + T(' 分钟检查资格') + (zwin > 0 ? T('，本次运行 ') + zwin + T(' 分钟') : T('，持续运行')) : T('未开启'))
-      + dpText
-      + (!ac && dpOn ? T('（计划到点自动拉起；手动停用会连计划一起关）') : '')
-      + (ac || dpOn ? '' : T('（右上角设置轮询计划）'))
+    n.innerHTML = T('<div class="z-row"><span class="z-label">活动领取</span><span class="z-text">活动包积分，每日 0 点左右刷新（无每日签到）。')
+      + (ac
+        ? T('自动领取运行中：每 ') + ziv + T(' 分钟检查资格') + (zwin > 0 ? T('，本次运行 ') + zwin + T(' 分钟后自动关') : T('，持续运行'))
+          + (dpText ? T('；另有每日定时：') + dpText : '')
+        : dpText
+          ? T('每日定时已排：') + dpText + T('（已保存即生效，无需「启用」）') + T('；要现在领，点右上角「自动领取」→「立即开跑」')
+          : T('自动领取未开启：点右上角「自动领取」排每日定时，或「立即开跑」现在领'))
       + T('；礼物图标 = 手动临时领。</span></div>');
   } else if (state.view === 'workbuddy' && s.workbuddyClient && s.workbuddyClient.installed === false) {
     // WorkBuddy 客户端未安装：切换线是死路（写凭据没人应用），进页就明说而不是切了才失败
@@ -2702,7 +2715,7 @@ document.addEventListener('click', async (e) => {
     return;
   }
   if (e.target.closest('#zt-ac')) {
-    // 自动领取计划弹窗：单次窗口（周期/时长，归「保存并启用」）与每日定时（归「保存定时」）各自保存
+    // 自动领取计划弹窗：每日定时（归「保存定时」）与单次窗口（归「立即开跑」）两条独立路径
     $('zac-interval').value = state.zClaimIntervalMin || 2;
     $('zac-window').value = state.zClaimWindowMin === 0 ? 0 : (state.zClaimWindowMin || 60);
     const dp = state.zDailyPlan || {};
@@ -2713,7 +2726,6 @@ document.addEventListener('click', async (e) => {
     refreshZacDailyState(schDp);
     syncZacDailyFields();
     $('zac-off').style.display = state.zAutoClaim === true ? '' : 'none';
-    $('zac-ok').textContent = state.zAutoClaim === true ? T('保存') : T('保存并启用');
     openModal('m-zac');
     return;
   }
@@ -5096,13 +5108,12 @@ if (updBridge && typeof updBridge.onChangelogOpen === 'function') {
   updBridge.onChangelogOpen(openChangelogModal);
 }
 
-// ZCode 自动领取计划：保存（按新配置启用）/ 停用；每日定时计划随同一请求落盘
-// 复选框即时反馈：取消勾选时时间行置灰（不隐藏，避免布局跳动）。
-// 「保存定时」按钮始终可点（勾选=排计划 / 取消勾选=撤计划），保存动作归按钮自己
+// ZCode 自动领取计划：每日定时（保存定时）与单次窗口（立即开跑）各自保存
+// 复选框即时反馈：取消勾选时只置灰时间输入；「保存定时」按钮保持醒目且始终可点
+// （取消勾选 + 保存 = 撤计划，不能让按钮看起来像不可用）
 function syncZacDailyFields() {
   const off = !$('zac-daily-on').checked;
   $('zac-daily-time').disabled = off;
-  $('zac-daily-fields').style.opacity = off ? '.45' : '';
 }
 $('zac-daily-on').addEventListener('change', syncZacDailyFields);
 function zacDailyPlanPayload() {
@@ -5114,13 +5125,13 @@ function zacDailyPlanPayload() {
   };
 }
 function refreshZacDailyState(dp) {
-  // 保存后/打开时都刷新行内状态——「已排 · 下次 …」直接读 daemon 时钟实排值
+  // 保存后/打开时都刷新行内状态——「已排 · 下次 …」直接读 daemon 时钟实排值（本地时间）
   $('zac-daily-state').textContent = dp && dp.enabled === true
-    ? (dp.nextRunAt ? T('已排 · 下次 ') + String(dp.nextRunAt).slice(5, 16).replace('T', ' ') : T('已排'))
+    ? (dp.nextRunAt ? T('已排 · 下次 ') + fmtTime(dp.nextRunAt).slice(5, 16) : T('已排'))
     : T('未排');
 }
 // 「保存定时」：只存每日计划（enabled/hour/minute），不动单次窗口——勾选保存=排计划，
-// 取消勾选保存=撤计划。不关弹窗、不触发「保存并启用」，用户可继续改单次参数。
+// 取消勾选保存=撤计划。不关弹窗、不触发「立即开跑」，用户可继续改单次参数。
 $('zac-daily-save').addEventListener('click', async () => {
   try {
     const r = await api('/api/zcode/net', { method: 'PUT', json: { dailyPlan: zacDailyPlanPayload() } });
@@ -5133,7 +5144,7 @@ $('zac-daily-save').addEventListener('click', async () => {
       : T('每日定时已取消'), true);
   } catch (err) { toast(err.message, false); }
 });
-// 「保存并启用」：只存单次窗口参数（周期/时长）并开跑——不带 dailyPlan，计划归「保存定时」管
+// 「立即开跑」：只存单次窗口参数（周期/时长）并马上开跑——不带 dailyPlan，计划归「保存定时」管
 $('zac-ok').addEventListener('click', async () => {
   try {
     const r = await api('/api/zcode/net', { method: 'PUT', json: { autoClaim: true, claimIntervalMin: Number($('zac-interval').value), claimWindowMin: Number($('zac-window').value) } });
@@ -5886,12 +5897,12 @@ function autoCheckinHint() {
   const zc = sch && sch.zcode;
   const dp = zc && zc.dailyPlan;
   const dpText = dp && dp.enabled
-    ? T('；每日定时计划 ') + String(dp.hour).padStart(2, '0') + ':' + String(dp.minute).padStart(2, '0') + T(' 自动开启一轮（下次 ') + (dp.nextRunAt ? esc(String(dp.nextRunAt).slice(5, 16).replace('T', ' ')) : '——') + T('）')
+    ? T('；每日定时计划 ') + String(dp.hour).padStart(2, '0') + ':' + String(dp.minute).padStart(2, '0') + T(' 自动开启一轮（下次 ') + (dp.nextRunAt ? esc(fmtTime(dp.nextRunAt).slice(5, 16)) : '——') + T('）')
     : '';
   const zcText = zc && zc.enabled
     ? T('ZCode 自动领取运行中（每 ') + (zc.intervalMin || 2) + T(' 分钟') + (zc.autoOffAt ? T('，约 ') + Math.max(1, Math.ceil((new Date(zc.autoOffAt).getTime() - Date.now()) / 60000)) + T(' 分钟后自动关闭') : T('，一直运行')) + dpText + T('），周期可在 ZCode 页「自动领取计划」里改')
     : (dpText
-      ? T('ZCode 活动领取当前关闭，但每日定时计划已排：到点自动开启一轮') + T('（') + dpText.replace('；每日定时计划 ', '').replace('；', '') + T('），配置在 ZCode 页「自动领取计划」')
+      ? T('ZCode 活动领取当前关闭，但每日定时已排：每天 ') + String(dp.hour).padStart(2, '0') + ':' + String(dp.minute).padStart(2, '0') + T(' 自动开跑一轮') + (dp.nextRunAt ? T('，下次 ') + esc(fmtTime(dp.nextRunAt).slice(5, 16)) : '') + T('（已保存即生效，无需「启用」），配置在 ZCode 页「自动领取计划」')
       : T('ZCode 活动领取默认关闭，可在 ZCode 页「自动领取计划」里开启并配置轮询周期'));
   return T('守护进程每 ~2 小时自动扫描执行一轮全部账号') + next + T('。各产品「业务日」刷新时点（UTC+8）：<b>Qoder 每日 10:00</b>（每台设备每日限领一个国际版账号）、<b>WorkBuddy 每日 00:00</b>，其余产品按 00:00；已领成功的账号按对应业务日记忆跳过，跨过刷新点后当天照常重试。') + esc(zcText) + T('。');
 }
