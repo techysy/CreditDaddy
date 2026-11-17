@@ -11,6 +11,17 @@ import { EventEmitter } from 'node:events';
 const THOME = fs.mkdtempSync(path.join(os.tmpdir(), 'trae-gw-test-'));
 process.env.CREDITDADDY_HOME = THOME;
 
+// 密封性（flake 339 根因，2026-11-17）：装有已登录 Trae 客户端 + 带 HTTPS_PROXY 的测试机上，
+// 「401 自动拉黑」用例会走真链路——401 后 readLiveAuth 读到本机真凭据重试，fetchJsonRace
+// 直连（mock 队列空抛错）失败再回退真代理真连 trae.cn，拿回真 200 流（本机实测 12.7s 200!==502）。
+// 两条真网络路径都封死：TRAE_HOME 指向空目录（readLiveAuth 恒 null）+ 代理环境变量清除 + 代理路径桩抛错。
+process.env.TRAE_HOME = path.join(THOME, 'no-trae-client');
+for (const k of ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'NO_PROXY', 'no_proxy']) delete process.env[k];
+const zc = await import('../src/zcodeClient.js');
+zc.setProxyFirst(false);
+zc.setProxyUrl(null);
+zc._setViaProxyForTests(async () => { throw new Error('proxy disabled in trae-gateway tests'); });
+
 const store = await import('../src/store.js');
 const gw = await import('../src/traeGateway.js');
 
