@@ -2203,8 +2203,20 @@ function renderProd() {
     const dpText = dpOn
       ? T('；每日 ') + String(dp.hour).padStart(2, '0') + ':' + String(dp.minute).padStart(2, '0') + T(' 定时开启一轮') + (dp.nextRunAt ? T('（下次 ') + esc(String(dp.nextRunAt).slice(5, 16).replace('T', ' ')) + T('）') : '')
       : '';
-    $('zt-ac').innerHTML = dot(acOn || dpOn) + T('自动领取');
-    $('zt-ac').title = acOn ? T('自动领取运行中') + dpText + T('——点我调整轮询周期 / 运行时长')
+    // 今日全部领完 → 黄灯（任务已完成、自动轮实际无事可做）：逐号看 26h 内的
+    // lastResult（checked-in/already/partial 都算领到），与卡片徽标同口径。
+    // 用户实测：4 号全部「已领取」后灯还绿着，看起来像还在空转——黄灯如实表达「已领完，停了」。
+    const zcAccs = state.accounts.filter((a) => a.product === 'zcode');
+    const allClaimed = zcAccs.length > 0 && zcAccs.every((a) => {
+      const r = a.lastResult;
+      return r && r.at && Date.now() - new Date(r.at).getTime() < 26 * 3600e3
+        && ['checked-in', 'already', 'partial'].includes(r.status);
+    });
+    const lightCls = (acOn || dpOn) && allClaimed ? 'dot on probe-warn' : dot(acOn || dpOn).match(/class="([^"]+)"/)[1];
+    $('zt-ac').innerHTML = '<span class="' + lightCls + '"></span>' + T('自动领取');
+    $('zt-ac').title = allClaimed && (acOn || dpOn)
+      ? T('今日已全部领取，自动轮已无事可做（窗口/计划仍挂着，次日刷新后照常）') + dpText + T('——点我调整')
+      : acOn ? T('自动领取运行中') + dpText + T('——点我调整轮询周期 / 运行时长')
       : dpOn ? T('自动领取当前关闭，每日定时计划已排') + dpText + T('——点我调整')
       : T('自动领取已关闭——点我设置轮询周期与运行时长并开启');
     $('zt-gw').innerHTML = dot(gwOn) + T('接口') + (gwOn && state.zGatewayLan === true ? T('·局域网') : '');
