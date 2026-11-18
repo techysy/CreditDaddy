@@ -3600,8 +3600,13 @@ async function cookieSiteCapture(siteId, slot = 1) {
   // 换号 = 选另一槽开窗。清除单个槽请用「会话池」。
   const n = Number(slot) >= 1 && Number(slot) <= 9 ? Math.trunc(Number(slot)) : 1;
   const persistKey = 'cookie-site-' + siteId + (n > 1 ? '-s' + n : '');
-  const r = await window.creditdaddy.openAuthWindow(site.loginUrl, { persistKey });
-  if (!r || r.ok !== true) toast(T('打开登录窗口失败：') + ((r && r.error) || ''), false);
+  // IPC 抛错（应用退出中/窗创建失败）不能落成未处理 rejection——调用点（onclick 代理）不 await
+  try {
+    const r = await window.creditdaddy.openAuthWindow(site.loginUrl, { persistKey });
+    if (!r || r.ok !== true) toast(T('打开登录窗口失败：') + ((r && r.error) || ''), false);
+  } catch (e) {
+    toast(T('打开登录窗口失败：') + (e?.message || e), false);
+  }
 }
 
 // 「选择会话」弹窗（Chrome 多 profile 启动式）：多槽在用时「网页版」先弹它——
@@ -3699,9 +3704,13 @@ async function renderSessionPool(siteId) {
       uiConfirm(T('清除会话 {n} 在本机留存的登录态？已捕获的账号数据不受影响，仅该槽下次打开需要重新登录。', { n: s }), T('清除会话'), T('清除'))
         .then(async (yes) => {
           if (!yes) return;
-          const r = await window.creditdaddy.clearCookieSiteSession('cookie-site-' + siteId + (s > 1 ? '-s' + s : ''));
-          if (r && r.ok) toast(T('已清除会话 {n} 的登录态', { n: s }), true);
-          else toast(T('清除失败：') + ((r && r.error) || ''), false);
+          try {
+            const r = await window.creditdaddy.clearCookieSiteSession('cookie-site-' + siteId + (s > 1 ? '-s' + s : ''));
+            if (r && r.ok) toast(T('已清除会话 {n} 的登录态', { n: s }), true);
+            else toast(T('清除失败：') + ((r && r.error) || ''), false);
+          } catch (e) {
+            toast(T('清除失败：') + (e?.message || e), false);
+          }
         });
       return;
     }
@@ -5141,11 +5150,20 @@ function applyZacDailyState(dp) {
     : T('未排');
 }
 async function putZacDailyPlan(payload) {
-  const r = await api('/api/zcode/net', { method: 'PUT', json: { dailyPlan: payload } });
-  state.zDailyPlan = r.dailyPlan || null;
-  applyZacDailyState(r.dailyPlan);
-  renderStatus(); render();
-  return r.dailyPlan || {};
+  // 竞态防线（2026-11-19 健壮性审计）：连拨开关/连点保存只允许一个 PUT 在飞——
+  // 重叠请求的响应乱序会把开关从用户手指下拽回旧状态。护栏期间两控件禁用，finally 必恢复。
+  $('zac-daily-on').disabled = true;
+  $('zac-daily-save').disabled = true;
+  try {
+    const r = await api('/api/zcode/net', { method: 'PUT', json: { dailyPlan: payload } });
+    state.zDailyPlan = r.dailyPlan || null;
+    applyZacDailyState(r.dailyPlan);
+    renderStatus(); render();
+    return r.dailyPlan || {};
+  } finally {
+    $('zac-daily-on').disabled = false;
+    $('zac-daily-save').disabled = (state.zDailyPlan || {}).enabled !== true;
+  }
 }
 const zacDailyToast = (dp) => (dp.enabled
   ? T('每日定时已保存：每天 ') + String(dp.hour).padStart(2, '0') + ':' + String(dp.minute).padStart(2, '0') + T(' 自动开启一轮（到点才跑，不影响当前）')
@@ -5170,8 +5188,17 @@ $('zac-daily-save').addEventListener('click', async () => {
 });
 // 「立即开跑」：只存单次窗口参数（周期/时长）并马上开跑——不带 dailyPlan，计划归「保存定时」管
 $('zac-ok').addEventListener('click', async () => {
+  // 空输入防线（2026-11-19 健壮性审计）：清空输入框时 Number('') = 0——周期 0 服务端会 400 挡下，
+  // 但时长 0 =「一直运行」是合法值，静默开一个永不自停的窗口不是用户的意图。入参不合法就地拦下，
+  // 文案与服务端校验同串（词典已有，面板即时反馈不必等 400 往返）。
+  const ivRaw = String($('zac-interval').value || '').trim();
+  const winRaw = String($('zac-window').value || '').trim();
+  const iv = Number(ivRaw);
+  const win = Number(winRaw);
+  if (!ivRaw || !Number.isFinite(iv) || iv < 1 || iv > 720) { toast(T('轮询周期需在 1–720 分钟之间'), false); return; }
+  if (!winRaw || !Number.isFinite(win) || win < 0 || win > 1440 || (win > 0 && win < 5)) { toast(T('运行时长需为 0（一直运行）或 5–1440 分钟'), false); return; }
   try {
-    const r = await api('/api/zcode/net', { method: 'PUT', json: { autoClaim: true, claimIntervalMin: Number($('zac-interval').value), claimWindowMin: Number($('zac-window').value) } });
+    const r = await api('/api/zcode/net', { method: 'PUT', json: { autoClaim: true, claimIntervalMin: Math.round(iv), claimWindowMin: Math.round(win) } });
     state.zAutoClaim = r.autoClaim === true;
     state.zClaimIntervalMin = r.claimIntervalMin;
     state.zClaimWindowMin = r.claimWindowMin;
