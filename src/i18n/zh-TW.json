@@ -2274,5 +2274,11 @@
   "托盘初始化失败（不影响守护进程）:{err}": "托盤初始化失敗（不影響守護進程）:{err}",
   "托盘立即领取:{summary}": "托盤立即領取:{summary}",
   "托盘立即领取失败:{err}": "托盤立即領取失敗:{err}",
-  "CreditDaddy daemon": "CreditDaddy 守護進程"
+  "CreditDaddy daemon": "CreditDaddy 守護進程",
+  "端口 {port} 被旧版本实例（v{serving}）占用——双服务会混写数据目录，换试 {next}。请卸载旧版（如 npm uninstall -g creditdaddy）或 creditdaddy stop": "連接埠 {port} 被舊版本實例（v{serving}）佔用——雙服務會混寫資料目錄，換試 {next}。請解除安裝舊版（如 npm uninstall -g creditdaddy）或 creditdaddy stop",
+  "连续多个端口都有异版本实例在响应——疑似系统异常，回退随机端口": "連續多個連接埠都有異版本實例在回應——疑似系統異常，回退隨機連接埠",
+  "CreditDaddy 端口已漂移": "CreditDaddy 連接埠已漂移",
+  "默认端口被占用（疑似旧版本实例仍在运行），面板已改用 {port}。建议卸载旧版（如 npm uninstall -g creditdaddy）后重启。": "預設連接埠被佔用（疑似舊版本實例仍在執行），面板已改用 {port}。建議解除安裝舊版（如 npm uninstall -g creditdaddy）後重啟。",
+  "[main] 端口漂移：": "[main] 連接埠漂移：",
+  "（默认被占，疑似旧版本实例共存）": "（預設被佔，疑似舊版本實例共存）"
 }

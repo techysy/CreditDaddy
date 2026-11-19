@@ -2274,5 +2274,11 @@
   "托盘初始化失败（不影响守护进程）:{err}": "트레이 초기화 실패(데몬에 영향 없음):{err}",
   "托盘立即领取:{summary}": "트레이 즉시 수령:{summary}",
   "托盘立即领取失败:{err}": "트레이 즉시 수령 실패:{err}",
-  "CreditDaddy daemon": "CreditDaddy 데몬"
+  "CreditDaddy daemon": "CreditDaddy 데몬",
+  "端口 {port} 被旧版本实例（v{serving}）占用——双服务会混写数据目录，换试 {next}。请卸载旧版（如 npm uninstall -g creditdaddy）或 creditdaddy stop": "포트 {port}을(를) 구버전 인스턴스(v{serving})가 점유 중 — 이중 서비스는 데이터 디렉터리를 오염시키므로 {next}(으)로 전환. 구버전을 제거하세요(예: npm uninstall -g creditdaddy) 또는 creditdaddy stop",
+  "连续多个端口都有异版本实例在响应——疑似系统异常，回退随机端口": "연속된 여러 포트에서 다른 버전이 응답 — 시스템 이상 의심, 무작위 포트로 폴백",
+  "CreditDaddy 端口已漂移": "CreditDaddy 포트 변경됨",
+  "默认端口被占用（疑似旧版本实例仍在运行），面板已改用 {port}。建议卸载旧版（如 npm uninstall -g creditdaddy）后重启。": "기본 포트가 점유되었습니다(구버전 인스턴스 실행 의심). 패널은 {port}(으)로 전환되었습니다. 구버전 제거(예: npm uninstall -g creditdaddy) 후 재시작하세요.",
+  "[main] 端口漂移：": "[main] 포트 변경: ",
+  "（默认被占，疑似旧版本实例共存）": "(기본 포트 점유, 구버전 인스턴스 공존 의심)"
 }

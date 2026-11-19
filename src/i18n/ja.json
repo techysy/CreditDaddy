@@ -2274,5 +2274,11 @@
   "托盘初始化失败（不影响守护进程）:{err}": "トレイの初期化に失敗（デーモンには影響なし）:{err}",
   "托盘立即领取:{summary}": "トレイから全件受け取り:{summary}",
   "托盘立即领取失败:{err}": "トレイからの受け取りに失敗:{err}",
-  "CreditDaddy daemon": "CreditDaddy デーモン"
+  "CreditDaddy daemon": "CreditDaddy デーモン",
+  "端口 {port} 被旧版本实例（v{serving}）占用——双服务会混写数据目录，换试 {next}。请卸载旧版（如 npm uninstall -g creditdaddy）或 creditdaddy stop": "ポート {port} は旧バージョン インスタンス（v{serving}）が占有——二重サービスはデータディレクトリを混書きするため {next} に切替。旧版をアンインストールしてください（例：npm uninstall -g creditdaddy）または creditdaddy stop",
+  "连续多个端口都有异版本实例在响应——疑似系统异常，回退随机端口": "連続する複数ポートで異バージョンが応答——システム異常の疑い、ランダムポートへフォールバック",
+  "CreditDaddy 端口已漂移": "CreditDaddy ポートが移動しました",
+  "默认端口被占用（疑似旧版本实例仍在运行），面板已改用 {port}。建议卸载旧版（如 npm uninstall -g creditdaddy）后重启。": "既定ポートが占有されています（旧バージョン インスタンスが実行中の疑い）。パネルは {port} に切替しました。旧版をアンインストール（例：npm uninstall -g creditdaddy）してから再起動してください。",
+  "[main] 端口漂移：": "[main] ポート移動：",
+  "（默认被占，疑似旧版本实例共存）": "（既定ポート占有、旧バージョン インスタンス共存の疑い）"
 }

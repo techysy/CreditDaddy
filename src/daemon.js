@@ -2705,11 +2705,48 @@ export async function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
       const onListening = () => {
         server.off('error', onError);
         const bound = server.address().port;
-        logger.info('DAEMON', 'CreditDaddy 守护进程已启动:http://{host}:{port}', { host, port: bound });
-        if ((host === '0.0.0.0' || host === '::') && !panelKeyRequired()) {
-          logger.warn('DAEMON', '监听 0.0.0.0 且未设置 CREDITDADDY_PASSWORD —— 局域网内任何人可访问账号 API,建议设置访问密钥', {});
-        }
-        resolve({ server, port: bound });
+        // 自探防线（2026-11-19 双实例事故，结构修复）：Windows 上 0.0.0.0 通配绑定会与已存在的
+        // 127.0.0.1 精确绑定【共存】（EADDRINUSE 不触发）——本机 0.9.1 旧 daemon 与新版同端口
+        // 双服务、数据目录混写的事故即此成因。listen 成功后立刻探 127.0.0.1 的回环：应答方
+        // version 与自己不一致 = 端口被旧版本占着，断开自换下个端口，绝不与它共端口的混写。
+        const selfProbe = () => new Promise((done) => {
+          const probeHost = LOOPBACK_HOSTS.has(host) ? host : '127.0.0.1';
+          const req = http.request(
+            { host: probeHost, port: bound, path: '/api/status', method: 'GET', headers: { Host: `${probeHost}:${bound}` } },
+            (res) => {
+              const chunks = [];
+              res.on('data', (c) => chunks.push(c));
+              res.on('end', () => {
+                let version = null;
+                try { version = JSON.parse(Buffer.concat(chunks).toString('utf8'))?.version || null; } catch {}
+                done(version);
+              });
+            },
+          );
+          req.on('error', () => done(null));
+          req.setTimeout(2000, () => { req.destroy(); done(null); });
+          req.end();
+        });
+        selfProbe().then((servingVersion) => {
+          if (servingVersion && servingVersion !== APP_VERSION) {
+            server.close();
+            attempts += 1;
+            if (attempts < 100 && !triedFallback) {
+              logger.error('DAEMON', '端口 {port} 被旧版本实例（v{serving}）占用——双服务会混写数据目录，换试 {next}。请卸载旧版（如 npm uninstall -g creditdaddy）或 creditdaddy stop', { port: bound, serving: servingVersion, next: bound + 1 });
+              setTimeout(() => bind(bound + 1), 30);
+            } else {
+              logger.error('DAEMON', '连续多个端口都有异版本实例在响应——疑似系统异常，回退随机端口', {});
+              triedFallback = true;
+              setTimeout(() => bind(0), 30);
+            }
+            return;
+          }
+          logger.info('DAEMON', 'CreditDaddy 守护进程已启动:http://{host}:{port}', { host, port: bound });
+          if ((host === '0.0.0.0' || host === '::') && !panelKeyRequired()) {
+            logger.warn('DAEMON', '监听 0.0.0.0 且未设置 CREDITDADDY_PASSWORD —— 局域网内任何人可访问账号 API,建议设置访问密钥', {});
+          }
+          resolve({ server, port: bound });
+        });
       };
       server.once('error', onError);
       server.once('listening', onListening);

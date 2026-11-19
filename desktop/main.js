@@ -121,6 +121,21 @@ async function boot() {
     const bindHost = anyLan ? '0.0.0.0' : '127.0.0.1';
     const r = await daemon.startDaemon(PORT, bindHost);
     boundPort = r.port;
+    // 端口漂移感知（2026-11-19 双实例事故结构防线②）：daemon 自探发现端口被旧版本实例
+    // 双服务时会自动 +1 换端口——漂移 = 机器上有旧版 CreditDaddy（npm 全局残留等）在跑。
+    // 静默漂移用户毫无感知（面板看起来一切正常，数据却在被两个版本混写），必须明示。
+    if (r.port !== (Number(PORT) || 47860) && !anyLan) {
+      try {
+        const n = new Notification({
+          title: Tt('CreditDaddy 端口已漂移'),
+          body: Tt('默认端口被占用（疑似旧版本实例仍在运行），面板已改用 {port}。建议卸载旧版（如 npm uninstall -g creditdaddy）后重启。', { port: r.port }),
+          silent: false,
+        });
+        n.on('click', () => { showWin(); });
+        n.show();
+      } catch {}
+      console.warn('[main] 端口漂移：' + r.port + '（默认被占，疑似旧版本实例共存）');
+    }
     // runtime 记录：前台 / 后台 / 桌面 all 都写（P0-3 单实例守护）。桌面壳重启时若旧实例
     // 仍存活，startDaemon 已经在上面把 ALREADY_RUNNING 拉上来了，走这里也不会重复写。
     try {

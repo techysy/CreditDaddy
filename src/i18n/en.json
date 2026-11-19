@@ -2274,5 +2274,11 @@
   "托盘初始化失败（不影响守护进程）:{err}": "Tray init failed (daemon unaffected): {err}",
   "托盘立即领取:{summary}": "Tray claim-all: {summary}",
   "托盘立即领取失败:{err}": "Tray claim-all failed: {err}",
-  "CreditDaddy daemon": "CreditDaddy daemon"
+  "CreditDaddy daemon": "CreditDaddy daemon",
+  "端口 {port} 被旧版本实例（v{serving}）占用——双服务会混写数据目录，换试 {next}。请卸载旧版（如 npm uninstall -g creditdaddy）或 creditdaddy stop": "Port {port} is held by an old-version instance (v{serving}) — dual-serving would corrupt the data dir; trying {next}. Please uninstall the old one (e.g. npm uninstall -g creditdaddy) or run creditdaddy stop",
+  "连续多个端口都有异版本实例在响应——疑似系统异常，回退随机端口": "Multiple consecutive ports answered from a mismatched version — suspected system anomaly, falling back to a random port",
+  "CreditDaddy 端口已漂移": "CreditDaddy port drifted",
+  "默认端口被占用（疑似旧版本实例仍在运行），面板已改用 {port}。建议卸载旧版（如 npm uninstall -g creditdaddy）后重启。": "The default port is occupied (an old-version instance is likely still running); the panel switched to {port}. Uninstall the old one (e.g. npm uninstall -g creditdaddy) and restart.",
+  "[main] 端口漂移：": "[main] port drifted: ",
+  "（默认被占，疑似旧版本实例共存）": " (default occupied, suspected coexisting old-version instance)"
 }
