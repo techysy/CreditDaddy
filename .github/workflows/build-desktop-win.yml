@@ -37,7 +37,7 @@ jobs:
             echo
             echo "$NOTES"
             echo
-            echo "完整开发明细见 CHANGELOG.md。"
+            echo "完整开发明细见 [CHANGELOG.md](https://github.com/$GITHUB_REPOSITORY/blob/${GITHUB_REF_NAME}/CHANGELOG.md)（本版本完整段落与历史沿革）。"
             echo
             echo "## 📦 安装"
             echo
@@ -48,7 +48,7 @@ jobs:
             echo "| macOS | \`CreditDaddy-Mac-Setup-${VERSION}-arm64.dmg\`(Apple 芯片)/ \`CreditDaddy-Mac-Setup-${VERSION}-x64.dmg\`(Intel),未公证,首次右键打开 |"
             echo "| npm CLI | \`npm i -g creditdaddy@${VERSION}\` |"
             echo
-            echo "校验和见 SHA256SUMS-desktop.txt / SHA256SUMS-fpk.txt / SHA256SUMS-mac.txt。"
+            echo "校验和见 [SHA256SUMS-desktop.txt](https://github.com/$GITHUB_REPOSITORY/releases/download/${GITHUB_REF_NAME}/SHA256SUMS-desktop.txt) / [SHA256SUMS-fpk.txt](https://github.com/$GITHUB_REPOSITORY/releases/download/${GITHUB_REF_NAME}/SHA256SUMS-fpk.txt) / [SHA256SUMS-mac.txt](https://github.com/$GITHUB_REPOSITORY/releases/download/${GITHUB_REF_NAME}/SHA256SUMS-mac.txt)。"
             if [ -n "$PREV_TAG" ]; then
               echo
               echo "Full Changelog: https://github.com/$GITHUB_REPOSITORY/compare/${PREV_TAG}...${GITHUB_REF_NAME}"
