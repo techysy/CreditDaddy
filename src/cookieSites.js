@@ -193,7 +193,15 @@ export const COOKIE_SITES = [
     name: 'Meoo 秒悟',
     provider: 'meoo',
     label: 'Meoo 秒悟',
+    // 登录窗落地页随机轮换维护者邀请码（同 Loomy/DuMate 邀请码池口径）：新账号经此注册
+    // 即归因到对应码；老账号登录时该参数无副作用。loginUrl 保留为无参回退（siteForLoginUrl
+    // 按前缀匹配，带 inviteCode 的查询串不影响站点识别）。
     loginUrl: 'https://meoo.com',
+    loginUrls: [
+      'https://meoo.com/?inviteCode=Raxntxwk',
+      'https://meoo.com/?inviteCode=ycDdBjLV',
+      'https://meoo.com/?inviteCode=2i2N6e2y',
+    ],
     homeUrl: 'https://meoo.com',
     // 探测 = 权益接口本身（2026-11-13 实测）：带会话 cookie 返 { success:true, data:{ userPointInfo… } }；
     // 未登录 401 { errCode:'NEED_LOGIN' }。身份走 /api/v1/user/me 的 user_id（多号归户）。

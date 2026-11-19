@@ -538,3 +538,24 @@ test('推送循环为 meoo 账号保鲜快照：有效会话落余额+grants+探
     await fs.rm(home, { recursive: true, force: true });
   }
 });
+
+// ── meoo 登录窗邀请码池（2026-11-20 用户提案：登录落地页随机轮换维护者邀请码）──
+
+test('meoo 站点配置 loginUrls 邀请码池：3 条合法 https 同源链接，loginUrl 保留为无参回退', async () => {
+  const { COOKIE_SITES } = await import('../src/cookieSites.js');
+  const meoo = COOKIE_SITES.find((s) => s.id === 'meoo');
+  assert.ok(meoo, 'meoo 站点存在');
+  assert.equal(Array.isArray(meoo.loginUrls), true, 'loginUrls 是数组');
+  assert.equal(meoo.loginUrls.length, 3, '邀请码池 3 条');
+  for (const u of meoo.loginUrls) {
+    assert.ok(u.startsWith('https://meoo.com/?inviteCode='), '落地页必须带 inviteCode 参数：' + u);
+    const id = new URL(u).searchParams.get('inviteCode');
+    assert.match(id, /^[A-Za-z0-9]{8}$/, '邀请码为 8 位字母数字：' + id);
+  }
+  const codes = new Set(meoo.loginUrls.map((u) => new URL(u).searchParams.get('inviteCode')));
+  assert.equal(codes.size, 3, '三个邀请码互不重复');
+  assert.equal(meoo.loginUrl, 'https://meoo.com', 'loginUrl 保留无参形态（siteForLoginUrl 前缀匹配回退）');
+  // siteForLoginUrl 对带 inviteCode 的落地 URL 仍识别为 meoo（收割时按窗口 URL 找站点）
+  const { siteForLoginUrl } = await import('../src/cookieSites.js');
+  assert.equal(siteForLoginUrl(meoo.loginUrls[0])?.id, 'meoo', '带 inviteCode 的 URL 仍识别为 meoo');
+});

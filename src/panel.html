@@ -3602,9 +3602,13 @@ async function cookieSiteCapture(siteId, slot = 1) {
   // 换号 = 选另一槽开窗。清除单个槽请用「会话池」。
   const n = Number(slot) >= 1 && Number(slot) <= 6 ? Math.trunc(Number(slot)) : 1;
   const persistKey = 'cookie-site-' + siteId + (n > 1 ? '-s' + n : '');
+  // 登录窗落地页：站点带 loginUrls 池时随机取一个（meoo 邀请码轮换，同 Loomy/DuMate
+  // 邀请码池口径）——新账号注册归因到对应码；老账号登录该参数无副作用
+  const loginCandidates = Array.isArray(site.loginUrls) && site.loginUrls.length ? site.loginUrls : [site.loginUrl];
+  const landingUrl = loginCandidates[Math.floor(Math.random() * loginCandidates.length)];
   // IPC 抛错（应用退出中/窗创建失败）不能落成未处理 rejection——调用点（onclick 代理）不 await
   try {
-    const r = await window.creditdaddy.openAuthWindow(site.loginUrl, { persistKey });
+    const r = await window.creditdaddy.openAuthWindow(landingUrl, { persistKey });
     if (!r || r.ok !== true) toast(T('打开登录窗口失败：') + ((r && r.error) || ''), false);
   } catch (e) {
     toast(T('打开登录窗口失败：') + (e?.message || e), false);
