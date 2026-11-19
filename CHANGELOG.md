@@ -4,7 +4,10 @@
 
 ---
 
-## [Unreleased]
+## [1.8.2] (2026-11-20)
+
+本版主题:**账号凭据静态加密（AES-256-GCM + safeStorage/DPAPI，回应「凭据收割」误伤讨论）+ 双实例双服务防线 + CLI 系统托盘（与 10Router 对齐）+ 会话池修复定版（连字符站点槽位失效 / 槽位 9→6 / 槽 1 徽章）**.
+Theme: **Account-credential at-rest encryption (AES-256-GCM + safeStorage/DPAPI, responding to the "credential harvesting" false-positive discussion) + dual-instance dual-serving guard + CLI system tray (aligned with 10Router) + session-pool fixes finalized (hyphenated site ids / slots 9→6 / slot-1 badge)**.
 
 - **会话徽章对槽 1 也显示（2026-11-19 用户实测「会话 1 没有徽章」）**：daemon 侧老行已归一 cookieSlot=1，面板「>1 才显示」的旧条件让主号所在槽反而没标——会话池显式化后 1 号也是身份，网页会话页与免费额度页两处徽章条件统一改为 ≥1。
 - **双实例双服务防线（2026-11-19 用户机器实测事故的结构性修复）**：卸载前机器上共存着 0.9.1 npm 全局 daemon 与 1.8.2-test.1 桌面版——Windows 上 0.0.0.0 通配绑定与 127.0.0.1 精确绑定**共存不触发 EADDRINUSE**，两代版本同时服务同一端口、混写同一数据目录（托盘显示 v0.9.1 而面板显示 test.1 的怪象即此成因）。现 daemon listen 成功后**自探回环**：应答方 version 与自己不一致 = 端口被异版本实例占着，立即换端口重试（受 100 次上限与随机端口回退约束），绝不与其双服务；桌面壳对端口漂移弹通知明示「疑似旧版本实例共存，建议卸载」。E2E 验证：假 0.9.1 占位 → 新 daemon 自动漂移 +1 并以自身版本应答。
@@ -20,6 +23,10 @@
   - 「立即开跑」**空输入防线**——清空时长输入框时 `Number('') = 0` 恰是合法值「一直运行」，会静默开一个永不自停的窗口；周期/时长就地校验，文案与服务端同串；
   - `zcode-tick` 补 **nextRunAt 语义回归钉**（1.8.1 修的「设 20:00 显示 13:03」此前无测试）：未到点→今天目标精确相等、过点未跑→≤1h 补跑、已跑→明天同一时刻、停用→null。全量 473/473。
   - 审计同时确认无需改动：请求体 413 限额与 JSON 防护、`dailyClaimPlan` 读取归一化（坏配置不致 NaN 热循环）、周期/时长服务端钳制、会话收割链路逐层 catch、HTTP 外层兜底。
+
+---
+
+## [Unreleased]
 
 ## [1.8.1] (2026-11-18)
 
