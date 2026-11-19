@@ -127,3 +127,39 @@ test('鉴权全军覆没：抛登录过期而不是空套餐', async () => {
     await assert.rejects(() => zc.fetchZcodeQuota(makeAccount()), /鉴权失败/);
   } finally { m.restore(); }
 });
+
+// ── 过期资源包过滤（2026-11-19 用户实测：已过期包还挂在卡上、有时还配「已领取」徽章）──
+
+test('normalizeBalance 过期 one_time 包过滤：过期丢弃、未过期保留、周期包重置点已过不过滤', () => {
+  const now = Date.now();
+  const sec = (offset) => Math.floor((now + offset) / 1000);
+  const q = zc.normalizeBalance({ data: {
+    balances: [
+      { show_name: '过期包', unit_type: 'token', total_units: 3e8, used_units: 0, remaining_units: 3e8, expire_at: sec(-3600e3), period: 'one_time' },
+      { show_name: '周期包', unit_type: 'token', total_units: 100, used_units: 10, remaining_units: 90, period_end: sec(-3600e3), period: 'monthly' },
+      { show_name: '有效包', unit_type: 'token', total_units: 500, used_units: 0, remaining_units: 500, expire_at: sec(3600e3), period: 'one_time' },
+    ],
+    plans: [],
+  }});
+  const names = q.parts.map((p) => p.name);
+  assert.ok(!names.includes('过期包'), '过期 one_time 包必须被过滤（服务端不清理过期行，remaining 照旧返回）');
+  assert.ok(names.includes('有效包'));
+  assert.ok(names.includes('周期包'), '周期包的 period_end 是重置点不是到期点，不过滤');
+  assert.equal(q.total, 600, 'total 只计未过期包（周期 100 + 有效 500，按 grant 口径）');
+  assert.equal(q.remaining, 590, 'remaining 只计未过期包（周期 90 + 有效 500）');
+});
+
+test('normalizeBalance：balances 全空但 plans 有过期 one_time 活动 → 派生路径同样过滤', () => {
+  const now = Date.now();
+  const sec = (offset) => Math.floor((now + offset) / 1000);
+  const q = zc.normalizeBalance({ data: {
+    balances: [],
+    plans: [
+      { name: '过期活动', status: 'active', ends_at: sec(-3600e3), entitlements: [{ unit_type: 'token', grant_units: 7e8, show_name: '过期派生' }] },
+      { name: '有效活动', status: 'active', starts_at: sec(-60), ends_at: sec(3600e3), entitlements: [{ unit_type: 'token', grant_units: 3e8, show_name: '有效派生', effective_at: sec(-60) }] },
+    ],
+  }});
+  const names = q.parts.map((p) => p.name);
+  assert.ok(!names.includes('过期派生'), 'ends_at 已过的 one_time 权益不再派生展示');
+  assert.ok(names.includes('有效派生'));
+});

@@ -755,7 +755,18 @@ export function normalizeBalance(balanceResp) {
   const d = balanceResp?.data || {};
   const epochMs = (v) => iso(Number(v) * (Number(v) < 1e12 ? 1000 : 1));
   const plans = Array.isArray(d.plans) ? d.plans.filter((p) => String(p.status || '').toLowerCase() === 'active') : [];
-  const balanceParts = (Array.isArray(d.balances) ? d.balances : []).map((b) => {
+  // 过期包过滤（2026-11-19 用户实测：已过期的资源包还挂在卡上，有时还配着「已领取」徽章）：
+  // 服务端的 balances 不清理过期行（expire_at 已过仍返 remaining=3亿），直接全量映射会让
+  // 面板展示已失效的额度。expire_at 已过的行丢弃——one_time 包过期即无意义；周期包
+  // （recurring）的 expire_at 是下一轮重置点，不算过期（period_end 语义），不过滤。
+  // 注意 epochMs 返回 ISO 字符串（经 iso() 包装），比较前转数字
+  const expired = (ms) => { if (!ms) return false; const t = new Date(ms).getTime(); return Number.isFinite(t) && t <= Date.now(); };
+  const balanceParts = (Array.isArray(d.balances) ? d.balances : [])
+    .filter((b) => {
+      const exp = epochMs(b.expire_at || 0);
+      return !(expired(exp) && String(b.period || 'one_time').toLowerCase() === 'one_time');
+    })
+    .map((b) => {
     const total = Number(b.total_units);
     const used = Number(b.used_units);
     const remaining = Number(b.remaining_units ?? b.available_units);
@@ -775,6 +786,11 @@ export function normalizeBalance(balanceResp) {
   const entitlementParts = plans.flatMap((p) =>
     (Array.isArray(p.entitlements) ? p.entitlements : [])
       .filter((e) => e.unit_type === 'token' && Number(e.grant_units) > 0)
+      // 同款过期过滤：one_time 包的 plan.ends_at 已过 = 该活动额度已失效，不再派生展示
+      .filter((e) => {
+        const endsAt = epochMs(p.ends_at);
+        return !(expired(endsAt) && String(e.period || 'one_time').toLowerCase() === 'one_time');
+      })
       .map((e) => {
         const grant = Number(e.grant_units);
         const startsAt = epochMs(e.effective_at || p.starts_at);

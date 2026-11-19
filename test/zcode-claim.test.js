@@ -41,27 +41,27 @@ const WEEKEND_BALANCE = {
 };
 
 test('normalizeBalance：balances 为空时从生效套餐权益派生额度', () => {
+  // 2026-11-19 口径更新：one_time 权益的 plan.ends_at 已过 = 活动额度已失效，不再派生展示
+  // （用户实测「过期资源包还挂在卡上」的根因）。fixture 的 Weekend Build ends_at 是过去时间，
+  // 期望从「照常展示」改为「被过滤」——既有语义见下方「未过期活动才派生」用例。
   const q = normalizeBalance(WEEKEND_BALANCE);
-  assert.equal(q.empty, false);
-  assert.equal(q.plan, 'ZCode Weekend Build');
-  assert.equal(q.unit, 'Token');
-  assert.equal(q.parts.length, 1, '非 token 权益与过期套餐不应计入');
-  const p = q.parts[0];
-  assert.equal(p.name, 'GLM-5.3-Flash');
-  assert.equal(p.total, 300000000);
-  assert.ok(p.expiresAt);
-  assert.ok(q.planEndsAt);
+  assert.equal(q.parts.length, 0, '过期 one_time 活动的权益不再派生（过期包不再挂卡）');
+  assert.equal(q.empty, false, 'empty 语义是「上游无活动」——plans 非空只是被过滤时不算 empty（面板显示无可用额度而非空卡）');
 });
 
-test('normalizeBalance：effective_at 在未来的权益标记 pending 且不计入剩余', () => {
-  const future = structuredClone(WEEKEND_BALANCE);
+test('normalizeBalance：未过期活动的权益派生 + effective_at pending 语义', () => {
+  // ends_at 推到未来，让派生路径走通（过期过滤不拦截）
+  const alive = structuredClone(WEEKEND_BALANCE);
+  alive.data.plans[0].starts_at = Math.floor(Date.now() / 1000) - 3600;
+  alive.data.plans[0].ends_at = Math.floor(Date.now() / 1000) + 86400;
+  const future = structuredClone(alive);
   future.data.plans[0].entitlements[0].effective_at = Math.floor(Date.now() / 1000) + 86400;
   const q = normalizeBalance(future);
   assert.equal(q.parts[0].pending, true);
   assert.equal(q.remaining, 0);
   assert.equal(q.total, 300000000, '总额仍应显示');
 
-  const past = structuredClone(WEEKEND_BALANCE);
+  const past = structuredClone(alive);
   past.data.plans[0].entitlements[0].effective_at = Math.floor(Date.now() / 1000) - 3600;
   const q2 = normalizeBalance(past);
   assert.equal(q2.parts[0].pending, false);
