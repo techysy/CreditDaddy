@@ -2257,5 +2257,22 @@
   "loadAccounts: 主文件损坏/解密失败,已用备份恢复 ": "loadAccounts: 메인 파일 손상/복호화 실패, 백업에서 복구 ",
   "[secret] accounts.json 静态加密已启用（safeStorage/DPAPI）": "[secret] accounts.json 정적 암호화 활성화(safeStorage/DPAPI)",
   "[secret] safeStorage 不可用——accounts.json 保持 0600 明文（现状回退）": "[secret] safeStorage 사용 불가 — accounts.json은 0600 평문 유지(현상 폴백)",
-  "[secret] 密钥初始化失败，回退明文：": "[secret] 키 초기화 실패, 평문으로 폴백: "
+  "[secret] 密钥初始化失败，回退明文：": "[secret] 키 초기화 실패, 평문으로 폴백: ",
+  "托盘：CreditDaddy（端口 {port}）": "CreditDaddy (포트 {port})",
+  "服务运行中": "서비스 실행 중",
+  "在浏览器中打开": "브라우저에서 열기",
+  "立即领取全部": "지금 모두 수령",
+  "对所有账号跑一轮签到与活动领取": "모든 계정에 대해 출석 및 획득 1회 실행",
+  "✓ 已开启开机自启": "✓ 자동 시작 켜짐",
+  "开启开机自启": "자동 시작 켜기",
+  "系统启动时自动运行": "시스템 시작 시 자동 실행",
+  "退出": "종료",
+  "停止守护进程并退出": "데몬을 중지하고 종료",
+  "CreditDaddy - 端口 {port}": "CreditDaddy - 포트 {port}",
+  "\n正在停止 CreditDaddy…": "\nCreditDaddy를 중지하는 중…",
+  "系统托盘已挂载（右键：打开面板 / 立即领取 / 开机自启 / 退出）": "시스템 트레이 마운트됨(우클릭: 패널 열기 / 즉시 수령 / 자동 시작 / 종료)",
+  "托盘初始化失败（不影响守护进程）:{err}": "트레이 초기화 실패(데몬에 영향 없음):{err}",
+  "托盘立即领取:{summary}": "트레이 즉시 수령:{summary}",
+  "托盘立即领取失败:{err}": "트레이 즉시 수령 실패:{err}",
+  "CreditDaddy daemon": "CreditDaddy 데몬"
 }

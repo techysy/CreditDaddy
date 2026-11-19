@@ -113,16 +113,67 @@ function installShutdown({ server, background }) {
   });
 }
 
+/**
+ * CLI 系统托盘（与 10R 对齐，2026-11-19 用户提案）：Windows=PowerShell NotifyIcon（零二进制
+ * 杀软友好），macOS/Linux=懒装 systray2（npm 包不携带签名二进制）。菜单：打开面板 / 立即领取
+ * 全部 / 开机自启 / 退出。托盘是增强能力：初始化失败 daemon 照常跑，只打一条日志。
+ */
+async function initCliTray(port, server) {
+  try {
+    const { initTray, killTray } = await import('../src/tray/tray.js');
+    if (!initTray) return;
+    const tray = initTray({
+      port,
+      onOpenPanel: () => { try { execServeUrl(`http://127.0.0.1:${port}`); } catch {} },
+      onClaimAll: async () => {
+        try {
+          const res = await fetch(`http://127.0.0.1:${port}/api/checkin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ skipIfCheckedToday: true }),
+          });
+          const d = await res.json().catch(() => ({}));
+          logger.info('CLI', '托盘立即领取:{summary}', { summary: d.summary || (res.ok ? '已触发' : `HTTP ${res.status}`) });
+        } catch (e) {
+          logger.warn('CLI', '托盘立即领取失败:{err}', { err: e?.message || e });
+        }
+      },
+      onQuit: async () => {
+        try { await server?.close(); } catch {}
+        try { const { clearRuntime } = await import('../src/bgdaemon.js'); await clearRuntime(process.pid); } catch {}
+      },
+    });
+    if (tray) {
+      logger.info('CLI', '系统托盘已挂载（右键：打开面板 / 立即领取 / 开机自启 / 退出）', {});
+      // macOS/Linux 托盘二进制懒装（首次使用 npm install 到数据目录，发布包零签名二进制）
+      try { (await import('../src/tray/trayRuntime.js')).ensureTrayRuntime({ silent: true }); } catch {}
+    }
+  } catch (e) {
+    logger.warn('CLI', '托盘初始化失败（不影响守护进程）:{err}', { err: e?.message || e });
+  }
+}
+
+function execServeUrl(url) {
+  const { exec } = require('node:child_process');
+  const platform = process.platform;
+  const cmd = platform === 'darwin' ? `open "${url}"` : platform === 'win32' ? `start "" "${url}"` : `xdg-open "${url}"`;
+  exec(cmd);
+}
+
 async function main() {
   switch (cmd) {
     case 'daemon': {
       const port = Number(flag('--port')) || Number(process.env.PORT) || undefined;
       const host = flag('--host') || process.env.HOST || undefined;
+      // CLI 托盘（与 10R 对齐，2026-11-19 用户提案）：--tray 显式开启；前台 TTY 默认开启；
+      // 后台实例（CREDITDADDY_BG=1）默认不挂——但 --tray 时照挂（开机自启的 VBS/plist
+      // 用 daemon --tray 直启，Windows PowerShell 托盘无 TTY 也能跑）
+      const trayExplicit = flag('--tray') === true;
+      const background = process.env.CREDITDADDY_BG === '1';
       const { server, port: boundPort } = await startDaemon(port, host);
       // 端口被占时 daemon 会自动 +1 重试，真正在听的是 boundPort（记录的必须用它）。
       // runtime 记录不分前台/后台：单实例守护（daemon.js 启动守卫）靠 daemon.json 找活实例，
       // 只有所有启动方式都写文件，另一个方向的探测才完整。清理按 pid 归属（见 stopDaemon/clearRuntime）。
-      const background = process.env.CREDITDADDY_BG === '1';
       {
         const { APP_VERSION } = await import('../src/constants.js');
         const { writeRuntime } = await import('../src/bgdaemon.js');
@@ -138,6 +189,9 @@ async function main() {
       const { startScheduler } = await import('../src/checkin.js');
       startScheduler();
       installShutdown({ server, background });
+      if (trayExplicit || (process.stdout.isTTY && !background)) {
+        initCliTray(boundPort, server).catch(() => {});
+      }
       logger.info('CLI', background ? '按 creditdaddy stop 停止' : '按 Ctrl+C 停止', {});
       break;
     }

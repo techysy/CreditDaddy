@@ -2257,5 +2257,22 @@
   "loadAccounts: 主文件损坏/解密失败,已用备份恢复 ": "loadAccounts: main file corrupt/decryption failed, restored from backup ",
   "[secret] accounts.json 静态加密已启用（safeStorage/DPAPI）": "[secret] accounts.json at-rest encryption enabled (safeStorage/DPAPI)",
   "[secret] safeStorage 不可用——accounts.json 保持 0600 明文（现状回退）": "[secret] safeStorage unavailable — accounts.json stays plaintext 0600 (status-quo fallback)",
-  "[secret] 密钥初始化失败，回退明文：": "[secret] key init failed, falling back to plaintext: "
+  "[secret] 密钥初始化失败，回退明文：": "[secret] key init failed, falling back to plaintext: ",
+  "托盘：CreditDaddy（端口 {port}）": "CreditDaddy (port {port})",
+  "服务运行中": "Service running",
+  "在浏览器中打开": "Open in browser",
+  "立即领取全部": "Claim all now",
+  "对所有账号跑一轮签到与活动领取": "Run one check-in & claim round for all accounts",
+  "✓ 已开启开机自启": "✓ Auto-start on boot enabled",
+  "开启开机自启": "Enable auto-start on boot",
+  "系统启动时自动运行": "Run automatically at system startup",
+  "退出": "Quit",
+  "停止守护进程并退出": "Stop the daemon and quit",
+  "CreditDaddy - 端口 {port}": "CreditDaddy - port {port}",
+  "\n正在停止 CreditDaddy…": "\nStopping CreditDaddy…",
+  "系统托盘已挂载（右键：打开面板 / 立即领取 / 开机自启 / 退出）": "System tray mounted (right-click: open panel / claim all / auto-start / quit)",
+  "托盘初始化失败（不影响守护进程）:{err}": "Tray init failed (daemon unaffected): {err}",
+  "托盘立即领取:{summary}": "Tray claim-all: {summary}",
+  "托盘立即领取失败:{err}": "Tray claim-all failed: {err}",
+  "CreditDaddy daemon": "CreditDaddy daemon"
 }

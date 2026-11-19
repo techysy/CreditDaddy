@@ -2257,5 +2257,22 @@
   "loadAccounts: 主文件损坏/解密失败,已用备份恢复 ": "loadAccounts: 主檔案損壞/解密失敗，已用備份恢復 ",
   "[secret] accounts.json 静态加密已启用（safeStorage/DPAPI）": "[secret] accounts.json 靜態加密已啟用（safeStorage/DPAPI）",
   "[secret] safeStorage 不可用——accounts.json 保持 0600 明文（现状回退）": "[secret] safeStorage 不可用——accounts.json 保持 0600 明文（現狀回退）",
-  "[secret] 密钥初始化失败，回退明文：": "[secret] 金鑰初始化失敗，回退明文："
+  "[secret] 密钥初始化失败，回退明文：": "[secret] 金鑰初始化失敗，回退明文：",
+  "托盘：CreditDaddy（端口 {port}）": "CreditDaddy（連接埠 {port}）",
+  "服务运行中": "服務執行中",
+  "在浏览器中打开": "在瀏覽器中開啟",
+  "立即领取全部": "立即領取全部",
+  "对所有账号跑一轮签到与活动领取": "對所有帳號跑一輪簽到與活動領取",
+  "✓ 已开启开机自启": "✓ 已開啟開機自啟",
+  "开启开机自启": "開啟開機自啟",
+  "系统启动时自动运行": "系統啟動時自動執行",
+  "退出": "結束",
+  "停止守护进程并退出": "停止守護進程並結束",
+  "CreditDaddy - 端口 {port}": "CreditDaddy - 連接埠 {port}",
+  "\n正在停止 CreditDaddy…": "\n正在停止 CreditDaddy…",
+  "系统托盘已挂载（右键：打开面板 / 立即领取 / 开机自启 / 退出）": "系統托盤已掛載（右鍵：開啟面板 / 立即領取 / 開機自啟 / 結束）",
+  "托盘初始化失败（不影响守护进程）:{err}": "托盤初始化失敗（不影響守護進程）:{err}",
+  "托盘立即领取:{summary}": "托盤立即領取:{summary}",
+  "托盘立即领取失败:{err}": "托盤立即領取失敗:{err}",
+  "CreditDaddy daemon": "CreditDaddy 守護進程"
 }
