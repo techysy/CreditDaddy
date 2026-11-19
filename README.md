@@ -35,7 +35,6 @@
 | --- | --- | --- |
 | 全平台（安装包） | `npm i -g creditdaddy` | **任意平台**（Windows / macOS / Linux，x64 与 arm64 皆可），一行命令装成 `creditdaddy` 命令；也支持 `npx creditdaddy` 免安装试跑，详见[方式三](#方式三nodejs-cli--守护进程) |
 | Windows | `CreditDaddy-Win-Setup-<版本>.exe` | 安装版（推荐） |
-| Windows | `CreditDaddy-Win-Portable-<版本>.exe` | 便携版，免安装，双击运行 |
 | macOS（Apple Silicon） | `CreditDaddy-Mac-Setup-<版本>-arm64.dmg` | M1 及以后的芯片 |
 | macOS（Intel） | `CreditDaddy-Mac-Setup-<版本>-x64.dmg` | Intel 芯片 |
 | 飞牛 fnOS | `CreditDaddy-FnOS-Window-<版本>-x86.fpk` | **推荐**：桌面窗口入口（x86） |
@@ -74,14 +73,14 @@
 - **内置隐私（无痕）授权**：桌面版提供隔离的一次性会话窗口进行网页登录授权，不污染系统浏览器 Cookie，支持同平台无缝扩增多账号。
 - **全流程浏览器登录**：支持五家产品线在面板内直接完成网页 / 设备码授权并入库 —— Qoder 设备码授权（PKCE + nonce）、WorkBuddy 状态轮询、ZCode CLI 轮询（支持智谱 BigModel 与 Z.ai）、MiniMax 官方 OAuth 设备码授权（S256 PKCE）、Trae 官方同款授权码 + PKCE（国内 / 国际双线）。
   > ⚠️ **Trae 浏览器登录需「同机」完成**：Trae 采用官方客户端同款机制，授权完成后浏览器会回跳 `http://127.0.0.1:<端口>` 的本机回调（由 CreditDaddy 监听）。因此请在**运行 CreditDaddy 的同一台机器**上打开授权链接完成登录——回跳打在本机回环才算送达。**远程场景（如 fnOS / NAS 网页面板在另一台电脑的浏览器里打开）回跳会落在你眼前的电脑上，浏览器报「无法访问 / 拒绝连接」属预期现象**，此时登录不会完成；NAS 上请改用「本机导入」（Trae 客户端装在同一台 NAS 时）或桌面版 / 同机浏览器操作。其余四家产品线为设备码 / 服务端回调，不受此限制，可跨机远程操作。
-- **网页会话免费额度捕获**：配置驱动的通用浏览器 cookie 捕获框架，接入 Token Harbor / 小米 MiMo / River AI / ModelScope 魔搭 / LongCat（美团）五家「凭据只在网页会话」的供应商——桌面版隐私窗登录自动收割（含 localStorage 凭据变体与鉴权 cookie 轮询等待），支持同站点多号并存、按身份归户、粘贴捕获兜底、就地重探（免重登刷新身份与余额）与三色探活呼吸灯 + 死会话低频重试；凭据只存本机，面板「免费额度」页统一管理。
+- **网页会话免费额度捕获**：配置驱动的通用浏览器 cookie 捕获框架，接入 Token Harbor / 小米 MiMo / River AI / ModelScope 魔搭 / LongCat（美团）/ Meoo 秒悟六家「凭据只在网页会话」的供应商——桌面版隐私窗登录自动收割（含 localStorage 凭据变体与鉴权 cookie 轮询等待），支持**会话池多登录槽**（每站点 6 个独立持久分区，Chrome 多 profile 式主号/小号并存，打开网页版先弹会话选择器）、按身份归户、粘贴捕获兜底、就地重探（免重登刷新身份与余额）与三色探活呼吸灯 + 死会话低频重试；凭据只存本机（桌面版下加密落盘），面板「免费额度」页统一管理。
 
 **自动领取与资产保障**
 - **每日智能轮询**：本地守护进程每 ~2 小时自动扫描执行；当日已领成功的账号自动记忆跳过，未开启活动的账号不落记忆，以每日 10:00 (UTC+8) 刷新周期为准自动重试。
 - **Qoder 国际版风控支持**：真实携带客户端生成的设备风控凭据，还原官方客户端「每日 100 Credits」领取链路。
 - **ZCode 活动智能轮询**：支持免验证码活动直领，遇到图形验证码时桌面版自动拉起静默验证（高风险弹出人工窗口处理），NAS / CLI 环境自动标记提示。
 - **凭据导出导入**：支持口令加密备份，格式与 10Router OAuth 迁移标准（`10router-oauth-secure-v1`）无缝互通，实现多端授权轻松迁移。
-- **安全边界**：守护进程仅监听 `127.0.0.1` 本机回环，严格校验 Host 头防止 DNS 重绑定，拦截跨站 Origin 杜绝 CSRF；存储位于 `~/.creditdaddy`（0600 权限 + 原子写 + 串行锁），无遥测、无第三方依赖。桌面版账号凭据文件另走 **AES-256-GCM 静态加密**（密钥由 safeStorage/DPAPI 绑当前系统用户，拷走文件无当前用户会话解不开）。完整防线清单（存储 / 传输 / 进程 / 输入四层，对照代码可验证）见 [docs/security-model.md](docs/security-model.md)。
+- **安全边界**：守护进程仅监听 `127.0.0.1` 本机回环，严格校验 Host 头防止 DNS 重绑定，拦截跨站 Origin 杜绝 CSRF；存储位于 `~/.creditdaddy`（0600 权限 + 原子写 + 串行锁），无遥测、无第三方依赖。可选**面板访问密码**（scrypt 存储 + 防爆破限流）与数据面网关 **IP 白名单**；桌面版账号凭据文件另走 **AES-256-GCM 静态加密**（密钥由 safeStorage/DPAPI 绑当前系统用户，拷走文件无当前用户会话解不开）。完整防线清单（存储 / 传输 / 进程 / 输入四层，对照代码可验证）见 [docs/security-model.md](docs/security-model.md)。
 - **多账号隔离与防关联**：每账号独立凭据快照与设备身份（Trae deviceId 按 uid 确定性派生、ZCode 各账号独立凭据文件、网页会话线按身份归户），账号之间互不共享会话。⚠️ 但**同一平台的多个账号共享同一出口 IP 时上游可以关联**——设备归属被标记后同机器的兄弟号可能被连带。建议在 10Router 侧用 **Proxy Pools**（连接级代理池）给不同账号配不同出口 IP，并控制单号并发；跨平台指纹共享无影响（各平台账号体系独立）。
 
 ## 10Router 集成
@@ -99,12 +98,12 @@
 ### WorkBuddy（腾讯 CodeBuddy 系）
 - **账号来源**：共享 CodeBuddy CLI / 插件凭据目录 `%LOCALAPPDATA%\CodeBuddyExtension\Data\Public\auth\`（macOS `~/Library/Application Support/CodeBuddyExtension/…`，Linux `~/.local/share/CodeBuddyExtension/…`）。按 Keycloak JWT 签发域名自动区分：`*.codebuddy.cn` / `*.workbuddy.cn` / `copilot.tencent.com` 识别为国内版，`*.codebuddy.ai` / `*.workbuddy.ai` 识别为国际版。
 - **签到与积分**：国内版调用 `/v2/billing/meter/daily-checkin` 领取积分并累计签到天数；调用 `/v2/billing/meter/get-user-resource` 查询循环额度与活动赠送包剩余量。
-- **国际版保持活跃**：国际版官方无签到接口，规则为「每日有效对话即可获取赠送积分」。调度器每日自动为国际版账号发起一次极简免费档模型流式会话（rateMultiplier 0，几乎零消耗），达成活跃条件。
+- **国际版无签到**：国际版官方无签到接口（曾试过「每日有效对话保持活跃」路径，因服务端收紧识别已在 v1.8.1 下线）；积分获取走官方网页版定时任务（codebuddy.ai/agents），CreditDaddy 保留国际版的登录 / 额度 / 赠送包余量 / 到期提醒与 10Router 推送。
 - **Token 续期与切号**：过期时自动通过 refreshToken 换发新 Token。若为客户端当前登录账号，会同步写回文件避免客户端掉线；切号时安全写入 `workbuddy-desktop.info` 并触发客户端热切换。
 
 ### ZCode（智谱 GLM / Z.ai）
 - **账号来源**：读取 `~/.zcode/v2/credentials.json`，本地通过派生密钥解密 `enc:v1:` AES-256-GCM 凭据，Token 绝不出机。
-- **活动领取**：支持自动轮询可领活动（`billing/preview` → `billing/claim`）。支持免验证码直接领取，需验证码时桌面端通过隐藏窗口调度验证码 SDK。
+- **活动领取**：支持自动轮询可领活动（`billing/preview` → `billing/claim`，含 marketing/touch 投放发现）。支持免验证码直接领取，需验证码时桌面端通过隐藏窗口调度验证码 SDK（静默优先、高风险弹人工）；验证码两轮全拒后**指数退避**（30 分钟 → 6 小时封顶，防高频失败画像触发风控），手动领取不受限。支持**每日定时计划**（每天 HH:MM 到点自动开跑一轮领取窗口，面板开关即保存）。
 - **网络出口与客户端跟随**：接口校验客户端版本（注册表动态读取）。网络层支持配置专属代理（`zcode-net.json` 或 `HTTPS_PROXY`），支持「直连优先 / 代理优先」无缝切换。
 - **账号切换**：写回凭据并自动为各账号分配独立的 `deviceMid` 设备指纹，防止多账号设备关联风控。
 
@@ -140,7 +139,7 @@
 - **本地网关**：内置 Anthropic 兼容端点 `POST /gateway/minimax/v1/messages`，10Router 建 anthropic-compatible 节点指向即可把 MiniMax 当普通供应商调度；多账号轮换、401 自动刷新重试、429 冷却、SSE / JSON 流式透传、局域网 IP 白名单（与 ZCode 体验包接口同机制）。
 
 ### 网页会话免费额度站点（配置驱动捕获框架）
-五家「凭据只存在于浏览器会话」的供应商共用一套配置驱动的网页会话捕获框架（`src/cookieSites.js` 站点表 + `src/externalQuota.js` 推卡 + 各站点 client）：面板「免费额度」页登录窗捕获，凭据只存本机账号库，余额数字推 10Router 外部配额出卡。共同纪律：**余额接口即探测**（会话有效返 200 JSON、失效返 401）、就地重探免重登、死会话低频重试、载荷零凭据。
+六家「凭据只存在于浏览器会话」的供应商共用一套配置驱动的网页会话捕获框架（`src/cookieSites.js` 站点表 + `src/externalQuota.js` 推卡 + 各站点 client）：面板「免费额度」页登录窗捕获，凭据只存本机账号库（桌面版下加密落盘），余额数字推 10Router 外部配额出卡。共同纪律：**余额接口即探测**（会话有效返 200 JSON、失效返 401）、就地重探免重登、死会话低频重试、载荷零凭据。
 
 | 站点 | 凭据形态 | 额度口径 |
 | --- | --- | --- |
@@ -149,7 +148,7 @@
 | River AI | WorkOS localStorage JWT 变体（三源收割） | `$25` 免费额度 `balance_usd`，会话过期自动续期 |
 | ModelScope 魔搭（issue #25） | 会话 cookie（双源） | 魔粒余额，卡面拆「今日发放 / 长期」两腿；每日额度登录自动发放、无签到端点 |
 | LongCat 美团（issue #29） | 美团 SSO 会话 cookie | Token 资源包：Balance 汇总 + 逐包明细腿（官方消耗顺序、赠送包徽注、到期日） |
-| Meoo 秒悟 | meoo.com 会话 cookie（阿里云 SSO 手机号 + 短信登录） | 每日首登积分（`/api/mc/entitlement/init` 触发，当前 +2000/天、约 6~7 天过期）自动领取 + 积分余额；会话失效（`NEED_LOGIN`）提示重新捕获；首版不推 10Router 卡 |
+| Meoo 秒悟 | meoo.com 会话 cookie（阿里云 SSO 手机号 + 短信登录） | 每日首登积分（`/api/mc/entitlement/init` 触发，约 6~7 天过期）自动领取 + 积分余额（随后台循环定时保鲜，免手动刷新）；会话失效（`NEED_LOGIN`）提示重新捕获；不推 10Router 卡（10R 侧自消费出卡） |
 
 > 注：办公小浣熊曾按 issue #27 调研接入，因 `raccoon_token` 异步写回时序不可靠已于 v1.5.0 回滚移除。
 
@@ -289,7 +288,7 @@ creditdaddy help                    # 查看完整命令行帮助
 | `POST` | `/api/local/scan` | 读取本机已登录的全部账号候选 |
 | `POST` | `/api/local/import` | 批量将检测到的候选账号导入入库 |
 | `GET` | `/api/status` | 获取服务运行状态、版本号及风控组件状态 |
-| `GET` / `PUT` | `/api/zcode/net` | ZCode 出口偏好（直连 / 代理优先、代理地址、活动自动领取开关） |
+| `GET` / `PUT` | `/api/zcode/net` | ZCode 出口偏好（直连 / 代理优先、代理地址、活动自动领取开关与轮询参数、每日定时计划 `dailyPlan`） |
 | `GET` / `PUT` / `DELETE` | `/api/tenrouter` | 查询 / 配置 / 清除 10Router 集成参数 `{endpoint, key?, syncEnabled?, sources?}` |
 | `POST` | `/api/tenrouter/test` | 测试 10Router 连通性与 Key 有效性 |
 | `GET` | `/api/tenrouter/quotas` | 获取 10Router 聚合的外部供应商配额总览 |
