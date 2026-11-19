@@ -41,6 +41,42 @@ const ACCOUNTS_FILE = () => path.join(dataDir(), 'accounts.json');
 const STATE_FILE = () => path.join(dataDir(), 'state.json');
 const SETTINGS_FILE = () => path.join(dataDir(), 'settings.json');
 
+// ─── 账号凭据静态加密（纵深防御，2026-11-19 用户立项）───
+// 形态：桌面壳启动时生成/恢复 32B 随机密钥（safeStorage/DPAPI 加密存 userData/secret.key，
+// 明文只活在内存），经 setAccountsCipher() 注入本模块——壳与同进程 daemon 共享同一份模块
+// 实例，写入方与读取方天然一致。CLI / NAS 后台实例没有密钥来源：读到密文信封按损坏处理
+// 并明示（不静默清空），写侧保持明文（现状零回归）。
+// 文件形状：明文 = JSON 数组（历史兼容）；密文 = { v:1, enc:'aes-256-gcm', rows:[{iv,tag,data}] }。
+// 临时文件 .tmp 与 .bak 随主文件同形态——密钥丢失 = 数据不可恢复，所以密钥文件不清理、
+// 注入失败宁可拒绝写也不回退明文（回退 = 用户以为还加密着）。
+const ENC_FORMAT = 1;
+let accountsCipher = null;   // { encrypt(plain)→cipher, decrypt(cipher)→plain } | null
+export function setAccountsCipher(c) { accountsCipher = (c && typeof c.keyBytes === 'function') ? c : null; }
+export function hasAccountsCipher() { return accountsCipher !== null; }
+
+function sealAccounts(list) {
+  if (!accountsCipher) return JSON.stringify(list, null, 2);
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', accountsCipher.keyBytes(), iv);
+  const data = Buffer.concat([cipher.update(Buffer.from(JSON.stringify(list), 'utf8')), cipher.final()]);
+  return JSON.stringify({ v: ENC_FORMAT, enc: 'aes-256-gcm', rows: [{ iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64'), data: data.toString('base64') }] });
+}
+
+function unsealAccounts(raw) {
+  const parsed = JSON.parse(raw);
+  if (Array.isArray(parsed)) return parsed;                      // 历史明文：直接用
+  if (parsed && parsed.enc === 'aes-256-gcm' && Array.isArray(parsed.rows)) {
+    if (!accountsCipher) throw new Error('accounts.json 是加密形态但本进程没有解密密钥（桌面壳未注入）——请用桌面版启动，或先备份 accounts.json 后联系支持');
+    const row = parsed.rows[0];
+    const decipher = crypto.createDecipheriv('aes-256-gcm', accountsCipher.keyBytes(), Buffer.from(row.iv, 'base64'));
+    decipher.setAuthTag(Buffer.from(row.tag, 'base64'));
+    const plain = Buffer.concat([decipher.update(Buffer.from(row.data, 'base64')), decipher.final()]).toString('utf8');
+    const list = JSON.parse(plain);
+    return Array.isArray(list) ? list : [];
+  }
+  throw new Error('accounts.json 形态无法识别（既非明文数组也非加密信封）');
+}
+
 async function ensureDir() {
   await fs.mkdir(dataDir(), { recursive: true, mode: 0o700 });
 }
@@ -110,8 +146,25 @@ async function readJson(file, fallback) {
 // ─── 账号 ───
 
 export async function loadAccounts() {
-  const list = await readJson(ACCOUNTS_FILE(), []);
-  return Array.isArray(list) ? list : [];
+  // 密文信封不能走 readJson（会 JSON.parse 两次语义混淆）：直接读原文，空/缺失回落 []
+  let raw = null;
+  try { raw = await fs.readFile(ACCOUNTS_FILE(), 'utf8'); } catch (e) {
+    if (e.code !== 'ENOENT') throw new Error(`读取 accounts.json 失败: ${e.message}`);
+    return [];
+  }
+  if (!raw || !raw.trim()) return [];
+  try {
+    const list = unsealAccounts(raw);
+    return Array.isArray(list) ? list : [];
+  } catch (e) {
+    // 主文件损坏/解密失败 → 试 .bak（同形态），都失败才抛
+    try {
+      const bakText = await fs.readFile(ACCOUNTS_FILE() + '.bak', 'utf8');
+      const list = unsealAccounts(bakText);
+      console.error('loadAccounts: 主文件损坏/解密失败,已用备份恢复 ' + ACCOUNTS_FILE() + '.bak');
+      return Array.isArray(list) ? list : [];
+    } catch { throw new Error(`读取 accounts.json 失败: ${e.message}`); }
+  }
 }
 
 export async function saveAccounts(accounts) {
@@ -119,13 +172,14 @@ export async function saveAccounts(accounts) {
   const file = ACCOUNTS_FILE();
   const bak = file + '.bak';
   try {
-    // 只有当已有账号文件存在且非空时才建立/更新 .bak 备份
+    // 只有当已有账号文件存在且非空时才建立/更新 .bak 备份（形态随主文件——密文环境里
+    // 备份同样是密文，不因备份产生第二份明文）
     const existing = await fs.readFile(file, 'utf8').catch(() => null);
     if (existing && existing.trim().length > 2) {
       await atomicWrite(bak, existing);
     }
   } catch {}
-  await atomicWrite(file, JSON.stringify(accounts, null, 2));
+  await atomicWrite(file, sealAccounts(accounts));
 }
 
 // 进程内串行队列：所有「读-改-写」都经由 withAccounts，避免并发请求互相覆盖

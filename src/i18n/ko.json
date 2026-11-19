@@ -2251,5 +2251,11 @@
   "马上按上面参数开跑一轮；只影响本次，不改每日定时。": "위 설정으로 즉시 1회 실행합니다. 이번 실행에만 영향하며 매일 예약은 변경하지 않습니다.",
   "Meoo 会话已失效（NEED_LOGIN）": "Meoo 세션이 만료되었습니다(NEED_LOGIN)",
   "Meoo 快照保鲜：{name} 积分 {balance}": "Meoo 스냅샷 갱신: {name} 포인트 {balance}",
-  "会话槽已满（1~6）——请到「会话池」清除不用的槽后再试": "세션 슬롯이 가득 찼습니다(1~6) — \"세션 풀\"에서 미사용 슬롯을 지운 후 다시 시도하세요"
+  "会话槽已满（1~6）——请到「会话池」清除不用的槽后再试": "세션 슬롯이 가득 찼습니다(1~6) — \"세션 풀\"에서 미사용 슬롯을 지운 후 다시 시도하세요",
+  "accounts.json 是加密形态但本进程没有解密密钥（桌面壳未注入）——请用桌面版启动，或先备份 accounts.json 后联系支持": "accounts.json이 암호화되어 있지만 이 프로세스에는 복호화 키가 없습니다(데스크톱 셸 미주입) — 데스크톱 버전으로 시작하거나 accounts.json을 백업 후 지원팀에 문의하세요",
+  "accounts.json 形态无法识别（既非明文数组也非加密信封）": "accounts.json 형식을 인식할 수 없습니다(평문 배열도 암호화 엔벨로프도 아님)",
+  "loadAccounts: 主文件损坏/解密失败,已用备份恢复 ": "loadAccounts: 메인 파일 손상/복호화 실패, 백업에서 복구 ",
+  "[secret] accounts.json 静态加密已启用（safeStorage/DPAPI）": "[secret] accounts.json 정적 암호화 활성화(safeStorage/DPAPI)",
+  "[secret] safeStorage 不可用——accounts.json 保持 0600 明文（现状回退）": "[secret] safeStorage 사용 불가 — accounts.json은 0600 평문 유지(현상 폴백)",
+  "[secret] 密钥初始化失败，回退明文：": "[secret] 키 초기화 실패, 평문으로 폴백: "
 }

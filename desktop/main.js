@@ -88,6 +88,31 @@ async function boot() {
     // （Chromium 自带的 sec-fetch-*/Origin 头反而成为风控指纹），zcodePlanCompletion 保留备用
     const store = await load('src/store.js');
     const constants = await load('src/constants.js');
+    // 账号凭据静态加密（纵深防御）：32B 随机密钥由 safeStorage（Windows=DPAPI 绑当前用户）
+    // 加密存 userData/secret.key，明文只活在内存；注入 store.js 后壳与同进程 daemon 的
+    // accounts.json 读写全部走 AES-256-GCM 信封。safeStorage 不可用（Linux 无 keyring 等）
+    // → 不注入，回退明文 0600（现状），绝不摆烂报错挡启动。CLI/NAS 实例无此密钥：
+    // 读到密文会明示报错而不是静默清空——桌面版是唯一写入方，口径一致。
+    try {
+      const keyFile = path.join(app.getPath('userData'), 'secret.key');
+      let keyBytes = null;
+      if (safeStorage.isEncryptionAvailable() === true) {
+        if (fs.existsSync(keyFile)) {
+          keyBytes = safeStorage.decryptString(fs.readFileSync(keyFile));
+        } else {
+          keyBytes = crypto.randomBytes(32);
+          fs.writeFileSync(keyFile, safeStorage.encryptString(keyBytes), { mode: 0o600 });
+        }
+        if (Buffer.isBuffer(keyBytes) && keyBytes.length === 32) {
+          store.setAccountsCipher({ keyBytes: () => keyBytes });
+          console.log('[secret] accounts.json 静态加密已启用（safeStorage/DPAPI）');
+        }
+      } else {
+        console.log('[secret] safeStorage 不可用——accounts.json 保持 0600 明文（现状回退）');
+      }
+    } catch (e) {
+      console.error('[secret] 密钥初始化失败，回退明文：', e?.message || e);
+    }
     // 局域网网关：设置开启后绑定 0.0.0.0（面板访问密码开启时才建议，/gateway/* 数据面有自己的密钥）
     const bootSettings = await store.loadSettings();
     const anyLan = bootSettings.zcodeGatewayLan === true

@@ -2251,5 +2251,11 @@
   "马上按上面参数开跑一轮；只影响本次，不改每日定时。": "Starts one round right away with the parameters above; affects this run only — never touches the daily schedule.",
   "Meoo 会话已失效（NEED_LOGIN）": "Meoo session expired (NEED_LOGIN)",
   "Meoo 快照保鲜：{name} 积分 {balance}": "Meoo snapshot refresh: {name} points {balance}",
-  "会话槽已满（1~6）——请到「会话池」清除不用的槽后再试": "Session slots are full (1-6) — clear an unused slot in \"Session pool\" and try again"
+  "会话槽已满（1~6）——请到「会话池」清除不用的槽后再试": "Session slots are full (1-6) — clear an unused slot in \"Session pool\" and try again",
+  "accounts.json 是加密形态但本进程没有解密密钥（桌面壳未注入）——请用桌面版启动，或先备份 accounts.json 后联系支持": "accounts.json is encrypted but this process has no decryption key (desktop shell not injected) — start via the desktop app, or back up accounts.json first and contact support",
+  "accounts.json 形态无法识别（既非明文数组也非加密信封）": "accounts.json format unrecognized (neither a plain array nor an encrypted envelope)",
+  "loadAccounts: 主文件损坏/解密失败,已用备份恢复 ": "loadAccounts: main file corrupt/decryption failed, restored from backup ",
+  "[secret] accounts.json 静态加密已启用（safeStorage/DPAPI）": "[secret] accounts.json at-rest encryption enabled (safeStorage/DPAPI)",
+  "[secret] safeStorage 不可用——accounts.json 保持 0600 明文（现状回退）": "[secret] safeStorage unavailable — accounts.json stays plaintext 0600 (status-quo fallback)",
+  "[secret] 密钥初始化失败，回退明文：": "[secret] key init failed, falling back to plaintext: "
 }
