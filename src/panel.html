@@ -3255,7 +3255,9 @@ function renderFreePool() {
           const st = accFull && FREE_CHECKIN_SITES.has(site.id) ? statusOf(accFull) : null;
           // 会话槽徽章（会话 N）：Chrome 多 profile 式多池——行上标明它来自哪个登录槽，
           // 槽 1 不标（= 缺省存量行不添噪）
-          const slotHtml = Number(acc.cookieSlot) > 1
+          // 会话徽章对槽 1 也显示（2026-11-19 用户实测「会话 1 没有徽章」）：daemon 侧老行
+          // 已归一 cookieSlot=1，>1 的旧条件让主号所在槽反而没标——会话池显式化后 1 号也是身份
+          const slotHtml = Number(acc.cookieSlot) >= 1
             ? '<span class="pill" title="' + esc(T('此会话来自登录槽 {n}（独立的持久登录分区，与其它会话互不可见）', { n: acc.cookieSlot })) + '">' + T('会话 {n}', { n: acc.cookieSlot }) + '</span>'
             : '';
           const stBadgeHtml = (st && st.text
@@ -3327,7 +3329,7 @@ function renderCookieSites() {
     const hint = site.hint ? T('<div class="hint" style="display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;cursor:default" title="{t}">{t}</div>', { t: esc(site.hint) }) : '';
     const accRows = rows.map((acc) =>
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px">'
-      + '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(acc.name) + '">' + esc(acc.name) + (Number(acc.cookieSlot) > 1 ? ' <span class="pill">' + T('会话 {n}', { n: acc.cookieSlot }) + '</span>' : '') + '</span>'
+      + '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(acc.name) + '">' + esc(acc.name) + (Number(acc.cookieSlot) >= 1 ? ' <span class="pill">' + T('会话 {n}', { n: acc.cookieSlot }) + '</span>' : '') + '</span>'
       + '<span class="dim" style="flex:none">' + (acc.capturedAt ? esc(fmtTime(acc.capturedAt)) : '–') + '</span></div>').join('');
     return '<div style="border:1px solid var(--border-subtle);border-radius:10px;padding:10px 12px;display:grid;gap:6px">'
       + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">'
