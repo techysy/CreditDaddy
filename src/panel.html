@@ -3775,14 +3775,20 @@ if (window.creditdaddy && typeof window.creditdaddy.onCookieCaptured === 'functi
       ? T('{name} cookie 捕获成功，额度卡片已就绪', { name: name || '' })
       : T('{name} cookie 捕获成功，同步到 10Router 后卡片点亮', { name: name || '' }), true);
     state.cookieSites = null;
-    Promise.allSettled([loadCookieSites(true), refreshAccountList(), loadTrQuotas(true)])
+    // 拆链（2026-11-20 用户实测「收割成功后列表接近 30s 才刷新」）：cookie-site 界面的
+    // 重渲只等 loadCookieSites（亚秒级）——原先挂在 allSettled 上，被最慢的
+    // loadTrQuotas(true) 拖住：该接口 force=1 时服务端先内联跑一整轮 pushQuotaCards
+    // （live 拉全部免费站点再推卡，几十秒），期间会话池弹窗一直显示旧槽位。
+    loadCookieSites(true).then(() => {
+      if (state.view === 'free') renderFreePool();
+      renderCookieSites();
+      // 会话池弹窗开着时同步刷新（新捕获的账号行/槽徽章立刻出现）
+      if ($('m-pool')?.classList.contains('show') && payload?.site) renderSessionPool(payload.site);
+    });
+    Promise.allSettled([refreshAccountList(), loadTrQuotas(true)])
       .then(() => {
         if (state.view === 'tenrouter') renderTenrouter();
-        if (state.view === 'free') renderFreePool();
-        renderCookieSites();
         renderDash();
-        // 会话池弹窗开着时同步刷新（新捕获的账号行/槽徽章立刻出现）
-        if ($('m-pool')?.classList.contains('show') && payload?.site) renderSessionPool(payload.site);
         // 收割时余额快照已随账号落库——账号卡上的余额读 state.quotas 缓存，
         // 不重拉就显示旧数字（实测：小米收割成功后卡面 ¥0.00 挂到手动刷新）。
         // 非 live 读快照零网络，成本可忽略；只刷 cookie-site 型账号。

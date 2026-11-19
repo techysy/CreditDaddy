@@ -28,6 +28,8 @@ Theme: **Account-credential at-rest encryption (AES-256-GCM + safeStorage/DPAPI,
 
 ## [Unreleased]
 
+
+- **收割后列表刷新延迟修复（2026-11-20 用户实测「收割成功了，列表接近 30s 才刷新」）**：收割推送处理器把会话池/免费页的重渲挂在 `Promise.allSettled([loadCookieSites, refreshAccountList, loadTrQuotas(true)])` 上，被最慢的 `loadTrQuotas(true)` 拖住——该接口 `force=1` 时服务端先内联跑一整轮 `pushQuotaCards()`（live 拉全部免费站点余额再推卡，几十秒）。现拆链：cookie-site 界面只等 `loadCookieSites`（亚秒级），账号列表与 10R 额度链并行收尾各刷各的面。
 ## [1.8.1] (2026-11-18)
 
 本版主题:**许可证随 10Router 转 AGPL-3.0（v1.8.0 及更早维持 MIT 不溯及）+ 网页会话「会话池」Chrome 多 profile 式多登录槽 + ZCode 自动领取每日定时计划与防封号退避 + 守护进程畸形请求防崩**.
