@@ -2248,5 +2248,7 @@
   "开关即时生效：开=按当前时间排计划；关=取消计划": "Toggle saves instantly: on = schedule with the current time; off = cancel the plan",
   "停止单次窗口；每日定时计划一并停用": "Stops the one-off window; the daily schedule is disabled along with it",
   "开关即保存：开=按当前时间排上计划，关=取消计划。改时间后点「保存定时」；到点自动开跑一轮（按下面单次窗口的参数），无需再点其他按钮。": "The switch saves instantly: on = schedule with the current time, off = cancel. Click \"Save schedule\" after changing the time; a round auto-runs at the set time (with the one-off window parameters below) — no other button needed.",
-  "马上按上面参数开跑一轮；只影响本次，不改每日定时。": "Starts one round right away with the parameters above; affects this run only — never touches the daily schedule."
+  "马上按上面参数开跑一轮；只影响本次，不改每日定时。": "Starts one round right away with the parameters above; affects this run only — never touches the daily schedule.",
+  "Meoo 会话已失效（NEED_LOGIN）": "Meoo session expired (NEED_LOGIN)",
+  "Meoo 快照保鲜：{name} 积分 {balance}": "Meoo snapshot refresh: {name} points {balance}"
 }

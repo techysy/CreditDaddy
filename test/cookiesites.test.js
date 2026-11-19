@@ -477,3 +477,52 @@ test('会话池 persistKey 白名单认下全部站点 id（含连字符）与�
   // 真实槽都不同名，读不到别的槽数据；槽号语义由构造侧（面板只从 COOKIE_SITES.id 拼 key）保证。
   assert.equal(re.test('cookie-site-x-s10'), true, '歧义串命中无害；槽号上限由构造侧保证');
 });
+
+// ── Meoo 快照保鲜（2026-11-19 用户实测「都是手动领取+手动刷新，没有定时刷新」回归钉）──
+// meoo 不推卡（no10rSync），被推送循环排除后快照只在捕获时与手动 ?live=1 更新——
+// 现在推送循环里补了只拉不推的保鲜段（与灵犀 persistLive 同口径）。
+test('推送循环为 meoo 账号保鲜快照：有效会话落余额+grants+探活绿，失效会话只落探活红不碰快照', async () => {
+  const savedHome = process.env.CREDITDADDY_HOME;
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'cd-meoo-fresh-'));
+  process.env.CREDITDADDY_HOME = home;
+  try {
+    const store = await import('../src/store.js');
+    const oldAt = '2026-11-10T00:00:00.000Z';
+    await store.saveAccounts([
+      { id: 'm-ok', provider: 'meoo', name: 'Meoo 活号', meta: { cookieSiteId: 'meoo', cookieSiteSession: { cookie: 'a=b' }, quotaSnapshot: { used: 0, total: 500, at: oldAt } } },
+      { id: 'm-dead', provider: 'meoo', name: 'Meoo 死号', meta: { cookieSiteId: 'meoo', cookieSiteSession: { cookie: 'dead=1' }, quotaSnapshot: { used: 0, total: 500, at: oldAt } } },
+    ]);
+    const fake = async (url) => {
+      if (String(url).includes('entitlement/get')) {
+        // 两号同 mock 无法区分——按 cookie 头分流
+        return null;   // 占位：下方用闭包按账号分流（见 fetchImpl 传入两次调用）
+      }
+      return new Response('{}', { status: 404 });
+    };
+    const { runQuotaPush } = await import('../src/externalQuota.js');
+    // 活号轮（fake 返回有效权益）
+    const fakeOk = async () => new Response(JSON.stringify({
+      success: true,
+      data: { userPointInfo: { account: { availableBalance: 78983 }, activeGrants: [{ source: 'DAILY_LOGIN', total: 100, remaining: 60, expireAt: '2026-11-25T00:00:00Z' }] }, planCode: 'FREE' },
+    }), { status: 200 });
+    await runQuotaPush({ endpoint: 'http://127.0.0.1:1', key: 'x', accounts: await store.loadAccounts(), fetchImpl: fakeOk });
+    await new Promise((r) => setTimeout(r, 300));
+    const okRow = (await store.loadAccounts()).find((x) => x.id === 'm-ok');
+    assert.equal(okRow.meta.quotaSnapshot.total, 78983, '活号快照被保鲜更新（500 → 78983）');
+    assert.equal(Boolean(okRow.meta.meooGrants), true, 'grants 明细随保鲜落盘');
+    assert.equal(okRow.meta.lastProbe?.ok, true, '探活转绿');
+    assert.notEqual(okRow.meta.quotaSnapshot.at, oldAt, '快照时间戳刷新');
+
+    // 死号轮（401 NEED_LOGIN）
+    const fake401 = async () => new Response(JSON.stringify({ errCode: 'NEED_LOGIN' }), { status: 401 });
+    await store.saveAccounts([{ id: 'm-dead2', provider: 'meoo', name: 'Meoo 死号2', meta: { cookieSiteId: 'meoo', cookieSiteSession: { cookie: 'dead=1' }, quotaSnapshot: { used: 0, total: 500, at: oldAt } } }]);
+    await runQuotaPush({ endpoint: 'http://127.0.0.1:1', key: 'x', accounts: await store.loadAccounts(), fetchImpl: fake401 });
+    await new Promise((r) => setTimeout(r, 300));
+    const deadRow = (await store.loadAccounts()).find((x) => x.id === 'm-dead2');
+    assert.equal(deadRow.meta.lastProbe?.ok, false, '死号探活转红');
+    assert.equal(deadRow.meta.quotaSnapshot.total, 500, '死号快照不被触碰（保留旧数字）');
+  } finally {
+    process.env.CREDITDADDY_HOME = savedHome;
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});

@@ -570,8 +570,40 @@ export async function runQuotaPush({ endpoint, key, accounts, fetchImpl, onlySou
     }
   }
 
-  // Meoo 不在此推送：10R 已原生支持 meoo 连接、额度由连接凭据自身出卡（自消费口径），
+  // Meoo 快照保鲜（2026-11-19 用户实测「都是手动领取+手动刷新，没有定时刷新」）：
+  // meoo 不推卡（no10rSync，10R 侧自消费出卡），被推送循环排除后快照只在捕获时与手动
+  // ?live=1 两个时点更新——余额数字永远停在捕获那一刻，定时轮领到的积分不反映到显示上，
+  // 用户只能手动刷新。灵犀有推送循环顺手的 persistLive 保鲜，meoo 对等补一条：
+  // 只拉余额落快照 + 探活痕迹，不 build payload、不推卡（保持 no10rSync 口径不变）。
+  const meooAccounts = (accounts || []).filter((a) => a.provider === 'meoo' && (a.meta?.cookieSiteSession?.cookie || a.token));
+  for (const a of meooAccounts) {
+    const skipDead = !only && deadSkip(a);
+    if (skipDead) continue;   // dead 低频重试期间不空打（与灵犀同口径）
+    try {
+      const { fetchMeooEntitlement } = await import('./meooClient.js');
+      const cookie = a.meta?.cookieSiteSession?.cookie || a.token;
+      const ent = await fetchMeooEntitlement(cookie, { fetchImpl });
+      // auth:false = 会话失效（NEED_LOGIN）；auth:true = 会话有效（ok 可能 false = 探测失败）
+      if (!ent.auth) {
+        probeMark(a, false, 'Meoo 会话已失效（NEED_LOGIN）');
+        continue;
+      }
+      probeMark(a, ent.ok, ent.ok ? null : (ent.code || '探测失败'));
+      const bal = Number.isFinite(ent.balance) ? ent.balance : null;
+      if (ent.ok && bal !== null) {
+        persistLive(a, {
+          quotaSnapshot: { used: 0, total: bal, isCreditBalance: true, at: new Date().toISOString() },
+          ...(Array.isArray(ent.grants) ? { meooGrants: { grants: ent.grants, at: new Date().toISOString() } } : {}),
+        });
+        logger.debug('10R', 'Meoo 快照保鲜：{name} 积分 {balance}', { name: a.name || a.id, balance: bal });
+      }
+    } catch (err) {
+      probeMark(a, false, err.message);
+    }
+  }
+
+  // Meoo 不推卡：10R 已原生支持 meoo 连接、额度由连接凭据自身出卡（自消费口径），
   // CD 再推 meoo-free 会对同一账号出两张同数值卡——与 DuMate「仅连接」同口径。
-  // 面板侧 meoo live 数据走 providers 路径（fetchMeooQuota），不依赖本函数。
+  // 面板侧 meoo live 数据走 providers 路径（fetchMeooQuota），快照保鲜走上方循环。
   return { results };
 }
