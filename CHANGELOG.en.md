@@ -24,6 +24,10 @@ Theme: **Account-credential at-rest encryption (AES-256-GCM + safeStorage/DPAPI,
   - The audit also confirmed no changes needed: request-body 413 limit & JSON guard, dailyClaimPlan read normalization (bad config cannot cause a NaN hot loop), server-side interval/duration clamps, per-layer catches in the harvest chain, and the HTTP outer catch.
 
 
+- **Balance persisted at claim time (2026-11-20, user asked "did this login-claim actually complete?")**: meoo's claim returns balanceAfter but the snapshot was not updated — the badge "claimed +2,000" next to "balance 1,990" made it look like the points never landed. The check-in round now persists a balance snapshot for products that return balanceAfter (meoo), so the badge and the balance are trustworthy in the same frame. Regression pin: claim +2000 → snapshot 1990.
+
+- **Post-harvest list refresh latency fixed (2026-11-20, user report "harvest succeeded but the list took ~30s to refresh")**: the harvest push handler gated the pool/free-page re-render behind `Promise.allSettled([loadCookieSites, refreshAccountList, loadTrQuotas(true)])`, which was slowed by the slowest item — `loadTrQuotas(true)` triggers a full inline `pushQuotaCards()` round server-side (live-pulling every free site's balance then pushing cards, tens of seconds). The chain is now split: cookie-site surfaces wait only on `loadCookieSites` (sub-second), while the account list and the 10R chain finish in parallel, each re-rendering its own surface.
+
 ## [1.8.1] (2026-11-18)
 
 Theme: **License follows 10Router to AGPL-3.0 (v1.8.0 and earlier stay MIT, no retroaction) + web-session "session pool" with Chrome multi-profile-style login slots + ZCode auto-claim daily schedule & ban-safe captcha backoff + daemon hardening against malformed request lines**.
