@@ -163,3 +163,32 @@ test('normalizeBalance：balances 全空但 plans 有过期 one_time 活动 → 
   assert.ok(!names.includes('过期派生'), 'ends_at 已过的 one_time 权益不再派生展示');
   assert.ok(names.includes('有效派生'));
 });
+
+
+// ── 领取后余额即时落库（2026-11-20 用户问「实际完成了吗」——快照停领取前与「今日已领 +N」同框打架）──
+
+test('checkin 轮为返回 balanceAfter 的产品即时落余额快照（meoo：+2000 领取后快照应为 1990）', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const saved = process.env.CREDITDADDY_HOME;
+  process.env.CREDITDADDY_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'cd-mebal-'));
+  try {
+    const store = await import('../src/store.js');
+    await store.saveAccounts([{ id: 'm1', provider: 'meoo', name: 'Meoo', meta: { cookieSiteId: 'meoo', cookieSiteSession: { cookie: 'a=b' }, quotaSnapshot: { used: 0, total: 100, at: '2026-11-19T00:00:00.000Z' } } }]);
+    const real = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const u = String(url);
+      if (u.includes('entitlement/init')) return new Response(JSON.stringify({ success: true, data: { initialized: true, dailyLoginGranted: true, dailyLoginGrantAmount: 2000 } }), { status: 200 });
+      if (u.includes('entitlement/get')) return new Response(JSON.stringify({ success: true, data: { userPointInfo: { account: { availableBalance: 1990 }, activeGrants: [] } } }), { status: 200 });
+      return new Response('{}', { status: 404 });
+    };
+    const { runCheckinTick } = await import('../src/checkin.js');
+    const r = await runCheckinTick({ skipIfCheckedToday: true, includeZcode: false });
+    globalThis.fetch = real;
+    assert.equal(r.results[0]?.status, 'checked-in');
+    assert.equal(r.results[0]?.claimedAmount, 2000);
+    const acc = (await store.loadAccounts())[0];
+    assert.equal(acc.meta.quotaSnapshot.total, 1990, '快照随领取落为 balanceAfter（不再是领取前的 100）');
+    assert.equal(acc.lastResult?.status, 'checked-in');
+  } finally { process.env.CREDITDADDY_HOME = saved; }
+});

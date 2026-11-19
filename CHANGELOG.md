@@ -29,6 +29,8 @@ Theme: **Account-credential at-rest encryption (AES-256-GCM + safeStorage/DPAPI,
 ## [Unreleased]
 
 
+- **领取后余额即时落库（2026-11-20 用户问「这种登录领取的实际完成了吗」）**：meoo 领取返回 balanceAfter 但快照不更新，徽章「今日已领 +2000」与余额「1,990」同框让人怀疑没到账。现签到轮为返回 balanceAfter 的产品随轮落余额快照（meoo），徽章与余额同帧可信。回归钉：领取 +2000 → 快照 1990。
+
 - **收割后列表刷新延迟修复（2026-11-20 用户实测「收割成功了，列表接近 30s 才刷新」）**：收割推送处理器把会话池/免费页的重渲挂在 `Promise.allSettled([loadCookieSites, refreshAccountList, loadTrQuotas(true)])` 上，被最慢的 `loadTrQuotas(true)` 拖住——该接口 `force=1` 时服务端先内联跑一整轮 `pushQuotaCards()`（live 拉全部免费站点余额再推卡，几十秒）。现拆链：cookie-site 界面只等 `loadCookieSites`（亚秒级），账号列表与 10R 额度链并行收尾各刷各的面。
 ## [1.8.1] (2026-11-18)
 

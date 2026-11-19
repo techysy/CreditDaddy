@@ -369,6 +369,16 @@ async function runTickInner(opts) {
       }
       results.push(outcome);
       if (outcome.uid && !account.uid) account.uid = outcome.uid;
+      // 领取后余额即时落库（2026-11-20 用户问「这种登录领取的实际完成了吗」）：
+      // meoo 等返回 balanceAfter 的产品，领取成功后快照若停在领取前的捕获时点，
+      // 「今日已领 +2000」与「积分余额 1,990」同框会让人怀疑没到账。随本轮保存一并落盘，
+      // 徽章与余额数字同帧可信。
+      if (Number.isFinite(outcome.balanceAfter) && account.meta && typeof account.meta === 'object') {
+        account.meta = {
+          ...(account.meta || {}),
+          quotaSnapshot: { used: 0, total: outcome.balanceAfter, isCreditBalance: true, at: new Date().toISOString() },
+        };
+      }
       account.lastResult = {
         status: outcome.status,
         message: outcome.error || outcome.message || null,
@@ -413,6 +423,11 @@ async function runTickInner(opts) {
         current.lastCheckin = updated.lastCheckin;
         if (updated.lastResult) current.lastResult = updated.lastResult;
         if (updated.uid && !current.uid) current.uid = updated.uid;
+        // 领取后余额快照随轮落盘（见上方 balanceAfter 落库注释）——只拷贝本轮拥有的
+        // 字段，不整份覆盖 meta（本轮开头读到的其余字段可能已被 withAccounts 改新）
+        if (updated.meta?.quotaSnapshot) {
+          current.meta = { ...(current.meta || {}), quotaSnapshot: updated.meta.quotaSnapshot };
+        }
       }
     });
     await withState((fresh) => {
