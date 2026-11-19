@@ -1481,7 +1481,7 @@ async function handleApi(req, res, url) {
     // 会话槽（Chrome 多 profile 等价物）：槽 1 = 既有分区 cookie-site-<id>（存量登录态零迁移），
     // 槽 N≥2 = cookie-site-<id>-sN。捕获窗登录在哪个槽，收割上报就带哪个 slot——落账号
     // meta.cookieSlot，行上显示「会话 N」徽章；不同槽各自是独立的持久登录分区（多池并存）。
-    const cookieSlot = Number(body?.slot) === Number(body?.slot) && Number(body?.slot) >= 1 && Number(body?.slot) <= 9
+    const cookieSlot = Number(body?.slot) === Number(body?.slot) && Number(body?.slot) >= 1 && Number(body?.slot) <= 6
       ? Math.trunc(Number(body?.slot)) : 1;
     const cookie = String(body?.cookie || '').trim();
     // localStorage 凭据线（river = WorkOS SPA 会话）：cookie 无关，探测走站点自有 API

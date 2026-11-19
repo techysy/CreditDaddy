@@ -365,6 +365,14 @@ test('会话槽（会话池）：slot 随捕获落 meta.cookieSlot；同身份�
       assert.equal(bad.status, 200);
       assert.equal(bad.body.accountId, id1, '越界槽号归 1，与槽 1 原位轮换');
 
+      // 槽 7（旧上限内的合法号，现退役）→ 同样归 1：上限 6 由 daemon 与桌面壳双侧守卫
+      const s7 = await call('POST', '/api/cookie-sites/tokenharbor/capture', {
+        cookie: 'alive=1', slot: 7, diag: { cookieCount: 1 },
+        probeHtml: '<html>yang@a.com <h1>Free allowance 40%</h1></html>',
+      });
+      assert.equal(s7.status, 200);
+      assert.equal(s7.body.accountId, id1, '槽 7 越界归 1（上限 6，2026-11-19 用户定版）');
+
       // GET /api/cookie-sites 回显槽号（槽 1 缺省也显式回 1，面板徽章零特判）
       const sites = await call('GET', '/api/cookie-sites');
       const row = sites.body.sites.find((x) => x.id === 'tokenharbor');
@@ -458,11 +466,12 @@ test('会话池 persistKey 白名单认下全部站点 id（含连字符）与�
   // 这里的字面量是两处 IPC 正则的镜像，改桌面壳时若不同步这里立刻红。
   // 白名单是「不透传任意值」的字符集闸，不是槽号校验器（槽号语义由构造侧保证）：
   // x-s10 这类歧义串会命中 id 段，但它构造出的分区与任何真实槽都不同名，读不到别的槽数据。
-  const re = /^cookie-site-[a-z0-9-]+-s[2-9]$|^cookie-site-[a-z0-9-]+$/;
+  // 槽位上限 6（2026-11-19 用户定版「9 个太多了，6 个合适」）：桌面壳正则只收 -s2..s6
+  const re = /^cookie-site-[a-z0-9-]+-s[2-6]$|^cookie-site-[a-z0-9-]+$/;
   const offenders = [];
   for (const site of COOKIE_SITES) {
     if (!re.test('cookie-site-' + site.id)) offenders.push(site.id + ' (槽1)');
-    for (const s of [2, 5, 9]) {
+    for (const s of [2, 5, 6]) {
       if (!re.test('cookie-site-' + site.id + '-s' + s)) offenders.push(site.id + ' (槽' + s + ')');
     }
   }
@@ -476,6 +485,9 @@ test('会话池 persistKey 白名单认下全部站点 id（含连字符）与�
   // 歧义串（x-s10 / x-s2-extra 等）会被 id 段吞掉而命中——无害：它们构造出的分区与任何
   // 真实槽都不同名，读不到别的槽数据；槽号语义由构造侧（面板只从 COOKIE_SITES.id 拼 key）保证。
   assert.equal(re.test('cookie-site-x-s10'), true, '歧义串命中无害；槽号上限由构造侧保证');
+  // s7/s9 歧义串被 id 段吞掉而命中——无害（同 x-s10：非真实槽名，读不到别的槽数据）；
+  // 槽 7-9 退役的语义由 daemon capture 端点（slot≤6 归 1）与面板构造侧（候选列表到 6）保证
+  assert.equal(re.test('cookie-site-x-s7'), true, '歧义串命中无害；槽 7 退役由 daemon/构造侧保证');
 });
 
 // ── Meoo 快照保鲜（2026-11-19 用户实测「都是手动领取+手动刷新，没有定时刷新」回归钉）──

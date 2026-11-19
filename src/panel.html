@@ -3144,7 +3144,7 @@ function renderFreePool() {
     // 「粘贴捕获」：部分站点（小米账号 SSO）登录态挂设备指纹，CD 无痕窗也会被静默 SSO
     // 拉回同一账号——多号并存走系统浏览器登录新号后手动粘 cookie（不依赖登录窗）。
     const pasteBtn = ' <button class="btn" data-paste-capture="' + esc(site.id) + '" title="' + T('在其他浏览器登录该站点后，把会话 cookie 粘贴进来捕获（多账号并存的可靠路径）') + '">' + T('粘贴捕获') + '</button>';
-    // 「会话池」：Chrome 多 profile 式登录槽管理——同一站点最多 9 个独立持久登录分区，
+    // 「会话池」：Chrome 多 profile 式登录槽管理——同一站点最多 6 个独立持久登录分区，
     // 每槽可登录不同账号并排养号（换号 = 选另一槽开窗，不再来回清除登录态）。
     // 原「清除已存会话」收进池子（每槽单独清），主行不再占一个按钮位。
     const poolBtn = canCapture
@@ -3598,7 +3598,7 @@ async function cookieSiteCapture(siteId, slot = 1) {
   // 本窗登录一次，下一轮捕获/重探复用会话（免二次登录，谷歌 SSO 场景免重复验证码）。
   // 每个槽是独立的持久分区——多槽各自登录不同账号即 Chrome 多 profile 式多池并存；
   // 换号 = 选另一槽开窗。清除单个槽请用「会话池」。
-  const n = Number(slot) >= 1 && Number(slot) <= 9 ? Math.trunc(Number(slot)) : 1;
+  const n = Number(slot) >= 1 && Number(slot) <= 6 ? Math.trunc(Number(slot)) : 1;
   const persistKey = 'cookie-site-' + siteId + (n > 1 ? '-s' + n : '');
   // IPC 抛错（应用退出中/窗创建失败）不能落成未处理 rejection——调用点（onclick 代理）不 await
   try {
@@ -3636,9 +3636,9 @@ function openSessionPicker(siteId) {
     const s = Number(b.dataset.pickSlot);
     // 0 = 新槽：取第一个空槽（2 起找，9 满则提示走池子删槽腾位）
     const n = s === 0
-      ? ([2, 3, 4, 5, 6, 7, 8, 9].find((k) => !occupied.has(k)) || null)
+      ? ([2, 3, 4, 5, 6].find((k) => !occupied.has(k)) || null)
       : s;
-    if (n === null) { toast(T('会话槽已满（1~9）——请到「会话池」清除不用的槽后再试'), false); return; }
+    if (n === null) { toast(T('会话槽已满（1~6）——请到「会话池」清除不用的槽后再试'), false); return; }
     cookieSiteCapture(siteId, n);
   };
   $('pick-manage').onclick = () => { closeModal('m-pick'); renderSessionPool(siteId); openModal('m-pool'); };
@@ -3646,13 +3646,13 @@ function openSessionPicker(siteId) {
 }
 
 // ── 会话池（Chrome 多 profile 式登录槽管理）──
-// 每站点最多 9 个登录槽；每槽 = 一个独立持久 Chromium 分区（互不可见，各自养一个登录态）。
+// 每站点最多 6 个登录槽；每槽 = 一个独立持久 Chromium 分区（互不可见，各自养一个登录态）。
 // 槽内账号行显示备注名（池内改名 = 账号行备注名，meta.renamed 守卫既有口径）。
 function cookieSiteSlotAccounts(siteId) {
   const site = (state.cookieSites || []).find((x) => x.id === siteId);
   const map = new Map();   // slot → rows[]
   for (const acc of site?.accounts || []) {
-    const s = Number(acc.cookieSlot) >= 1 && Number(acc.cookieSlot) <= 9 ? Math.trunc(Number(acc.cookieSlot)) : 1;
+    const s = Number(acc.cookieSlot) >= 1 && Number(acc.cookieSlot) <= 6 ? Math.trunc(Number(acc.cookieSlot)) : 1;
     if (!map.has(s)) map.set(s, []);
     map.get(s).push(acc);
   }
@@ -3666,7 +3666,7 @@ async function renderSessionPool(siteId) {
   $('pool-title').textContent = T('{name} · 会话池', { name: site.label || site.name });
   const occupied = cookieSiteSlotAccounts(siteId);
   let html = '';
-  for (let s = 1; s <= 9; s++) {
+  for (let s = 1; s <= 6; s++) {
     const rows = occupied.get(s) || [];
     const key = 'cookie-site-' + siteId + (s > 1 ? '-s' + s : '');
     const accRow = rows.length

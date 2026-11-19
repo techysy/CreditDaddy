@@ -721,7 +721,7 @@ async function openIncognitoWindow(url, { persistKey } = {}) {
   const isPersist = Boolean(persistKey);
   // 会话槽号（持久分区才有意义）：cookie-site-<id>-sN → N；基础分区 = 槽 1。
   // 收割上报要带它（daemon 落 meta.cookieSlot），面板行上才能按槽显示「会话 N」。
-  const cookieSlot = (() => { const m = /-s([2-9])$/.exec(persistKey || ''); return m ? Number(m[1]) : 1; })();
+  const cookieSlot = (() => { const m = /-s([2-6])$/.exec(persistKey || ''); return m ? Number(m[1]) : 1; })();
   // 按 IP 识别地区的站点（qoder.com 国际版 + cookie-site 捕获窗，如 Token Harbor 对大陆/港澳封锁）：
   // 配置了出口代理时登录窗显式走它；未配置则保持默认（Electron 窗口本来就跟随系统代理，不覆盖）。
   // 登录窗与 daemon 探测同走「网络出口（全局）」——两边出口 IP 一致，避免窗内登录成功、
@@ -978,7 +978,7 @@ async function harvestCookieSiteSession(ses, site, slot = 1) {
     body: JSON.stringify({
       cookie,
       storage,
-      slot: Number(slot) >= 1 && Number(slot) <= 9 ? Math.trunc(Number(slot)) : 1,
+      slot: Number(slot) >= 1 && Number(slot) <= 6 ? Math.trunc(Number(slot)) : 1,
       // 名字 only（值不进日志）——刷新兑换失败时一眼看出会话 cookie 在不在
       diag: { cookieCount: (all || []).length, storageCount, cookieNames: (all || []).map((c) => c.name) },
       probeHtml,
@@ -1628,7 +1628,7 @@ function registerAuthWindowIpc() {
     // 站点 id 含连字符（xiaomi-mimo 等）——[a-z0-9] 不认会静默回落 null = 所有槽开同一个
     // 无痕分区、收割 slot 全缺省成 1（2026-11-19 用户实测 MiMo 会话 2 登录全进会话 1 的根因）。
     // 槽号语义由构造侧（面板只从 COOKIE_SITES.id 拼 key）保证；这里只拦越权字符。
-    const persistKey = opts && typeof opts.persistKey === 'string' && /^cookie-site-[a-z0-9-]+-s[2-9]$|^cookie-site-[a-z0-9-]+$/.test(opts.persistKey)
+    const persistKey = opts && typeof opts.persistKey === 'string' && /^cookie-site-[a-z0-9-]+-s[2-6]$|^cookie-site-[a-z0-9-]+$/.test(opts.persistKey)
       ? opts.persistKey : null;
     try { await openIncognitoWindow(url, { persistKey }); return { ok: true }; }
     catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
@@ -1637,7 +1637,7 @@ function registerAuthWindowIpc() {
   // 主进程代为执行）。返回是否确实存在过该分区。
   ipcMain.handle('clear-cookie-site-session', async (_e, persistKey) => {
     // 槽 N≥2 的分区（cookie-site-<id>-sN）一并接受——「会话池」可清单个槽（id 可含连字符，同上）
-    if (typeof persistKey !== 'string' || !/^cookie-site-[a-z0-9-]+-s[2-9]$|^cookie-site-[a-z0-9-]+$/.test(persistKey)) {
+    if (typeof persistKey !== 'string' || !/^cookie-site-[a-z0-9-]+-s[2-6]$|^cookie-site-[a-z0-9-]+$/.test(persistKey)) {
       return { ok: false, error: Tt('无效的会话标识') };
     }
     // 同名窗还开着时先关掉（否则清完它一份内存缓存又写回去）
