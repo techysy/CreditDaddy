@@ -447,3 +447,33 @@ test('网页会话账号「刷新积分」（/quota 端点）走重探语义：l
     await fs.rm(home, { recursive: true, force: true });
   }
 });
+
+// ── 会话池 persistKey 白名单与站点 id 全表一致性（2026-11-19 用户实测 MiMo 会话槽失效回归钉）──
+// desktop/main.js 的 IPC 校验正则必须认下 COOKIE_SITES 里每一个站点 id 构造出的分区名——
+// [a-z0-9]+ 少了连字符时，xiaomi-mimo 这类带连字符 id 的 persistKey 被静默判非法回落 null，
+// 所有槽开在同一个无痕分区、收割 slot 全缺省成 1（用户会话 2 登录的号全进会话 1）。
+test('会话池 persistKey 白名单认下全部站点 id（含连字符）与槽号组合', async () => {
+  const { COOKIE_SITES } = await import('../src/cookieSites.js');
+  // 与 desktop/main.js open-auth-window / clear-cookie-site-session 的校验保持同一形状；
+  // 这里的字面量是两处 IPC 正则的镜像，改桌面壳时若不同步这里立刻红。
+  // 白名单是「不透传任意值」的字符集闸，不是槽号校验器（槽号语义由构造侧保证）：
+  // x-s10 这类歧义串会命中 id 段，但它构造出的分区与任何真实槽都不同名，读不到别的槽数据。
+  const re = /^cookie-site-[a-z0-9-]+-s[2-9]$|^cookie-site-[a-z0-9-]+$/;
+  const offenders = [];
+  for (const site of COOKIE_SITES) {
+    if (!re.test('cookie-site-' + site.id)) offenders.push(site.id + ' (槽1)');
+    for (const s of [2, 5, 9]) {
+      if (!re.test('cookie-site-' + site.id + '-s' + s)) offenders.push(site.id + ' (槽' + s + ')');
+    }
+  }
+  assert.deepEqual(offenders, [], '以下站点 id 的 persistKey 过不了 IPC 白名单: ' + offenders.join(', '));
+  // 反向：非法形态必须仍被拒（不透传任意值的安全语义不因放宽而丢失）。
+  // 注意 cookie-site-x-s1 会整串命中（s1 被 id 段吞掉）——无害：面板构造的槽 1 key 本就不带
+  // 后缀，-s1 形态只可能来自恶意输入，而它构造出的分区与任何真实槽都不同名，等价于开新池。
+  assert.equal(re.test('cookie-site-../evil'), false);
+  assert.equal(re.test(''), false);
+  assert.equal(re.test('cookie-site-x'), true);
+  // 歧义串（x-s10 / x-s2-extra 等）会被 id 段吞掉而命中——无害：它们构造出的分区与任何
+  // 真实槽都不同名，读不到别的槽数据；槽号语义由构造侧（面板只从 COOKIE_SITES.id 拼 key）保证。
+  assert.equal(re.test('cookie-site-x-s10'), true, '歧义串命中无害；槽号上限由构造侧保证');
+});

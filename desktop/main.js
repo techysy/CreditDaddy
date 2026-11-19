@@ -1625,7 +1625,10 @@ function registerAuthWindowIpc() {
     }
     // persistKey 只接受内部约定的命名（cookie-site-<站点id> / cookie-site-<站点id>-s<槽号>），
     // 不透传任意值。槽 1 不带后缀（= 既有分区，存量登录态零迁移），槽 N≥2 带 -sN。
-    const persistKey = opts && typeof opts.persistKey === 'string' && /^cookie-site-[a-z0-9]+(-s[2-9])?$/.test(opts.persistKey)
+    // 站点 id 含连字符（xiaomi-mimo 等）——[a-z0-9] 不认会静默回落 null = 所有槽开同一个
+    // 无痕分区、收割 slot 全缺省成 1（2026-11-19 用户实测 MiMo 会话 2 登录全进会话 1 的根因）。
+    // 槽号语义由构造侧（面板只从 COOKIE_SITES.id 拼 key）保证；这里只拦越权字符。
+    const persistKey = opts && typeof opts.persistKey === 'string' && /^cookie-site-[a-z0-9-]+-s[2-9]$|^cookie-site-[a-z0-9-]+$/.test(opts.persistKey)
       ? opts.persistKey : null;
     try { await openIncognitoWindow(url, { persistKey }); return { ok: true }; }
     catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
@@ -1633,8 +1636,8 @@ function registerAuthWindowIpc() {
   // 「清除已存会话」：抹掉某站点的持久登录分区存储（面板站点行入口；nodeIntegration 关闭，
   // 主进程代为执行）。返回是否确实存在过该分区。
   ipcMain.handle('clear-cookie-site-session', async (_e, persistKey) => {
-    // 槽 N≥2 的分区（cookie-site-<id>-sN）一并接受——「会话池」可清单个槽
-    if (typeof persistKey !== 'string' || !/^cookie-site-[a-z0-9]+(-s[2-9])?$/.test(persistKey)) {
+    // 槽 N≥2 的分区（cookie-site-<id>-sN）一并接受——「会话池」可清单个槽（id 可含连字符，同上）
+    if (typeof persistKey !== 'string' || !/^cookie-site-[a-z0-9-]+-s[2-9]$|^cookie-site-[a-z0-9-]+$/.test(persistKey)) {
       return { ok: false, error: Tt('无效的会话标识') };
     }
     // 同名窗还开着时先关掉（否则清完它一份内存缓存又写回去）
