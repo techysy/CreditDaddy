@@ -855,8 +855,8 @@
       <div class="field" id="dev-croli-slot-field" style="display:none">
         <label data-i18n="用 Google 账号槽打开">用 Google 账号槽打开</label>
         <div class="seg-ctl" id="dev-croli-slot" style="display:inline-flex">
-          <button data-slot="1" class="active">1</button><button data-slot="2">2</button><button data-slot="3">3</button>
-          <button data-slot="4">4</button><button data-slot="5">5</button><button data-slot="6">6</button>
+          <button data-slot="1" class="active" title="槽 1">1</button><button data-slot="2" title="槽 2">2</button><button data-slot="3" title="槽 3">3</button>
+          <button data-slot="4" title="槽 4">4</button><button data-slot="5" title="槽 5">5</button><button data-slot="6" title="槽 6">6</button>
         </div>
         <div class="hint" style="margin-top:6px" data-i18n="每个槽记住一个 Google 账号的登录态（不是产品账号）：同槽再次授权时 Google 免重登，点授权页的 Google 直接过；每次授权换到的凭据照常入库为新/更新账号。四条 Google SSO 线（Croli / Trae 国际版 / MiniMax 国际版 / Qoder）共享同一组槽；想用另一个 Google 账号就换槽。">每个槽记住一个 Google 账号的登录态（不是产品账号）：同槽再次授权时 Google 免重登，点授权页的 Google 直接过；每次授权换到的凭据照常入库为新/更新账号。四条 Google SSO 线（Croli / Trae 国际版 / MiniMax 国际版 / Qoder）共享同一组槽；想用另一个 Google 账号就换槽。</div>
       </div>
@@ -1242,6 +1242,7 @@ const I = {
   chevDown: svg('<path d="M6 9l6 6 6-6"/>'),
   chevRight: svg('<path d="M9 18l6-6-6-6"/>'),
   check: svg('<path d="M20 6L9 17l-5-5"/>'),
+  pencil: svg('<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>'),
   grid: svg('<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>'),
   book: svg('<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>'),
   power: svg('<path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/>'),
@@ -1565,7 +1566,7 @@ async function api(p, opts = {}, attempt = 0) {
     setKey('');
     if (await promptKey(hadKey)) return api(p, opts, attempt + 1);
   }
-  if (!res.ok) { const e = new Error(data.error || ('HTTP ' + res.status)); e.code = data.code; e.status = res.status; e.nextAt = data.nextAt; throw e; }
+  if (!res.ok) { const e = new Error(data.error || ('HTTP ' + res.status)); e.code = data.code; e.status = res.status; e.nextAt = data.nextAt; e.authDead = data.auth === true; throw e; }
   return data;
 }
 
@@ -1865,6 +1866,17 @@ function expiryCell(a) {
 
   // 具有 refreshToken 的账号会自动在后台续期，短期 exp 属于正常轮换，不应显示刺眼红字误导用户
   if (a.hasRefreshToken) {
+    // 但续期不是万能的：refresh 轮换制（Croli/Clerk）下客户端退出会作废快照 rt——
+    // 额度轮已报 auth 失败时如实改写「续期失败」，不再挂「凭据有效」假绿灯（用户实测误导）
+    const q = state.quotas[a.id];
+    if (q && q.authDead === true) {
+      return {
+        label: T('续期失败 · 请重新授权'),
+        warn: true,
+        title: T('refreshToken 已被上游轮换作废（客户端退出登录也会作废）——请重新「本机导入」或走「浏览器登录」授权'),
+        isAuto: true,
+      };
+    }
     return {
       label: T('凭据有效 · 自动续期'),
       warn: false,
@@ -4174,11 +4186,11 @@ async function loadQuotas(ids, opts) {
       const id = queue.shift();
       // fetch 期间可能有新一轮 loadQuotas 进来（如卡片点「刷新」走 live）：
       // 守卫必须在 await **之后**重判——await 前判恒为真，旧批次的结果会盖掉新 live 值
-      let quota = null, err = null;
+      let quota = null, err = null, errAuth = false;
       try { quota = (await api('/api/accounts/' + encodeURIComponent(id) + '/quota' + (live ? '?live=1' : ''))).quota; }
-      catch (e) { err = e; }
+      catch (e) { err = e; errAuth = e.authDead === true; }
       if (run !== quotaRun) continue;   // 已被新一轮取代：丢弃本条，不写不渲染
-      if (err) state.quotas[id] = { error: err.message };
+      if (err) state.quotas[id] = { error: err.message, authDead: errAuth };
       else state.quotas[id] = quota;
       render();
     }
@@ -5594,11 +5606,19 @@ function openAdd(product) {
   } else if (!$('dev-provider').value || $('dev-provider').selectedOptions[0]?.hidden) {
     $('dev-provider').value = firstDev || '';
   }
+  // 「登录到」值可能被上面改过——手动触发一次 change，让 Google 槽位选择器同步显隐/置灰
+  //（此前只在用户真实 change 时才刷新，程序改值后槽位区还挂着上一次的状态）
+  try { syncGoogleSlotTitles(); } catch {}
+  $('dev-provider').dispatchEvent(new Event('change'));
   $('dev-hint').textContent = (hasIncognito() ? T('在内置隐私窗口里登录（不带出系统浏览器已登录的账号），') : T('在浏览器里登录并授权，'))
     + T('完成后账号自动添加。') + (product === 'qoder' ? '' : T('WorkBuddy / ZCode / Trae 用浏览器登录的账号同样可以一键切换客户端。'));
   openModal('m-add');
   if (isLoomy) switchTab('sms');
   else if (product === 'dumate') { switchTab('qr'); dumateQrStart(); }
+  // croli 默认落在「浏览器登录」tab：本机导入依赖客户端有登录态，而打开此弹窗的
+  // 高频场景恰是「凭据失效了要重新授权」——默认 tab 与真实意图对齐，且槽位选择器
+  // （在浏览器登录 tab 里）在开窗前就可见，避免「没选槽窗口就开了」的错愕
+  else if (product === 'croli') switchTab('device');
   else switchTab('local');
   if (!isLoomy) localScan();
 }
@@ -5935,6 +5955,9 @@ $('btn-comp').innerHTML = I.settings;
 // 分区状态探针走桌面壳 googleSlotState IPC（cookie 数 > 0 = 有登录痕迹）；非桌面环境
 // （网页面板）探针不可用——按钮隐藏，入口与能力同步消失，不出「点了没反应」的死按钮。
 const GOOGLE_SLOTS = [1, 2, 3, 4, 5, 6];
+// 槽位备注（本机 localStorage，不进账号库）：「师洋」「AI」…贴 Chrome profile 名
+const googleSlotNick = (n) => { try { return localStorage.getItem('qd_google_slot_nick_' + n) || ''; } catch { return ''; } };
+const setGoogleSlotNick = (n, v) => { try { v ? localStorage.setItem('qd_google_slot_nick_' + n, v) : localStorage.removeItem('qd_google_slot_nick_' + n); } catch {} };
 const googleApi = () => (window.creditdaddy && typeof window.creditdaddy.googleSlotState === 'function' ? window.creditdaddy : null);
 if (googleApi()) {
   $('btn-google').innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M21.35 11.1h-9.17v2.73h6.51c-.33 1.63-1.96 4.77-6.51 4.77a7.23 7.23 0 0 1 0-14.46c1.98 0 3.3.84 4.06 1.55l2.01-1.94A9.7 9.7 0 0 0 12.18 1a10 10 0 1 0 0 20c5.78 0 9.57-4.06 9.57-9.77 0-.65-.06-1.15-.4-3.13z" fill="#EA4335" d="M0 0h24v24H0z" fill="none"/></svg>';
@@ -5944,13 +5967,32 @@ if (googleApi()) {
     const rows = await Promise.all(GOOGLE_SLOTS.map(async (n) => {
       const r = await googleApi().googleSlotState(n).catch(() => ({ ok: false }));
       const has = r && r.ok && r.hasSession;
+      const nick = googleSlotNick(n);
       return '<div style="display:flex;align-items:center;gap:10px;border:1px solid var(--border-subtle);border-radius:10px;padding:8px 12px">'
         + '<span style="font-weight:700;font-size:14px;width:44px">' + T('槽 {n}', { n }) + '</span>'
-        + '<span style="flex:1;font-size:12px;color:var(--text-3)">' + (has ? T('有 Google 登录态（cookie {n} 条）', { n: r.cookieCount }) : T('空')) + '</span>'
+        + '<span style="flex:1;min-width:0;font-size:12px;color:var(--text-3);display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
+        + (nick ? '<span class="pill ok" style="font-size:11px" title="' + esc(T('槽位备注')) + '">' + esc(nick) + '</span>' : '')
+        + (has ? T('有 Google 登录态（cookie {n} 条）', { n: r.cookieCount }) : T('空'))
+        + '<button class="icon-btn" data-gnick="' + n + '" title="' + esc(T('重命名槽位（本机备注，不进账号库）')) + '" style="width:22px;height:22px">' + I.rename + '</button>'
+        + '</span>'
         + (has ? '<button class="btn" style="padding:4px 10px;font-size:12px" data-gclear="' + n + '">' + T('清除') + '</button>' : '')
         + '</div>';
     }));
     box.innerHTML = rows.join('');
+    box.querySelectorAll('button[data-gnick]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const n = Number(btn.dataset.gnick);
+        const cur = googleSlotNick(n);
+        const v = await uiPrompt(T('槽 {n} 备注', { n }), cur, {
+          message: T('给这个 Google 账号起个名（如「师洋」「AI」），弹窗与授权窗槽位选择器同步显示；留空删除备注。'),
+          okText: T('保存'),
+        });
+        if (v === null) return;
+        setGoogleSlotNick(n, String(v).trim());
+        renderGoogleSlots();
+        try { syncGoogleSlotTitles(); } catch {}
+      });
+    });
     box.querySelectorAll('button[data-gclear]').forEach((btn) => {
       btn.addEventListener('click', async () => {
         const n = Number(btn.dataset.gclear);
@@ -6486,7 +6528,15 @@ $('dev-provider').addEventListener('change', () => {
     field.style.display = 'none';
   }
 });
-// 槽位段控件点选（seg-ctl 同款）：写 active 标记，deviceLogin 读 data-slot
+// 槽位段控件点选（seg-ctl 同款）：写 active 标记，deviceLogin 读 data-slot；
+// 备注过的槽在按钮 title 上显示（与 Google 会话槽弹窗同一来源 localStorage）
+function syncGoogleSlotTitles() {
+  $('dev-croli-slot').querySelectorAll('button[data-slot]').forEach((b) => {
+    const n = Number(b.dataset.slot);
+    const nick = googleSlotNick(n);
+    b.title = nick ? T('槽 {n}', { n }) + ' · ' + nick : T('槽 {n}', { n });
+  });
+}
 $('dev-croli-slot').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-slot]');
   if (!b || $('dev-croli-slot').disabled) return;

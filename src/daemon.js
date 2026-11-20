@@ -847,7 +847,10 @@ async function handleApi(req, res, url) {
       const ctx = { log, ...refreshContext(account, log) };
       return json(res, 200, { quota: await productImpl(account.provider).quota(account, ctx) });
     } catch (e) {
-      return json(res, 502, { error: e.message });
+      // err.auth（croliClient 等抛的凭据失效标记）随 502 带出——面板 expiryCell 据此把
+      // 「凭据有效·自动续期」假绿灯改写成「续期失败·请重新授权」（refresh 轮换制下
+      // 客户端退出即作废快照 rt，光有 expiresAt 的预期值会误导）
+      return json(res, 502, { error: e.message, auth: e.auth === true });
     }
   }
 

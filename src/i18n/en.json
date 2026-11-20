@@ -2352,5 +2352,17 @@
 "用 Google 账号槽打开": "Open with Google account slot",
 "每个槽记住一个 Google 账号的登录态（不是产品账号）：同槽再次授权时 Google 免重登，点授权页的 Google 直接过；每次授权换到的凭据照常入库为新/更新账号。四条 Google SSO 线（Croli / Trae 国际版 / MiniMax 国际版 / Qoder）共享同一组槽；想用另一个 Google 账号就换槽。": "Each slot remembers one Google account's session (not the product account): re-authorizing in the same slot skips the Google sign-in — just click Google on the authorize page. Credentials from each authorization are still stored as a new/updated account. Four Google SSO lines (Croli / Trae Intl / MiniMax Intl / Qoder) share the same slot pool; use a different slot for another Google account.",
 "这些槽记住的是各授权窗里登录过的 Google 账号会话（Croli / Trae 国际版 / MiniMax 国际版 / Qoder 四线共享）：同槽再次授权 Google 免重登。清除某个槽 = 抹掉该槽的 Google 登录态，下次授权需重新登录 Google（产品账号库不受影响）。": "These slots remember the Google account sessions signed in via the authorization windows (shared by Croli / Trae Intl / MiniMax Intl / Qoder): re-authorizing in the same slot skips the Google sign-in. Clearing a slot wipes its Google session — the next authorization will need a fresh Google sign-in (the product account library is unaffected).",
-"槽 {n}": "Slot {n}"
+"槽 {n}": "Slot {n}",
+"refreshToken 已被上游轮换作废（客户端退出登录也会作废）——请重新「本机导入」或走「浏览器登录」授权": "The refresh token was rotated/invalidated upstream (signing out of the client also invalidates it) — re-import from the local client or authorize via browser sign-in",
+"槽 1": "Slot 1",
+"槽 2": "Slot 2",
+"槽 3": "Slot 3",
+"槽 4": "Slot 4",
+"槽 5": "Slot 5",
+"槽 6": "Slot 6",
+"槽 {n} 备注": "Slot {n} note",
+"槽位备注": "Slot note",
+"给这个 Google 账号起个名（如「师洋」「AI」），弹窗与授权窗槽位选择器同步显示；留空删除备注。": "Name this Google account (e.g. \"Yang\", \"AI\"); shown in both this dialog and the slot picker on the authorize window. Leave empty to remove the note.",
+"续期失败 · 请重新授权": "Renewal failed · re-authorize",
+"重命名槽位（本机备注，不进账号库）": "Rename slot (local note only, never enters the account library)"
 }
