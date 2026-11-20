@@ -1148,16 +1148,12 @@ async function handleApi(req, res, url) {
       if (body?.autoClaim !== undefined) {
         if (body.autoClaim === true) enableZcodeAutoClaimWindow();       // 开 = 按「自动领取计划」启动（2 分钟后首轮）
         else {
-          // 关 = 立即停表。用户手动停用的意图是「别再撞了」（2026-11-17 实测：账号无法
-          // 领取还在被每日计划反复拉起撞接口）——同一次请求里没有显式重开计划时，
-          // 把每日定时计划一并关掉；明天要继续就再到弹窗里勾上，不搞隔夜复活。
+          // 关 = 只停单次窗口，**每日定时计划保留**（2026-11-20 用户实测推翻 11-17 的
+          // 「防隔夜复活」联动：弹窗明确写着「单次窗口与每日定时互不影响」，停止把
+          // 定时也连坐关闭与文案自相矛盾——用户排好 20:00 的计划被一次手动停用抹掉）。
+          // 每日计划的启停只由「每日定时」开关自己控制，两者真正解耦。
           setAutoClaimEnabled(false);
           refreshZcodeScheduler();
-          if (body?.dailyPlan === undefined && dailyClaimPlan().enabled) {
-            setDailyClaimPlan({ enabled: false });
-            refreshZcodeDailyPlan();
-            logger.info('DAEMON', 'ZCode 每日定时计划已随手动停用一并关闭（防隔夜复活继续撞接口）', {});
-          }
         }
       }
     } catch (e) { return json(res, 400, { error: e.message }); }

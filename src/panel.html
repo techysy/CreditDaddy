@@ -1118,7 +1118,7 @@
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <button class="btn primary" id="zac-ok" data-i18n="立即开跑">立即开跑</button>
-        <button class="btn" id="zac-off" data-i18n="停止运行" title="停止单次窗口；每日定时计划一并停用">停止运行</button>
+        <button class="btn" id="zac-off" data-i18n="停止运行" title="停止单次窗口（每日定时计划不受影响）">停止运行</button>
       </div>
       <div class="hint" style="margin-top:6px" data-i18n="马上按上面参数开跑一轮；只影响本次，不改每日定时。">马上按上面参数开跑一轮；只影响本次，不改每日定时。</div>
       <div class="hint" id="zac-window-hint" style="margin-top:4px"></div>
@@ -5444,7 +5444,8 @@ $('zac-ok').addEventListener('click', async () => {
 });
 $('zac-off').addEventListener('click', async () => {
   try {
-    // 手动停用 = 停单次窗口 + 连每日计划一起关（daemon 侧防隔夜复活联动，同请求不带 dailyPlan）
+    // 手动停用 = 只停单次窗口；每日定时计划保留（2026-11-20 用户定版：弹窗文案
+    // 「与每日定时互不影响」，停止连坐关闭与文案矛盾——真正解耦，各管各的）
     const r = await api('/api/zcode/net', { method: 'PUT', json: { autoClaim: false } });
     state.zAutoClaim = r.autoClaim === true;
     state.zAutoClaimUntil = r.autoClaimUntil || null;
@@ -5453,7 +5454,9 @@ $('zac-off').addEventListener('click', async () => {
     applyZacWindowState();
     renderStatus(); render();
     closeModal('m-zac');
-    toast(T('ZCode 自动领取：已关闭（每日定时计划一并停用）'));
+    toast((state.zDailyPlan || {}).enabled === true
+      ? T('单次窗口已停止；每日定时计划保留（明天到点照常开跑）')
+      : T('单次窗口已停止'));
   } catch (err) { toast(err.message, false); }
 });
 
