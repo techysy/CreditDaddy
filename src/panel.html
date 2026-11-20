@@ -4262,6 +4262,11 @@ async function loadCurrentLogs() {
     if (state.logLevel !== 'all') {
       logs = logs.filter((l) => l.level === 'warn' || l.level === 'error');
     }
+    // 内容没变就跳过 innerHTML 重建（10s 轮询 99% 的轮次是同一批日志——
+    // 200 条 × esc() 拼接的 DOM 重建是面板「卡一下」的主要来源之一）
+    const sig = logs.map((l) => l.at + '|' + l.level + '|' + l.msg).join('\n');
+    if (el.dataset.sig === sig) return;
+    el.dataset.sig = sig;
     const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
     const withTag = state.logTab === 'run';
     const ico = (lvl) => lvl === 'error' ? '✗' : lvl === 'warn' ? '⚠' : lvl === 'info' ? '·' : '';
@@ -6637,7 +6642,7 @@ function hideBootBusy() { const b = $('boot-busy'); if (!b) return; clearTimeout
     setInterval(async () => {
       if (statusBusy || document.hidden) return;
       statusBusy = true;
-      try { await loadStatus(); await loadZNet(); await loadZGateway(); await loadMGateway(); await loadTGateway(); await refreshAccountList(); render(); }
+      try { await loadStatus(); await loadZNet(); await loadZGateway(); await loadMGateway(); await loadTGateway(); await refreshAccountList(); if (!document.hidden) render(); }
       finally { statusBusy = false; }
     }, 30000);
     });
