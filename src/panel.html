@@ -1046,13 +1046,13 @@
   </div>
 </div>
 
-<!-- Loomy 我的邀请码 -->
+<!-- Loomy / DuMate / Croli 我的邀请码 -->
 <div class="mask" id="m-my-invite">
   <div class="modal sm" style="width:480px">
     <div class="modal-title"><span data-i18n="我的邀请码">我的邀请码</span><button class="close" data-close>✕</button></div>
     <div class="hint" id="my-invite-hint" style="white-space:pre-wrap"></div>
     <div id="my-invite-list" style="margin-top:10px;display:flex;flex-direction:column;gap:8px"></div>
-    <div class="hint" style="margin-top:10px" data-i18n="好友用邀请码注册并登录后，双方各得 +5000 永久积分（每个邀请码名额有限，用完即止）。">好友用邀请码注册并登录后，双方各得 +5000 永久积分（每个邀请码名额有限，用完即止）。</div>
+    <div class="hint" id="my-invite-foot" style="margin-top:10px" data-i18n="好友用邀请码注册并登录后，双方各得 +5000 永久积分（每个邀请码名额有限，用完即止）。">好友用邀请码注册并登录后，双方各得 +5000 永久积分（每个邀请码名额有限，用完即止）。</div>
   </div>
 </div>
 
@@ -4477,6 +4477,10 @@ async function croliMyInvite(id) {
   if (!code) { listEl.innerHTML = '<div class="empty" style="padding:18px">' + T('暂无邀请码') + '</div>'; return; }
   const inviter = r.inviterRewardCredits || 2500, invitee = r.inviteeRewardCredits || 3000;
   hintEl.textContent = T('好友安装 Croli 并完成首个任务后，你得 {a} / 好友得 {b} 积分', { a: inviter, b: invitee });
+  // 脚注按账号覆盖：弹窗骨架的通用脚注是 Loomy 口径（+5000 名额制），Croli 的
+  // 奖励数与规则不同（2500/3000、好友需完成首个任务），直接改文本不给错误信息留位
+  const footEl = $('my-invite-foot');
+  if (footEl) footEl.textContent = T('好友安装 Croli 并完成首个任务后双方得积分；每个账号只能被邀请一次。');
   const link = 'https://www.croli.net/invite/?code=' + encodeURIComponent(code);
   const shareText = T('最近在用 Croli（AI 桌面助手），走我的专属链接注册完成任务，咱俩各得积分：{link}（我的邀请码：{code}）', { link, code });
   const copy = async (text, okMsg) => {
@@ -4489,12 +4493,21 @@ async function croliMyInvite(id) {
       tmp.remove();
     }
   };
-  listEl.innerHTML = '<div style="display:flex;align-items:center;gap:8px;border:1px solid var(--border-subtle);border-radius:10px;padding:8px 10px">'
-    + '<span style="font-weight:700;font-size:15px;letter-spacing:1px;flex:0 0 auto;font-variant-numeric:tabular-nums">' + esc(code) + '</span>'
-    + '<span style="flex:1;min-width:0;font-size:12px;color:var(--text-3)">' + T('邀 {a} / 被邀 {b}', { a: inviter, b: invitee }) + '</span>'
+  // 两段式布局：码独占一行（可换行不挤压），奖励说明用胶囊徽章横排（不再竖排折行），
+  // 三个复制按钮一行铺开
+  listEl.innerHTML = '<div style="border:1px solid var(--border-subtle);border-radius:10px;padding:10px 12px;display:grid;gap:8px">'
+    + '<div style="display:flex;align-items:center;gap:8px">'
+    + '<span style="font-weight:700;font-size:16px;letter-spacing:1.5px;flex:1;min-width:0;font-variant-numeric:tabular-nums;overflow-wrap:anywhere">' + esc(code) + '</span>'
+    + '</div>'
+    + '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
+    + '<span class="pill ok" style="font-size:11px">' + T('邀请人 +{n}', { n: inviter }) + '</span>'
+    + '<span class="pill ok" style="font-size:11px">' + T('受邀人 +{n}', { n: invitee }) + '</span>'
+    + '</div>'
+    + '<div style="display:flex;gap:6px;flex-wrap:wrap">'
     + '<button class="btn" style="padding:4px 10px;font-size:12px" data-kind="code">' + T('复制邀请码') + '</button>'
     + '<button class="btn" style="padding:4px 10px;font-size:12px" data-kind="link">' + T('复制邀请链接') + '</button>'
     + '<button class="btn" style="padding:4px 10px;font-size:12px" data-kind="share">' + T('复制分享文案') + '</button>'
+    + '</div>'
     + '</div>';
   listEl.querySelectorAll('button[data-kind]').forEach((btn) => {
     btn.addEventListener('click', () => {
