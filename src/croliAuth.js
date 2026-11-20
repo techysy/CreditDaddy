@@ -165,11 +165,23 @@ export async function croliTokenRequest(parameters, { fetchImpl } = {}) {
   } catch (e) {
     throw new Error(`Croli OAuth 请求失败：${e?.cause?.code || e.message}`);
   }
-  const result = await res.json().catch(() => ({}));
+  const rawText = await res.text().catch(() => '');
+  let result = {};
+  try { result = JSON.parse(rawText); } catch { /* 非 JSON（Cloudflare HTML / 空体）走下方诊断 */ }
   if (!res.ok) {
     throw new Error(`Croli OAuth 失败：${result.error_description || result.error || `HTTP ${res.status}`}`);
   }
-  validateTokenResponse(result);
+  try {
+    validateTokenResponse(result);
+  } catch (e) {
+    // 响应 200 但字段缺失：把实际拿到什么（字段名集合 / 非 JSON 时片段）带出来——
+    // 「格式无效」四个字无法定位是 Cloudflare 拦截还是 Clerk 降级响应
+    const keys = Object.keys(result || {}).join(',');
+    const snippet = keys ? `字段[${keys}]` : String(rawText).replace(/\s+/g, ' ').slice(0, 120);
+    const err = new Error(`Croli OAuth Token 响应格式无效（HTTP ${res.status}，实际收到：${snippet}）`);
+    err.oauth = true;
+    throw err;
+  }
   return result;
 }
 

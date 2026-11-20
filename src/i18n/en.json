@@ -2364,5 +2364,8 @@
 "槽位备注": "Slot note",
 "给这个 Google 账号起个名（如「师洋」「AI」），弹窗与授权窗槽位选择器同步显示；留空删除备注。": "Name this Google account (e.g. \"Yang\", \"AI\"); shown in both this dialog and the slot picker on the authorize window. Leave empty to remove the note.",
 "续期失败 · 请重新授权": "Renewal failed · re-authorize",
-"重命名槽位（本机备注，不进账号库）": "Rename slot (local note only, never enters the account library)"
+"重命名槽位（本机备注，不进账号库）": "Rename slot (local note only, never enters the account library)",
+"授权窗口会话": "Authorize window session",
+"无痕": "Incognito",
+"无痕（默认）= 关窗即清，每次全新会话；槽 1-6 = 记住一个 Google 账号的登录态（不是产品账号），同槽再次授权时 Google 免重登，四条 Google SSO 线（Croli / Trae 国际版 / MiniMax 国际版 / Qoder）共享同一组槽。": "Incognito (default) = storage wiped on close, a fresh session every time; Slots 1-6 remember one Google account's session (not the product account) — re-authorizing in the same slot skips the Google sign-in, shared across the four Google SSO lines (Croli / Trae Intl / MiniMax Intl / Qoder)."
 }
