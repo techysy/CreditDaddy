@@ -42,6 +42,8 @@ export const CROLI_CREDITS_BASE = 'https://ds.croli.net/credits';
 export const CROLI_OPS_HOME_URL = `${CROLI_CREDITS_BASE}/v1/ops/home`;
 export const CROLI_CHECKIN_URL = `${CROLI_CREDITS_BASE}/v1/ops/checkin`;
 export const CROLI_BALANCE_URL = `${CROLI_CREDITS_BASE}/v1/account/balance`;
+export const CROLI_INVITE_CODE_URL = `${CROLI_CREDITS_BASE}/v1/invite/code`;
+export const CROLI_INVITE_REDEEM_URL = `${CROLI_CREDITS_BASE}/v1/invite/redeem`;
 
 /** daily-checkin 任务的 key（taskId 服务端编号可能调整，按 key 找行再取 id） */
 export const CROLI_CHECKIN_TASK_KEY = 'daily-checkin';
@@ -236,4 +238,36 @@ export function maskCroliUserId(id) {
   if (s.length >= 7) return s.slice(0, 3) + '****' + s.slice(-3);
   if (s.length >= 4) return s.slice(0, 1) + '****' + s.slice(-1);
   return '****';
+}
+
+/**
+ * 我的邀请码：POST /v1/invite/code {rotate:false}（实测 2026-11-20：
+ * → { inviteCode, inviterRewardCredits:2500, inviteeRewardCredits:3000 }；
+ * rotate=true 会换新码（旧码作废），CD 一律 rotate:false 只读不轮换）
+ */
+export async function fetchCroliMyInviteCode(token, { fetchImpl } = {}) {
+  if (!token) return { auth: true, ok: false, error: t('缺少 Croli 凭据') };
+  const r = await croliRequest(CROLI_INVITE_CODE_URL, token, { method: 'POST', body: { rotate: false }, fetchImpl });
+  if (!r.auth) return { auth: false, ok: false, error: t('Croli 凭据已失效，请重新本机导入或浏览器登录') };
+  if (!r.ok) return { auth: true, ok: false, error: r.code || 'network' };
+  return {
+    auth: true,
+    ok: true,
+    code: r.data?.inviteCode || null,
+    inviterRewardCredits: Number(r.data?.inviterRewardCredits) || null,
+    inviteeRewardCredits: Number(r.data?.inviteeRewardCredits) || null,
+  };
+}
+
+/** 兑换邀请码：POST /v1/invite/redeem {inviteCode, source}（好友安装并完成首个任务后双方得积分） */
+export async function redeemCroliInviteCode(token, code, { fetchImpl } = {}) {
+  const clean = String(code || '').trim();
+  if (!clean) return { ok: false, error: t('邀请码不能为空') };
+  const r = await croliRequest(CROLI_INVITE_REDEEM_URL, token, { method: 'POST', body: { inviteCode: clean, source: 'task_center' }, fetchImpl });
+  if (!r.auth) return { ok: false, authExpired: true, error: t('Croli 凭据已失效，请重新本机导入或浏览器登录') };
+  if (!r.ok) {
+    // 服务端错误码（bundle 口径）：已兑换过 / 码不存在 / 自己的码等——code 即话术
+    return { ok: false, error: r.code || 'network' };
+  }
+  return { ok: true, message: r.data?.message || '', result: r.data ?? null };
 }

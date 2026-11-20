@@ -1015,6 +1015,32 @@ async function handleApi(req, res, url) {
     if (!r.ok) return json(res, r.auth === false ? 401 : 502, { error: r.error });
     return json(res, 200, { ok: true, code: r.code, type: r.type, activityId: r.activityId });
   }
+  // Croli 邀请码兑换：POST /v1/invite/redeem {inviteCode, source}（好友安装 Croli 并完成首个任务后双方得积分）
+  const croliInviteMatch = p.match(/^\/api\/accounts\/([\w-]+)\/croli\/invite$/);
+  if (croliInviteMatch && method === 'POST') {
+    const body = await readBody(req).catch(() => ({}));
+    const code = String(body?.code || '').trim();
+    if (!code) return json(res, 400, { error: '邀请码不能为空' });
+    const accounts = await loadAccounts();
+    const account = accounts.find((a) => a.id === croliInviteMatch[1] && a.provider === 'croli');
+    if (!account) return json(res, 404, { error: 'Croli 账号不存在' });
+    const { redeemCroliInviteCode } = await import('./croliClient.js');
+    const r = await redeemCroliInviteCode(account.token, code);
+    if (!r.ok) return json(res, r.authExpired ? 401 : 400, { error: r.error });
+    logger.info('DAEMON', 'Croli {name} 邀请码已兑换:{code}', { name: account.name, code });
+    return json(res, 200, { ok: true, message: r.message, result: r.result });
+  }
+  // Croli 我的邀请码：POST /v1/invite/code {rotate:false}（只读不轮换）
+  const croliMyInviteMatch = p.match(/^\/api\/accounts\/([\w-]+)\/croli\/my-invite-code$/);
+  if (croliMyInviteMatch && method === 'GET') {
+    const accounts = await loadAccounts();
+    const account = accounts.find((a) => a.id === croliMyInviteMatch[1] && a.provider === 'croli');
+    if (!account) return json(res, 404, { error: 'Croli 账号不存在' });
+    const { fetchCroliMyInviteCode } = await import('./croliClient.js');
+    const r = await fetchCroliMyInviteCode(account.token);
+    if (!r.ok) return json(res, r.auth === false ? 401 : 502, { error: r.error });
+    return json(res, 200, { ok: true, code: r.code, inviterRewardCredits: r.inviterRewardCredits, inviteeRewardCredits: r.inviteeRewardCredits });
+  }
   // 网络出口偏好（全局——Qoder/ZCode/cookie 探测等全部出口都走它）：默认「直连优先、代理兜底」，
   // 可切「代理优先、直连兜底」；代理地址可面板配置（存 zcode-net.json，0600；键名 zcode 前缀是历史遗留）
   // 自动领取开启时附带 1 小时时限（autoClaimUntil），到期调度器自动关闭并停止轮询

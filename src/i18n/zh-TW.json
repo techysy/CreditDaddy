@@ -2315,5 +2315,15 @@
   "签到成功（+{n} 积分）": "簽到成功（+{n} 積分）",
   "缺少 Croli 凭据": "缺少 Croli 憑證",
   "读取本机 Croli 客户端当前登录的账号（直读 %APPDATA%\\Croli\\auth.json 明文凭据，凭据不出本机），支持多账号保存切换。": "讀取本機 Croli 用戶端目前登入的帳號（直讀 %APPDATA%\\Croli\\auth.json 明文憑證，憑證不出本機），支援多帳號保存切換。",
-  "还没有 Croli 账号。<br>点「添加账号 → 本机导入」可读取本机 Croli 客户端当前登录的账号（直读 %APPDATA%\\Croli\\auth.json，凭据不出本机）；或用「浏览器登录」走 Clerk 授权（Google / GitHub / 邮箱任选）。每日自动签到（+100 积分，连续 3 天起额外 +20）。": "還沒有 Croli 帳號。<br>點「新增帳號 → 本機匯入」可讀取本機 Croli 用戶端目前登入的帳號（直讀 %APPDATA%\\Croli\\auth.json，憑證不出本機）；或用「瀏覽器登入」走 Clerk 授權（Google / GitHub / 信箱任選）。每日自動簽到（+100 積分，連續 3 天起額外 +20）。"
+  "还没有 Croli 账号。<br>点「添加账号 → 本机导入」可读取本机 Croli 客户端当前登录的账号（直读 %APPDATA%\\Croli\\auth.json，凭据不出本机）；或用「浏览器登录」走 Clerk 授权（Google / GitHub / 邮箱任选）。每日自动签到（+100 积分，连续 3 天起额外 +20）。": "還沒有 Croli 帳號。<br>點「新增帳號 → 本機匯入」可讀取本機 Croli 用戶端目前登入的帳號（直讀 %APPDATA%\\Croli\\auth.json，憑證不出本機）；或用「瀏覽器登入」走 Clerk 授權（Google / GitHub / 信箱任選）。每日自動簽到（+100 積分，連續 3 天起額外 +20）。",
+"<button class=\"icon-btn\" data-act=\"invite\" title=\"填写邀请码（好友安装 Croli 并完成首个任务后，你得 2500 / 好友得 3000 积分）\">": "<button class=\"icon-btn\" data-act=\"invite\" title=\"填寫邀請碼（好友安裝 Croli 並完成首個任務後，你得 2500 / 好友得 3000 積分）\">",
+"<button class=\"icon-btn\" data-act=\"my-invite\" title=\"我的邀请码（查看本账号的专属邀请码与邀请链接，复制分享）\">": "<button class=\"icon-btn\" data-act=\"my-invite\" title=\"我的邀請碼（查看本帳號的專屬邀請碼與邀請連結，複製分享）\">",
+"Croli {name} 邀请码已兑换:{code}": "Croli {name} 邀請碼已兌換:{code}",
+"Croli 账号不存在": "Croli 帳號不存在",
+"复制邀请链接": "複製邀請連結",
+"好友安装 Croli 并完成首个任务后，你得 {a} / 好友得 {b} 积分": "好友安裝 Croli 並完成首個任務後，你得 {a} / 好友得 {b} 積分",
+"推荐使用邀请码 {code}（复制到下方即可；好友安装 Croli 并完成首个任务后，你得 2500 / 好友得 3000 积分）": "推薦使用邀請碼 {code}（複製到下方即可；好友安裝 Croli 並完成首個任務後，你得 2500 / 好友得 3000 積分）",
+"最近在用 Croli（AI 桌面助手），走我的专属链接注册完成任务，咱俩各得积分：{link}（我的邀请码：{code}）": "最近在用 Croli（AI 桌面助手），走我的專屬連結註冊完成任務，咱倆各得積分：{link}（我的邀請碼：{code}）",
+"邀 {a} / 被邀 {b}": "邀 {a} / 被邀 {b}",
+"邀请链接已复制": "邀請連結已複製"
 }

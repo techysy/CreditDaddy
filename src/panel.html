@@ -1390,7 +1390,8 @@ const PROV = {
   croli: { prod: 'croli', prodLabel: 'Croli', region: '', cls: '' },
 };
 // 支持每日签到的产品（ZCode / mirasim / 妙手 额度靠套餐或滚动窗口发放，不做签到）
-const CHECKIN_PRODUCTS = new Set(['qoder', 'workbuddy', 'trae', 'minimax']);
+// croli：ops/checkin 每日 +100（streak 第 3 天起 +20），调度器侧 productImpl.checkin 自动覆盖
+const CHECKIN_PRODUCTS = new Set(['qoder', 'workbuddy', 'trae', 'minimax', 'croli']);
 // 网页会话卡支持「立即签到」的站点：provider 在 providers.js 挂了 checkin 且非 entryOnly
 // （豆包虽挂了 checkin 实现，但定位是纯打开入口、CD 不代签，不在此列）
 const FREE_CHECKIN_SITES = new Set(['lingxi', 'meoo']);   // meoo 回退网页会话线（1.8.0）：签到走网页会话页
@@ -2008,6 +2009,8 @@ function cardHtml(a) {
     + (a.product === 'loomy' ? T('<button class="icon-btn" data-act="my-invite" title="我的邀请码（查看本账号的专属邀请码与使用进度，复制分享）">') + I.invite + '</button>' : '')
     + (a.product === 'dumate' ? T('<button class="icon-btn" data-act="invite" title="填写邀请码（兑换后双方各 +2000 积分，每号仅一次）">') + I.gift + '</button>' : '')
     + (a.product === 'dumate' ? T('<button class="icon-btn" data-act="my-invite" title="我的邀请码（查看本账号的专属邀请码，复制分享）">') + I.invite + '</button>' : '')
+    + (a.product === 'croli' ? T('<button class="icon-btn" data-act="invite" title="填写邀请码（好友安装 Croli 并完成首个任务后，你得 2500 / 好友得 3000 积分）">') + I.gift + '</button>' : '')
+    + (a.product === 'croli' ? T('<button class="icon-btn" data-act="my-invite" title="我的邀请码（查看本账号的专属邀请码与邀请链接，复制分享）">') + I.invite + '</button>' : '')
     + (canCheckin && a.provider !== 'workbuddy-intl' ? '<button class="icon-btn' + (state.busy[a.id] ? ' busy' : '') + '" data-act="checkin" title="' + T('立即领取') + '">' + (state.busy[a.id] ? I.refresh : I.play) + '</button>' : '')
     + (a.qoderWebDead ? '<button class="icon-btn" data-act="webrenew" title="' + T('网页会话已失效——打开登录窗口重新授权，关闭窗口时自动补 cookie（API token 不受影响）') + '">' + I.swap + '</button>' : '')
     + (a.canSwitch && !isCurrent && st.cls !== 'fail' ? (a.codebuddyIdeFlavor ? '<button class="icon-btn" data-act="switch" title="' + esc(T('切换 CodeBuddy IDE 到此账号')) + '">' + I.swap + '</button>' : T('<button class="icon-btn" data-act="switch" title="切换 ') + (CLIENT_LABEL[a.product] ? T(CLIENT_LABEL[a.product]) : prodLabel(a.product)) + T(' 客户端到此账号">') + I.swap + '</button>') : '')
@@ -4272,6 +4275,9 @@ const LOOMY_INVITE_POOL = ['AAYW9D', 'BD3GGF', 'HB4ABC', 'DTAPH5', '9S2PB6'];
 // DuMate 邀请码候选池（同 Loomy 口径：弹窗随机推荐一个，消耗均摊）。
 // 首版先放维护者自己的码 ZW5ABSJ，后续有共享码再往池里加。
 const DUMATE_INVITE_POOL = ['ZW5ABSJ', '4HT9MF6'];
+// Croli 邀请码候选池（维护者 5 账号池，2026-11-20 用户提供；FNRPRGUUQL = 主号，
+// 与「我的邀请码」接口实测互证——邀 2500 / 被邀 3000，好友需安装并完成首个任务）
+const CROLI_INVITE_POOL = ['IKJCPA1SVP', '2TELUWKZ2V', 'WQ93WZ2KZS', '93YYUQAF3W', 'FNRPRGUUQL'];
 async function loomyInvite(id) {
   const a = state.accounts.find((x) => x.id === id);
   if (!a) return;
@@ -4407,6 +4413,73 @@ async function dumateMyInvite(id) {
 
 // ── DuMate 扫码登录（纯 HTTP 二维码线，协议同 10R）：start → 2s 轮询 status → authorized 由守护进程入库 ──
 let dmQrGen = 0;
+
+/** Croli 填写邀请码：POST /v1/invite/redeem（好友安装 Croli 并完成首个任务后，你得 2500 / 好友得 3000） */
+async function croliInvite(id) {
+  const a = state.accounts.find((x) => x.id === id);
+  if (!a) return;
+  const suggested = CROLI_INVITE_POOL[Math.floor(Math.random() * CROLI_INVITE_POOL.length)];
+  const code = await uiPrompt(T('为 {name} 填写邀请码', { name: maskName(a.name || id) }), '', {
+    message: T('推荐使用邀请码 {code}（复制到下方即可；好友安装 Croli 并完成首个任务后，你得 2500 / 好友得 3000 积分）', { code: suggested }),
+    placeholder: T('输入邀请码，如 {code}（区分大小写）', { code: suggested }),
+    okText: T('兑换'),
+  });
+  const clean = String(code || '').trim();
+  if (!clean) return;
+  try {
+    const r = await api('/api/accounts/' + encodeURIComponent(id) + '/croli/invite', { json: { code: clean } });
+    toast(r && r.message ? T('邀请码已兑换:{code}', { code: clean }) + ' ' + r.message : T('邀请码已兑换:{code}', { code: clean }), true);
+    loadQuotas([id], { live: true }).then(render);
+  } catch (e) { toast(e.message, false); }
+}
+
+/** Croli 我的邀请码：POST /v1/invite/code {rotate:false}，复制码 / 复制邀请链接（croli.net/invite/?code=） */
+async function croliMyInvite(id) {
+  const a = state.accounts.find((x) => x.id === id);
+  if (!a) return;
+  const listEl = $('my-invite-list');
+  const hintEl = $('my-invite-hint');
+  listEl.innerHTML = '<div class="empty" style="padding:18px">…</div>';
+  hintEl.textContent = '';
+  openModal('m-my-invite');
+  let r;
+  try {
+    r = await api('/api/accounts/' + encodeURIComponent(id) + '/croli/my-invite-code');
+  } catch (e) {
+    listEl.innerHTML = '<div class="empty" style="padding:18px">' + esc(e.message) + '</div>';
+    return;
+  }
+  const code = r && r.code;
+  if (!code) { listEl.innerHTML = '<div class="empty" style="padding:18px">' + T('暂无邀请码') + '</div>'; return; }
+  const inviter = r.inviterRewardCredits || 2500, invitee = r.inviteeRewardCredits || 3000;
+  hintEl.textContent = T('好友安装 Croli 并完成首个任务后，你得 {a} / 好友得 {b} 积分', { a: inviter, b: invitee });
+  const link = 'https://www.croli.net/invite/?code=' + encodeURIComponent(code);
+  const shareText = T('最近在用 Croli（AI 桌面助手），走我的专属链接注册完成任务，咱俩各得积分：{link}（我的邀请码：{code}）', { link, code });
+  const copy = async (text, okMsg) => {
+    try { await navigator.clipboard.writeText(text); toast(okMsg, true); }
+    catch {
+      const tmp = document.createElement('textarea');
+      tmp.value = text; tmp.style.position = 'fixed'; tmp.style.opacity = '0';
+      document.body.appendChild(tmp); tmp.select();
+      try { document.execCommand('copy'); toast(okMsg, true); } catch { toast(T('复制失败，请手动复制'), false); }
+      tmp.remove();
+    }
+  };
+  listEl.innerHTML = '<div style="display:flex;align-items:center;gap:8px;border:1px solid var(--border-subtle);border-radius:10px;padding:8px 10px">'
+    + '<span style="font-weight:700;font-size:15px;letter-spacing:1px;flex:0 0 auto;font-variant-numeric:tabular-nums">' + esc(code) + '</span>'
+    + '<span style="flex:1;min-width:0;font-size:12px;color:var(--text-3)">' + T('邀 {a} / 被邀 {b}', { a: inviter, b: invitee }) + '</span>'
+    + '<button class="btn" style="padding:4px 10px;font-size:12px" data-kind="code">' + T('复制邀请码') + '</button>'
+    + '<button class="btn" style="padding:4px 10px;font-size:12px" data-kind="link">' + T('复制邀请链接') + '</button>'
+    + '<button class="btn" style="padding:4px 10px;font-size:12px" data-kind="share">' + T('复制分享文案') + '</button>'
+    + '</div>';
+  listEl.querySelectorAll('button[data-kind]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const kind = btn.dataset.kind;
+      copy(kind === 'share' ? shareText : kind === 'link' ? link : code,
+        kind === 'share' ? T('分享文案已复制') : kind === 'link' ? T('邀请链接已复制') : T('邀请码已复制:{code}', { code }));
+    });
+  });
+}
 const dmQrUi = () => ({ img: $('dumate-qr-img'), empty: $('dumate-qr-empty'), st: $('dumate-qr-status'), restart: $('btn-dumate-qr-restart'), cancel: $('btn-dumate-qr-cancel') });
 function dmQrShowRestart() {
   const u = dmQrUi();
@@ -4503,11 +4576,11 @@ async function onCardClick(e) {
   if (act === 'quota') { loadQuotas([id], { live: true }).then(render); return; }
   if (act === 'invite') {
     const a = state.accounts.find((x) => x.id === id);
-    return a && a.product === 'dumate' ? dumateInvite(id) : loomyInvite(id);
+    return a && a.product === 'dumate' ? dumateInvite(id) : a && a.product === 'croli' ? croliInvite(id) : loomyInvite(id);
   }
   if (act === 'my-invite') {
     const a = state.accounts.find((x) => x.id === id);
-    return a && a.product === 'dumate' ? dumateMyInvite(id) : loomyMyInvite(id);
+    return a && a.product === 'dumate' ? dumateMyInvite(id) : a && a.product === 'croli' ? croliMyInvite(id) : loomyMyInvite(id);
   }
   if (act === 'claim') return openClaim(id);
   if (act === 'switch') {
