@@ -74,6 +74,25 @@ export function croliSubOf(jwt) {
   } catch { return null; }
 }
 
+/**
+ * Clerk userinfo 拉取（/oauth/userinfo，Bearer JWT）：
+ * → { sub, email, name, given_name, family_name, picture }
+ * 失败返回 null（调用方回退 uid 掩码命名，不阻断导入）。
+ */
+export async function fetchCroliProfile(accessToken, { fetchImpl } = {}) {
+  const doIt = fetchImpl || fetch;
+  try {
+    const res = await doIt('https://clerk.croli.net/oauth/userinfo', {
+      headers: { Authorization: `Bearer ${String(accessToken || '')}`, Accept: 'application/json' },
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (!res.ok) return null;
+    const j = await res.json().catch(() => null);
+    if (!j?.sub) return null;
+    return j;
+  } catch { return null; }
+}
+
 function procRunningCached(exeNames) {
   // 轻量判定：tasklist 查主壳即可（croli-server 随壳起）
   try {
@@ -112,23 +131,30 @@ export function detectCroli() {
   };
 }
 
-/** 本机当前登录 → CD 账号记录（本机导入线 liveToAccount 同构） */
+/** 本机当前登录 → CD 账号记录（本机导入线 liveToAccount 同构）。
+ * 命名：Clerk userinfo 的 name/email 优先（「Croli (师洋 余)」可辨识多号），
+ * userinfo 失败回退 sub 前 5 位掩码；归户恒用 sub。 */
 export async function liveToAccount() {
   const cred = readCroliCredential();
   if (!cred) return null;
   const uid = croliSubOf(cred.accessToken);
+  const profile = await fetchCroliProfile(cred.accessToken).catch(() => null);
+  const display = (profile?.name || profile?.email || '').trim() || null;
   const masked = uid ? `${uid.slice(0, 5)}…` : null;
-  const name = uid ? `Croli (${masked})` : 'Croli (本机)';
+  const name = display ? `Croli (${display})` : uid ? `Croli (${masked})` : 'Croli (本机)';
   return {
     provider: 'croli',
     token: cred.accessToken,
     refreshToken: cred.refreshToken,
     uid,
     name,
+    email: profile?.email || null,
     expiresAt: cred.expiresAt ? new Date(cred.expiresAt).toISOString() : null,
     source: 'local-app',
     meta: {
       croliAuthFile: authFile(),
+      displayName: display,
+      avatarUrl: profile?.picture || null,
       capturedAt: new Date().toISOString(),
     },
   };

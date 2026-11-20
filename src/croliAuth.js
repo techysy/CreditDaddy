@@ -22,7 +22,7 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import { fetchJsonRace } from './zcodeClient.js';
 import { FETCH_TIMEOUT_MS } from './constants.js';
-import { verifyCroliAccount } from './croliClient.js';
+import { fetchCroliProfile } from './croliLocal.js';
 
 export const CROLI_CLERK_ISSUER = 'https://clerk.croli.net';
 export const CROLI_CLIENT_ID = 'znV4SkcUsY1AektQ';
@@ -216,11 +216,18 @@ export async function pollCroliLogin(data) {
   const refreshToken = tok.refresh_token;
   const expiresAt = new Date(Date.now() + Number(tok.expires_in) * 1000).toISOString();
 
-  // 身份读补 uid/昵称（uid = Clerk JWT sub；verify 走 balance 探测）
-  let uid = null, name = null;
+  // 身份读补 uid/昵称：uid = Clerk JWT sub；命名用 userinfo 的 name/email
+  //（「Croli (师洋 余)」可辨识多号，失败回退 null 由 addAccount 侧兜底）
+  let uid = null, name = null, email = null, avatarUrl = null;
   try {
-    const v = await verifyCroliAccount({ token: accessToken });
-    if (v.auth && v.ok) { uid = v.uid || null; }
+    const profile = await fetchCroliProfile(accessToken);
+    if (profile) {
+      uid = profile.sub || null;
+      email = profile.email || null;
+      avatarUrl = profile.picture || null;
+      const display = (profile.name || profile.email || '').trim();
+      if (display) name = `Croli (${display})`;
+    }
   } catch { /* 身份读失败不阻断入库（addAccount verify 再补） */ }
 
   return {
@@ -231,11 +238,13 @@ export async function pollCroliLogin(data) {
       refreshToken,
       expiresAt,
       uid,
-      name: null,
-      email: null,
+      name,
+      email,
       source: 'browser',
       meta: {
         loginVia: 'oauth-authcode-pkce',
+        displayName: name ? name.slice('Croli ('.length, -1) : null,
+        avatarUrl,
         scope: tok.scope || CROLI_OAUTH_SCOPE,
       },
     },

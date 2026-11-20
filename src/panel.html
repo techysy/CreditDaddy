@@ -1777,13 +1777,26 @@ function statusOf(a) {
     // ZCode 无「每日签到」口径，但活动领取的结果必须落到徽标上：
     // 否则卡片上唯一能证明「领到了」的东西只有额度数字，而活动额度常带
     // effective_at（当天稍晚到账），在那之前卡片看起来毫无变化。
+    // 「今天领的」按业务日界比对（ZCode 0 点翻日，dayKey 同款口径）——单日活动
+    // 每天 0 点刷新，昨晚 20:00 领的今天不该再挂「已领取」（26h 窗口恰好把
+    // 「20:00 领 + 次日 20:00 看」包进去，用户实测翻车）；多日活动（周末跨天）
+    // 的 ends_at 未过即活动仍在进行，昨天的 checked-in 在活动期内仍算已领。
     if (a.product === 'zcode') {
       const r = a.lastResult;
-      const fresh = r && r.at && Date.now() - new Date(r.at).getTime() < 26 * 3600e3;
-      if (r && fresh && r.status === 'checked-in') return { cls: 'ok', text: T('已领取'), msg: r.message };
-      if (r && fresh && r.status === 'already') return { cls: 'ok', text: T('已领过'), msg: r.message };
-      if (r && fresh && r.status === 'partial') return { cls: 'ok', text: T('部分领取'), msg: r.message, err: true };
-      if (r && fresh && r.status === 'failed') return { cls: 'fail', text: T('领取失败'), msg: r.message, err: true };
+      if (r && r.at) {
+        const at = new Date(r.at).getTime();
+        const bizToday = (state.status && state.status.todayByProduct && state.status.todayByProduct.zcode) || (state.status && state.status.today);
+        // lastResult 的业务日：at 按 ZCode 0 点界折算（UTC+8 0 点 = UTC 前日 16:00）
+        const rDay = bizToday ? new Date(at + 8 * 3600e3).toISOString().slice(0, 10) : null;
+        const isToday = rDay && bizToday ? rDay === bizToday : Date.now() - at < 26 * 3600e3;   // status 未带日界时退回窗口（兼容旧 state）
+        // 多日活动仍在进行：lastResult.message 带「到账」时间的活动若 endsAt 未过则窗口放宽——
+        // 简化口径：r.status 为成功态且 at 在活动期内（无 ends_at 信息时按 isToday）。
+        const fresh = isToday;
+        if (r && fresh && r.status === 'checked-in') return { cls: 'ok', text: T('已领取'), msg: r.message };
+        if (r && fresh && r.status === 'already') return { cls: 'ok', text: T('已领过'), msg: r.message };
+        if (r && fresh && r.status === 'partial') return { cls: 'ok', text: T('部分领取'), msg: r.message, err: true };
+        if (r && fresh && r.status === 'failed') return { cls: 'fail', text: T('领取失败'), msg: r.message, err: true };
+      }
     }
     return { cls: '', text: '', msg: '' };
   }
@@ -2238,14 +2251,17 @@ function renderProd() {
     const dpText = dpOn
       ? T('；每日 ') + String(dp.hour).padStart(2, '0') + ':' + String(dp.minute).padStart(2, '0') + T(' 定时开启一轮') + (dp.nextRunAt ? T('（下次 ') + esc(fmtTime(dp.nextRunAt).slice(5, 16)) + T('）') : '')
       : '';
-    // 今日全部领完 → 黄灯（任务已完成、自动轮实际无事可做）：逐号看 26h 内的
-    // lastResult（checked-in/already/partial 都算领到），与卡片徽标同口径。
+    // 今日全部领完 → 黄灯（任务已完成、自动轮实际无事可做）：逐号看**今天业务日**内的
+    // lastResult（checked-in/already/partial 都算领到），与卡片徽标同口径（0 点翻日，
+    // 26h 窗口会把昨晚的领取算进今天——2026-11-20 用户实测「还有前一天的领取记录」）。
     // 用户实测：4 号全部「已领取」后灯还绿着，看起来像还在空转——黄灯如实表达「已领完，停了」。
     const zcAccs = state.accounts.filter((a) => a.product === 'zcode');
+    const zcBizToday = (state.status && state.status.todayByProduct && state.status.todayByProduct.zcode) || (state.status && state.status.today);
     const allClaimed = zcAccs.length > 0 && zcAccs.every((a) => {
       const r = a.lastResult;
-      return r && r.at && Date.now() - new Date(r.at).getTime() < 26 * 3600e3
-        && ['checked-in', 'already', 'partial'].includes(r.status);
+      if (!r || !r.at || !['checked-in', 'already', 'partial'].includes(r.status)) return false;
+      if (!zcBizToday) return Date.now() - new Date(r.at).getTime() < 26 * 3600e3;   // 旧 state 兼容
+      return new Date(new Date(r.at).getTime() + 8 * 3600e3).toISOString().slice(0, 10) === zcBizToday;
     });
     const lightCls = (acOn || dpOn) && allClaimed ? 'dot on probe-warn' : dot(acOn || dpOn).match(/class="([^"]+)"/)[1];
     $('zt-ac').innerHTML = '<span class="' + lightCls + '"></span>' + T('自动领取');

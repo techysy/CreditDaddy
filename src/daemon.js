@@ -2384,6 +2384,8 @@ async function handleApi(req, res, url) {
         lingxi: dayKey(Date.now(), 'lingxi'),   // 网页会话签到线（#53）：0 点翻日，徽标/isDone 的日界比对用
         meoo: dayKey(Date.now(), 'meoo'),       // Meoo 首登积分线：同为 0 点翻日
         dumate: dayKey(Date.now(), 'dumate'),   // DuMate 每日登录赠送积分：0 点翻日
+        croli: dayKey(Date.now(), 'croli'),     // Croli 每日签到：0 点翻日
+        zcode: dayKey(Date.now(), 'zcode'),     // ZCode 活动领取：单日活动 0 点刷新——徽标按日界而非 26h 窗口（2026-11-20 用户实测「还有前一天的领取记录」）
       },
       scheduler: await getSchedulerInfo(),
       riskIdentity: riskIdentityAvailable(),
