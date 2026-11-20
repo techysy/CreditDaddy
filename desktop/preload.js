@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld('creditdaddy', {
   openAuthWindow: (url, opts) => ipcRenderer.invoke('open-auth-window', String(url || ''), opts),
   /** 抹掉某站点持久登录分区的存储（「清除已存会话」）@returns {Promise<{ok: boolean, error?: string}>} */
   clearCookieSiteSession: (persistKey) => ipcRenderer.invoke('clear-cookie-site-session', String(persistKey || '')),
+  /** Google 会话槽状态探针（slot 1-6）：{ ok, cookieCount, hasSession } @returns {Promise<object>} */
+  googleSlotState: (slot) => ipcRenderer.invoke('google-slot-state', Number(slot) || 1),
   /** 打开本机 ZCode 客户端 @returns {Promise<{ok: boolean, error?: string}>} */
   openZcodeClient: () => ipcRenderer.invoke('open-zcode-client'),
   /** 打开本机 mirasim 客户端 @returns {Promise<{ok: boolean, error?: string}>} */

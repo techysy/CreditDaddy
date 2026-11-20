@@ -1691,6 +1691,18 @@ function registerAuthWindowIpc() {
       return { ok: true };
     } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
   });
+  // Google 会话槽状态探针：cookie 罐非空 = 该槽有登录过的痕迹（Google SSO 共享池）。
+  // 只读不写；cookie 数即状态（无账号邮箱可读——accounts.google.com 的身份在 HttpOnly +
+  // 服务端渲染里，不值得为展示去解）。
+  ipcMain.handle('google-slot-state', async (_e, slot) => {
+    const n = Math.trunc(Number(slot));
+    if (!Number.isFinite(n) || n < 1 || n > 6) return { ok: false, error: Tt('无效的槽号') };
+    const key = 'cookie-site-google' + (n > 1 ? '-s' + n : '');
+    try {
+      const cookies = await session.fromPartition('persist:' + key).cookies.get({});
+      return { ok: true, slot: n, cookieCount: cookies.length, hasSession: cookies.length > 0 };
+    } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
+  });
   // ZCode 页「打开客户端」：优先本机安装路径，退到 zcode:// 协议
   ipcMain.handle('open-zcode-client', async () => {
     try {

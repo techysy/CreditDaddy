@@ -517,6 +517,18 @@
       <span id="sched" class="sched-chip"></span>
       <span class="head-sep"></span>
       <button class="icon-btn" id="btn-theme" title="主题"></button>
+      <!-- Google 会话池管理（跨产品全局资源）：六槽状态一览 + 打开验证 / 清除单槽 -->
+      <div class="head-setpop">
+        <button class="icon-btn" id="btn-google" title="Google 会话槽：四条 Google SSO 线共享的登录态池，查看/清除"></button>
+        <div class="setpop" id="m-google">
+          <div class="modal">
+            <div class="modal-title"><span data-i18n="Google 会话槽">Google 会话槽</span><button class="close" data-close>✕</button></div>
+            <div class="hint" data-i18n="这些槽记住的是各授权窗里登录过的 Google 账号会话（Croli / Trae 国际版 / MiniMax 国际版 / Qoder 四线共享）：同槽再次授权 Google 免重登。清除某个槽 = 抹掉该槽的 Google 登录态，下次授权需重新登录 Google（产品账号库不受影响）。">这些槽记住的是各授权窗里登录过的 Google 账号会话（Croli / Trae 国际版 / MiniMax 国际版 / Qoder 四线共享）：同槽再次授权 Google 免重登。清除某个槽 = 抹掉该槽的 Google 登录态，下次授权需重新登录 Google（产品账号库不受影响）。</div>
+            <div id="google-slots" style="margin-top:10px;display:flex;flex-direction:column;gap:8px"></div>
+            <div class="modal-actions"><button class="btn" id="btn-google-close" data-close data-i18n="关闭">关闭</button></div>
+          </div>
+        </div>
+      </div>
       <div class="head-setpop">
         <button class="icon-btn" id="btn-comp" title="面板设置：访问密码、组件显隐与排序、账号卡片排序"></button>
         <!-- 面板设置（右上角齿轮） -->
@@ -834,18 +846,19 @@
           <option value="croli" data-i18n="Croli">Croli</option>
         </select>
       </div>
-      <!-- Croli 专属：Google 登录态槽位——persist 分区记住的是**上游 Google 账号的登录态**
-           （accounts.google.com 会话 Cookie），不是 Croli 账号本身：每次授权仍是新的一次
-           OAuth code 换票（Croli 账号可以不同），只是 Google 那一步免重登。同槽=同一
-           Google 身份，想加第二个 Google 账号就换槽。 -->
+      <!-- Google 登录态槽位（croli / trae-intl / minimax-global / qoder 四线共享）：
+           persist 分区记住的是**上游 Google 账号的登录态**（accounts.google.com 会话
+           Cookie），不是产品账号本身：每次授权仍是新的一次 OAuth code 换票（产品账号
+           可以不同），只是 Google 那一步免重登。同槽=同一 Google 身份，6 槽对齐会话
+           池框架上限（10R Antigravity 连接窗同款「用账号槽打开 1-6」交互）；
+           国内线无 Google 跳板 → 槽位按钮组置灰。 -->
       <div class="field" id="dev-croli-slot-field" style="display:none">
-        <label data-i18n="Google 登录槽">Google 登录槽</label>
-        <select class="input" id="dev-croli-slot">
-          <option value="1" data-i18n="槽 1（记住此窗口登录的 Google 账号）">槽 1（记住此窗口登录的 Google 账号）</option>
-          <option value="2" data-i18n="槽 2（另一个 Google 账号）">槽 2（另一个 Google 账号）</option>
-          <option value="3" data-i18n="槽 3（另一个 Google 账号）">槽 3（另一个 Google 账号）</option>
-        </select>
-        <div class="hint" style="margin-top:6px" data-i18n="每个槽记住一个 Google 账号的登录态（不是 Croli 账号）：同槽再次授权时 Google 免重登，点授权页的 Google 直接过；每次授权换到的 Croli 凭据照常入库为新/更新账号。想用另一个 Google 账号就换槽。">每个槽记住一个 Google 账号的登录态（不是 Croli 账号）：同槽再次授权时 Google 免重登，点授权页的 Google 直接过；每次授权换到的 Croli 凭据照常入库为新/更新账号。想用另一个 Google 账号就换槽。</div>
+        <label data-i18n="用 Google 账号槽打开">用 Google 账号槽打开</label>
+        <div class="seg-ctl" id="dev-croli-slot" style="display:inline-flex">
+          <button data-slot="1" class="active">1</button><button data-slot="2">2</button><button data-slot="3">3</button>
+          <button data-slot="4">4</button><button data-slot="5">5</button><button data-slot="6">6</button>
+        </div>
+        <div class="hint" style="margin-top:6px" data-i18n="每个槽记住一个 Google 账号的登录态（不是产品账号）：同槽再次授权时 Google 免重登，点授权页的 Google 直接过；每次授权换到的凭据照常入库为新/更新账号。四条 Google SSO 线（Croli / Trae 国际版 / MiniMax 国际版 / Qoder）共享同一组槽；想用另一个 Google 账号就换槽。">每个槽记住一个 Google 账号的登录态（不是产品账号）：同槽再次授权时 Google 免重登，点授权页的 Google 直接过；每次授权换到的凭据照常入库为新/更新账号。四条 Google SSO 线（Croli / Trae 国际版 / MiniMax 国际版 / Qoder）共享同一组槽；想用另一个 Google 账号就换槽。</div>
       </div>
       <div class="row"><button class="btn primary" id="btn-device" data-i18n="生成授权链接">生成授权链接</button><button class="btn" id="dev-cancel" style="display:none">取消</button></div>
       <div class="box" id="device-box" style="display:none">
@@ -5641,11 +5654,11 @@ async function localScan() {
 let devTimer = null;
 let devGen = 0;   // 每次发起/取消授权递增，丢弃过期会话的在途轮询结果
 // 打开授权/登录页：桌面版用内置隐私（无痕）窗口，避免带出系统浏览器里已登录的账号；否则退回系统浏览器
-async function openAuth(url, croliSlotKey) {
+async function openAuth(url, googleSlotKey) {
   if (window.creditdaddy && window.creditdaddy.openAuthWindow) {
-    // Croli 专用槽位：persistKey 造 'cookie-site-croli-auth'（+'-sN'）形状过 IPC 白名单
-    //（分区名本身不带 croli 字样的语义负担——它只是 Google 会话的持久存储位置）
-    const persistKey = croliSlotKey ? 'cookie-site-' + croliSlotKey : undefined;
+    // Google 会话槽：persistKey 造 'cookie-site-google'（+'-sN'）形状过 IPC 白名单
+    //（分区是 Google 会话的持久存储位置，四条 Google SSO 线共享）
+    const persistKey = googleSlotKey ? 'cookie-site-' + googleSlotKey : undefined;
     const r = await window.creditdaddy.openAuthWindow(url, persistKey ? { persistKey } : undefined).catch(() => ({ ok: false }));
     if (r && r.ok) return true;
   }
@@ -5664,11 +5677,11 @@ async function deviceLogin() {
     $('dev-status').textContent = where + T('，登录并授权（') + Math.floor(flow.expiresIn / 60) + T(' 分钟内有效）');
     $('dev-link').href = flow.url;
     $('dev-link').textContent = flow.url;
-    // Croli：授权窗开在持久分区（persist:croli-auth-sN）——分区记住的是上游 Google
-    // 账号会话，同槽再开免重登 Google；每次 OAuth 换票照常走，Croli 账号可不同
-    if (provider === 'croli' && hasIncognito()) {
-      const slot = Math.max(1, Math.min(3, Number($('dev-croli-slot').value) || 1));
-      await openAuth(flow.url, 'croli-auth' + (slot > 1 ? '-s' + slot : ''));
+    // Google SSO 四线：授权窗开在持久分区（persist:cookie-site-google-sN）——分区记住
+    // 的是上游 Google 账号会话，同槽再开免重登 Google；每次 OAuth 换票照常走，产品账号可不同
+    if (GOOGLE_SSO_PROVIDERS.has(provider) && hasIncognito()) {
+      const slot = Math.max(1, Math.min(6, Number($('dev-croli-slot').querySelector('button.active')?.dataset.slot) || 1));
+      await openAuth(flow.url, 'google' + (slot > 1 ? '-s' + slot : ''));
     } else {
       openAuth(flow.url);
     }
@@ -5917,6 +5930,55 @@ async function submitImport(password) {
 // ── 绑定 ──
 // 全局组件开关：收起 Qoder / WorkBuddy / ZCode / 10Router 的标签页与仪表盘对应卡片
 $('btn-comp').innerHTML = I.settings;
+
+// ── Google 会话槽管理（右上角图标 → 弹窗）──
+// 分区状态探针走桌面壳 googleSlotState IPC（cookie 数 > 0 = 有登录痕迹）；非桌面环境
+// （网页面板）探针不可用——按钮隐藏，入口与能力同步消失，不出「点了没反应」的死按钮。
+const GOOGLE_SLOTS = [1, 2, 3, 4, 5, 6];
+const googleApi = () => (window.creditdaddy && typeof window.creditdaddy.googleSlotState === 'function' ? window.creditdaddy : null);
+if (googleApi()) {
+  $('btn-google').innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M21.35 11.1h-9.17v2.73h6.51c-.33 1.63-1.96 4.77-6.51 4.77a7.23 7.23 0 0 1 0-14.46c1.98 0 3.3.84 4.06 1.55l2.01-1.94A9.7 9.7 0 0 0 12.18 1a10 10 0 1 0 0 20c5.78 0 9.57-4.06 9.57-9.77 0-.65-.06-1.15-.4-3.13z" fill="#EA4335" d="M0 0h24v24H0z" fill="none"/></svg>';
+  const renderGoogleSlots = async () => {
+    const box = $('google-slots');
+    box.innerHTML = '<div class="empty" style="padding:12px">…</div>';
+    const rows = await Promise.all(GOOGLE_SLOTS.map(async (n) => {
+      const r = await googleApi().googleSlotState(n).catch(() => ({ ok: false }));
+      const has = r && r.ok && r.hasSession;
+      return '<div style="display:flex;align-items:center;gap:10px;border:1px solid var(--border-subtle);border-radius:10px;padding:8px 12px">'
+        + '<span style="font-weight:700;font-size:14px;width:44px">' + T('槽 {n}', { n }) + '</span>'
+        + '<span style="flex:1;font-size:12px;color:var(--text-3)">' + (has ? T('有 Google 登录态（cookie {n} 条）', { n: r.cookieCount }) : T('空')) + '</span>'
+        + (has ? '<button class="btn" style="padding:4px 10px;font-size:12px" data-gclear="' + n + '">' + T('清除') + '</button>' : '')
+        + '</div>';
+    }));
+    box.innerHTML = rows.join('');
+    box.querySelectorAll('button[data-gclear]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const n = Number(btn.dataset.gclear);
+        btn.disabled = true;
+        try {
+          const key = 'cookie-site-google' + (n > 1 ? '-s' + n : '');
+          const r = await window.creditdaddy.clearCookieSiteSession(key);
+          toast(r && r.ok ? T('槽 {n} 的 Google 登录态已清除', { n }) : ((r && r.error) || T('清除失败')), Boolean(r && r.ok));
+          renderGoogleSlots();
+        } catch (e) { toast(e.message || T('清除失败'), false); btn.disabled = false; }
+      });
+    });
+  };
+  $('btn-google').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const pop = $('m-google');
+    const willOpen = !pop.classList.contains('show');
+    if (willOpen) renderGoogleSlots();
+    pop.classList.toggle('show', willOpen);
+  });
+  // 点外部收起（与设置弹层同款纪律）
+  document.addEventListener('click', (e) => {
+    const pop = $('m-google');
+    if (pop.classList.contains('show') && !pop.contains(e.target) && e.target !== $('btn-google') && !$('btn-google').contains(e.target)) pop.classList.remove('show');
+  });
+} else {
+  $('btn-google').style.display = 'none';
+}
 
 // ── 卡片拖拽排序（产品面板 + 10Router）：手动顺序优先级最高，落库 localStorage ──
 const dragState = { kind: null, id: null, vendor: null, view: null };
@@ -6400,10 +6462,35 @@ $('f-provider').addEventListener('change', () => {
     ? T('WorkBuddy 登录 token（eyJ…，可在 CodeBuddyExtension 的 auth/*.info 中找到）')
     : T('dt-… / jt-… 或 PAT（pt-…，自动兑换）');
 });
-// 浏览器登录的「登录到」切换：Croli 显示 Google 登录槽选择（persist 分区记住
-// **Google 账号的登录态**，不是 Croli 账号——Google 会话才是复用目标），其他提供方隐藏
+// 浏览器登录的「登录到」切换：Google SSO 四线（croli / trae-intl / minimax-global /
+// qoder）显示 Google 登录槽选择（persist 分区记住**Google 账号的登录态**，四线共享
+// 同一组槽）；国内线无 Google 跳板 → 槽位选择器**置灰**（不隐藏，明示「此线用不上」），
+// 其余提供方隐藏整块
+const GOOGLE_SSO_PROVIDERS = new Set(['croli', 'trae-intl', 'minimax-global', 'qoder']);
+const CN_NO_GOOGLE_PROVIDERS = new Set(['qoder-cn', 'workbuddy', 'zcode-bigmodel', 'minimax', 'trae']);
 $('dev-provider').addEventListener('change', () => {
-  $('dev-croli-slot-field').style.display = $('dev-provider').value === 'croli' ? '' : 'none';
+  const v = $('dev-provider').value;
+  const field = $('dev-croli-slot-field');
+  const seg = $('dev-croli-slot');
+  if (GOOGLE_SSO_PROVIDERS.has(v)) {
+    field.style.display = '';
+    seg.disabled = false;
+    seg.style.opacity = '';
+    seg.style.pointerEvents = '';
+  } else if (CN_NO_GOOGLE_PROVIDERS.has(v)) {
+    field.style.display = '';
+    seg.disabled = true;
+    seg.style.opacity = '.45';
+    seg.style.pointerEvents = 'none';
+  } else {
+    field.style.display = 'none';
+  }
+});
+// 槽位段控件点选（seg-ctl 同款）：写 active 标记，deviceLogin 读 data-slot
+$('dev-croli-slot').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-slot]');
+  if (!b || $('dev-croli-slot').disabled) return;
+  $('dev-croli-slot').querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
 });
 $('btn-logs').onclick = () => {
   const c = $('log-card').classList.toggle('collapsed');

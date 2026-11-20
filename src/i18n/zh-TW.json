@@ -2342,5 +2342,15 @@
   "槽 1（记住此窗口登录的 Google 账号）": "槽 1（記住此視窗登入的 Google 帳號）",
   "槽 2（另一个 Google 账号）": "槽 2（另一個 Google 帳號）",
   "槽 3（另一个 Google 账号）": "槽 3（另一個 Google 帳號）",
-  "每个槽记住一个 Google 账号的登录态（不是 Croli 账号）：同槽再次授权时 Google 免重登，点授权页的 Google 直接过；每次授权换到的 Croli 凭据照常入库为新/更新账号。想用另一个 Google 账号就换槽。": "每個槽記住一個 Google 帳號的登入狀態（不是 Croli 帳號）：同槽再次授權時 Google 免重登，點授權頁的 Google 直接近；每次授權換到的 Croli 憑證照常入庫為新/更新帳號。想用另一個 Google 帳號就換槽。"
+  "每个槽记住一个 Google 账号的登录态（不是 Croli 账号）：同槽再次授权时 Google 免重登，点授权页的 Google 直接过；每次授权换到的 Croli 凭据照常入库为新/更新账号。想用另一个 Google 账号就换槽。": "每個槽記住一個 Google 帳號的登入狀態（不是 Croli 帳號）：同槽再次授權時 Google 免重登，點授權頁的 Google 直接近；每次授權換到的 Croli 憑證照常入庫為新/更新帳號。想用另一個 Google 帳號就換槽。",
+  "Google 会话槽": "Google 工作階段槽",
+  "Google 会话槽：四条 Google SSO 线共享的登录态池，查看/清除": "Google 工作階段槽：四條 Google SSO 線共享的登入狀態池，檢視/清除",
+  "无效的槽号": "無效的槽號",
+  "有 Google 登录态（cookie {n} 条）": "有 Google 登入狀態（cookie {n} 條）",
+  "槽 {n} 的 Google 登录态已清除": "槽 {n} 的 Google 登入狀態已清除",
+  "清除失败": "清除失敗",
+  "用 Google 账号槽打开": "用 Google 帳號槽開啟",
+  "这些槽记住的是各授权窗里登录过的 Google 账号会话（Croli / Trae 国际版 / MiniMax 国际版 / Qoder 四线共享）：同槽再次授权 Google 免重登。清除某个槽 = 抹掉该槽的 Google 登录态，下次授权需重新登录 Google（产品账号库不受影响）。": "這些槽記住的是各授權視窗裡登入過的 Google 帳號工作階段（Croli / Trae 國際版 / MiniMax 國際版 / Qoder 四線共享）：同槽再次授權 Google 免重登。清除某個槽 = 抹掉該槽的 Google 登入狀態，下次授權需重新登入 Google（產品帳號庫不受影響）。",
+  "每个槽记住一个 Google 账号的登录态（不是产品账号）：同槽再次授权时 Google 免重登，点授权页的 Google 直接过；每次授权换到的凭据照常入库为新/更新账号。四条 Google SSO 线（Croli / Trae 国际版 / MiniMax 国际版 / Qoder）共享同一组槽；想用另一个 Google 账号就换槽。": "每個槽記住一個 Google 帳號的登入狀態（不是產品帳號）：同槽再次授權時 Google 免重登，點授權頁的 Google 直接近；每次授權換到的憑證照常入庫為新/更新帳號。四條 Google SSO 線（Croli / Trae 國際版 / MiniMax 國際版 / Qoder）共享同一組槽；想用另一個 Google 帳號就換槽。",
+"槽 {n}": "槽 {n}"
 }

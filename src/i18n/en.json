@@ -2342,5 +2342,15 @@
   "槽 1（记住此窗口登录的 Google 账号）": "Slot 1 (remembers the Google account signed in via this window)",
   "槽 2（另一个 Google 账号）": "Slot 2 (another Google account)",
   "槽 3（另一个 Google 账号）": "Slot 3 (another Google account)",
-  "每个槽记住一个 Google 账号的登录态（不是 Croli 账号）：同槽再次授权时 Google 免重登，点授权页的 Google 直接过；每次授权换到的 Croli 凭据照常入库为新/更新账号。想用另一个 Google 账号就换槽。": "Each slot remembers one Google account's session (not the Croli account): re-authorizing in the same slot skips the Google sign-in — just click Google on the authorize page. Croli credentials from each authorization are still stored as a new/updated account. Use a different slot for another Google account."
+  "每个槽记住一个 Google 账号的登录态（不是 Croli 账号）：同槽再次授权时 Google 免重登，点授权页的 Google 直接过；每次授权换到的 Croli 凭据照常入库为新/更新账号。想用另一个 Google 账号就换槽。": "Each slot remembers one Google account's session (not the Croli account): re-authorizing in the same slot skips the Google sign-in — just click Google on the authorize page. Croli credentials from each authorization are still stored as a new/updated account. Use a different slot for another Google account.",
+"Google 会话槽": "Google session slots",
+"Google 会话槽：四条 Google SSO 线共享的登录态池，查看/清除": "Google session slots: the shared sign-in pool for the four Google SSO lines — view / clear",
+"无效的槽号": "Invalid slot number",
+"有 Google 登录态（cookie {n} 条）": "Google session present ({n} cookies)",
+"槽 {n} 的 Google 登录态已清除": "Slot {n}'s Google session cleared",
+"清除失败": "Failed to clear",
+"用 Google 账号槽打开": "Open with Google account slot",
+"每个槽记住一个 Google 账号的登录态（不是产品账号）：同槽再次授权时 Google 免重登，点授权页的 Google 直接过；每次授权换到的凭据照常入库为新/更新账号。四条 Google SSO 线（Croli / Trae 国际版 / MiniMax 国际版 / Qoder）共享同一组槽；想用另一个 Google 账号就换槽。": "Each slot remembers one Google account's session (not the product account): re-authorizing in the same slot skips the Google sign-in — just click Google on the authorize page. Credentials from each authorization are still stored as a new/updated account. Four Google SSO lines (Croli / Trae Intl / MiniMax Intl / Qoder) share the same slot pool; use a different slot for another Google account.",
+"这些槽记住的是各授权窗里登录过的 Google 账号会话（Croli / Trae 国际版 / MiniMax 国际版 / Qoder 四线共享）：同槽再次授权 Google 免重登。清除某个槽 = 抹掉该槽的 Google 登录态，下次授权需重新登录 Google（产品账号库不受影响）。": "These slots remember the Google account sessions signed in via the authorization windows (shared by Croli / Trae Intl / MiniMax Intl / Qoder): re-authorizing in the same slot skips the Google sign-in. Clearing a slot wipes its Google session — the next authorization will need a fresh Google sign-in (the product account library is unaffected).",
+"槽 {n}": "Slot {n}"
 }
