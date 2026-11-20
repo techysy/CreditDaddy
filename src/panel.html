@@ -834,6 +834,19 @@
           <option value="croli" data-i18n="Croli">Croli</option>
         </select>
       </div>
+      <!-- Croli 专属：Google 登录态槽位——persist 分区记住的是**上游 Google 账号的登录态**
+           （accounts.google.com 会话 Cookie），不是 Croli 账号本身：每次授权仍是新的一次
+           OAuth code 换票（Croli 账号可以不同），只是 Google 那一步免重登。同槽=同一
+           Google 身份，想加第二个 Google 账号就换槽。 -->
+      <div class="field" id="dev-croli-slot-field" style="display:none">
+        <label data-i18n="Google 登录槽">Google 登录槽</label>
+        <select class="input" id="dev-croli-slot">
+          <option value="1" data-i18n="槽 1（记住此窗口登录的 Google 账号）">槽 1（记住此窗口登录的 Google 账号）</option>
+          <option value="2" data-i18n="槽 2（另一个 Google 账号）">槽 2（另一个 Google 账号）</option>
+          <option value="3" data-i18n="槽 3（另一个 Google 账号）">槽 3（另一个 Google 账号）</option>
+        </select>
+        <div class="hint" style="margin-top:6px" data-i18n="每个槽记住一个 Google 账号的登录态（不是 Croli 账号）：同槽再次授权时 Google 免重登，点授权页的 Google 直接过；每次授权换到的 Croli 凭据照常入库为新/更新账号。想用另一个 Google 账号就换槽。">每个槽记住一个 Google 账号的登录态（不是 Croli 账号）：同槽再次授权时 Google 免重登，点授权页的 Google 直接过；每次授权换到的 Croli 凭据照常入库为新/更新账号。想用另一个 Google 账号就换槽。</div>
+      </div>
       <div class="row"><button class="btn primary" id="btn-device" data-i18n="生成授权链接">生成授权链接</button><button class="btn" id="dev-cancel" style="display:none">取消</button></div>
       <div class="box" id="device-box" style="display:none">
         <div class="hint" id="dev-status"></div>
@@ -5628,9 +5641,12 @@ async function localScan() {
 let devTimer = null;
 let devGen = 0;   // 每次发起/取消授权递增，丢弃过期会话的在途轮询结果
 // 打开授权/登录页：桌面版用内置隐私（无痕）窗口，避免带出系统浏览器里已登录的账号；否则退回系统浏览器
-async function openAuth(url) {
+async function openAuth(url, croliSlotKey) {
   if (window.creditdaddy && window.creditdaddy.openAuthWindow) {
-    const r = await window.creditdaddy.openAuthWindow(url).catch(() => ({ ok: false }));
+    // Croli 专用槽位：persistKey 造 'cookie-site-croli-auth'（+'-sN'）形状过 IPC 白名单
+    //（分区名本身不带 croli 字样的语义负担——它只是 Google 会话的持久存储位置）
+    const persistKey = croliSlotKey ? 'cookie-site-' + croliSlotKey : undefined;
+    const r = await window.creditdaddy.openAuthWindow(url, persistKey ? { persistKey } : undefined).catch(() => ({ ok: false }));
     if (r && r.ok) return true;
   }
   window.open(url, '_blank');
@@ -5648,7 +5664,14 @@ async function deviceLogin() {
     $('dev-status').textContent = where + T('，登录并授权（') + Math.floor(flow.expiresIn / 60) + T(' 分钟内有效）');
     $('dev-link').href = flow.url;
     $('dev-link').textContent = flow.url;
-    openAuth(flow.url);
+    // Croli：授权窗开在持久分区（persist:croli-auth-sN）——分区记住的是上游 Google
+    // 账号会话，同槽再开免重登 Google；每次 OAuth 换票照常走，Croli 账号可不同
+    if (provider === 'croli' && hasIncognito()) {
+      const slot = Math.max(1, Math.min(3, Number($('dev-croli-slot').value) || 1));
+      await openAuth(flow.url, 'croli-auth' + (slot > 1 ? '-s' + slot : ''));
+    } else {
+      openAuth(flow.url);
+    }
     pollDevice(flow.sessionId, 0, ++devGen);
   } catch (e) { toast(T('发起授权失败：') + e.message, false); }
 }
@@ -6376,6 +6399,11 @@ $('f-provider').addEventListener('change', () => {
     : $('f-provider').value.startsWith('workbuddy')
     ? T('WorkBuddy 登录 token（eyJ…，可在 CodeBuddyExtension 的 auth/*.info 中找到）')
     : T('dt-… / jt-… 或 PAT（pt-…，自动兑换）');
+});
+// 浏览器登录的「登录到」切换：Croli 显示 Google 登录槽选择（persist 分区记住
+// **Google 账号的登录态**，不是 Croli 账号——Google 会话才是复用目标），其他提供方隐藏
+$('dev-provider').addEventListener('change', () => {
+  $('dev-croli-slot-field').style.display = $('dev-provider').value === 'croli' ? '' : 'none';
 });
 $('btn-logs').onclick = () => {
   const c = $('log-card').classList.toggle('collapsed');
