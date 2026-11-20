@@ -139,14 +139,18 @@ export async function startCroliLogin(_kind) {
   return { url, expiresInMs: LOGIN_TIMEOUT_MS, intervalMs: 1500, data: { loginId } };
 }
 
-/** token 响应契约校验（Clerk 字段集：四项缺一即拒） */
+/** token 响应契约校验（Clerk 字段集：四项缺一即拒）。
+ * token_type 按 RFC 6749 大小写不敏感（实测 Clerk 返回小写 'bearer'，
+ * 严格等 'Bearer' 会把完整成功的响应误判为格式无效——诊断片段实锤）。 */
 function validateTokenResponse(result) {
-  if (typeof result?.access_token !== 'string'
-    || typeof result?.refresh_token !== 'string'
-    || result?.token_type !== 'Bearer'
-    || !Number.isFinite(Number(result?.expires_in))
-    || Number(result.expires_in) <= 0) {
-    const err = new Error('Croli OAuth Token 响应格式无效');
+  const missing = [];
+  if (typeof result?.access_token !== 'string' || !result.access_token) missing.push('access_token');
+  if (typeof result?.refresh_token !== 'string' || !result.refresh_token) missing.push('refresh_token');
+  if (String(result?.token_type || '').toLowerCase() !== 'bearer') missing.push(`token_type=${JSON.stringify(result?.token_type ?? null)}`);
+  const exp = Number(result?.expires_in);
+  if (!Number.isFinite(exp) || exp <= 0) missing.push(`expires_in=${JSON.stringify(result?.expires_in ?? null)}`);
+  if (missing.length) {
+    const err = new Error(`Croli OAuth Token 响应缺字段/值异常：${missing.join(', ')}`);
     err.oauth = true;
     throw err;
   }
