@@ -1845,7 +1845,7 @@ function statusOf(a) {
   if (r && fresh && r.status === 'limited' && done) return { cls: 'limited', text: T('本机已领'), msg: r.message };
   if (done) {
     const amt = r && r.status === 'checked-in' && fresh && r.amount ? ' +' + fmtNum(r.amount) : '';
-    const streak = r && r.streakDays ? T(' · 连续 ') + r.streakDays + T(' 天') : '';
+    const streak = r && r.streakDays > 1 ? T(' · 连续 ') + r.streakDays + T(' 天') : '';
     return { cls: 'ok', text: T('今日已领') + amt + streak, msg: r && r.message && !['checked-in', 'already'].includes(r.status) ? r.message : '' };
   }
   if (r && fresh && r.status === 'failed') return { cls: 'fail', text: T('领取失败'), msg: r.message, err: true };

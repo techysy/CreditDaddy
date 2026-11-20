@@ -162,7 +162,10 @@ export async function checkinCroli(account, ctx = {}) {
       message: awarded > 0 ? t('签到成功（+{n} 积分）', { n: awarded }) : t('签到成功'),
       claimedAmount: awarded,
       amount: awarded,
-      streakDays: Number.isFinite(Number(streak?.current)) ? Number(streak.current) : undefined,
+      // streak.current 是**含本次**的连续天数（服务端口径，首次签到=1）；CD 签到轮落库
+      // 时统一 +1（checkin.js 约定 productImpl 返回签到前口径）——这里回退 1 位对齐，
+      // 否则面板「连续 2 天」虚高（2026-11-20 用户实测首签即显示 2 天）
+      streakDays: Number.isFinite(Number(streak?.current)) ? Math.max(0, Number(streak.current) - 1) : undefined,
       ...(balanceAfter !== undefined ? { balanceAfter } : {}),
     };
   } catch (e) {
