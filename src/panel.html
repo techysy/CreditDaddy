@@ -4430,7 +4430,15 @@ async function croliInvite(id) {
     const r = await api('/api/accounts/' + encodeURIComponent(id) + '/croli/invite', { json: { code: clean } });
     toast(r && r.message ? T('邀请码已兑换:{code}', { code: clean }) + ' ' + r.message : T('邀请码已兑换:{code}', { code: clean }), true);
     loadQuotas([id], { live: true }).then(render);
-  } catch (e) { toast(e.message, false); }
+  } catch (e) {
+    // 方案 A（按钮常驻、失败如实报错）：服务端错误码翻译成人话——每号仅能兑换一次，
+    // 已兑换过的账号（维护者主号）点这里必然命中 invite_already_redeemed
+    const msg = /invite_already_redeemed|already redeemed/i.test(e.message) ? T('该账号已兑换过邀请码（每号仅一次）')
+      : /invite_not_found|not found/i.test(e.message) ? T('邀请码不存在（区分大小写）')
+      : /self|own/i.test(e.message) ? T('不能兑换自己的邀请码')
+      : e.message;
+    toast(msg, false);
+  }
 }
 
 /** Croli 我的邀请码：POST /v1/invite/code {rotate:false}，复制码 / 复制邀请链接（croli.net/invite/?code=） */
