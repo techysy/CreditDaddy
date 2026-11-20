@@ -1076,7 +1076,11 @@
       <div class="hint" style="margin-top:6px" data-i18n="开关即保存：开=按当前时间排上计划，关=取消计划。改时间后点「保存定时」；到点自动开跑一轮（按下面单次窗口的参数），无需再点其他按钮。">开关即保存：开=按当前时间排上计划，关=取消计划。改时间后点「保存定时」；到点自动开跑一轮（按下面单次窗口的参数），无需再点其他按钮。</div>
     </div>
     <div style="border:1px solid var(--border-subtle);border-radius:10px;padding:10px 12px">
-      <div style="font-size:12.5px;font-weight:650;margin-bottom:8px" data-i18n="单次窗口：现在立即开跑（与每日定时互不影响）">单次窗口：现在立即开跑（与每日定时互不影响）</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-size:12.5px;font-weight:650" data-i18n="单次窗口：现在立即开跑（与每日定时互不影响）">单次窗口：现在立即开跑（与每日定时互不影响）</span>
+        <span style="flex:1"></span>
+        <span class="st-chip" id="zac-window-state"></span>
+      </div>
       <div class="field">
         <label data-i18n="轮询周期（分钟，1–720）">轮询周期（分钟，1–720）</label>
         <input class="input" id="zac-interval" type="number" min="1" max="720" step="1">
@@ -1087,9 +1091,10 @@
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <button class="btn primary" id="zac-ok" data-i18n="立即开跑">立即开跑</button>
-        <button class="btn" id="zac-off" style="display:none" data-i18n="停止运行" title="停止单次窗口；每日定时计划一并停用">停止运行</button>
+        <button class="btn" id="zac-off" data-i18n="停止运行" title="停止单次窗口；每日定时计划一并停用">停止运行</button>
       </div>
       <div class="hint" style="margin-top:6px" data-i18n="马上按上面参数开跑一轮；只影响本次，不改每日定时。">马上按上面参数开跑一轮；只影响本次，不改每日定时。</div>
+      <div class="hint" id="zac-window-hint" style="margin-top:4px"></div>
     </div>
     <div class="hint" style="margin-top:10px" data-i18n="活动包由服务端在每日 0 点左右刷新放出，运行时段没覆盖 0 点会错过当次领取（建议时长设 0 或跨过 0 点）。需要验证码时无法自动通过，卡片上会提示手动领取。">活动包由服务端在每日 0 点左右刷新放出，运行时段没覆盖 0 点会错过当次领取（建议时长设 0 或跨过 0 点）。需要验证码时无法自动通过，卡片上会提示手动领取。</div>
   </div>
@@ -2784,7 +2789,7 @@ document.addEventListener('click', async (e) => {
     // 计划当前态直读 scheduler（nextRunAt 是时钟实排的，state.zDailyPlan 可能滞后 30s 轮询）
     const schDp = ((state.status && state.status.scheduler && state.status.scheduler.zcode) || {}).dailyPlan || dp;
     applyZacDailyState(schDp);
-    $('zac-off').style.display = state.zAutoClaim === true ? '' : 'none';
+    applyZacWindowState();
     openModal('m-zac');
     return;
   }
@@ -2810,6 +2815,7 @@ async function loadZNet() {
     state.zProxyFirst = d.proxyFirst === true;
     state.zProxyUrl = d.proxyUrlMasked || null;
     state.zAutoClaim = d.autoClaim === true;
+    state.zAutoClaimUntil = d.autoClaimUntil || null;   // 单次窗口截止时刻（弹窗状态灯实算剩余时间用）
     state.zClaimIntervalMin = d.claimIntervalMin;
     state.zClaimWindowMin = d.claimWindowMin;
     state.zDailyPlan = d.dailyPlan || null;
@@ -5312,6 +5318,28 @@ function applyZacDailyState(dp) {
     ? (dp.nextRunAt ? T('已排 · 下次 ') + fmtTime(dp.nextRunAt).slice(5, 16) : T('已排'))
     : T('未排');
 }
+// 单次窗口状态灯（2026-11-20 用户反馈「手动启用/停止的边界不清晰，差一个状态灯」）：
+// 「停止运行」恒显示但按运行态禁用——运行中可点、已停止置灰，按钮形状不变只变可用性，
+// 边界一眼可辨；状态徽章 + 剩余时间从 autoClaimUntil 实算（不猜）。
+function applyZacWindowState() {
+  const on = state.zAutoClaim === true;
+  const chip = $('zac-window-state');
+  chip.classList.toggle('on', on);
+  if (on) {
+    const until = state.zAutoClaimUntil ? new Date(state.zAutoClaimUntil).getTime() : 0;
+    const leftMin = until > Date.now() ? Math.max(1, Math.round((until - Date.now()) / 60_000)) : 0;
+    chip.textContent = leftMin > 0 ? T('运行中 · 剩余约 {n} 分钟', { n: leftMin }) : T('运行中 · 一直运行');
+    $('zac-window-hint').textContent = leftMin > 0
+      ? T('窗口于 {t} 自动关闭（到点后自动领取停轮，每日定时计划不受影响）。', { t: fmtTime(state.zAutoClaimUntil).slice(11, 16) })
+      : T('窗口为「一直运行」模式，直到手动停止。');
+  } else {
+    chip.textContent = T('已停止');
+    $('zac-window-hint').textContent = T('当前没有运行中的单次窗口；每日定时计划照常生效。');
+  }
+  // 停止按钮：运行中才可点（与状态灯同步）；开跑按钮恒可点（重开窗口覆盖旧参数）
+  $('zac-off').disabled = !on;
+  $('zac-off').style.display = '';
+}
 async function putZacDailyPlan(payload) {
   // 竞态防线（2026-11-19 健壮性审计）：连拨开关/连点保存只允许一个 PUT 在飞——
   // 重叠请求的响应乱序会把开关从用户手指下拽回旧状态。护栏期间两控件禁用，finally 必恢复。
@@ -5363,8 +5391,10 @@ $('zac-ok').addEventListener('click', async () => {
   try {
     const r = await api('/api/zcode/net', { method: 'PUT', json: { autoClaim: true, claimIntervalMin: Math.round(iv), claimWindowMin: Math.round(win) } });
     state.zAutoClaim = r.autoClaim === true;
+    state.zAutoClaimUntil = r.autoClaimUntil || null;
     state.zClaimIntervalMin = r.claimIntervalMin;
     state.zClaimWindowMin = r.claimWindowMin;
+    applyZacWindowState();
     renderStatus(); render();
     closeModal('m-zac');
     toast(T('自动领取已开启：每 ') + r.claimIntervalMin + T(' 分钟检查') + (r.claimWindowMin > 0 ? T('，运行 ') + r.claimWindowMin + T(' 分钟后自动关闭') : T('，一直运行直到手动关闭')));
@@ -5375,8 +5405,10 @@ $('zac-off').addEventListener('click', async () => {
     // 手动停用 = 停单次窗口 + 连每日计划一起关（daemon 侧防隔夜复活联动，同请求不带 dailyPlan）
     const r = await api('/api/zcode/net', { method: 'PUT', json: { autoClaim: false } });
     state.zAutoClaim = r.autoClaim === true;
+    state.zAutoClaimUntil = r.autoClaimUntil || null;
     state.zDailyPlan = r.dailyPlan || null;
     applyZacDailyState(r.dailyPlan);
+    applyZacWindowState();
     renderStatus(); render();
     closeModal('m-zac');
     toast(T('ZCode 自动领取：已关闭（每日定时计划一并停用）'));
