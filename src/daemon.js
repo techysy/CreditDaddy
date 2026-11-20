@@ -69,6 +69,7 @@ import { liveToAccount as traeLiveAccount, detectTrae, switchTo as traeSwitchTo,
 import { liveToAccount as minimaxLiveAccount, detectMiniMax, detectMiniMaxBuildLang, currentMiniMaxUid, currentMiniMaxToken, currentMiniMaxRecordKey } from './minimaxLocal.js';
 import { liveToAccount as loomyLiveAccount, hardSwitchLoomy, currentLoomyUid, detectLoomy } from './loomyLocal.js';
 import { liveToAccount as dumateLiveAccount, detectDumate, readDumateCredential, hardSwitchDumate } from './dumateLocal.js';
+import { liveToAccount as croliLiveAccount, detectCroli, readCroliCredential, hardSwitchCroli, croliSubOf as croliUidOf } from './croliLocal.js';
 import * as minimaxGateway from './minimaxGateway.js';
 import * as traeGateway from './traeGateway.js';
 import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl, autoClaimEnabled, autoClaimUntil, setAutoClaimEnabled, claimIntervalMin, setClaimIntervalMin, claimWindowMin, setClaimWindowMin, dailyClaimPlan, setDailyClaimPlan } from './zcodeClient.js';
@@ -87,7 +88,7 @@ import { detectInstalls, scanLocalTokens, putCandidate, peekCandidate } from './
 import { PROVIDER_LABEL, APP_VERSION, PROVIDERS, PROJECT_URL } from './constants.js';
 import { getLocale, setLocale, normalizeLocale, loadDict, t as tr } from './i18n.js';
 
-const PRODUCT_IDS = ['qoder', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'loomy', 'dumate'];
+const PRODUCT_IDS = ['qoder', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'loomy', 'dumate', 'croli'];
 
 /** 面板访问密码：面板「设置」写入的 settings.json.panelKey 优先（可设 / 可关）；
  *  未设置（或被面板关闭）时回退环境变量 CREDITDADDY_PASSWORD（fnOS / 命令行部署注入），
@@ -1255,6 +1256,26 @@ async function handleApi(req, res, url) {
         return json(res, e.dumateNotInstalled ? 409 : 400, { error: e.message, code: e.dumateNotInstalled ? 'DUMATE_NOT_INSTALLED' : undefined });
       }
     }
+    if (target.provider === 'croli') {
+      try {
+        // 防丢号：切前把本机当前登录的最新凭据快照回写账号库（sidecar 会自动轮换
+        // refresh token，账号库里的旧快照可能已被作废），再覆盖
+        const live = await croliLiveAccount();
+        if (live && live.token && live.token !== target.token) {
+          await addAccount(live, { trusted: true }).catch((e) => logger.warn('DAEMON', '同步 Croli 当前登录失败:{err}', { err: e.message }));
+        }
+      } catch (e) {}
+      try {
+        // 硬切换：杀壳 + croli-server sidecar → 原子写 auth.json → 延时复核；面板收到 closedClient 后重开客户端。
+        // refresh 轮换制：写入的 rt 快照可能已被客户端刷过作废——失效时用户在客户端重登该账号再导入
+        const r = await hardSwitchCroli(target);
+        logger.info('DAEMON', r.alreadyActive ? 'Croli 当前已是 {name}' : r.verified ? 'Croli 已切换到 {name}(凭据已写入并重开客户端)' : 'Croli 已切换到 {name},但凭据复核未落定(疑似有进程回写)', { name: target.name || target.id });
+        return json(res, 200, { ok: true, ...r });
+      } catch (e) {
+        logger.warn('DAEMON', 'Croli 切换到 {name} 失败:{err}', { name: target.name || target.id, err: e.message });
+        return json(res, e.croliNotInstalled ? 409 : 400, { error: e.message, code: e.croliNotInstalled ? 'CROLI_NOT_INSTALLED' : undefined });
+      }
+    }
     if (target.provider === 'qoder' || target.provider === 'qoder-cn') {
       // 防丢号：先把本机当前登录的最新 auth 快照回写账号库（客户端会静默刷新 token，旧快照可能已失效），再覆盖
       try {
@@ -1965,7 +1986,7 @@ async function handleApi(req, res, url) {
 
   // ── 本机检测 / 凭据扫描 ──
   if (p === '/api/local/detect' && method === 'GET') {
-    return json(res, 200, { apps: detectQoderApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), trae: detectTrae(), minimax: detectMiniMax(), loomy: detectLoomy(), dumate: detectDumate(), legacy: detectInstalls() });
+    return json(res, 200, { apps: detectQoderApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), trae: detectTrae(), minimax: detectMiniMax(), loomy: detectLoomy(), dumate: detectDumate(), croli: detectCroli(), legacy: detectInstalls() });
   }
   if (p === '/api/local/scan' && method === 'POST') {
     const existing = await loadAccounts();
@@ -2057,6 +2078,11 @@ async function handleApi(req, res, url) {
       const dm = await dumateLiveAccount();
       if (dm) addRecord(dm, { source: 'DuMate 当前登录', current: true });
     } catch (e) { errors.push({ file: 'qianfan-desktop-app/auth.json', error: e.message }); }
+    // 8.6) Croli 客户端：直读 %APPDATA%\Croli\auth.json（明文 Clerk JWT，sidecar 自动续期）
+    try {
+      const cl = await croliLiveAccount();
+      if (cl) addRecord(cl, { source: 'Croli 当前登录', current: true });
+    } catch (e) { errors.push({ file: 'Croli/auth.json', error: e.message }); }
     // 9) CodeBuddy IDE 桌面客户端（issue #51）：state.vscdb + Chromium Safe Storage。
     //    与 WorkBuddy 账号体系同源（token 由同一 realm 签发），provider 由 inspectToken 决定；
     //    存储却完全不同（SQLite + DPAPI 加密），所以单列一条线。国内版 / 国际版各试一次。
@@ -2373,6 +2399,8 @@ async function handleApi(req, res, url) {
       loomyClient: (() => { const d = detectLoomy(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       dumateClient: (() => { const d = detectDumate(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       dumateCurrentUid: readDumateCredential()?.uid || null,
+      croliClient: (() => { const d = detectCroli(); return { installed: d.installed, signedIn: d.signedIn, running: d.running, expired: d.expired }; })(),
+      croliCurrentUid: (() => { const c = readCroliCredential(); return c ? (croliUidOf(c.accessToken) || null) : null; })(),
       keyRequired: panelKeyRequired(),
     });
   }
