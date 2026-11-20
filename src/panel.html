@@ -1215,6 +1215,9 @@ function renderLocale(cur) {
 
 // ── 图标（Lucide 风格，currentColor） ──
 const svg = (d) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
+// Google 徽标走 Lucide 描边风（与邻居图标同语言，currentColor 随主题）——彩色官方 logo 在
+// 主题切换下突兀（用户实测「不合群」）
+const googleMark = svg('<path d="M20 12h-8"/><path d="M12 12v8a8 8 0 1 1 8-8"/>');
 const I = {
   play: svg('<polygon points="6 4 20 12 6 20 6 4"/>'),
   refresh: svg('<path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/>'),
@@ -5960,7 +5963,7 @@ const googleSlotNick = (n) => { try { return localStorage.getItem('qd_google_slo
 const setGoogleSlotNick = (n, v) => { try { v ? localStorage.setItem('qd_google_slot_nick_' + n, v) : localStorage.removeItem('qd_google_slot_nick_' + n); } catch {} };
 const googleApi = () => (window.creditdaddy && typeof window.creditdaddy.googleSlotState === 'function' ? window.creditdaddy : null);
 if (googleApi()) {
-  $('btn-google').innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M21.35 11.1h-9.17v2.73h6.51c-.33 1.63-1.96 4.77-6.51 4.77a7.23 7.23 0 0 1 0-14.46c1.98 0 3.3.84 4.06 1.55l2.01-1.94A9.7 9.7 0 0 0 12.18 1a10 10 0 1 0 0 20c5.78 0 9.57-4.06 9.57-9.77 0-.65-.06-1.15-.4-3.13z" fill="#EA4335" d="M0 0h24v24H0z" fill="none"/></svg>';
+  $('btn-google').innerHTML = googleMark;
   const renderGoogleSlots = async () => {
     const box = $('google-slots');
     box.innerHTML = '<div class="empty" style="padding:12px">…</div>';
