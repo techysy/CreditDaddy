@@ -139,9 +139,12 @@ export function buildCrowllmQuotaPayload(account, liveData = null) {
     label,
     plan: '钱包余额' + ageTag,
   };
+  // 行名带 (USD) 尾括号：10R 的 quotaUnitOf 从尾部括号提单位小字（Loomy 的
+  // Balance (CNY) 同款约定），头部数字才会渲染成「110（USD）」而不是裸 110。
+  // 「免费目录」的语义说明在 CD 面板 hint 与 10R 卡 tooltip 里，不挤行名。
   payload.quotas = {
     Balance: {
-      name: `剩余 $${balance}（免费目录）`,
+      name: '余额 (USD)',
       used,
       total,
       remainingPercentage: pct,
@@ -150,11 +153,11 @@ export function buildCrowllmQuotaPayload(account, liveData = null) {
       summarizesDetail: true,
     },
   };
-  // 赠送额度拆分行：截图口径「赠送额度 $110，只能在免费目录使用」。站点不出 gift_quota
-  // 拆分时（user/self 无该字段）整行省略，总数行已覆盖。
+  // 赠送额度拆分行：earned_quota 只能在免费目录使用。站点不出拆分时整行省略，
+  // 总数行已覆盖。
   if (Number.isFinite(Number(snap.giftUsd)) && snap.giftUsd > 0) {
     payload.quotas.Gift = {
-      name: `赠送额度 $${snap.giftUsd}`,
+      name: '赠送额度 (USD)',
       used: 0,
       total: Number(snap.giftUsd),
       remainingPercentage: 100,
