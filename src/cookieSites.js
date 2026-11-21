@@ -117,20 +117,28 @@ export const COOKIE_SITES = [
     loginUrls: [
       'https://crowllm.com/sign-up?aff=xGk0',
       'https://crowllm.com/sign-up?aff=quJ8',
-      'https://crowllm.com/sign-up?aff=emqU',
+      'https://crowllm.com/sign-up?aff=tEjJ',
+      'https://crowllm.com/sign-up?aff=6CNM',
+      'https://crowllm.com/sign-up?aff=T9Tu',
     ],
     homeUrl: 'https://crowllm.com',
     cookieUrls: ['https://crowllm.com'],
-    verify: 'api',
-    // 就地重探走通用探测器（GET /api/user/self 带 Cookie；成功判据 = JSON 里的
-    // "success":true 标记——登录页壳/HTML 空壳都不含它）。主捕获跳过 HTML 探针
-    // （verify:'api'），身份+余额走 daemon 的 crowllm 专属段。
+    // 凭据现实（2026-11-21 全部实测）：钱包数据端点 /api/user/self 只认登录签发的
+    // 15 分钟 JWT（Authorization Bearer）——无 session Cookie、无刷新端点、无令牌
+    // 生成 UI、密码登录带 Turnstile，服务端自动化全线不通。唯一出路 = 真浏览器：
+    // persist 分区里的 GitHub 会话让 SPA 静默重跑 OAuth → JWT 进页面内存 → 捕获走
+    // **HTML 探针**（隐藏窗渲染 /wallet 等钱包数字出现，DOM 里抽快照）+ **CDP 嗅探**
+    // （desktop 侧拦 XHR 的 Authorization 头拿 JWT，storage 同形键 `crowllm:access-jwt`
+    // 交给 daemon 实时拉 /api/user/self——比 DOM 解析准，身份/余额一并取回）。
     probe: {
-      url: 'https://crowllm.com/api/user/self',
-      match: (text) => text.includes('"success":true') || text.includes('"success": true'),
+      url: 'https://crowllm.com/wallet',
+      // 钱包页渲染完成的标记（SPA 静默 OAuth 需要几秒，probeViaHiddenWindow 轮询等）；
+      // 中英 UI 都容。CF challenge 页 / 登录页壳不含这些标记 → 继续轮询或判失效。
+      match: (text) => /可用总数|Total available|赠送额度|Gift/i.test(text),
     },
+    quota: { fromHtml: parseCrowllmWalletHtml },
     accountName: 'CrowLLM',
-    hint: '登录 crowllm.com（邮箱/Google/GitHub/Discord）后自动抓取钱包余额与赠送额度；推 10Router 免费额度页出卡，聊天连接仍用 10R 侧的 API key。',
+    hint: '登录 crowllm.com（GitHub/Google/Discord/邮箱）后自动抓取钱包余额与赠送额度；GitHub 会话记住后，后续登录窗打开即静默完成。推 10Router 免费额度页出卡，聊天连接仍用 10R 侧的 API key。',
   },
   {
     id: 'modelscope',
@@ -269,6 +277,29 @@ export const COOKIE_SITES = [
 ];
 
 export const getSite = (id) => COOKIE_SITES.find((s) => s.id === id) || null;
+
+/**
+ * CrowLLM 钱包页 DOM → 快照读数。SPA 渲染出的数字是本地化美元串（"$110"、"$1,234.5"），
+ * 「可用总数」= 付费 + 赠送总额、「赠送额度」= earned 拆分（存在才出）。与
+ * /api/user/self 的字段映射（earned_quota/quota）同口径，只是来源从 XHR JSON 换成
+ * DOM 文本——探针窗拿不到 XHR 响应体时的兜底。
+ * @returns {{ used: number, total: number, isCreditBalance: true, giftUsd: number|null } | null}
+ */
+export function parseCrowllmWalletHtml(html) {
+  const text = String(html || '');
+  const money = (re) => {
+    const m = re.exec(text);
+    if (!m) return null;
+    const n = Number(String(m[1]).replace(/[$,]/g, ''));
+    return Number.isFinite(n) ? n : null;
+  };
+  // 主读数：优先「可用总数」，退化到页面上第一个「$N」大额数字（免费目录可用）
+  let total = money(/(?:可用总数|Total available)[\s\S]{0,300}?\$\s*([\d,]+(?:\.\d+)?)/i);
+  if (total === null) total = money(/\$\s*([\d,]{2,}(?:\.\d+)?)/);
+  if (total === null) return null;
+  const gift = money(/(?:赠送额度|Gift)[\s\S]{0,300}?\$\s*([\d,]+(?:\.\d+)?)/i);
+  return { used: 0, total, isCreditBalance: true, giftUsd: gift };
+}
 
 /** 按登录窗口 URL 找到对应站点配置（登录页或其同源首页） */
 export function siteForLoginUrl(url) {

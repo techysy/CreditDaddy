@@ -1,16 +1,18 @@
 /**
- * CrowLLM（crowllm.com）钱包余额线 —— cookie-site 网页会话渠道（tokenharbor/lingxi 模式）。
+ * CrowLLM（crowllm.com）钱包余额线 —— 会话槽 + JWT Bearer 渠道。
  *
- * 为什么走网页会话而不是连接的 API key（2026-11-21 实测）：
- * - one-hub 系的 /v1/dashboard/billing/subscription 对 chat key 返回 200，但
- *   hard_limit_usd 恒为 100000000（站点假上限），total_usage 恒 0 —— 不携带钱包数据；
- * - /api/user/self 等 new-api 用户端点要「系统访问令牌」（个人中心生成）或网页会话，
- *   chat key（连接里那把 48 字符串）一律 401；
- * - 用户看到的 $110 赠送额度只在登录后的网页钱包（/api/user/self 的 quota 字段）。
+ * 凭据现实（2026-11-21 全部实测）：钱包端点 /api/user/self 只认登录签发的 **15 分钟
+ * JWT**（Authorization Bearer，iss=new-api）。这个 fork 没有 session Cookie（浏览器
+ * 请求只有 cf_clearance）、没有刷新端点、没有系统访问令牌 UI/端点、密码登录带
+ * Turnstile——服务端持有式凭据全线不通。唯一自动路 = 真浏览器：persist 分区的
+ * GitHub 会话让 SPA 静默重跑 OAuth 签发新 JWT，desktop 侧 CDP 拦 XHR 的
+ * Authorization 头摘取（river 的 ses._workosAuth 同款），以 storage 同形键
+ * `crowllm:access-jwt` 交给 daemon。过期后 401 → 重新走一次登录窗即可。
  *
- * 协议形态：new-api 家族标准 —— 带网页会话 Cookie GET /api/user/self，
- * { success:true, data:{ quota, used_quota, … } }；quota 是 one-api 计数单位，
- * quota_per_unit=500000 → 美元 = quota / 500000。未登录/会话失效 401。
+ * 协议形态（真实会话实锤）：Bearer JWT GET /api/user/self →
+ * { success:true, data:{ earned_quota, quota, used_quota, aff_history_quota, … } }；
+ * one-api 计数单位 quota_per_unit=500000 → $1 = 500000 quota。
+ * 字段语义：earned_quota=赠送（免费目录专用）、quota=付费、可用总数 = 两者之和。
  */
 
 export const CROWLLM_BASE = 'https://crowllm.com';
@@ -22,26 +24,29 @@ import { fetchJsonRace } from './zcodeClient.js';
 
 const FETCH_TIMEOUT_MS = 20000;
 
-function cookieHeaders(cookie) {
+function jwtHeaders(jwt) {
   return {
-    Cookie: cookie,
+    Authorization: 'Bearer ' + jwt,
     Accept: 'application/json, text/plain, */*',
-    Referer: CROWLLM_BASE + '/',
+    Referer: CROWLLM_BASE + '/wallet',
     // new-api 系 SPA 的 XHR 形头；自定义 UA 不需要（/api/* 裸 curl 直通，2026-11-21 实测）
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
   };
 }
 
 /**
- * 网页会话查钱包。@returns {{ auth: boolean, ok?: boolean, balanceUsd?: number,
- *   usedUsd?: number, giftUsd?: number|null, code?: string }}
- * auth:false = 会话失效（401 / 非 JSON / 无 data）；giftUsd 拿得到拆分就带，拿不到 null。
+ * 会话 JWT 查钱包。@param {string} jwt 登录签发的 access JWT（CDP 嗅探所得，15 分钟寿命）。
+ * @returns {{ auth: boolean, ok?: boolean, balanceUsd?: number, paidUsd?: number,
+ *   giftUsd?: number, usedUsd?: number, affUsd?: number, username?: string|null,
+ *   email?: string|null, code?: string }}
+ * auth:false = JWT 失效/缺失（AUTH_TOKEN_EXPIRED 判 NEED_LOGIN，重新走登录窗即可）。
  */
-export async function fetchCrowllmWallet(cookie, { fetchImpl } = {}) {
+export async function fetchCrowllmWallet(jwt, { fetchImpl } = {}) {
+  if (!jwt) return { auth: false, code: 'no-jwt' };
   const doIt = fetchImpl || ((u, init) => fetchJsonRace(u, { ...init, timeoutMs: FETCH_TIMEOUT_MS }));
   let res;
   try {
-    res = await doIt(CROWLLM_SELF_URL, { method: 'GET', headers: cookieHeaders(cookie) });
+    res = await doIt(CROWLLM_SELF_URL, { method: 'GET', headers: jwtHeaders(jwt) });
   } catch (e) {
     return { auth: false, code: e?.message || 'network' };
   }
@@ -52,20 +57,25 @@ export async function fetchCrowllmWallet(cookie, { fetchImpl } = {}) {
   try { data = JSON.parse(text); } catch { return { auth: false, code: 'non-json' }; }
   // new-api 形态 { success, data }；data.quota 缺失视为会话失效（半登录态防误报余额 0）
   const d = data?.data;
-  if (!data?.success || !d || !Number.isFinite(Number(d.quota))) return { auth: false, code: 'no-quota' };
-  const quota = Number(d.quota);
+  if (!data?.success || !d || (!Number.isFinite(Number(d.quota)) && !Number.isFinite(Number(d.earned_quota)))) return { auth: false, code: 'no-quota' };
+  // 2026-11-21 真实会话实锤的字段语义（对照钱包页截图）：
+  //   earned_quota = 活动/签到赠送（只能在免费目录用，截图 $110）
+  //   quota        = 充值/付费额度（截图「每个模型可用 $0」）
+  //   used_quota   = 累计消费；aff_history_quota = 邀请返佣（独立积累池）
+  const earned = Number(d.earned_quota) || 0;
+  const paid = Number(d.quota) || 0;
   const usedQuota = Number(d.used_quota) || 0;
-  // new-api 的 user 行没有独立的「赠送额度」字段（充值/赠送都混在 quota）；
-  // 拆分行只在站点带出来时才出（防御式，缺省 null 不画）
-  const gift = Number.isFinite(Number(d.gift_quota)) ? Number(d.gift_quota) : null;
   const toUsd = (q) => Math.round((q / CROWLLM_QUOTA_PER_UNIT) * 100) / 100;
   return {
     auth: true,
     ok: true,
-    balanceUsd: toUsd(quota),
+    // 总可用 = 付费 + 赠送（钱包页「可用总数」口径）
+    balanceUsd: toUsd(paid + earned),
+    paidUsd: toUsd(paid),
+    giftUsd: toUsd(earned),
     usedUsd: toUsd(usedQuota),
-    giftUsd: gift === null ? null : toUsd(gift),
-    // 捕获身份（多号归户/账号命名）：new-api 的 display_name / username / email
+    affUsd: toUsd(Number(d.aff_history_quota) || 0),
+    // 捕获身份（多号归户/账号命名）
     username: String(d.display_name || d.username || '').trim() || null,
     email: String(d.email || '').trim() || null,
   };

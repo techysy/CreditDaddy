@@ -151,6 +151,9 @@ async function boot() {
     } catch { buildInfo = null; }
     try { cookieSitesLib = await load('src/cookieSites.js'); } catch { cookieSitesLib = null; }
     checkin.startScheduler();
+    // CrowLLM 钱包 JWT 自动续期（14 分钟一轮，会话槽静默重登）——依赖 cookieSitesLib
+    // 与 daemon 就绪，失败静默（推卡轮快照兜底）
+    startCrowllmAutoRefresh();
     // 面板切语言 → daemon 写 settings.json → 本壳即时重建托盘(同进程 i18n 实例已随 PUT 切走)
     try {
       let localeDebounce = null;
@@ -813,6 +816,9 @@ async function openIncognitoWindow(url, { persistKey } = {}) {
   attachContainerCapture(authWin.webContents);
   // river 等 WorkOS 站点：截获 authenticate 响应体里的 token（页面内存读不到）
   attachAuthTokenSniffer(authWin.webContents, ses);
+  // CrowLLM：15 分钟 JWT 只在 SPA 的 XHR Authorization 头里（无 Cookie、无 storage、
+  // 无刷新端点）——拦 /api/user/* 请求头摘取，storage 同形键交 daemon。
+  attachCrowllmJwtSniffer(authWin.webContents, ses);
   attachShellContextMenu(authWin);
   // 同一次登录里网站自己弹的窗口（如第三方账号选择、二次验证）复用同一隐私 session
   authWin.webContents.setWindowOpenHandler(({ url: subUrl }) => {
@@ -890,10 +896,61 @@ async function harvestQoderWebSession(ses) {
 }
 
 /** #23：浏览器隐藏窗探针——同一会话内加载 dashboard,轮询配额标记(绕 Node 的 TLS/UA/CSR 差异) */
+/** CrowLLM 钱包自动续期（B 方案，2026-11-21 用户拍板）：这个 fork 的钱包凭据是
+ *  15 分钟 JWT 且无任何服务端续期路径（无 Cookie 会话/刷新端点/令牌生成/密码登录
+ *  带 Turnstile，全部实测）——唯一自动路 = 每轮用 persist 分区里的 GitHub 会话让
+ *  SPA 静默重跑 OAuth 签发新 JWT。定时器每 14 分钟对每个活跃槽开隐藏窗
+ *  （probeViaHiddenWindow 轮询等 /wallet 渲染 + 嗅探器摘 JWT）→ 走既有 capture
+ *  通道（daemon crowllm 段实时查 /api/user/self 更新账号与快照）→ 下轮推卡自然
+ *  带上。JWT 在推卡间隙过期一次也无妨：快照兜底 + dead 标记，下轮续期即恢复。 */
+async function crowllmAutoRefreshOnce() {
+  const site = cookieSitesLib && typeof cookieSitesLib.getSite === 'function' ? cookieSitesLib.getSite('crowllm') : null;
+  if (!site || !site.probe) return;
+  const key = (daemonMod && typeof daemonMod.getSessionKey === 'function' && daemonMod.getSessionKey()) || (daemonMod && typeof daemonMod.getPanelKey === 'function' ? daemonMod.getPanelKey() : '');
+  let slots = [];
+  try {
+    const r = await fetch('http://127.0.0.1:' + boundPort + '/api/cookie-sites/crowllm/slots', {
+      headers: key ? { 'x-qd-key': key } : {}, signal: AbortSignal.timeout(10000),
+    });
+    if (!r.ok) return;
+    slots = (await r.json()).slots || [];
+  } catch { return; }   // daemon 未就绪/离线，下轮再试
+  for (const slot of slots) {
+    try {
+      const persistKey = 'cookie-site-crowllm' + (slot > 1 ? '-s' + slot : '');
+      const ses = session.fromPartition('persist:' + persistKey);
+      const html = await probeViaHiddenWindow(ses, site, 25000).catch(() => null);
+      const jwt = ses._crowllmJwt && ses._crowllmJwt.jwt;
+      if (!jwt || !html) continue;   // 会话失效（分区里 GitHub 会话也没了）——推卡轮快照兜底，用户重登即恢复
+      await fetch('http://127.0.0.1:' + boundPort + '/api/cookie-sites/crowllm/capture', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(key ? { 'x-qd-key': key } : {}) },
+        body: JSON.stringify({
+          cookie: '',
+          storage: { 'crowllm:access-jwt': jwt },
+          slot: slot > 1 ? slot : undefined,
+          probeHtml: html,
+        }),
+        signal: AbortSignal.timeout(30000),
+      }).catch(() => {});
+    } catch { /* 单槽失败不拖累其它槽 */ }
+  }
+}
+function startCrowllmAutoRefresh() {
+  if (crowllmRefreshTimer) return;
+  crowllmRefreshTimer = setInterval(() => { crowllmAutoRefreshOnce().catch(() => {}); }, 14 * 60 * 1000);
+  crowllmRefreshTimer.unref?.();
+  setTimeout(() => { crowllmAutoRefreshOnce().catch(() => {}); }, 90 * 1000).unref?.();   // 启动 90 秒后先跑一轮
+}
+let crowllmRefreshTimer = null;
+
 async function probeViaHiddenWindow(ses, site, timeoutMs = 20000) {
   let w = null;
   try {
     w = new BrowserWindow({ show: false, width: 480, height: 640, webPreferences: { session: ses, sandbox: true } });
+    // CrowLLM：隐藏窗渲染 wallet 时 SPA 会静默重跑 OAuth 签发新 JWT（XHR Authorization
+    // 头）——挂嗅探器把最新 JWT 摘到 ses，捕获体一并上送（15 分钟寿命，越新越好）
+    if (site.id === 'crowllm') attachCrowllmJwtSniffer(w.webContents, ses);
     await w.webContents.loadURL(site.probe.url);
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -935,6 +992,29 @@ function attachAuthTokenSniffer(wc, ses) {
         };
       } catch { /* 非 JSON 响应忽略 */ }
     }).catch(() => { /* 响应体取不到不致命 */ });
+  });
+  try { wc.debugger.sendCommand('Network.enable'); } catch { /* ignore */ }
+}
+
+/** CrowLLM JWT 嗅探（2026-11-21）：钱包端点 /api/user/self 只认登录签发的 15 分钟
+ *  access JWT（Authorization Bearer，iss=new-api）——这个 fork 无 session Cookie、无
+ *  刷新端点、无系统访问令牌、密码登录带 Turnstile，服务端持有式凭据全线不通。唯一出口
+ *  是页面 XHR 的 Authorization 头本身：CDP Network.requestWillBeSent 见 /api/user/*
+ *  请求即摘 Authorization（最新一个），storage 同形键 `crowllm:access-jwt` 交 daemon
+ *  （fetchCrowllmWallet 原样消费）。river 的 attachAuthTokenSniffer 同构，方向相反
+ *  （river 摘响应体、这里摘请求头）。 */
+function attachCrowllmJwtSniffer(wc, ses) {
+  try {
+    if (!wc.debugger.isAttached()) wc.debugger.attach('1.3');
+  } catch { return; }
+  wc.debugger.on('message', (e, method, params) => {
+    if (method !== 'Network.requestWillBeSent') return;
+    const url = String(params?.request?.url || '');
+    if (!/crowllm\.com\/api\/user\//.test(url)) return;
+    const auth = String(params?.request?.headers?.Authorization || params?.request?.headers?.authorization || '');
+    const m = /^Bearer\s+(eyJ[\w-]{20,})/.exec(auth);
+    if (!m) return;
+    ses._crowllmJwt = { jwt: m[1], capturedAt: new Date().toISOString() };
   });
   try { wc.debugger.sendCommand('Network.enable'); } catch { /* ignore */ }
 }
@@ -1006,6 +1086,9 @@ async function harvestCookieSiteSession(ses, site, slot = 1) {
     if (ws.refreshToken) storage['workos:refresh-token'] = ws.refreshToken;
     if (ws.user) storage['workos:user'] = typeof ws.user === 'string' ? ws.user : JSON.stringify(ws.user);
   }
+  // CrowLLM：CDP 嗅探的最新 JWT（15 分钟寿命，越新越好）——storage 同形键交 daemon
+  const cj = ses._crowllmJwt;
+  if (cj && cj.jwt) storage['crowllm:access-jwt'] = cj.jwt;
   const storageCount = Object.values(storage || {}).filter((v) => typeof v === 'string' && v.trim()).length;
   // 先拿浏览器视角 HTML(Node 探测会拿风控/空壳,造成「登录明明成功却报会话无效」)
   const probeHtml = storageSite ? null : await probeViaHiddenWindow(ses, site).catch(() => null);

@@ -1487,6 +1487,21 @@ async function handleApi(req, res, url) {
     return json(res, 200, { ok: true, bound });
   }
 
+  // ── CrowLLM 自动续期（B 方案）：desktop 侧定时器每 14 分钟查活跃槽位清单，
+  // 对每槽的 persist 分区开隐藏窗静默重登（GitHub 会话 → SPA 静默 OAuth → CDP
+  // 摘新 JWT）→ POST capture 走既有流程。无 crowllm 账号时返回空清单，定时器跳过。
+  if (p === '/api/cookie-sites/crowllm/slots' && method === 'GET') {
+    try {
+      const accounts = await loadAccounts();
+      const slots = [...new Set(accounts
+        .filter((a) => a.provider === 'crowllm' && (a.meta?.crowllmSession?.jwt || a.token))
+        .map((a) => (Number(a.meta?.cookieSlot) > 1 ? Math.trunc(Number(a.meta.cookieSlot)) : 1)))];
+      return json(res, 200, { slots });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── 通用 cookie 站点捕获(issue #23):登录窗口收割 → 探测 → 入账号库(provider=site.provider)
   if (p === '/api/cookie-sites' && method === 'GET') {
     const accounts = await loadAccounts();
@@ -1592,6 +1607,8 @@ async function handleApi(req, res, url) {
     // 实测（2026-10-14）：SPA token 只在内存，localStorage 通常空——cookie 是主通道。
     let riverSession = null;
     let riverBalance = null;
+    // CrowLLM 会话 JWT（CDP 嗅探所得，15 分钟寿命）——crowllm 专属段赋值，账号写入段落 meta
+    let crowllmJwt = null;
     if (site.id === 'river') {
       try {
         const { parseRiverSession, fetchRiverBalance } = await import('./riverClient.js');
@@ -1627,22 +1644,28 @@ async function handleApi(req, res, url) {
       }
     }
 
-    // CrowLLM：钱包余额在 /api/user/self（quota / 500000 = USD，含赠送），chat key 读不到
-    // ——会话 Cookie 是唯一凭据（2026-11-21 实测）。探测即取数，身份走 display_name/username/email。
+    // CrowLLM：钱包数据在 /api/user/self，凭据是登录窗 CDP 嗅探的 15 分钟 JWT
+    //（storage 同形键 crowllm:access-jwt，desktop 侧从 XHR Authorization 头摘取——
+    // 这个 fork 无 session Cookie、密码登录带 Turnstile，服务端持有式凭据全线不通）。
+    // JWT 过期后重开登录窗即可（GitHub 会话持久分区静默重跑 OAuth）。
     if (site.id === 'crowllm') {
       try {
         const { fetchCrowllmWallet } = await import('./crowllmClient.js');
-        if (!cookie) {
-          logger.warn('COOKIE-SITE', '{name} 未读到会话 cookie', { name: site.name });
-          return json(res, 400, { error: '未读到 CrowLLM 登录会话，请在登录窗完成登录后再关闭' });
+        const jwt = storage['crowllm:access-jwt'] || null;
+        if (!jwt) {
+          logger.warn('COOKIE-SITE', '{name} 未嗅探到访问 JWT', { name: site.name });
+          return json(res, 400, { error: '未读到 CrowLLM 访问令牌——请在登录窗登录 crowllm.com 并进入钱包页后关闭（CDP 需在页面请求发生时嗅探）' });
         }
-        const w = await fetchCrowllmWallet(cookie);
+        const w = await fetchCrowllmWallet(jwt);
         if (!w.auth) {
           logger.warn('COOKIE-SITE', '{name} 钱包探测被拒:{code}', { name: site.name, code: w.code });
           return json(res, 401, { error: '会话不可用，请重新登录 crowllm.com 后再捕获（' + (w.code || '探测失败') + '）' });
         }
         identity = w.username || w.email || null;
-        quotaSnapshot = { used: 0, total: w.balanceUsd, isCreditBalance: true, giftUsd: w.giftUsd ?? null, at: now };
+        quotaSnapshot = { used: 0, total: w.balanceUsd, isCreditBalance: true, giftUsd: w.giftUsd ?? null, paidUsd: w.paidUsd ?? 0, at: now };
+        // JWT 存进账号 meta：推卡轮实时续查用（15 分钟寿命，过期则下轮 live 401 →
+        // 快照兜底 + dead 标记，用户重开登录窗即恢复全自动）
+        crowllmJwt = jwt;
         logger.info('COOKIE-SITE', '{name} 钱包探测通过（余额 ${balance}，赠送 {gift}，身份 {identity}）', { name: site.name, balance: w.balanceUsd, gift: w.giftUsd ?? '—', identity: identity || '—' });
       } catch (cwErr) {
         logger.warn('COOKIE-SITE', '{name} 钱包抓取异常:{err}', { name: site.name, err: cwErr.message });
@@ -1817,7 +1840,9 @@ async function handleApi(req, res, url) {
 
     const ih = identityHashOf(mimoUserId || riverSession?.user?.id || msSession?.id || lcSession?.userId || identity);
     const quotaMeta = quotaSnapshot ? { quotaSnapshot: { ...quotaSnapshot, at: now } } : {};
-    const cred = riverSession ? riverSession.accessToken : cookie;   // 落盘的凭据主体
+    // 落盘的凭据主体：river 存 WorkOS access token；crowllm 存嗅探 JWT（推卡轮 Bearer 续查）；
+    // 其余站点存 Cookie 串
+    const cred = riverSession ? riverSession.accessToken : (crowllmJwt || cookie);
     const riverUid = riverSession?.user?.id || null;
     let accountId = null;
     await withAccounts((list) => {
@@ -1860,6 +1885,7 @@ async function handleApi(req, res, url) {
           ...(lcPacks ? { longcatPacks: longcatSnapshot(lcPacks) } : {}),
           ...(lcSession ? { longcatSession: lcSession } : {}),
           ...(lxSnapshot ? { lingxiPacks: lxSnapshot } : {}),
+          ...(crowllmJwt ? { crowllmSession: { jwt: crowllmJwt, capturedAt: now } } : {}),
         };
         if (meooUserId) { hit.uid = String(meooUserId); autoName(hit); }
         if (meooGrants) hit.meta.meooGrants = meooGrants;
@@ -1885,6 +1911,7 @@ async function handleApi(req, res, url) {
             ...(mimoBalance ? { mimoBalance } : {}),
             ...(riverSession ? { workosSession: riverSession, workosUser: riverSession.user || {} } : {}),
             ...(riverBalance ? { riverBalance } : {}),
+            ...(crowllmJwt ? { crowllmSession: { jwt: crowllmJwt, capturedAt: now } } : {}),
           ...(msSession ? { msSession, msBalance } : {}),
           ...(lcPacks ? { longcatPacks: longcatSnapshot(lcPacks) } : {}),
           ...(lcSession ? { longcatSession: lcSession } : {}),

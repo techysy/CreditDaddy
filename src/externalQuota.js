@@ -570,10 +570,11 @@ export async function runQuotaPush({ endpoint, key, accounts, fetchImpl, onlySou
     }
   }
 
-  // CrowLLM 钱包余额卡（网页会话查 /api/user/self；chat key 读不到钱包——subscription
-  // 端点恒回假上限 100000000，2026-11-21 实测）。lingxi 同款：live 优先、快照兜底、
-  // 探活痕迹 probeMark（会话失效标记 dead 走低频重试）。
-  const cwAccounts = (accounts || []).filter((a) => (a.provider === 'crowllm' || a.meta?.cookieSiteId === 'crowllm') && (a.token || a.meta?.cookieSiteSession?.cookie));
+  // CrowLLM 钱包余额卡：凭据是登录窗 CDP 嗅探的 15 分钟 JWT（meta.crowllmSession.jwt，
+  // token 字段同存一份）——chat key 读不到钱包（subscription 恒回假上限），服务端持有式
+  // 凭据全线不通（2026-11-21 实测）。JWT 过期 → live 401 → 快照兜底 + dead 标记，用户
+  // 重开一次登录窗（GitHub 会话静默）即恢复。lingxi 同款：live 优先、快照兜底、probeMark。
+  const cwAccounts = (accounts || []).filter((a) => (a.provider === 'crowllm' || a.meta?.cookieSiteId === 'crowllm') && (a.meta?.crowllmSession?.jwt || a.token));
   if (cwAccounts.length) {
     const { fetchCrowllmWallet, buildCrowllmQuotaPayload } = await import('./crowllmClient.js');
     for (const a of cwAccounts) {
@@ -585,8 +586,8 @@ export async function runQuotaPush({ endpoint, key, accounts, fetchImpl, onlySou
         liveData = { auth: false, code: 'dead-skip' };
       } else {
         try {
-          const cookie = a.meta?.cookieSiteSession?.cookie || a.token;
-          liveData = await fetchCrowllmWallet(cookie, { fetchImpl });
+          const jwt = a.meta?.crowllmSession?.jwt || a.token;
+          liveData = await fetchCrowllmWallet(jwt, { fetchImpl });
           if (liveData.auth) {
             if (Number.isFinite(liveData.balanceUsd)) {
               persistLive(a, { quotaSnapshot: { used: 0, total: liveData.balanceUsd, isCreditBalance: true, giftUsd: liveData.giftUsd ?? null, at: new Date().toISOString() } });
