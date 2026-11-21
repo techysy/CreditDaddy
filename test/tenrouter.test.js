@@ -495,7 +495,7 @@ test('配置版本迁移：旧来源快照自动并入新增来源，显式保�
     // 旧版保存的来源快照：用户手动关掉了 opencode / mimo
     fs.writeFileSync(f, JSON.stringify({ ...orig, sync: { enabled: false, sources: ['zcode', 'mirasim'] } }));
     let c = tr.loadConfig();
-    assert.deepEqual([...c.sync.sources].sort(), ['10r', 'mirasim', 'zcode']);   // 新增来源默认并入，手动关掉的不复活
+    assert.deepEqual([...c.sync.sources].sort(), ['10r', 'croli', 'mirasim', 'zcode']);   // 新增来源默认并入（v4 起 croli），手动关掉的不复活
     await tr.updateConfig({ sources: ['mirasim'] });
     c = tr.loadConfig();
     assert.deepEqual(c.sync.sources, ['mirasim']);   // 显式保存过勾选结果后不再自动并入
@@ -568,10 +568,10 @@ test('来源版本迁移：v2 配置自动并入 10r，不复活已禁用的旧�
     sync: { enabled: true, sources: ['zcode', 'mimo'], sourcesVersion: 2 }, syncState: {}, lastSync: null,
   }));
   const c = tr.loadConfig();
-  assert.ok(c.sync.sources.includes('10r'), '新来源应默认并入');
+  assert.ok(c.sync.sources.includes('10r') && c.sync.sources.includes('croli'), '新来源应默认并入');
   assert.ok(c.sync.sources.includes('zcode') && c.sync.sources.includes('mimo'), '已有勾选保留');
   assert.ok(!c.sync.sources.includes('catpaw'), '用户没勾的旧来源不复活');
-  assert.equal(c.sync.sourcesVersion, 3);
+  assert.equal(c.sync.sourcesVersion, 4);
 });
 
 test('quotaPush 配置：开关与频率保存、默认开启、最小频率 15 分钟', async () => {
@@ -733,4 +733,79 @@ test('账号同步：croli 重推——token 变化才推、成败都记基准�
     const imports = m.calls.filter((s) => String(s.url).endsWith('/api/oauth/transfer/import'));
     assert.equal(imports.length, 2, 'v1 + v2 各推一次');
   } finally { m.restore(); }
+});
+
+test('croli 来源：convertCroliTurn 行定型（provider 固定、tokens 拆分、时区戳标准化）', () => {
+  const e = us.convertCroliTurn({
+    conversation_id: 42, turn_key: 'conv42-turn7', occurred_at: '2026-11-20T15:56:57.439+00:00',
+    model: 'glm-5.3-flash', input_tokens: 100, output_tokens: 20,
+    cache_creation_tokens: 5, cache_read_tokens: 900, total_tokens: 1025, duration_ms: 1234,
+  });
+  assert.equal(e.provider, 'croli');
+  assert.equal(e.model, 'glm-5.3-flash');
+  assert.equal(e.timestamp, '2026-11-20T15:56:57.439Z', '带时区 ISO → UTC 标准化');
+  assert.equal(e.status, 'ok');
+  assert.equal(e.cost, 0, '积分/trial 池计费，不按量');
+  assert.deepEqual(e.tokens, { prompt_tokens: 100, completion_tokens: 20, cache_creation_tokens: 5, cache_read_tokens: 900 });
+  assert.equal(e.endpoint, 'croli://conversation/42');
+  assert.equal(e.meta.source, 'croli');
+  assert.equal(e.meta.turnKey, 'conv42-turn7');
+  assert.equal(us.convertCroliTurn({ ...{}, occurred_at: null, input_tokens: 1 }), null, '缺时间戳不能兜底 Date.now');
+});
+
+test('croli 来源：collectCroli 快照读 + turn_key 库内去重', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'croli-test-'));
+  try {
+    const dbPath = path.join(dir, 'croli.db');
+    const db = new DatabaseSync(dbPath);
+    db.exec(`CREATE TABLE token_usage_turn (id integer PRIMARY KEY AUTOINCREMENT, conversation_id integer NOT NULL, turn_key varchar NOT NULL, occurred_at timestamp_with_timezone_text NOT NULL, model varchar NULL, input_tokens bigint NOT NULL DEFAULT 0, output_tokens bigint NOT NULL DEFAULT 0, cache_creation_tokens bigint NOT NULL DEFAULT 0, cache_read_tokens bigint NOT NULL DEFAULT 0, total_tokens bigint NOT NULL DEFAULT 0, duration_ms bigint NOT NULL DEFAULT 0)`);
+    db.prepare('INSERT INTO token_usage_turn (conversation_id, turn_key, occurred_at, model, input_tokens, output_tokens, cache_read_tokens, total_tokens, duration_ms) VALUES (?,?,?,?,?,?,?,?,?)').run(1, 't1', '2026-11-20T15:56:57.439+00:00', 'glm-5.3-flash', 100, 20, 900, 1020, 10);
+    db.prepare('INSERT INTO token_usage_turn (conversation_id, turn_key, occurred_at, model, input_tokens, output_tokens, total_tokens) VALUES (?,?,?,?,?,?,?)').run(1, 't1', '2026-11-20T15:56:57.439+00:00', 'glm-5.3-flash', 100, 20, 120);  // 同 turn_key 重复行
+    db.prepare('INSERT INTO token_usage_turn (conversation_id, turn_key, occurred_at, model, input_tokens, output_tokens, total_tokens) VALUES (?,?,?,?,?,?,?)').run(1, 't2', '2026-11-20T15:57:10.000+00:00', 'glm-5.3-flash', 50, 5, 55);
+    db.close();
+    const r = await us.collectSource('croli', { paths: { croli: [dbPath] } });
+    assert.equal(r.entries.length, 2, '同 turn_key 只出一行');
+    assert.equal(r.entries[0].meta.turnKey, 't1');
+    assert.deepEqual(r.notes, []);
+    assert.equal(r.files, 1);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('croli 来源：sourcePaths 发现 croli.db（CROLI_DB 显式覆盖）', () => {
+  const explicit = path.join(os.tmpdir(), 'croli-explicit-' + process.pid + '.db');
+  fs.writeFileSync(explicit, 'x');
+  const p = us.sourcePaths(os.homedir(), { APPDATA: path.join(os.tmpdir(), 'no-such-appdata-x'), CROLI_DB: explicit }, 'win32');
+  assert.deepEqual(p.croli, [explicit]);
+  fs.rmSync(explicit, { force: true });
+  const fakeAppData = fs.mkdtempSync(path.join(os.tmpdir(), 'croli-appdata-'));
+  fs.mkdirSync(path.join(fakeAppData, 'Croli'), { recursive: true });
+  fs.writeFileSync(path.join(fakeAppData, 'Croli', 'croli.db'), 'x');
+  const p2 = us.sourcePaths(os.homedir(), { APPDATA: fakeAppData }, 'win32');
+  assert.ok(p2.croli.some((f) => f.endsWith(path.join('Croli', 'croli.db'))), '默认路径含 %APPDATA%/Croli/croli.db');
+  fs.rmSync(fakeAppData, { recursive: true, force: true });
+});
+
+test('zcode 来源：死表检测——最后记录超 7 天时 notes 提示（ZCode 0.16.9 静默失效）', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'zcode-test-'));
+  try {
+    const dbPath = path.join(dir, 'db.sqlite');
+    const db = new DatabaseSync(dbPath);
+    db.exec('CREATE TABLE model_usage (logical_request_id varchar, provider_id varchar, model_id varchar, agent varchar, status varchar, started_at integer, completed_at integer, duration_ms integer, input_tokens integer, output_tokens integer)');
+    const old = Date.now() - 30 * 86400e3;
+    db.prepare('INSERT INTO model_usage (logical_request_id, provider_id, model_id, agent, status, started_at, input_tokens, output_tokens) VALUES (?,?,?,?,?,?,?,?)').run('r1', 'account:plan', 'GLM-5', 'cli', 'completed', old, 10, 2);
+    db.close();
+    const r = await us.collectSource('zcode', { paths: { zcode: [dbPath] } });
+    assert.equal(r.entries.length, 1);
+    assert.ok(r.notes.some((n) => n.includes('不再向该表落库') && n.includes('30 天前')), '死表提示进 notes');
+    // 新表（最近有行）不提示
+    const dbPath2 = path.join(dir, 'db2.sqlite');
+    const db2 = new DatabaseSync(dbPath2);
+    db2.exec('CREATE TABLE model_usage (logical_request_id varchar, provider_id varchar, model_id varchar, agent varchar, status varchar, started_at integer, completed_at integer, duration_ms integer, input_tokens integer, output_tokens integer)');
+    db2.prepare('INSERT INTO model_usage (logical_request_id, provider_id, model_id, agent, status, started_at, input_tokens, output_tokens) VALUES (?,?,?,?,?,?,?,?)').run('r1', 'account:plan', 'GLM-5', 'cli', 'completed', Date.now() - 3600e3, 10, 2);
+    db2.close();
+    const r2 = await us.collectSource('zcode', { paths: { zcode: [dbPath2] } });
+    assert.deepEqual(r2.notes, [], '活表无提示');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
