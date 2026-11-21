@@ -3342,6 +3342,18 @@ function renderFreePool() {
           return '<span class="pill ok" style="font-weight:600">' + T('积分余额 ') + Number(bal).toLocaleString() + '</span>' + detail;
         }
       }
+      if (site.id === 'crowllm') {
+        // 钱包余额（美元口径，total = 付费 + 赠送；快照来自捕获时的 /api/user/self）
+        const bal = acc.quota?.total;
+        if (Number.isFinite(bal)) {
+          const gift = Number(acc.quota?.giftUsd);
+          const paid = Number(acc.quota?.paidUsd) || 0;
+          const detail = Number.isFinite(gift) && gift > 0
+            ? '<span class="dim" style="font-size:11px">' + T('（赠送 $') + gift.toFixed(2) + T(' · 付费 $') + paid.toFixed(2) + '）</span>'
+            : '';
+          return '<span class="pill ok" style="font-weight:600">' + T('钱包余额 $') + bal.toFixed(2) + '</span>' + detail;
+        }
+      }
       if (site.id === 'tokenharbor') {
         const used = acc.quota?.used;
         if (Number.isFinite(used)) {
