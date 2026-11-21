@@ -6,7 +6,8 @@
 import { loadAccounts, loadSettings, loadState, withAccounts, withState } from './store.js';
 import { productImpl } from './providers.js';
 import { productOf, PROVIDER_LABEL } from './constants.js';
-import { startUsageSyncScheduler } from './tenrouter.js';
+import { loadConfig as loadTenrouterConfig, startUsageSyncScheduler } from './tenrouter.js';
+import { startCroliResyncWatch } from './tenrouterAccounts.js';
 import { refreshContext } from './accounts.js';
 import { zcodeAutoClaim } from './zcodeAutoClaim.js';
 import { traePrimaryIds } from './traeClient.js';
@@ -483,6 +484,7 @@ async function scheduleTick() {
 export async function startScheduler() {
   if (timerHandle) return;
   startUsageSyncScheduler();
+  startCroliResyncWatch(loadTenrouterConfig);
   startWebSessionWatch();
   warmZcodeAppVersion();
   // WorkBuddy 自定义安装路径发现（issue #46）：注册表 / 进程探测要起子进程，

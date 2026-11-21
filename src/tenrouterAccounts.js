@@ -14,6 +14,8 @@
 
 import crypto from 'node:crypto';
 import { buildExportPayload, sealTransfer } from './transfer.js';
+import { liveToAccount as croliLiveAccount } from './croliLocal.js';
+import { logger } from './logger.js';
 
 /** CreditDaddy provider → 10Router 连接类型。留空 / 缺失 = 该产品暂不同步。 */
 export const TENROUTER_PROVIDER_MAP = {
@@ -29,13 +31,27 @@ export const TENROUTER_PROVIDER_MAP = {
   loomy: 'loomy',
   dumate: 'dumate',                  // 10R #113：DuMate 百度搭子 web-cookie 渠道
   lingxi: 'lingxi',                  // 10R #127：WPS 灵犀 web 会话渠道（token=完整 WPS Cookie 罐，api-key 形态直推）
-  // ⚠ meoo 不再同步（test.12 实测）：CD 与 10R 共享同一 refresh token，任一侧轮换
-  //   （单次使用）即作废另一侧的副本——同步过的账号 CD 端恒 invalid_token。
-  //   10R 的 meoo 连接由 10R 侧自行管理（扫码 / 控制面 Key）。
+  croli: 'croli',                    // 10R #156：Clerk OAuth 渠道——access-only 同步（ROTATING_RT_SYNC_PROVIDERS，见下）
+  // ⚠ meoo 不再同步（test.12 实测）——rotating refresh token 双副本死锁，机制沉淀：
+  //   这类 provider 的 rt 是**单次使用制**：任一侧拿 rt 换新 access，服务端立即作废
+  //   旧 rt。rt 是一次性票据不是密钥，无法「复制」——同步过去后 CD 与 10R 各持一份
+  //   快照，谁先刷新谁的另一侧就恒 invalid_grant，且无从恢复（只剩重新授权）。
+  //   10R 的 meoo 连接改由 10R 侧自行管理（扫码 / 控制面 Key）。
+  //   同类 provider（Clerk 系 croli 等）的正确接法见 croli 行：同步只推 accessToken、
+  //   刷新权收敛在 CD（ROTATING_RT_SYNC_PROVIDERS + resyncCroliAccessToken 自动重推）。
   // zcode → glm：等 zcode 反代就绪后补一行（同步流程已就绪，无需改代码）
 };
 
 export const mapProviderId = (provider) => TENROUTER_PROVIDER_MAP[provider] || null;
+
+/**
+ * rotating refresh token 的 provider：同步只推 accessToken（rt 剥空）。
+ * rt 单次使用制下两副本必然互杀（meoo test.12 事故口径，见映射表注释）——
+ * 刷新权收敛在 CD：CD 侧 token 变化后由 resyncCroliAccessToken() 自动重推，
+ * 10R 端只持 access、从不触发轮换，token 过期前总有新值续上。
+ * apikey 通道（buildConnPayload）本来只带 a.token，天然符合，无需处理。
+ */
+const ROTATING_RT_SYNC_PROVIDERS = new Set(['croli']);
 
 const TIMEOUT_MS = 60_000;
 
@@ -184,7 +200,14 @@ export async function syncAccountsTo10r({ endpoint, key, adminPassword, accounts
     if (!groups.has(target)) groups.set(target, []);
     groups.get(target).push(a);
   }
-  if (!groups.size) throw new Error('没有可同步的账号（qoder / WorkBuddy / MiniMax / Loomy / Trae / DuMate / 灵犀 系列）；zcode 待反代就绪后支持');
+  // rotating rt 的组剥离 refreshToken（拷贝剥离，不动原账号行——buildExportPayload
+  // 还服务于手动导出，全量备份不能被同步策略污染）
+  for (const [target, list] of groups) {
+    if (ROTATING_RT_SYNC_PROVIDERS.has(target)) {
+      groups.set(target, list.map((a) => ({ ...a, refreshToken: null })));
+    }
+  }
+  if (!groups.size) throw new Error('没有可同步的账号（qoder / WorkBuddy / MiniMax / Loomy / Trae / DuMate / 灵犀 / Croli 系列）；zcode 待反代就绪后支持');
 
   let channel = 'apikey';
   let cookie = null;
@@ -234,4 +257,79 @@ export async function syncAccountsTo10r({ endpoint, key, adminPassword, accounts
     + (parts.join('，') || '无变化')
     + (failed.length ? `；${failed.map((r) => r.provider + '：' + (r.error || r.status)).join('；')}` : '');
   return { channel, results, summary };
+}
+
+/* ───────────── croli access 自动重推（rotating rt 的同步维护，见映射表 meoo 注释） ─────────────
+ *
+ * croli 同步只推 accessToken（ROTATING_RT_SYNC_PROVIDERS），刷新权收敛在 CD；而 CD 的
+ * croli token 快照跟着官方客户端 sidecar 的 rt 轮换走（auth.json 直读）——access 随时
+ * 会换新。10R 端拿着旧 access 到期即断，所以要在这里持续维护：比对上次推过的值，
+ * 变了就自动重推一遍（syncAccountsTo10r 幂等，10R 按 uid 原位更新）。
+ *
+ * 基准值存内存：重启丢一次记录 → 首轮多推一遍，10R 端原位更新同 token，无害。
+ * 推送无论成败都记录当前值——失败（10R 不可达等）时避免每个周期对同一目标反复重试；
+ * 官方 sidecar 再轮换出新 token 时自然触发下一轮。
+ */
+
+const CROLI_RESYNC_INTERVAL_MS = 30 * 60_000;
+let lastCroliPushedToken = null;
+let croliResyncTimerHandle = null;
+let croliResyncRunning = false;
+
+/**
+ * 单轮 croli 重推检查。@param {object} tenrouterConfig 10Router 配置（loadConfig() 的值）。
+ * @param {object} [opts] 测试注入：{ account } 直接指定要推的账号（生产走 croliLiveAccount 实时快照）。
+ * @returns {Promise<{pushed:boolean, reason:string}|null>} null = 未配置 / 渠道关闭 /
+ *   白名单排除 croli（无事发生不记录）；pushed=false 且 reason='token-unchanged' = 基准未变。
+ */
+export async function resyncCroliAccessToken(tenrouterConfig, { account } = {}) {
+  const c = tenrouterConfig;
+  if (!c?.endpoint || (!c.key && !c.adminPassword)) return null;
+  if (c.accountSync?.enabled === false) return null;
+  const allow = Array.isArray(c.accountSync?.providers) ? c.accountSync.providers : [];
+  if (allow.length && !allow.includes('croli')) return null;
+
+  let live = account || null;
+  if (!live) {
+    try {
+      live = await croliLiveAccount();
+    } catch {
+      return { pushed: false, reason: 'no-live-account' };
+    }
+  }
+  if (!live?.token) return { pushed: false, reason: 'no-live-account' };
+  if (live.token === lastCroliPushedToken) return { pushed: false, reason: 'token-unchanged' };
+
+  const tokenAtAttempt = live.token;
+  try {
+    const r = await syncAccountsTo10r({ endpoint: c.endpoint, key: c.key, adminPassword: c.adminPassword, accounts: [live] });
+    logger.info('TENROUTER_SYNC', 'croli access 已重推:{summary}', { summary: r.summary });
+    lastCroliPushedToken = tokenAtAttempt;
+    return { pushed: true, reason: 'ok', summary: r.summary };
+  } catch (e) {
+    logger.warn('TENROUTER_SYNC', 'croli access 重推失败（下轮 token 再变时重试）:{err}', { err: e?.message || e });
+    // 失败也记录尝试值：同一 token 不反复轰 10R；官方轮换出新值会自动再来
+    lastCroliPushedToken = tokenAtAttempt;
+    return { pushed: false, reason: 'push-failed', error: e?.message || String(e) };
+  }
+}
+
+/** croli access 重推轮询（30 分钟一轮）。@param {() => object} getConfig 10Router 配置读取器。 */
+export function startCroliResyncWatch(getConfig) {
+  if (croliResyncTimerHandle) return;
+  const tick = async () => {
+    if (croliResyncRunning) return;
+    croliResyncRunning = true;
+    try {
+      await resyncCroliAccessToken(getConfig?.());
+    } catch (e) {
+      logger.warn('TENROUTER_SYNC', 'croli 重推轮异常:{err}', { err: e?.message || e });
+    } finally {
+      croliResyncRunning = false;
+    }
+  };
+  croliResyncTimerHandle = setInterval(tick, CROLI_RESYNC_INTERVAL_MS);
+  croliResyncTimerHandle.unref?.();
+  setTimeout(tick, 60_000).unref?.();   // 启动 1 分钟后先跑一轮，把重启丢失的记录补上
+  logger.info('TENROUTER_SYNC', 'croli access 自动重推已启动（每 30 分钟比对一次）');
 }

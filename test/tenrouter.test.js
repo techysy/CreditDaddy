@@ -660,3 +660,77 @@ test('buildConnPayload：Trae 账号携带登录注册的设备指纹（10R 签�
   const weird = buildConnPayload({ id: 'tr-3', provider: 'trae', token: 'jwt', uid: 'u-1', meta: { traeDevice: { deviceId: 'not-digits' } } }, 'trae-cn');
   assert.equal(weird.providerSpecificData.creditDaddyTraeDevice, undefined);
 });
+
+test('账号同步：croli 走 OAuth 通道剥 refreshToken（rotating rt 只推 access，meoo test.12 口径）', async () => {
+  const seen = [];
+  const m = mockFetch((url, init) => {
+    seen.push({ url: String(url), init });
+    if (String(url).endsWith('/api/auth/login')) {
+      return { status: 200, body: { success: true }, headers: { 'set-cookie': 'auth_token=abc123; Path=/; HttpOnly' } };
+    }
+    if (String(url).endsWith('/api/auth/logout')) return { status: 200, body: { success: true } };
+    return { status: 200, body: { imported: 0, updated: 1, skipped: 0, failed: 0 } };
+  });
+  try {
+    const r = await ta.syncAccountsTo10r({
+      endpoint: 'http://127.0.0.1:20127', key: 'sk-x', adminPassword: 'pw-1',
+      accounts: [
+        { id: '1', provider: 'croli', token: 'croli-access-jwt', refreshToken: 'croli-rotating-rt', uid: 'user_croliA', name: 'Croli A' },
+        { id: '2', provider: 'qoder', token: 'qoder-access', refreshToken: 'qoder-reusable-rt', name: 'Q1' },
+      ],
+    });
+    assert.equal(r.channel, 'oauth');
+    const imports = seen.filter((s) => s.url.endsWith('/api/oauth/transfer/import'));
+    assert.equal(imports.length, 2);
+    for (const s of imports) {
+      const body = JSON.parse(s.init.body);
+      const payload = openTransfer(body.blob, body.passphrase);
+      const acc = payload.accounts[0];
+      if (body.provider === 'croli') {
+        assert.equal(acc.refreshToken, null, 'croli 的 rotating rt 必须剥空——10R 只持 access');
+        assert.equal(acc.accessToken, 'croli-access-jwt');
+        assert.equal(acc.uid, 'user_croliA');
+      } else {
+        assert.equal(acc.refreshToken, 'qoder-reusable-rt', 'rt 可重复使用的 provider 照常全量同步');
+      }
+    }
+  } finally { m.restore(); }
+});
+
+test('账号同步：croli 重推守门——未配置/渠道关/白名单排除均静默退出', async () => {
+  assert.equal(await ta.resyncCroliAccessToken(null), null, '未配置');
+  assert.equal(await ta.resyncCroliAccessToken({}), null, '无 endpoint');
+  assert.equal(await ta.resyncCroliAccessToken({ endpoint: 'http://x', key: 'sk-x', accountSync: { enabled: false } }), null, '渠道关闭');
+  assert.equal(
+    await ta.resyncCroliAccessToken({ endpoint: 'http://x', key: 'sk-x', accountSync: { providers: ['qoder'] } }),
+    null, '白名单不含 croli',
+  );
+});
+
+test('账号同步：croli 重推——token 变化才推、成败都记基准、同 token 不重推', async () => {
+  const seen = [];
+  const m = mockFetch((url) => {
+    if (String(url).endsWith('/api/auth/login')) {
+      return { status: 200, body: { success: true }, headers: { 'set-cookie': 'auth_token=t; Path=/' } };
+    }
+    if (String(url).endsWith('/api/auth/logout')) return { status: 200, body: {} };
+    return { status: 200, body: { imported: 0, updated: 1, skipped: 0, failed: 0 } };
+  });
+  try {
+    const cfg = { endpoint: 'http://127.0.0.1:20127', key: 'sk-x', adminPassword: 'pw-1' };
+    const acct = { provider: 'croli', token: 'access-v1', refreshToken: 'rt-never-synced', uid: 'user_croliA', name: 'Croli A' };
+    const first = await ta.resyncCroliAccessToken(cfg, { account: acct });
+    assert.equal(first.pushed, true, '首次推送');
+    // 推的是剥离了 rt 的拷贝：原账号对象不能被改动
+    assert.equal(acct.refreshToken, 'rt-never-synced');
+    const same = await ta.resyncCroliAccessToken(cfg, { account: acct });
+    assert.equal(same.pushed, false);
+    assert.equal(same.reason, 'token-unchanged', '同 token 不重推（基准已记录）');
+    // token 换新（官方 sidecar 轮换）→ 再次推送
+    const renewed = { ...acct, token: 'access-v2' };
+    const second = await ta.resyncCroliAccessToken(cfg, { account: renewed });
+    assert.equal(second.pushed, true);
+    const imports = m.calls.filter((s) => String(s.url).endsWith('/api/oauth/transfer/import'));
+    assert.equal(imports.length, 2, 'v1 + v2 各推一次');
+  } finally { m.restore(); }
+});
