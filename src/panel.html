@@ -1994,10 +1994,19 @@ function creditHtml(a) {
       + (q.plan ? esc(q.plan) + ' · ' : '') + (when ? when + ' ' + T('到账') : T('即将到账')) + '</span></div>';
     const pct = q.total > 0 ? Math.min(1, q.remaining / q.total) : 0;
     const mainLine = () => compactParts
-      ? T('<div class="credit-line"><span class="credit"><span class="lbl">剩余</span><b>') + fmtNum(q.remaining) + '</b>' + esc(unit) + '</span>'
-        + '<span class="credit dim" title="' + items + '">'
-        + (soonPart ? fmtNum(soonPart.remaining) + T(' 于 ') + fmtTime(soonPart.expiresAt).slice(5, 10) + T(' 到期 · ') : '')
-        + T('已用 ') + fmtNum(q.used) + T(' / 共 ') + fmtNum(q.total) + (q.exceeded ? T(' · <span style="color:var(--err)">已超额</span>') : '') + '</span></div>'
+      ? (a.product === 'croli'
+        // Croli 的积分是累计池（签到加、消费不回传已用口径）——「已用 0 / 共 X」恒 0
+        // 没有信息量（2026-11-21 用户反馈）。dim 位改放「客户端当前」徽章（从标题行
+        // 挪下来）：标题行只剩名字 + 签到徽章，窄宽窗口都不互相挤。
+        ? T('<div class="credit-line"><span class="credit"><span class="lbl">剩余</span><b>') + fmtNum(q.remaining) + '</b>' + esc(unit) + '</span>'
+          + '<span class="credit dim" title="' + items + '">'
+          + (soonPart ? fmtNum(soonPart.remaining) + T(' 于 ') + fmtTime(soonPart.expiresAt).slice(5, 10) + T(' 到期 · ') : '')
+          + (isClientCurrent(a) ? '<span class="pill cur" title="' + esc(CLIENT_LABEL[a.product] ? T(CLIENT_LABEL[a.product]) : '') + T(' 客户端当前登录的账号">客户端当前</span>') : '')
+          + '</span></div>'
+        : T('<div class="credit-line"><span class="credit"><span class="lbl">剩余</span><b>') + fmtNum(q.remaining) + '</b>' + esc(unit) + '</span>'
+          + '<span class="credit dim" title="' + items + '">'
+          + (soonPart ? fmtNum(soonPart.remaining) + T(' 于 ') + fmtTime(soonPart.expiresAt).slice(5, 10) + T(' 到期 · ') : '')
+          + T('已用 ') + fmtNum(q.used) + T(' / 共 ') + fmtNum(q.total) + (q.exceeded ? T(' · <span style="color:var(--err)">已超额</span>') : '') + '</span></div>')
       : T('<div class="credit-line"><span class="credit"><span class="lbl">剩余</span><b>') + fmtNum(q.remaining) + '</b>' + esc(unit) + '</span>'
       + '<span class="credit dim" title="' + items + '">' + (q.plan ? esc(q.plan) + ' · ' : '') + items + '</span></div>';
     // 全部待生效（活动刚发、还没到点）：主行显示待生效，别只显示一个 0
@@ -2053,7 +2062,10 @@ function cardHtml(a) {
       ? '<span class="badge" style="color:#8b5cf6;background:rgba(139,92,246,.14);margin-left:4px" title="'
         + esc(T('DuMate 付费套餐生效中') + (state.quotas[a.id].planExpiresAt ? T('，') + fmtTime(state.quotas[a.id].planExpiresAt).slice(0, 10) + T(' 到期') : '')) + '">'
         + esc(state.quotas[a.id].plan) + '</span>' : '')
-    + (isCurrent ? '<span class="pill cur" title="' + esc(CLIENT_LABEL[a.product] ? T(CLIENT_LABEL[a.product]) : '') + T(' 客户端当前登录的账号">客户端当前</span>') : '')
+    // 「客户端当前」徽章：croli 不在标题行渲染——它的积分是累计池，credit-line 右侧
+    // 的「已用/共」dim 位本来就空着没信息量，徽章挪到那里（creditHtml 的 croli 分支），
+    // 标题行只剩名字 + 签到徽章，窄宽窗口都不互相挤（2026-11-21 用户反馈）
+    + (isCurrent && a.product !== 'croli' ? '<span class="pill cur" title="' + esc(CLIENT_LABEL[a.product] ? T(CLIENT_LABEL[a.product]) : '') + T(' 客户端当前登录的账号">客户端当前</span>') : '')
     + (a.product === 'zcode' && isGatewayCurrent(a) ? (zgwAccountCount() > 1
       ? T('<span class="pill gw" title="体验包接口最近 30 分钟内服役过的账号（{n} 个 ZCode 账号按轮转分摊请求，每个请求换一个，与客户端登录无关）">接口使用中</span>', { n: zgwAccountCount() })
       : T('<span class="pill gw" title="体验包接口最近 30 分钟内服役过的账号（多账号时按轮转自动选择，与客户端登录无关）">接口使用中</span>')) : '')
