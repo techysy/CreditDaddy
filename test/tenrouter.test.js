@@ -754,6 +754,7 @@ test('croli 来源：convertCroliTurn 行定型（provider 固定、tokens 拆�
 });
 
 test('croli 来源：collectCroli 快照读 + turn_key 库内去重', async () => {
+  if (!(await us.sqliteAvailable())) { console.log('skip: node:sqlite unavailable (CI Node 20)'); return; }
   const { DatabaseSync } = await import('node:sqlite');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'croli-test-'));
   try {
@@ -787,6 +788,7 @@ test('croli 来源：sourcePaths 发现 croli.db（CROLI_DB 显式覆盖）', ()
 });
 
 test('zcode 来源：死表检测——最后记录超 7 天时 notes 提示（ZCode 0.16.9 静默失效）', async () => {
+  if (!(await us.sqliteAvailable())) { console.log('skip: node:sqlite unavailable (CI Node 20)'); return; }
   const { DatabaseSync } = await import('node:sqlite');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'zcode-test-'));
   try {
