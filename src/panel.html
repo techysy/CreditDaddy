@@ -3400,7 +3400,9 @@ function renderFreePool() {
             + '<span class="dim" style="font-size:11.5px">' + (acc.capturedAt ? esc(fmtTime(acc.capturedAt)) : '–') + '</span>'
             + (site.id === 'doubao' && canCapture ? '<button class="icon-btn" data-open-doubao="1" title="' + T('打开豆包客户端（签到请在客户端内完成）') + '">' + I.play + '</button>' : '')
             + (FREE_CHECKIN_SITES.has(site.id) ? '<button class="icon-btn' + (state.busy[acc.id] ? ' busy' : '') + '" data-act="checkin" data-site="' + esc(site.id) + '" data-id="' + esc(acc.id) + '" title="' + T('立即签到（已签自动跳过，不会重复提交）') + '">' + (state.busy[acc.id] ? I.refresh : I.play) + '</button>' : '')
-            + '<button class="icon-btn" data-act="reprobe" data-site="' + esc(site.id) + '" data-id="' + esc(acc.id) + '" title="' + T('就地重探（免登录，用已存会话刷新身份与额度）') + '">' + I.refresh + '</button>'
+            + (site.noReprobe !== true
+              ? '<button class="icon-btn" data-act="reprobe" data-site="' + esc(site.id) + '" data-id="' + esc(acc.id) + '" title="' + T('就地重探（免登录，用已存会话刷新身份与额度）') + '">' + I.refresh + '</button>'
+              : '<button class="icon-btn" data-act="relogin" data-site="' + esc(site.id) + '" title="' + T('该站点走登录窗静默续期（点此打开登录窗，GitHub 会话自动完成）') + '">' + I.refresh + '</button>')
             + '<button class="icon-btn del" data-act="del" data-id="' + esc(acc.id) + '" title="' + T('删除此账号') + '">' + I.trash + '</button>'
             + '</div></div>'
             + ((metricHtml || stBadgeHtml) ? '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding-left:14px">' + metricHtml + stBadgeHtml + '</div>' : '')
@@ -4882,6 +4884,14 @@ async function onCardClick(e) {
       if (state.view === 'free') renderFreePool();
     }
     catch (err) { toast(err.message, false); }
+    return;
+  }
+  if (act === 'relogin') {
+    // noReprobe 站点（crowllm）：JWT 15 分钟无服务端续期路，静默续期 = 重开登录窗
+    //（persist 分区里的 GitHub 会话自动完成 OAuth）——关窗即捕获，等价于一次续期
+    const siteId = btn.dataset.site || '';
+    toast(T('打开登录窗静默续期中——进入钱包页后关闭即可'), true);
+    await cookieSiteCapture(siteId, 1);
     return;
   }
   if (act === 'reprobe') {

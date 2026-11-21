@@ -813,6 +813,8 @@ async function handleApi(req, res, url) {
       const site = getSite(account.meta.cookieSiteId);
       if (!site) return json(res, 404, { error: `站点 ${account.meta.cookieSiteId} 未配置` });
       if (site.disabled === true) return json(res, 410, { error: '该站点已停用（issue #35），不再探测上游' });
+    // noReprobe 站点（crowllm）：Node 探针进 CF 盾必假阴性——重探不落痕迹，续期走登录窗
+    if (site.noReprobe === true) return json(res, 409, { error: '该站点走登录窗静默续期（点「网页版」打开即自动完成），无需重探' });
       // 频率治理（面板 2 分钟自动轮询曾把五家上游全轰一遍）：默认读缓存快照零网络，
       // 仅 ?live=1（手动「刷新积分」按钮 / 单卡回调）才真探上游并回填快照。缓存保鲜交给
       // 后台推送循环（default 60 分钟）——它 live 拉到的余额本就该落库，顺手把这条链补上。
@@ -1886,6 +1888,7 @@ async function handleApi(req, res, url) {
           ...(lcSession ? { longcatSession: lcSession } : {}),
           ...(lxSnapshot ? { lingxiPacks: lxSnapshot } : {}),
           ...(crowllmJwt ? { crowllmSession: { jwt: crowllmJwt, capturedAt: now } } : {}),
+          lastProbe: { ok: true, status: 'ok', error: null, at: now },   // 探测已通过——上次 dead/warn 翻绿（自动重放成功后红点不残留）
         };
         if (meooUserId) { hit.uid = String(meooUserId); autoName(hit); }
         if (meooGrants) hit.meta.meooGrants = meooGrants;
@@ -1912,6 +1915,7 @@ async function handleApi(req, res, url) {
             ...(riverSession ? { workosSession: riverSession, workosUser: riverSession.user || {} } : {}),
             ...(riverBalance ? { riverBalance } : {}),
             ...(crowllmJwt ? { crowllmSession: { jwt: crowllmJwt, capturedAt: now } } : {}),
+            lastProbe: { ok: true, status: 'ok', error: null, at: now },   // 探测已通过——上次 dead/warn 翻绿（自动重放成功后红点不残留）
           ...(msSession ? { msSession, msBalance } : {}),
           ...(lcPacks ? { longcatPacks: longcatSnapshot(lcPacks) } : {}),
           ...(lcSession ? { longcatSession: lcSession } : {}),

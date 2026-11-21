@@ -137,6 +137,7 @@ export const COOKIE_SITES = [
       match: (text) => /可用总数|Total available|赠送额度|Gift/i.test(text),
     },
     quota: { fromHtml: parseCrowllmWalletHtml },
+    noReprobe: true,   // 服务端 HTML 探针进 CF 盾——重探必假阴性；续期 = 登录窗静默重跑 OAuth
     accountName: 'CrowLLM',
     hint: '登录 crowllm.com（GitHub/Google/Discord/邮箱）后自动抓取钱包余额与赠送额度；GitHub 会话记住后，后续登录窗打开即静默完成。推 10Router 免费额度页出卡，聊天连接仍用 10R 侧的 API key。',
   },
