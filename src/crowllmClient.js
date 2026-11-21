@@ -24,14 +24,26 @@ import { fetchJsonRace } from './zcodeClient.js';
 
 const FETCH_TIMEOUT_MS = 20000;
 
+/** JWT payload 的 sub = new-api 用户数字 id —— 用户端点的 New-Api-User 头取这里。
+ *  实测请求都带这个头（值与 sub 同源）；服务端对它的校验宽度未考，带上不吃亏。 */
+function jwtUser(jwt) {
+  try {
+    const p = JSON.parse(Buffer.from(String(jwt).split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+    return String(p.sub || '');
+  } catch { return ''; }
+}
+
 function jwtHeaders(jwt) {
-  return {
+  const h = {
     Authorization: 'Bearer ' + jwt,
     Accept: 'application/json, text/plain, */*',
     Referer: CROWLLM_BASE + '/wallet',
     // new-api 系 SPA 的 XHR 形头；自定义 UA 不需要（/api/* 裸 curl 直通，2026-11-21 实测）
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
   };
+  const user = jwtUser(jwt);
+  if (user) h['New-Api-User'] = user;
+  return h;
 }
 
 /**

@@ -1012,7 +1012,9 @@ function attachCrowllmJwtSniffer(wc, ses) {
     const url = String(params?.request?.url || '');
     if (!/crowllm\.com\/api\/user\//.test(url)) return;
     const auth = String(params?.request?.headers?.Authorization || params?.request?.headers?.authorization || '');
-    const m = /^Bearer\s+(eyJ[\w-]{20,})/.exec(auth);
+    // 三段式 JWT（header.payload.signature）——旧正则 w- 不含点号，只捕到 header 段，
+    // 残缺串送到 daemon 必然 401 NEED_LOGIN（2026-11-21 捕获失败根因）
+    const m = /^Bearers+(eyJ[w-]+.[w-]+.[w-]+)/.exec(auth);
     if (!m) return;
     ses._crowllmJwt = { jwt: m[1], capturedAt: new Date().toISOString() };
   });
