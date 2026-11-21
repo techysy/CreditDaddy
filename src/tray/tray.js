@@ -90,7 +90,7 @@ async function handleClick(index, options, onAutostartToggle) {
       onAutostartToggle(!enabled);
     } catch (e) {}
   } else if (index === MENU_INDEX.QUIT) {
-    console.log(t('\n正在停止 CreditDaddy…'));
+    console.log(t('\n正在停止 CreditDaddy…')); // keep：CLI 托盘的终端输出通道（无面板场景，有意保留）
     if (onQuit) onQuit();
     killTray();
     setTimeout(() => process.exit(0), 500);

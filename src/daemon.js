@@ -1529,6 +1529,7 @@ async function handleApi(req, res, url) {
         return {
           id: site.id, name: site.name, label: site.label, loginUrl: site.loginUrl, hint: site.hint,
           ...(site.no10rSync === true ? { no10rSync: true } : {}),
+          ...(site.noReprobe === true ? { noReprobe: true } : {}),   // 面板重探按钮 → 登录窗静默续期
           ...(site.hideFromWebPage === true ? { hideFromWebPage: true } : {}),
           accountId: rows[0]?.id || null, capturedAt: latest, accounts: rows,
         };

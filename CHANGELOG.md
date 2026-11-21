@@ -4,9 +4,27 @@
 
 ---
 
-## [Unreleased]
+## [1.8.3] (2026-11-21)
 
-- **Meoo 登录窗邀请码池（2026-11-20 用户提案）**：网页会话登录窗的落地页随机轮换维护者邀请码（三个 `meoo.com/?inviteCode=…`，同 Loomy/DuMate 邀请码池口径）——新账号经登录窗注册即归因到对应码；老账号登录该参数无副作用。`loginUrls` 池进站点表，`loginUrl` 保留无参形态作回退；带 inviteCode 的查询串不影响 `siteForLoginUrl` 前缀识别。回归钉：3 条链接合法同源、码不重复、落地 URL 仍被识别为 meoo。
+本版主题:**新增 Croli 独立产品线（本机凭据直读 + 每日签到 + Clerk OAuth PKCE + Google 登录槽 + 邀请体系全链路）+ CrowLLM 钱包中继（会话槽 JWT 静默续期全自动）+ 用量同步新增 croli 来源（Croli IDE 逐轮账本）与 zcode 死表检测 + OAuth 轮换令牌的 access-only 同步策略**.
+Theme: **New Croli product line (local credential direct-read + daily check-in + Clerk OAuth PKCE + Google login slot + full invite pipeline) + CrowLLM wallet relay (session-slot JWT silent renewal, fully automatic) + usage sync gains the croli source (Croli IDE per-turn ledger) and zcode dead-table detection + access-only sync policy for rotating OAuth tokens**.
+
+- **新增 Croli 独立产品线**：Croli（croli.net）全链路接入——
+  - **登录三线**：本机凭据直读（`%APPDATA%\Croli\auth.json`，官方 sidecar 自动续期）+ **Clerk OAuth PKCE**（Google / GitHub / 邮箱，授权窗默认无痕、槽位可选；换票校验按 RFC 6749 对 token_type 大小写不敏感——Clerk 返回小写 `bearer` 的根因实锤修复）+ Google 登录槽（授权窗持久分区记住上游 Google 会话，扩展四线共享：croli / trae-intl / minimax-global / qoder，右上角统一管理入口）；
+  - **每日签到**：`credits/v1/ops/checkin`（+100，连签加成服务端自记）——签到徽标「今日已领 +100 · 连续 N 天」，连签天数双计数修复（首签不再显示「连续 2 天」）、领取徽标按业务日界翻日（26h 窗口翻车修复）；
+  - **邀请体系**：邀请码兑换 / 我的邀请码（+2500/+3000 双向奖励、错误码人话化、奖励说明胶囊化、脚注按账号覆盖）+ 面板登录窗落地页五码邀请池随机轮换（同 Loomy/DuMate/M meoo 口径）；
+  - **凭据真话化**：续期失败如实标注（凭据状态列）、账号名用 Clerk userinfo 真实身份。
+- **新增 CrowLLM 钱包中继（会话槽 JWT 静默续期，B 方案全自动）**：crowllm.com 的钱包端点只认登录签发的 15 分钟 JWT 且无任何服务端续期路径（无 session Cookie、无刷新端点、无令牌生成、密码登录带 Turnstile——全部实测）。CD 以会话槽落地：persist 分区的 GitHub 会话让 SPA 静默重跑 OAuth，CDP 拦 XHR `Authorization` 头摘 JWT → daemon 实时拉 `/api/user/self`（`earned_quota`/`quota` 字段映射对齐真实会话）→ 推 10Router 免费额度页出卡（`余额 (USD)` / `赠送额度 (USD)` 行名对齐 10R 的单位小字约定）；**14 分钟定时重放**让推卡轮永远拿得到活 JWT，面板「网页会话」行的刷新按钮即开窗静默续期；捕获/探活痕迹生命周期闭环（自动重放成功后红点自动翻绿）。
+- **用量同步：新增 croli 来源 + zcode 死表检测**——
+  - **croli 来源**：读 `%APPDATA%\Croli\croli.db` 的 `token_usage_turn`（Croli IDE 逐轮账本，实测 347M tokens / 1042 轮与面板逐位一致）——provider 固定 `croli`、模型走字段、`turn_key` 库内去重、毫秒级时间戳对齐 10R 导入签名；不经 10R 无重复记账风险。sourcesVersion 4（旧配置快照自动并入新来源）；
+  - **zcode 死表检测**：ZCode 0.16.9 起 `model_usage` 零落库（会话移内存事件流），来源静默为空近一个月无人知——最后记录超 7 天时同步摘要显式提示。
+- **OAuth 轮换令牌的 access-only 同步策略**：单次使用制 refresh token 的双副本必然互杀（meoo test.12 事故的机制沉淀）——croli 同步只推 accessToken（refreshToken 剥空）、刷新权收敛在 CD、token 变化后 30 分钟自动重推（成败都记基准防轰炸）；机制注释沉淀进同步映射表，判别口诀「rt 可复用才全量同步」。
+- **面板布局与性能**：Croli 卡「客户端当前」徽章挪到积分行右侧（累计池无「已用」概念，原「已用 0 / 共 X」死信息位置腾出）、签到徽章不再被挤换行；日志轮与状态轮渲染减负（签名对比跳过重画 + 后台不画）——「卡一下」第一刀。
+- **Meoo 登录窗邀请码池（2026-11-20 用户提案）**：网页会话登录窗的落地页随机轮换维护者邀请码（三个 `meoo.com/?inviteCode=…`，同 Loomy/DuMate 邀请码池口径）——新账号经登录窗注册即归因到对应码；老账号登录该参数无副作用。
+- **ZCode / Google SSO 系列修复**：「停止运行」只停单次窗口（每日定时计划不再连坐，推翻 11-17 联动）；单次窗口状态灯显性化（手动启用/停止边界）；槽状态语义澄清（「有会话」≠「授权已完成」）；Google 图标归一 Lucide 描边风。
+- **i18n**：crollm / croli 线全部用户面文案补齐四语词典（en/zh-TW/ja/ko 各 +31 词条），面板与运行时中文文案零漏网。
+
+## [Unreleased]
 
 ## [1.8.2] (2026-11-20)
 
