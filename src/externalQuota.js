@@ -570,6 +570,49 @@ export async function runQuotaPush({ endpoint, key, accounts, fetchImpl, onlySou
     }
   }
 
+  // CrowLLM 钱包余额卡（网页会话查 /api/user/self；chat key 读不到钱包——subscription
+  // 端点恒回假上限 100000000，2026-11-21 实测）。lingxi 同款：live 优先、快照兜底、
+  // 探活痕迹 probeMark（会话失效标记 dead 走低频重试）。
+  const cwAccounts = (accounts || []).filter((a) => (a.provider === 'crowllm' || a.meta?.cookieSiteId === 'crowllm') && (a.token || a.meta?.cookieSiteSession?.cookie));
+  if (cwAccounts.length) {
+    const { fetchCrowllmWallet, buildCrowllmQuotaPayload } = await import('./crowllmClient.js');
+    for (const a of cwAccounts) {
+      const { source } = buildCrowllmQuotaPayload(a);
+      if (only && !only.includes(source)) continue;
+      const skipDead = !only && deadSkip(a);
+      let liveData = null;
+      if (skipDead) {
+        liveData = { auth: false, code: 'dead-skip' };
+      } else {
+        try {
+          const cookie = a.meta?.cookieSiteSession?.cookie || a.token;
+          liveData = await fetchCrowllmWallet(cookie, { fetchImpl });
+          if (liveData.auth) {
+            if (Number.isFinite(liveData.balanceUsd)) {
+              persistLive(a, { quotaSnapshot: { used: 0, total: liveData.balanceUsd, isCreditBalance: true, giftUsd: liveData.giftUsd ?? null, at: new Date().toISOString() } });
+            }
+          } else {
+            liveData = { auth: false };
+          }
+          probeMark(a, liveData.auth, liveData.auth ? null : 'CrowLLM 会话已失效');
+        } catch (err) {
+          liveData = { auth: false };
+          probeMark(a, false, err.message);
+        }
+      }
+      const { payload } = buildCrowllmQuotaPayload(a, liveData);
+      try {
+        assertScalarOnly(payload, source);
+        const r = await pushOne({ endpoint, key, source, payload, fetchImpl, refreshUrl: await rurl(source) });
+        results.push({ source, status: 'ok', entries: r.entries });
+        logger.info('10R', '额度卡已推送：{source}（{n} 行）', { source, n: r.entries ?? (Object.keys(payload.quotas || {}).length || 0) });
+      } catch (e) {
+        results.push({ source, status: 'failed', error: e.message });
+        logger.warn('10R', '额度卡推送失败 {source}:{err}', { source, err: e.message });
+      }
+    }
+  }
+
   // Meoo 快照保鲜（2026-11-19 用户实测「都是手动领取+手动刷新，没有定时刷新」）：
   // meoo 不推卡（no10rSync，10R 侧自消费出卡），被推送循环排除后快照只在捕获时与手动
   // ?live=1 两个时点更新——余额数字永远停在捕获那一刻，定时轮领到的积分不反映到显示上，

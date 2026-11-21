@@ -1627,6 +1627,29 @@ async function handleApi(req, res, url) {
       }
     }
 
+    // CrowLLM：钱包余额在 /api/user/self（quota / 500000 = USD，含赠送），chat key 读不到
+    // ——会话 Cookie 是唯一凭据（2026-11-21 实测）。探测即取数，身份走 display_name/username/email。
+    if (site.id === 'crowllm') {
+      try {
+        const { fetchCrowllmWallet } = await import('./crowllmClient.js');
+        if (!cookie) {
+          logger.warn('COOKIE-SITE', '{name} 未读到会话 cookie', { name: site.name });
+          return json(res, 400, { error: '未读到 CrowLLM 登录会话，请在登录窗完成登录后再关闭' });
+        }
+        const w = await fetchCrowllmWallet(cookie);
+        if (!w.auth) {
+          logger.warn('COOKIE-SITE', '{name} 钱包探测被拒:{code}', { name: site.name, code: w.code });
+          return json(res, 401, { error: '会话不可用，请重新登录 crowllm.com 后再捕获（' + (w.code || '探测失败') + '）' });
+        }
+        identity = w.username || w.email || null;
+        quotaSnapshot = { used: 0, total: w.balanceUsd, isCreditBalance: true, giftUsd: w.giftUsd ?? null, at: now };
+        logger.info('COOKIE-SITE', '{name} 钱包探测通过（余额 ${balance}，赠送 {gift}，身份 {identity}）', { name: site.name, balance: w.balanceUsd, gift: w.giftUsd ?? '—', identity: identity || '—' });
+      } catch (cwErr) {
+        logger.warn('COOKIE-SITE', '{name} 钱包抓取异常:{err}', { name: site.name, err: cwErr.message });
+        return json(res, 502, { error: '探测站点失败：' + (cwErr.message || '') });
+      }
+    }
+
     // modelsscope（CD#25）：魔粒余额 API 即探测；每日额度自动发放（无签到动作端点），只读余额
     let msSession = null;
     let msBalance = null;

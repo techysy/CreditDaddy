@@ -105,6 +105,34 @@ export const COOKIE_SITES = [
     hint: '登录后自动抓取 UID 与充值余额；推送到 10Router 显示余额卡片。',
   },
   {
+    id: 'crowllm',
+    name: 'CrowLLM',
+    provider: 'crowllm',
+    label: 'CrowLLM',
+    // one-hub/new-api 系中转：钱包额度（含活动赠送）只在登录后的 /api/user/self（quota
+    // 字段，500000 quota = $1），连接的 chat key 读不到（/v1/dashboard/billing/subscription
+    // 恒回假上限 100000000，2026-11-21 实测）——与 tokenharbor/lingxi 同款，凭据只能是
+    // 网页会话 Cookie。登录入口走邀请码池轮换（与 croli/meoo 同口径），未带码回退主链接。
+    loginUrl: 'https://crowllm.com/sign-up',
+    loginUrls: [
+      'https://crowllm.com/sign-up?aff=xGk0',
+      'https://crowllm.com/sign-up?aff=quJ8',
+      'https://crowllm.com/sign-up?aff=emqU',
+    ],
+    homeUrl: 'https://crowllm.com',
+    cookieUrls: ['https://crowllm.com'],
+    verify: 'api',
+    // 就地重探走通用探测器（GET /api/user/self 带 Cookie；成功判据 = JSON 里的
+    // "success":true 标记——登录页壳/HTML 空壳都不含它）。主捕获跳过 HTML 探针
+    // （verify:'api'），身份+余额走 daemon 的 crowllm 专属段。
+    probe: {
+      url: 'https://crowllm.com/api/user/self',
+      match: (text) => text.includes('"success":true') || text.includes('"success": true'),
+    },
+    accountName: 'CrowLLM',
+    hint: '登录 crowllm.com（邮箱/Google/GitHub/Discord）后自动抓取钱包余额与赠送额度；推 10Router 免费额度页出卡，聊天连接仍用 10R 侧的 API key。',
+  },
+  {
     id: 'modelscope',
     name: 'ModelScope 魔搭',
     provider: 'modelscope',
