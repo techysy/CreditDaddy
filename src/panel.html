@@ -177,6 +177,11 @@
   .card.dragging, .tr-card.dragging, .prodcard.dragging { opacity: .45; }
   .prodcard.drop-before { box-shadow: -3px 0 0 0 rgb(var(--accent-rgb)); }
   .prodcard.drop-after { box-shadow: 3px 0 0 0 rgb(var(--accent-rgb)); }
+  /* 标签栏 logo 直接拖动排序（与仪表盘产品卡同一份 compOrder） */
+  #nav button[draggable] { cursor: grab; }
+  #nav button.dragging { opacity: .45; }
+  #nav button.drop-before { box-shadow: -3px 0 0 0 rgb(var(--accent-rgb)); }
+  #nav button.drop-after { box-shadow: 3px 0 0 0 rgb(var(--accent-rgb)); }
   .card.drop-before { box-shadow: inset 0 3px 0 0 rgb(var(--accent-rgb)); }
   .card.drop-after { box-shadow: inset 0 -3px 0 0 rgb(var(--accent-rgb)); }
   .tr-card.drop-before { box-shadow: inset 0 3px 0 0 rgb(var(--accent-rgb)); }
@@ -6285,6 +6290,61 @@ bindCardDrag($('prods'), {
     renderCompMenu();    // 组件设置 chips 顺序同步
   },
 });
+// 标签栏 logo 直接拖动排序：落同一份 state.compOrder（仪表盘卡 / 组件设置 chips / 标签栏
+// 三处同步）。dash 是固定主页签不参与拖拽；nav 按钮是静态 DOM（applyComponents 只移动
+// 不重建），启动时绑一次即可。横向标签用指针 X 判前后（仪表盘卡纵向用 Y）；dragView
+// 用闭包变量而不用共享 dragState，避免与 bindCardDrag 的 kind 门卫互相误触。
+(() => {
+  const nav = $('nav');
+  const SEL = 'button[data-view]';
+  let dragView = null;
+  const over = (e) => e.target.closest && e.target.closest(SEL);
+  nav.querySelectorAll(SEL).forEach((b) => { if (b.dataset.view !== 'dash') b.setAttribute('draggable', 'true'); });
+  nav.addEventListener('dragstart', (e) => {
+    const btn = over(e);
+    if (!btn || btn.dataset.view === 'dash') return;
+    dragView = btn.dataset.view;
+    btn.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', dragView); } catch {}
+  });
+  nav.addEventListener('dragend', (e) => {
+    const btn = over(e);
+    if (btn) btn.classList.remove('dragging');
+    clearDropMarkers(nav);
+    dragView = null;
+  });
+  nav.addEventListener('dragover', (e) => {
+    if (!dragView) return;
+    const t = over(e);
+    if (!t || t.dataset.view === dragView || t.dataset.view === 'dash') return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    clearDropMarkers(nav);
+    const rect = t.getBoundingClientRect();
+    t.classList.add(e.clientX < rect.left + rect.width / 2 ? 'drop-before' : 'drop-after');
+  });
+  nav.addEventListener('drop', (e) => {
+    if (!dragView) return;
+    const t = over(e);
+    if (!t || t.dataset.view === dragView || t.dataset.view === 'dash') return;
+    e.preventDefault();
+    const before = t.classList.contains('drop-before');
+    clearDropMarkers(nav);
+    const dragId = dragView;
+    dragView = null;
+    const ids = state.compOrder.slice();
+    const from = ids.indexOf(dragId);
+    const ti = ids.indexOf(t.dataset.view);
+    if (from < 0 || ti < 0) return;
+    ids.splice(from, 1);
+    ids.splice(before ? ti : ti + 1, 0, dragId);
+    state.compOrder = ids;
+    saveCompOrder();
+    applyComponents();   // 内部 render + renderStatus，标签栏与仪表盘按新序同步
+    renderCompMenu();    // 组件设置 chips 顺序同步
+  });
+})();
 // 免费额度页站点卡拖拽：与其他两处一样只在启动时绑一次。此前在 renderFreePool 里绑定，
 // 而 render() 每次刷新都调它——监听器按渲染次数无限累积，一次 drop 触发 N 次重排
 bindCardDrag($('free-pool-body'), {
