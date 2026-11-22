@@ -2104,14 +2104,22 @@ function cardHtml(a) {
     + '<div class="row1"><div class="name-group">'
     + T('<span class="name" data-act="rename" title="点击修改备注名">') + esc(maskName(a.name) || T('(未命名)')) + '</span>'
     + provBadges(a.provider, true, a.flavor)
+    // qwenwork 来源标记（2026-11-23 用户反馈）：客户端导入 / 浏览器登录一眼可辨，紧挨
+    // 国内版/国际版徽章。当前登录账号省「客户端」标记——积分行「客户端当前」已隐含
+    // 客户端来源，两个 pill 并排视觉重复
+    + (a.product === 'qwenwork' && a.source === 'local-app' && !isCurrent
+      ? '<span class="pill" title="' + T('账号从本机客户端导入">客户端</span>') : '')
+    + (a.product === 'qwenwork' && a.source === 'device'
+      ? '<span class="pill" title="' + T('账号由浏览器（设备码）登录添加">浏览器</span>') : '')
     + (a.product === 'dumate' && state.quotas[a.id]?.plan
       ? '<span class="badge" style="color:#8b5cf6;background:rgba(139,92,246,.14);margin-left:4px" title="'
         + esc(T('DuMate 付费套餐生效中') + (state.quotas[a.id].planExpiresAt ? T('，') + fmtTime(state.quotas[a.id].planExpiresAt).slice(0, 10) + T(' 到期') : '')) + '">'
         + esc(state.quotas[a.id].plan) + '</span>' : '')
-    // 「客户端当前」徽章：croli 不在标题行渲染——它的积分是累计池，credit-line 右侧
-    // 的「已用/共」dim 位本来就空着没信息量，徽章挪到那里（creditHtml 的 croli 分支），
-    // 标题行只剩名字 + 签到徽章，窄宽窗口都不互相挤（2026-11-21 用户反馈）
-    + (isCurrent && a.product !== 'croli' ? '<span class="pill cur" title="' + esc(CLIENT_LABEL[a.product] ? T(CLIENT_LABEL[a.product]) : '') + T(' 客户端当前登录的账号">客户端当前</span>') : '')
+    // 「客户端当前」徽章：croli / qwenwork 不在标题行渲染——croli 的积分是累计池、qwenwork
+    // 同款，credit-line 右侧的 dim 位本来就空着没信息量，徽章挪到那里（creditHtml 的
+    // croli/qwenwork 分支），标题行只剩名字 + 来源徽章 + 签到徽章，窄宽窗口都不互相挤。
+    // 此前 qwenwork 漏排除，标题行和积分行各渲染一次（2026-11-23 用户反馈的重复徽章）
+    + (isCurrent && a.product !== 'croli' && a.product !== 'qwenwork' ? '<span class="pill cur" title="' + esc(CLIENT_LABEL[a.product] ? T(CLIENT_LABEL[a.product]) : '') + T(' 客户端当前登录的账号">客户端当前</span>') : '')
     + (a.product === 'zcode' && isGatewayCurrent(a) ? (zgwAccountCount() > 1
       ? T('<span class="pill gw" title="体验包接口最近 30 分钟内服役过的账号（{n} 个 ZCode 账号按轮转分摊请求，每个请求换一个，与客户端登录无关）">接口使用中</span>', { n: zgwAccountCount() })
       : T('<span class="pill gw" title="体验包接口最近 30 分钟内服役过的账号（多账号时按轮转自动选择，与客户端登录无关）">接口使用中</span>')) : '')

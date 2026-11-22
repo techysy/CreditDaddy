@@ -201,6 +201,10 @@ let codecOverride = null;   // 测试注入：替代 safeStorageCodec（DPAPI �
 /** 测试钩子：注入编解码器（切换写入路径用），传 null 恢复真实实现。 */
 export function _setCodecForTests(codec) { codecOverride = codec; }
 
+let detectOverride = null;  // 测试注入：替代 detectQwenworkApps（真实探测依赖本机安装与注册表）
+/** 测试钩子：注入安装探测（切换解析写入路径用），传 null 恢复真实探测。 */
+export function _setDetectForTests(fn) { detectOverride = fn; }
+
 /**
  * 某个 Electron userData 目录对应的 safeStorage 编解码器。
  * encrypt 用于把账号库里的登录快照写回客户端（切换账号），与 decrypt 同密钥同格式：
@@ -376,6 +380,8 @@ export function terminateQwenwork({ provider, timeoutMs = 8000 } = {}) {
 /**
  * 把本机千问办公客户端的登录换成目标账号（写回 auth-v2.dat）。
  * force：由调用方先 terminateQwenwork 再进来（运行中的客户端退出时会把内存里的旧登录覆盖回文件）。
+ * 快照路径缺失/失效（浏览器登录账号天生无路径）：回退到本机该线已安装客户端的真实数据目录
+ * （必须已安装 + 数据目录已初始化），否则报错给指引——绝不盲写。
  *
  * ## ★ 快照过期语义（与 Qoder 不同）
  *
@@ -387,16 +393,25 @@ export function terminateQwenwork({ provider, timeoutMs = 8000 } = {}) {
  */
 export async function switchTo(account, { force = false } = {}) {
   const auth = account.meta?.qwenworkAuth;
-  const file = account.meta?.qwenworkAuthFile;
+  let file = account.meta?.qwenworkAuthFile;
+  const label = account.provider === 'qwenwork' ? 'QwenWork 国际版' : 'QwenWork 国内版';
   if (!auth) {
     throw new Error(`账号「${account.name || account.id}」没有登录快照，无法切换：请在 QwenWork 里登录该账号后到「添加账号 → 本机导入」导入一次，或用「浏览器登录」重新登录（登录即带快照）`);
   }
   if (!file || !fs.existsSync(file)) {
-    // 快照文件不在了（客户端登出/换号/换数据目录后会被覆盖或删除）：绝不回退到「当前
-    // 实际数据目录」写——那等于把账号盲写进一个没验证过的位置（真机上可能覆盖无关登录）。
-    // 按 Qoder 口径直接报错给指引，让用户重新导入拿到新快照 + 新路径。
-    const label = account.provider === 'qwenwork' ? 'QwenWork 国际版' : 'QwenWork 国内版';
-    throw new Error(`账号「${account.name || account.id}」的切换凭据已失效：${label}的登录文件不在了（${file}）。请打开「${label}」客户端确认已登录该账号，然后到「添加账号 → 本机导入」重新导入一次`);
+    // 快照路径缺失（浏览器/设备码登录只存快照、不落本机路径，authDevice.pollQwenworkLogin
+    // 只写 meta.qwenworkAuth）或已失效（客户端登出/换号/换数据目录后旧路径被覆盖删除）。
+    // 解析本机该线客户端的真实数据目录作为写入目标——但绝不盲写（2026-11 真机覆盖事故底线）：
+    // 只在该线客户端确认已安装且数据目录已初始化时才继续，否则维持报错给指引。
+    // daemon 切换成功后会把实际写入路径回填账号的 qwenworkAuthFile（下次走正常路径）。
+    const app = (detectOverride || detectQwenworkApps)().find((x) => x.provider === account.provider);
+    if (app?.installed && app.dataExists) {
+      file = path.join(app.dataDir, 'auth-v2.dat');
+    } else if (!file) {
+      throw new Error(`账号「${account.name || account.id}」是浏览器登录的账号，本机没有检测到可写入的「${label}」客户端（未安装或从未运行过）。请先安装并启动一次客户端，或到客户端登录该账号后用「添加账号 → 本机导入」导入一次`);
+    } else {
+      throw new Error(`账号「${account.name || account.id}」的切换凭据已失效：${label}的登录文件不在了（${file}）。请打开「${label}」客户端确认已登录该账号，然后到「添加账号 → 本机导入」重新导入一次`);
+    }
   }
   if (!isValidAuthSnapshot(auth)) {
     throw new Error(`账号「${account.name || account.id}」的登录快照字段不完整（缺 schemaVersion/refreshStrategy 等客户端必读字段），请重新导入或重新登录一次`);
@@ -417,7 +432,15 @@ export async function switchTo(account, { force = false } = {}) {
     e.qwenworkRunning = true;
     throw e;
   }
-  const { encrypt, decrypt } = codecOverride || await safeStorageCodec(path.dirname(file), ['QwenWorkCN', 'QwenWork']);
+  let codec;
+  try {
+    codec = codecOverride || await safeStorageCodec(path.dirname(file), ['QwenWorkCN', 'QwenWork']);
+  } catch (e) {
+    // 客户端装了但从未启动过（数据目录还没有 Local State）等场景 safeStorageCodec 会裸抛
+    // ENOENT/DPAPI 错误——转成可操作的报错，daemon 按普通 400 透传面板
+    throw new Error(`无法读取「${label}」客户端的加密密钥（${e.message}）。请先启动一次「${label}」客户端再切换`);
+  }
+  const { encrypt, decrypt } = codec;
   try {
     if (JSON.parse(decrypt(fs.readFileSync(file))).token === auth.token) {
       return { switched: false, alreadyActive: true, file };
