@@ -15,7 +15,7 @@ import { clearQuotaMark } from './zcodeGateway.js';
 import {
   autoClaimEnabled, autoClaimUntil, enableAutoClaimFor, setAutoClaimEnabled,
   claimIntervalMin, claimWindowMin,
-  dailyClaimPlan, markDailyClaimRan,
+  dailyClaimPlan, markDailyClaimRan, weekSlotMinutes, nextWeeklyPlanRunAt,
   warmZcodeAppVersion,
 } from './zcodeClient.js';
 import { warmWorkbuddyClientPath } from './workbuddyLocal.js';
@@ -73,9 +73,11 @@ export async function getSchedulerInfo() {
   };
 }
 
-// ── ZCode 每日定时计划：每天 HH:MM 自动开启一轮「自动领取计划」窗口（issue: 用户要求 8 点定时轮询）──
+// ── ZCode 每日定时计划：按周几排 HH:MM，到点自动开启一轮「自动领取计划」窗口──
 // 与手动「保存并启用」同一条链路（enableZcodeAutoClaimWindow），只是到点自动按下那个按钮。
 // 时钟独立于自动领取开关：即使当前窗口正在运行（或已手动关闭），时钟照走，次日照常触发。
+// 周计划口径（2026-11-22 用户）：ZCode 周末集成在 WEEKEND BUILD 活动里不用排；工作日
+// 每天各一刻（周一~四 20:00、周五 22:00）。week[0..6] = 周一..周日，null = 该日不排。
 let dailyPlanTimerHandle = null;
 let dailyPlanNextAt = null;
 
@@ -85,28 +87,27 @@ function localDayKey(nowMs = Date.now()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-/** 距今天 HH:MM 的毫秒数（已过则取明天同一时刻） */
+/** 距下一个排定槽位的毫秒数（只扫严格未来的槽位；七天全没排 → null） */
 function msUntilDailyPlanTime(nowMs = Date.now()) {
-  const { hour, minute } = dailyClaimPlan();
-  const d = new Date(nowMs);
-  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate(), hour, minute, 0, 0);
-  if (target.getTime() <= nowMs) target.setDate(target.getDate() + 1);
-  return target.getTime() - nowMs;
+  const at = nextWeeklyPlanRunAt(nowMs, dailyClaimPlan().week);
+  return at === null ? null : at - nowMs;
 }
 
-/** 每日计划下一次实际触发时刻（展示用）：今天未跑且 HH:MM 未到 → 今天到点；
- *  已过点未跑 → 下一次唤醒（≤1h 内补跑）；今天已跑 → 明天同一时刻。
+/** 计划下一次实际触发时刻（展示用）：今天有槽未到点 → 今天到点；
+ *  今天槽已过未跑 → 下一次唤醒（≤1h 内补跑）；今天已跑/今天没排 → 下一个排定日到点。
  *  必须与 setTimeout 的 1h 钳制解耦——2026-11-17 实测：把「下次唤醒」当 nextRunAt
  *  展示，用户设 20:00 面板却显示 13:03，误以为计划没保存、要「保存并启用」才行。 */
 function nextDailyPlanRunAt(nowMs = Date.now()) {
   const plan = dailyClaimPlan();
   const d = new Date(nowMs);
-  const todayTarget = new Date(d.getFullYear(), d.getMonth(), d.getDate(), plan.hour, plan.minute, 0, 0).getTime();
-  if (plan.lastRunDay !== localDayKey(nowMs)) {
+  const todaySlot = weekSlotMinutes(plan.week[(d.getDay() + 6) % 7]);
+  if (plan.lastRunDay !== localDayKey(nowMs) && todaySlot !== null) {
+    const todayTarget = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() + todaySlot * 60_000;
     if (todayTarget > nowMs) return todayTarget;
     return nowMs + 60 * 60 * 1000;   // 已过点未跑：下一次（≤1h）唤醒补跑
   }
-  return todayTarget + 24 * 3600 * 1000;   // 今天已跑：明天同一时刻
+  const tomorrow = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
+  return nextWeeklyPlanRunAt(tomorrow, plan.week);   // 今天已跑/没排：下一个排定日
 }
 
 export function zcodeDailyPlanInfo() {
@@ -121,12 +122,17 @@ function clearDailyPlanTimers() {
 }
 
 /** 每日计划时钟：enabled 才排；到点时若本业务日还没跑过 → 拉起一轮窗口并记账。
- *  时刻对不上（比如触发瞬间进程刚起）没关系——下一分钟重排永远兜得住。 */
+ *  时刻对不上（比如触发瞬间进程刚起）没关系——下一分钟重排永远兜得住；
+ *  槽位已过的补跑同理：1h 钳制唤醒后 due 判定（今天有槽且已过点）照样放行。 */
 function syncDailyPlanScheduler() {
   clearDailyPlanTimers();
-  if (!dailyClaimPlan().enabled) return;
-  const delay = Math.min(Math.max(msUntilDailyPlanTime(), 1000), 60 * 60 * 1000);
-  dailyPlanNextAt = new Date(nextDailyPlanRunAt()).toISOString();
+  const plan = dailyClaimPlan();
+  if (!plan.enabled) return;
+  const ms = msUntilDailyPlanTime();
+  if (ms === null) { dailyPlanNextAt = null; return; }   // enabled 但七天全没排：无可触发
+  const delay = Math.min(Math.max(ms, 1000), 60 * 60 * 1000);
+  const nextAt = nextDailyPlanRunAt();
+  dailyPlanNextAt = nextAt === null ? null : new Date(nextAt).toISOString();
   dailyPlanTimerHandle = setTimeout(() => {
     dailyPlanTimerHandle = null;
     dailyPlanNextAt = null;
@@ -134,11 +140,12 @@ function syncDailyPlanScheduler() {
       const plan = dailyClaimPlan();
       const today = localDayKey();
       const now = new Date();
-      const due = now.getHours() === plan.hour || (now.getHours() * 60 + now.getMinutes()) >= plan.hour * 60 + plan.minute;
+      const slotMin = weekSlotMinutes(plan.week[(now.getDay() + 6) % 7]);
+      const due = slotMin !== null && (now.getHours() * 60 + now.getMinutes()) >= slotMin;
       if (due && plan.lastRunDay !== today) {
         markDailyClaimRan(today);
         enableZcodeAutoClaimWindow();
-        logger.info('ZCODE-CLAIM', '每日定时计划 {hh}:{mm} 触发——自动领取窗口已开启（周期 {iv} 分钟，{win}）', { hh: String(plan.hour).padStart(2, '0'), mm: String(plan.minute).padStart(2, '0'), iv: claimIntervalMin(), win: claimWindowMin() > 0 ? '运行 ' + claimWindowMin() + ' 分钟' : '一直运行' });
+        logger.info('ZCODE-CLAIM', '每日定时计划 {hh}:{mm} 触发——自动领取窗口已开启（周期 {iv} 分钟，{win}）', { hh: String(Math.floor(slotMin / 60)).padStart(2, '0'), mm: String(slotMin % 60).padStart(2, '0'), iv: claimIntervalMin(), win: claimWindowMin() > 0 ? '运行 ' + claimWindowMin() + ' 分钟' : '一直运行' });
       }
     } catch (err) {
       logger.warn('ZCODE-CLAIM', '每日定时计划触发失败:{err}', { err: err?.message || err });

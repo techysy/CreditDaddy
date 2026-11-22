@@ -27,6 +27,7 @@ const CJK = /[一-鿿]/;
 const EXEMPT = new Set([
   '简', '繁', '日',
   '妙手.exe',        // 进程名匹配用的内部串,不展示
+  " | Where-Object { $_.DisplayName -like 'QwenWork*' -or $_.DisplayName -like '千问办公*' }",   // 注册表查询脚本片段(产品名匹配串),非用户可见文案
   '本版主题：', '本版主题:',   // desktop changelog-brief 的 CHANGELOG 解析锚点(全/半角两种冒号),不是 UI 文案
 ]);
 

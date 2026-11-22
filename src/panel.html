@@ -1113,12 +1113,14 @@
           <input type="checkbox" id="zac-daily-on" class="tz" title="开关即时生效：开=按当前时间排计划；关=取消计划">
         </span>
       </div>
-      <div id="zac-daily-fields" style="display:flex;gap:8px;align-items:center;margin-top:8px">
-        <span class="dim" style="font-size:12px;flex:none" data-i18n="每天">每天</span>
-        <input class="input" id="zac-daily-time" type="time" style="width:120px">
-        <button class="btn primary" id="zac-daily-save" style="flex:none" data-i18n="保存定时">保存定时</button>
+      <div id="zac-daily-fields" style="margin-top:8px">
+        <div id="zac-week" style="display:grid;grid-template-columns:1fr 1fr;gap:6px 14px"></div>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:10px">
+          <button class="btn primary" id="zac-daily-save" style="flex:none" data-i18n="保存定时">保存定时</button>
+          <span class="hint" style="flex:1" data-i18n="清空某天的时间 = 该日不排；ZCode 周末集成在 WEEKEND BUILD 活动里，周六周日可留空">清空某天的时间 = 该日不排；ZCode 周末集成在 WEEKEND BUILD 活动里，周六周日可留空</span>
+        </div>
       </div>
-      <div class="hint" style="margin-top:6px" data-i18n="开关即保存：开=按当前时间排上计划，关=取消计划。改时间后点「保存定时」；到点自动开跑一轮（按下面单次窗口的参数），无需再点其他按钮。">开关即保存：开=按当前时间排上计划，关=取消计划。改时间后点「保存定时」；到点自动开跑一轮（按下面单次窗口的参数），无需再点其他按钮。</div>
+      <div class="hint" style="margin-top:6px" data-i18n="开关即保存：开=按上面各天的时间排上计划，关=取消计划。改时间后点「保存定时」；到点自动开跑一轮（按下面单次窗口的参数），无需再点其他按钮。">开关即保存：开=按上面各天的时间排上计划，关=取消计划。改时间后点「保存定时」；到点自动开跑一轮（按下面单次窗口的参数），无需再点其他按钮。</div>
     </div>
     <div style="border:1px solid var(--border-subtle);border-radius:10px;padding:10px 12px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
@@ -2371,7 +2373,7 @@ function renderProd() {
     $('zt-ac').title = allClaimed && (acOn || dpOn)
       ? T('今日已全部领取，自动轮已无事可做（窗口/计划仍挂着，次日刷新后照常）') + dpText + T('——点我调整')
       : acOn ? T('自动领取运行中') + dpText + T('——点我调整轮询周期 / 运行时长')
-      : dpOn ? T('每日定时已排：') + T('每天 ') + String(dp.hour).padStart(2, '0') + ':' + String(dp.minute).padStart(2, '0') + T(' 自动开跑一轮')
+      : dpOn ? T('每日定时已排：') + (zacWeekSummary(dp.week) || T('每天 ') + String(dp.hour).padStart(2, '0') + ':' + String(dp.minute).padStart(2, '0')) + T(' 自动开跑一轮')
         + (dp.nextRunAt ? T('，下次 ') + esc(fmtTime(dp.nextRunAt).slice(5, 16)) : '') + T('（已保存即生效，无需「启用」）') + T('——点我调整')
       : T('自动领取已关闭——点我排每日定时，或立即开跑');
     $('zt-gw').innerHTML = dot(gwOn) + T('接口') + (gwOn && state.zGatewayLan === true ? T('·局域网') : '');
@@ -2726,7 +2728,7 @@ function renderStatus() {
     const schZc = (s.scheduler && s.scheduler.zcode) || {};
     const schDp = schZc.dailyPlan || dp || {};
     const dpText = (dpOn || schDp.enabled === true)
-      ? T('每天 ') + String(schDp.hour ?? 8).padStart(2, '0') + ':' + String(schDp.minute ?? 0).padStart(2, '0') + T(' 自动开跑一轮')
+      ? (zacWeekSummary(schDp.week) || T('每天 ') + String(schDp.hour ?? 8).padStart(2, '0') + ':' + String(schDp.minute ?? 0).padStart(2, '0')) + T(' 自动开跑一轮')
         + (schDp.nextRunAt ? T('，下次 ') + esc(fmtTime(schDp.nextRunAt).slice(5, 16)) : '')
       : '';
     n.innerHTML = T('<div class="z-row"><span class="z-label">活动领取</span><span class="z-text">活动包积分，每日 0 点左右刷新（无每日签到）。')
@@ -2922,7 +2924,6 @@ document.addEventListener('click', async (e) => {
     $('zac-interval').value = state.zClaimIntervalMin || 2;
     $('zac-window').value = state.zClaimWindowMin === 0 ? 0 : (state.zClaimWindowMin || 60);
     const dp = state.zDailyPlan || {};
-    $('zac-daily-time').value = String(dp.hour ?? 8).padStart(2, '0') + ':' + String(dp.minute ?? 0).padStart(2, '0');
     // 计划当前态直读 scheduler（nextRunAt 是时钟实排的，state.zDailyPlan 可能滞后 30s 轮询）
     const schDp = ((state.status && state.status.scheduler && state.status.scheduler.zcode) || {}).dailyPlan || dp;
     applyZacDailyState(schDp);
@@ -5486,19 +5487,47 @@ if (updBridge && typeof updBridge.onChangelogOpen === 'function') {
 }
 
 // ZCode 自动领取计划：每日定时（开关即存 + 保存定时改时间）与单次窗口（立即开跑/停止运行）两条独立路径
+// 周计划（2026-11-22 用户口径）：按周几各排各的时刻，null = 该日不排（周末集成在
+// WEEKEND BUILD 活动里）。输入行是静态 DOM（启动建一次，带 data-i18n 供语言切换重扫）。
+const ZAC_DAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+(() => {
+  $('zac-week').innerHTML = ZAC_DAYS.map((d, i) =>
+    '<span style="display:flex;align-items:center;gap:6px;min-width:0">'
+    + '<span class="dim" style="font-size:12px;flex:none" data-i18n="' + d + '">' + T(d) + '</span>'
+    + '<input class="input" type="time" data-zac-day="' + i + '" style="flex:1;min-width:0"></span>'
+  ).join('');
+})();
+// 周计划摘要（顶栏 title / toast / 仪表盘横幅共用）：同刻的同段合并，全周同刻 → 「每天」
+function zacWeekSummary(week) {
+  if (!Array.isArray(week) || week.length !== 7) return '';
+  const groups = [];
+  for (let i = 0; i < 7; i++) {
+    if (!week[i]) continue;
+    const g = groups.find((x) => x.t === week[i]);
+    if (g) g.days.push(T(ZAC_DAYS[i]));
+    else groups.push({ t: week[i], days: [T(ZAC_DAYS[i])] });
+  }
+  if (!groups.length) return T('未排');
+  if (groups.length === 1 && groups[0].days.length === 7) return T('每天 ') + groups[0].t;
+  return groups.map((g) => g.days.join('/') + ' ' + g.t).join(' · ');
+}
 function zacDailyPlanPayload(enabled) {
-  const t = /^(\d{1,2}):(\d{2})$/.exec(String($('zac-daily-time').value || '').trim());
+  const inputs = [...document.querySelectorAll('#zac-week input[data-zac-day]')]
+    .sort((a, b) => Number(a.dataset.zacDay) - Number(b.dataset.zacDay));
   return {
     enabled: enabled === true,
-    hour: t ? Math.min(23, Number(t[1])) : 8,
-    minute: t ? Math.min(59, Number(t[2])) : 0,
+    week: inputs.map((inp) => (/^\d{1,2}:\d{2}$/.test(String(inp.value || '').trim()) ? String(inp.value).trim() : null)),
   };
 }
-// 弹窗内每日定时区的统一回显：开关/时间行/「保存定时」/状态徽章都从 daemon 返回的 dailyPlan 派生——UI 不自己猜状态
+// 弹窗内每日定时区的统一回显：开关/周计划各行/「保存定时」/状态徽章都从 daemon 返回的 dailyPlan 派生——UI 不自己猜状态
 function applyZacDailyState(dp) {
   const on = dp && dp.enabled === true;
   $('zac-daily-on').checked = on;
-  $('zac-daily-time').disabled = !on;
+  const week = Array.isArray(dp?.week) && dp.week.length === 7 ? dp.week : Array(7).fill('');
+  document.querySelectorAll('#zac-week input[data-zac-day]').forEach((inp) => {
+    inp.value = week[Number(inp.dataset.zacDay)] || '';
+    inp.disabled = !on;
+  });
   $('zac-daily-save').disabled = !on;
   const chip = $('zac-daily-state');
   chip.classList.toggle('on', on);
@@ -5545,7 +5574,7 @@ async function putZacDailyPlan(payload) {
   }
 }
 const zacDailyToast = (dp) => (dp.enabled
-  ? T('每日定时已保存：每天 ') + String(dp.hour).padStart(2, '0') + ':' + String(dp.minute).padStart(2, '0') + T(' 自动开启一轮（到点才跑，不影响当前）')
+  ? T('每日定时已保存：') + (zacWeekSummary(dp.week) || T('每天 ') + String(dp.hour).padStart(2, '0') + ':' + String(dp.minute).padStart(2, '0')) + T(' 自动开启一轮（到点才跑，不影响当前）')
   : T('每日定时已取消'));
 // 开关即保存：开=按当前时间排上计划，关=取消计划。失败时回显 daemon 侧真实状态，不让 UI 撒谎
 $('zac-daily-on').addEventListener('change', async () => {

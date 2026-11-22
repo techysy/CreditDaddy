@@ -177,15 +177,54 @@ export function setClaimWindowMin(v) {
 // 而不是每天手动点一次「保存并启用」。计划本身落 zcode-net.json（0600），重启后仍生效。
 // 防重跑：lastRunDay 记业务日（本地日历日），一天只触发一次；手动停用不受影响——
 // 计划到点会重新拉起窗口，用户手动关掉的是「这一轮」，第二天计划照常。
+// 按周几排（2026-11-22 用户口径）：周末集成在 WEEKEND BUILD 活动里不用排，工作日每天
+// 一刻——周一~周四 20:00、周五 22:00。dailyPlanWeek[0..6] = 周一..周日，null = 该日不排；
+// 老配置（只有 dailyPlanHour/Minute）迁移为七天同刻，行为不变。
 
-/** 每日计划配置。hour 0–23（默认 8），minute 0–59（默认 0）；enabled 默认关 */
+/** 'H:MM'/'HH:MM' → 当日分钟数；空/非法 → null */
+export function weekSlotMinutes(t) {
+  if (t === null || t === undefined || t === '') return null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(t).trim());
+  if (!m) return null;
+  const h = Number(m[1]), min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return h * 60 + min;
+}
+
+const fmtSlot = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+
+/** 周计划下一次触发时刻（纯函数，测试可直接驱动）：从 startMs 起往后扫 8 天，
+ *  week[0..6] = 周一..周日 的 'HH:MM'（null = 该日不排）。只返回严格未来的槽位
+ *  （今天已过点的不算——补跑由时钟的 1h 钳制唤醒 + due 判定兜住，见 checkin.js）。
+ *  七天全没排 → null。 */
+export function nextWeeklyPlanRunAt(startMs, week) {
+  const d = new Date(startMs);
+  for (let k = 0; k < 8; k++) {
+    const day = new Date(d.getFullYear(), d.getMonth(), d.getDate() + k);
+    const min = weekSlotMinutes(week?.[(day.getDay() + 6) % 7]);   // JS getDay 周日=0，week 按周一=0
+    if (min === null) continue;
+    const at = day.getTime() + min * 60_000;
+    if (at >= startMs) return at;
+  }
+  return null;
+}
+
+/** 每日计划配置。hour/minute 是 legacy 字段（0–23 / 0–59，默认 8:00）——仅作老版本
+ *  回读兼容与「未设 week 时」的七天同刻迁移源；enabled 默认关 */
 export function dailyClaimPlan() {
   const p = netPref();
   const hour = Number.isFinite(p.dailyPlanHour) && p.dailyPlanHour >= 0 && p.dailyPlanHour <= 23 ? p.dailyPlanHour : 8;
   const minute = Number.isFinite(p.dailyPlanMinute) && p.dailyPlanMinute >= 0 && p.dailyPlanMinute <= 59 ? p.dailyPlanMinute : 0;
-  return { enabled: p.dailyPlanEnabled === true, hour, minute, lastRunDay: p.dailyPlanLastDay };
+  const legacy = fmtSlot(hour * 60 + minute);
+  const week = Array.isArray(p.dailyPlanWeek) && p.dailyPlanWeek.length === 7
+    ? p.dailyPlanWeek.map((t) => {
+        const min = weekSlotMinutes(t);
+        return min === null ? null : fmtSlot(min);
+      })
+    : Array(7).fill(legacy);
+  return { enabled: p.dailyPlanEnabled === true, hour, minute, week, lastRunDay: p.dailyPlanLastDay };
 }
-export function setDailyClaimPlan({ enabled, hour, minute } = {}) {
+export function setDailyClaimPlan({ enabled, hour, minute, week } = {}) {
   const cur = dailyClaimPlan();
   let h = cur.hour;
   let m = cur.minute;
@@ -199,11 +238,22 @@ export function setDailyClaimPlan({ enabled, hour, minute } = {}) {
     if (!Number.isFinite(n) || n < 0 || n > 59) throw new Error('计划时间的分钟需在 0–59 之间');
     m = n;
   }
+  let weekOut;
+  if (week !== undefined) {
+    if (!Array.isArray(week) || week.length !== 7) throw new Error('周计划需为 7 项（周一..周日），每项 null 或 HH:MM');
+    weekOut = week.map((t) => {
+      if (t === null || t === '') return null;
+      const min = weekSlotMinutes(t);
+      if (min === null) throw new Error('周计划时间格式需为 HH:MM（00:00–23:59）');
+      return fmtSlot(min);
+    });
+  }
   writeNetPref({
     ...netPref(),
     dailyPlanEnabled: enabled !== undefined ? enabled === true : cur.enabled,
     dailyPlanHour: h,
     dailyPlanMinute: m,
+    ...(weekOut ? { dailyPlanWeek: weekOut } : {}),
     dailyPlanLastDay: cur.lastRunDay,
   });
 }
