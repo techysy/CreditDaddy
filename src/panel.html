@@ -1114,13 +1114,22 @@
         </span>
       </div>
       <div id="zac-daily-fields" style="margin-top:8px">
-        <div id="zac-week" style="display:grid;grid-template-columns:1fr 1fr;gap:6px 14px"></div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <span style="display:flex;align-items:center;gap:8px">
+            <span class="dim" style="font-size:12px;flex:none" data-i18n="工作日（周一~周四）">工作日（周一~周四）</span>
+            <input class="input" id="zac-wd-time" type="time" style="width:130px">
+          </span>
+          <span style="display:flex;align-items:center;gap:8px">
+            <span class="dim" style="font-size:12px;flex:none" data-i18n="休息日（周五）">休息日（周五）</span>
+            <input class="input" id="zac-rd-time" type="time" style="width:130px">
+          </span>
+        </div>
         <div style="display:flex;gap:10px;align-items:center;margin-top:10px">
           <button class="btn primary" id="zac-daily-save" style="flex:none" data-i18n="保存定时">保存定时</button>
-          <span class="hint" style="flex:1" data-i18n="清空某天的时间 = 该日不排；ZCode 周末集成在 WEEKEND BUILD 活动里，周六周日可留空">清空某天的时间 = 该日不排；ZCode 周末集成在 WEEKEND BUILD 活动里，周六周日可留空</span>
+          <span class="hint" style="flex:1" data-i18n="周六周日不排：ZCode 周末集成在 WEEKEND BUILD 活动里；清空某栏 = 该段不排">周六周日不排：ZCode 周末集成在 WEEKEND BUILD 活动里；清空某栏 = 该段不排</span>
         </div>
       </div>
-      <div class="hint" style="margin-top:6px" data-i18n="开关即保存：开=按上面各天的时间排上计划，关=取消计划。改时间后点「保存定时」；到点自动开跑一轮（按下面单次窗口的参数），无需再点其他按钮。">开关即保存：开=按上面各天的时间排上计划，关=取消计划。改时间后点「保存定时」；到点自动开跑一轮（按下面单次窗口的参数），无需再点其他按钮。</div>
+      <div class="hint" style="margin-top:6px" data-i18n="开关即保存：开=按上面两栏的时间排上计划，关=取消计划。改时间后点「保存定时」；到点自动开跑一轮（按下面单次窗口的参数），无需再点其他按钮。">开关即保存：开=按上面两栏的时间排上计划，关=取消计划。改时间后点「保存定时」；到点自动开跑一轮（按下面单次窗口的参数），无需再点其他按钮。</div>
     </div>
     <div style="border:1px solid var(--border-subtle);border-radius:10px;padding:10px 12px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
@@ -5487,47 +5496,32 @@ if (updBridge && typeof updBridge.onChangelogOpen === 'function') {
 }
 
 // ZCode 自动领取计划：每日定时（开关即存 + 保存定时改时间）与单次窗口（立即开跑/停止运行）两条独立路径
-// 周计划（2026-11-22 用户口径）：按周几各排各的时刻，null = 该日不排（周末集成在
-// WEEKEND BUILD 活动里）。输入行是静态 DOM（启动建一次，带 data-i18n 供语言切换重扫）。
-const ZAC_DAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-(() => {
-  $('zac-week').innerHTML = ZAC_DAYS.map((d, i) =>
-    '<span style="display:flex;align-items:center;gap:6px;min-width:0">'
-    + '<span class="dim" style="font-size:12px;flex:none" data-i18n="' + d + '">' + T(d) + '</span>'
-    + '<input class="input" type="time" data-zac-day="' + i + '" style="flex:1;min-width:0"></span>'
-  ).join('');
-})();
-// 周计划摘要（顶栏 title / toast / 仪表盘横幅共用）：同刻的同段合并，全周同刻 → 「每天」
+// 两栏口径（2026-11-22 用户：理论上只需要工作日与休息日两段）——工作日=周一~周四，
+// 休息日=周五（WEEKEND BUILD 周五晚开始，22 点才合适）；周六周日固定不排（周末集成在
+// WEEKEND BUILD 活动里）。底层仍落 dailyPlanWeek 七槽（周一..周日），弹窗只暴露两栏。
+// 周计划摘要（顶栏 title / toast / 仪表盘横幅共用）：两段各时刻
 function zacWeekSummary(week) {
   if (!Array.isArray(week) || week.length !== 7) return '';
-  const groups = [];
-  for (let i = 0; i < 7; i++) {
-    if (!week[i]) continue;
-    const g = groups.find((x) => x.t === week[i]);
-    if (g) g.days.push(T(ZAC_DAYS[i]));
-    else groups.push({ t: week[i], days: [T(ZAC_DAYS[i])] });
-  }
-  if (!groups.length) return T('未排');
-  if (groups.length === 1 && groups[0].days.length === 7) return T('每天 ') + groups[0].t;
-  return groups.map((g) => g.days.join('/') + ' ' + g.t).join(' · ');
+  const parts = [];
+  if (week[0]) parts.push(T('工作日') + ' ' + week[0]);
+  if (week[4]) parts.push(T('休息日') + ' ' + week[4]);
+  return parts.join(' · ') || T('未排');
 }
 function zacDailyPlanPayload(enabled) {
-  const inputs = [...document.querySelectorAll('#zac-week input[data-zac-day]')]
-    .sort((a, b) => Number(a.dataset.zacDay) - Number(b.dataset.zacDay));
-  return {
-    enabled: enabled === true,
-    week: inputs.map((inp) => (/^\d{1,2}:\d{2}$/.test(String(inp.value || '').trim()) ? String(inp.value).trim() : null)),
-  };
+  const read = (id) => (/^\d{1,2}:\d{2}$/.test(String($(id).value || '').trim()) ? String($(id).value).trim() : null);
+  const wd = read('zac-wd-time');
+  const rd = read('zac-rd-time');
+  return { enabled: enabled === true, week: [wd, wd, wd, wd, rd, null, null] };
 }
-// 弹窗内每日定时区的统一回显：开关/周计划各行/「保存定时」/状态徽章都从 daemon 返回的 dailyPlan 派生——UI 不自己猜状态
+// 弹窗内每日定时区的统一回显：开关/两栏时间/「保存定时」/状态徽章都从 daemon 返回的 dailyPlan 派生——UI 不自己猜状态
 function applyZacDailyState(dp) {
   const on = dp && dp.enabled === true;
   $('zac-daily-on').checked = on;
   const week = Array.isArray(dp?.week) && dp.week.length === 7 ? dp.week : Array(7).fill('');
-  document.querySelectorAll('#zac-week input[data-zac-day]').forEach((inp) => {
-    inp.value = week[Number(inp.dataset.zacDay)] || '';
-    inp.disabled = !on;
-  });
+  $('zac-wd-time').value = week[0] || '';
+  $('zac-rd-time').value = week[4] || '';
+  $('zac-wd-time').disabled = !on;
+  $('zac-rd-time').disabled = !on;
   $('zac-daily-save').disabled = !on;
   const chip = $('zac-daily-state');
   chip.classList.toggle('on', on);
