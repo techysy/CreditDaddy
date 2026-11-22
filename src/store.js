@@ -293,6 +293,10 @@ export function publicAccount(a) {
       ? (meta.qoderWebDead?.at || null)
       : null,
     codebuddyIdeFlavor: meta.codebuddyIdeFlavor || null,
+    // qwenwork 凭据是否已绑定本机客户端快照路径（本机导入的账号、被 daemon RT 轮换同步
+    // 归化的浏览器账号都有）：面板据此区分「客户端 / 浏览器」来源徽章——浏览器添加但
+    // 凭据已归化到客户端的，不再标「浏览器」（2026-11-23 用户反馈）。只回布尔不回路径。
+    qwenworkAuthFile: String(a.provider).startsWith('qwenwork') ? Boolean(meta.qwenworkAuthFile) : null,
     canSwitch: Boolean(
       meta.session?.account ||
       meta.credentials ||

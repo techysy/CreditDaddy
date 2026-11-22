@@ -61,7 +61,7 @@
   " 获取大小中…": " fetching size...",
   " 客户端当前登录的账号": " client currently signed-in account",
   " 客户端当前登录的账号\">客户端当前</span>": " currently signed in to the client\">In client</span>",
-  "账号从本机客户端导入\">客户端</span>": "Imported from the local client\">Client</span>",
+  "凭据来自本机客户端\">客户端</span>": "Credentials live in the local client\">Client</span>",
   "账号由浏览器（设备码）登录添加\">浏览器</span>": "Added via browser (device code) sign-in\">Browser</span>",
   " 客户端到此账号\">": " client to this account\">",
   " 切换到「": " to \"",

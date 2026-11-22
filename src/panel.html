@@ -2104,12 +2104,14 @@ function cardHtml(a) {
     + '<div class="row1"><div class="name-group">'
     + T('<span class="name" data-act="rename" title="点击修改备注名">') + esc(maskName(a.name) || T('(未命名)')) + '</span>'
     + provBadges(a.provider, true, a.flavor)
-    // qwenwork 来源标记（2026-11-23 用户反馈）：客户端导入 / 浏览器登录一眼可辨，紧挨
-    // 国内版/国际版徽章。当前登录账号省「客户端」标记——积分行「客户端当前」已隐含
-    // 客户端来源，两个 pill 并排视觉重复
-    + (a.product === 'qwenwork' && a.source === 'local-app' && !isCurrent
-      ? '<span class="pill" title="' + T('账号从本机客户端导入">客户端</span>') : '')
-    + (a.product === 'qwenwork' && a.source === 'device'
+    // qwenwork 来源标记（2026-11-23 用户反馈）：按**凭据当前来源**区分，紧挨国内版/国际版
+    // 徽章——凭据绑定了本机客户端快照路径（meta.qwenworkAuthFile，publicAccount 回布尔
+    // qwenworkAuthFile）就标「客户端」：本机导入的账号、浏览器添加后被 RT 轮换同步归化的
+    // 账号（快照+路径都是客户端手里的最新凭据）都算；纯浏览器凭据（无路径）才标「浏览器」。
+    // 当前登录账号省「客户端」标记——积分行「客户端当前」已隐含客户端来源，两个 pill 并排视觉重复
+    + (a.product === 'qwenwork' && (a.source === 'local-app' || a.qwenworkAuthFile) && !isCurrent
+      ? '<span class="pill" title="' + T('凭据来自本机客户端">客户端</span>') : '')
+    + (a.product === 'qwenwork' && a.source === 'device' && !a.qwenworkAuthFile
       ? '<span class="pill" title="' + T('账号由浏览器（设备码）登录添加">浏览器</span>') : '')
     + (a.product === 'dumate' && state.quotas[a.id]?.plan
       ? '<span class="badge" style="color:#8b5cf6;background:rgba(139,92,246,.14);margin-left:4px" title="'
