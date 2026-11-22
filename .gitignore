@@ -15,3 +15,5 @@ desktop/server.bak-*/
 release-files/
 fnos-packaging/app/server/
 .tmp-ca-probe/
+.mirasim/
+*.tgz

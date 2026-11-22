@@ -297,6 +297,7 @@ export function publicAccount(a) {
       meta.session?.account ||
       meta.credentials ||
       meta.qoderAuth ||
+      meta.qwenworkAuth ||
       meta.codebuddyIdeFlavor ||
       (a.provider.startsWith('workbuddy') && Boolean(a.token)) ||
       a.provider === 'catpaw' ||
@@ -304,7 +305,8 @@ export function publicAccount(a) {
       a.provider === 'trae-intl' ||
       a.provider === 'loomy' ||
       a.provider === 'dumate' ||
-      a.provider === 'croli'
+      a.provider === 'croli' ||
+      String(a.provider).startsWith('qwenwork')
     ),
     canSwitchWorkbuddyClient: Boolean(meta.session?.account || (a.provider.startsWith('workbuddy') && Boolean(a.token))),
     canSwitchCodebuddyIde: Boolean(a.provider.startsWith('workbuddy') && Boolean(a.token)),

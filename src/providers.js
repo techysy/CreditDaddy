@@ -25,12 +25,43 @@ import { checkinMeoo, fetchMeooQuota } from './meooClient.js';
 import { checkinDumate, fetchDumateQuota } from './dumateClient.js';
 import { checkinCroli, fetchCroliQuota, verifyCroliAccount } from './croliClient.js';
 import { fetchLoomyQuota, verifyLoomyAccount } from './loomyClient.js';
+import { fetchUserinfo as fetchQwenworkUserinfo, fetchQuotaUsage as fetchQwenworkQuota } from './qwenworkClient.js';
 /** 从 userinfo 响应中挑一个可读的显示名 */
 export function displayNameFrom(ui) {
   const pick = [ui?.nickname, ui?.name, ui?.username, ui?.email]
     .map((v) => (typeof v === 'string' ? v.trim() : ''))
     .find(Boolean);
   return pick || null;
+}
+
+/**
+ * 千问办公 account-context → 统一积分结构。个人版是积分余额制（quota.total/used 常为
+ * null，remaining = 剩余积分，实测 899.99），口径与 Croli 积分余额一致：一条余额行，
+ * 套餐名（个人基础版等）挂 plan 字段给额度卡副标题用。
+ * biz/团队账号 remaining 可能为 null 而 total/used 有值——按 10R 同接口口径用
+ * total-used 兜底，别把 800 积分算成 0 并误判「已用尽」。
+ */
+export function normalizeQwenworkQuota(data) {
+  const q = data?.quota || {};
+  const plan = data?.plan || null;
+  const total = Number(q.total);
+  const used = Number(q.used);
+  // 先显式判 null/undefined 再看数字——Number(null) 是 0 且 finite，直接 Number.isFinite
+  // 会把显式 null 当成真 0
+  const balance = q.remaining !== null && q.remaining !== undefined && Number.isFinite(Number(q.remaining))
+    ? Number(q.remaining)
+    : Number.isFinite(total) && total > 0 ? Math.max(0, total - (Number.isFinite(used) ? used : 0))
+    : 0;
+  const parts = [{ name: '积分余额', total: balance, used: 0, remaining: balance }];
+  return {
+    unit: '积分',
+    plan: plan?.name || null,
+    total: balance,
+    used: 0,
+    remaining: balance,
+    parts,
+    exceeded: Boolean(q.exceeded) || balance <= 0,
+  };
 }
 
 /** Qoder /api/v2/quota/usage → 统一积分结构；detail 为网页端逐资源包明细（可选，已按 uid 校验） */
@@ -128,6 +159,16 @@ const PRODUCTS = {
     quota: async (account, ctx = {}) => normalizeQoderQuota(await fetchQuotaUsage(account), await qoderWebDetail(account, ctx)),
     verify: async (account) => {
       const ui = await fetchUserinfo(account);
+      return { name: displayNameFrom(ui), uid: typeof ui?.id === 'string' ? ui.id : null, email: ui?.email || null };
+    },
+  },
+  // 千问办公：双线同构（gateway.qwenwork.ai / .cn），资料与配额都从 account-context 一次取全。
+  // 无签到口径（个人版积分靠订阅/活动发放，没找到稳定的每日领取端点），调度器自动跳过。
+  qwenwork: {
+    label: '千问办公',
+    quota: async (account) => normalizeQwenworkQuota(await fetchQwenworkQuota(account)),
+    verify: async (account) => {
+      const ui = await fetchQwenworkUserinfo(account);
       return { name: displayNameFrom(ui), uid: typeof ui?.id === 'string' ? ui.id : null, email: ui?.email || null };
     },
   },

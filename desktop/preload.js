@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld('creditdaddy', {
   openTraeClient: (variant) => ipcRenderer.invoke('open-trae-client', variant ? String(variant) : undefined),
   /** 打开本机 Qoder 客户端（按渠道：qoder / qoder-cn）@returns {Promise<{ok: boolean, error?: string}>} */
   openQoderClient: (provider) => ipcRenderer.invoke('open-qoder-client', String(provider || 'qoder')),
+  /** 打开本机千问办公客户端（按渠道：qwenwork 国际版 / qwenwork-cn 国内版）@returns {Promise<{ok: boolean, error?: string}>} */
+  openQwenworkClient: (provider) => ipcRenderer.invoke('open-qwenwork-client', String(provider || 'qwenwork-cn')),
   openDoubaoClient: () => ipcRenderer.invoke('open-doubao-client'),
   /** 打开本机 MiniMax Code 客户端 @returns {Promise<{ok: boolean, error?: string}>} */
   openMiniMaxClient: () => ipcRenderer.invoke('open-minimax-client'),

@@ -109,6 +109,45 @@ export function buildMiniMaxAccountSource(account) {
   return `minimax-free-${clean || 'acc'}`.slice(0, 32);
 }
 
+/** 生成单个 QwenWork（千问办公）账号的外配额卡 source id（双线前缀区分：qwenwork- / qwenwork-cn-） */
+export function buildQwenworkAccountSource(account) {
+  const rawId = account.uid || account.id || 'default';
+  const clean = String(rawId).toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 18);
+  return `${account.provider === 'qwenwork-cn' ? 'qwenwork-cn' : 'qwenwork'}-${clean || 'acc'}`.slice(0, 32);
+}
+
+/**
+ * 组装单个 QwenWork 账号的单卡载荷（crowllm 钱包同款储值余额卡）：
+ * 单行「积分余额」（isCreditBalance 单值卡），plan 带套餐名（个人基础版 / Free）。
+ * quotaData = { remaining, plan } 或 { error }；都缺时出文字状态卡。
+ */
+export function buildQwenworkAccountPayload(account, quotaData) {
+  const source = buildQwenworkAccountSource(account);
+  const label = String(account?.name || account?.uid || 'QwenWork').slice(0, 100);
+  const payload = {
+    provider: account.provider === 'qwenwork-cn' ? 'qwenwork-cn' : 'qwenwork',
+    label,
+    ...(quotaData?.plan ? { plan: String(quotaData.plan).slice(0, 60) } : {}),
+  };
+  const remaining = Number(quotaData?.remaining);
+  if (Number.isFinite(remaining) && !quotaData?.error) {
+    payload.quotas = {
+      credits: {
+        name: '积分余额',
+        used: 0,
+        total: Math.max(remaining, 0) || 0.000001,
+        remainingPercentage: 100,
+        displayRemaining: true,
+        isCreditBalance: true,
+      },
+    };
+  } else {
+    payload.message = quotaData?.error || 'QwenWork 账号额度暂不可查（凭据失效需在 CreditDaddy 重新登录，或网关异常稍后自动重试）';
+  }
+  assertScalarOnly(payload, source);
+  return { source, payload };
+}
+
 /**
  * 组装单个 MiniMax 账号的单卡载荷（minimax-code 同款单值卡）：
  * 单账号独立一张卡，卡面副标题为账号名称（如「主」、「备」），
@@ -604,6 +643,55 @@ export async function runQuotaPush({ endpoint, key, accounts, fetchImpl, onlySou
       const { payload } = buildCrowllmQuotaPayload(a, liveData);
       try {
         assertScalarOnly(payload, source);
+        const r = await pushOne({ endpoint, key, source, payload, fetchImpl, refreshUrl: await rurl(source) });
+        results.push({ source, status: 'ok', entries: r.entries });
+        logger.info('10R', '额度卡已推送：{source}（{n} 行）', { source, n: r.entries ?? (Object.keys(payload.quotas || {}).length || 0) });
+      } catch (e) {
+        results.push({ source, status: 'failed', error: e.message });
+        logger.warn('10R', '额度卡推送失败 {source}:{err}', { source, err: e.message });
+      }
+    }
+  }
+
+  // QwenWork（千问办公双线）积分余额卡：单账号单卡（crowllm 钱包同款储值口径）。
+  // account-context 一次取全（plan 名随卡）；CD 是 qwenwork 配额的唯一出口——10R 对
+  // qwenwork 连接没有原生出卡（provider registry 无 quotaOverview 分支），无双计。
+  const qwAccounts = (accounts || []).filter((a) => (a.provider === 'qwenwork' || a.provider === 'qwenwork-cn') && a.token);
+  if (qwAccounts.length) {
+    const { fetchQuotaUsage } = await import('./qwenworkClient.js');
+    for (const a of qwAccounts) {
+      const { source } = buildQwenworkAccountPayload(a, null);
+      if (only && !only.includes(source)) continue;
+      const skipDead = !only && deadSkip(a);
+      let live = null;           // { remaining, plan }
+      let liveError = null;
+      if (!skipDead) {
+        try {
+          const data = await fetchQuotaUsage(a);
+          live = { remaining: data?.quota?.remaining, plan: data?.plan?.name || null };
+          const rem = Number(live.remaining);
+          if (Number.isFinite(rem)) {
+            persistLive(a, { quotaSnapshot: { used: 0, total: rem, plan: live.plan, isCreditBalance: true, at: new Date().toISOString() } });
+          }
+          probeMark(a, true, null);
+        } catch (err) {
+          liveError = err.message;
+          probeMark(a, false, err.message);
+        }
+      }
+      // 网络抖动 / 5xx / dead 重试窗口不出「暂不可查」空卡——回退最近一次快照保数字
+      //（crowllm 钱包同款口径，本文件头部不变式）；凭据失效（401/403）才交文字状态卡引导重登
+      if (!live) {
+        const snap = a.meta?.quotaSnapshot;
+        const snapTotal = Number(snap?.total);
+        const authDead = /^鉴权失败/.test(liveError || '');
+        if (!authDead && Number.isFinite(snapTotal)) {
+          live = { remaining: snapTotal, plan: snap?.plan || null };
+          liveError = null;
+        }
+      }
+      const { payload } = buildQwenworkAccountPayload(a, live ?? (liveError ? { error: liveError } : null));
+      try {
         const r = await pushOne({ endpoint, key, source, payload, fetchImpl, refreshUrl: await rurl(source) });
         results.push({ source, status: 'ok', entries: r.entries });
         logger.info('10R', '额度卡已推送：{source}（{n} 行）', { source, n: r.entries ?? (Object.keys(payload.quotas || {}).length || 0) });

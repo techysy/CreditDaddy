@@ -4,6 +4,20 @@
 
 ---
 
+## [Unreleased]
+
+本版主题:**新增千问办公（Qwen Work）独立产品线——国内/国际双线全量接入（设备码登录 + 本机凭据导入 + 账号切换 + RT 轮换自动同步 + 双主题图标 + 10Router access-only 同步）**.
+
+- **新增千问办公产品线（qoderwork 同源实锤）**：千问办公与 Qoder 是同一套客户端代码（内部名 `qoderwork`——versions.json、日志 `biz_variant`、asar 内 `qoderRequestTimeoutMs` 三处实锤），按 Qoder 模式全量接入。双 provider：`qwenwork`（国际，gateway.qwenwork.ai）/ `qwenwork-cn`（国内，gateway.qwenwork.cn），协议细节与 10router open-sse 双源互证：
+  - **登录三线**：**设备码授权**（Qoder 同款 PKCE + nonce + machine_id；与 Qoder 的差异一处——authUrl 必带 `client_id` + `redirect_uri`，client_id 是 UUID 常量而非产品名字符串，来自真机登录日志；poll 对 202/404/200 空 body 一律视为 pending）；**本机导入**（解密 `%APPDATA%\QwenWorkCN\auth-v2.dat`，Electron safeStorage v10，DPAPI codec 与 Qoder 同构；legacy `auth.dat` 是 SDK 占位符，不作登录依据）；浏览器登录成功即带完整 auth-v2 快照，账号落库即可切换。
+  - **账号切换**：整份 auth-v2.dat 快照写回客户端（防丢号：切换前先把本机当前登录回写账号库；force 先关客户端再写，切完自动拉起；快照路径失效时按 Qoder 口径报错指引重新导入，绝不盲写其他位置）。快照校验对齐客户端 `isValidWebIdentityData` 硬校验（loginMethod=browser / refreshStrategy=oauth_web_identity / identityVersion / loginDeviceId 缺一不可，浏览器登录侧由 `buildAuthSnapshot` 补全）。过期语义与 Qoder 不同：**access token（约 7 天）过期才硬拦（staleAuth），refresh_token 过期只 warn**——千问办公的 RT（ory_rt_）单次轮换且约 1 小时寿命，硬拦会把所有闲置快照判死。
+  - **RT 轮换自动同步**：/api/status 轮询按 uid 把客户端运行中的最新快照回写账号库（token 变了才写、顶层 token/refreshToken/expiresAt 一并对齐），切换快照不再 1 小时作废。
+  - **配额**：`account-context` 一次取全（user / plan / quota / page），个人版积分余额制（total/used 为 null，remaining=剩余积分）；**无签到口径**（asar 里的 `daily-credit-notice/claim` 语义未实锤，暂不接入，CHECKIN_PRODUCTS 不含）。
+  - **面板**：仪表盘专属卡片（剩余积分合计 + 有效套餐 + 国内/国际客户端分两行如实显示——两个客户端可能各登各号，不再沿用 find 首个命中的口径）；产品页国际/国内地区筛选；**双主题图标**（浅色=国际白底绿标 / 深色与 brutal=国内绿底白标，CSS 按 data-theme 切显隐，hide 规则必须 !important 压过 `.nav .nav-mark-img` 的 display——test.1 真机两图并排事故）；「打开客户端」双版本弹窗选择（用户双版本同装场景）+ 切换后自动拉起；EMPTY_TIP / LOCAL_HINT / 四语 i18n。
+  - **10Router 同步**：`TENROUTER_PROVIDER_MAP` 新增 qwenwork / qwenwork-cn 渠道（10R 原生支持）；`ROTATING_RT_SYNC_PROVIDERS` 同步剥 rt 只推 access（ory_rt_ 单次轮换下两副本必互杀，meoo test.12 口径）；额度卡推送无 10R 原生拉取、无双计风险。
+- **自证测试与真机验证**：新增 test/qwenwork-switch.test.js（stale 拦截 / RT 过期 warn / 字段校验 / alreadyActive / buildAuthSnapshot 回环）与 test/qwenwork-detect.test.js（版本子目录布局 / 双版本目录不混淆 / auth.dat 不作登录依据）+ smoke 用例；真机双线 e2e 全通（CN 2.1.0-26111906 / INTL 2.0.0-26111901 的探测、DPAPI 解密、userinfo、配额拉取走 CD 真实代码路径）。
+- **自审修复（打包前代码审查 10 项）**：导出白名单补 `qwenwork`（此前「QwenWork（全部）」静默导出全部产品线账号）；设备码轮询 200 空 body / 非 JSON 一律 pending（线上网关实测有 200 空 body，不中止登录）、`expires_at` 数值毫秒先 `normalizeExpiry` 再进快照（原样进 `Date.parse` 判 NaN，设备码登录的账号永远切不进客户端）；切换的运行检测/强杀按 provider 取自家 exe（双客户端各登各号不再互杀）；注册表兜底正则按 installName 构造（`QwenWorkCN 2.1.0` 不再漏检）+ 目录按路径段精确归属（`QwenWork` 是 `QwenWorkCN` 前缀，子串匹配互相误收）；额度卡拉取失败回退 `quotaSnapshot` 保数字、仅鉴权失效（401/403）出文字卡（crowllm 钱包同口径）；quota-refresh 渠道族正则补 `qwenwork-cn|qwenwork|crowllm`（长前缀在前，停推的卡不再被 10R 刷新按钮复活）；biz/团队账号 `remaining:null` 按 `total-used` 兜底（10R 同接口口径，不再 800 积分显示成 0 并误判用尽）；「打开客户端」版本目录按 semver 段 + 数字 build 后缀排序（字典序 2.9.0 会压过 2.10.0，同版本不同 build 判等落回 readdir 顺序）；仪表盘国内/国际客户端行各取各的 signedIn（此前共用全局 OR，未登录的一行误显「未导入的账号」）。
+
 ## [1.8.3] (2026-11-21)
 
 本版主题:**新增 Croli 独立产品线（本机凭据直读 + 每日签到 + Clerk OAuth PKCE + Google 登录槽 + 邀请体系全链路）+ CrowLLM 钱包中继（会话槽 JWT 静默续期全自动）+ 用量同步新增 croli 来源（Croli IDE 逐轮账本）与 zcode 死表检测 + OAuth 轮换令牌的 access-only 同步策略**.

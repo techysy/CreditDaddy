@@ -651,12 +651,43 @@ test('导出范围：按 provider 或按产品整体筛选', () => {
     { id: 'c', provider: 'workbuddy', token: 'eyJc' },
     { id: 'd', provider: 'workbuddy-intl', token: 'eyJd' },
     { id: 'e', provider: 'zcode', token: 'z-e' },
+    { id: 'f', provider: 'qwenwork', token: 'eyJf' },
+    { id: 'g', provider: 'qwenwork-cn', token: 'eyJg' },
   ];
   const ids = (o) => transfer.buildExportPayload(accs, o).accounts.map((x) => x.provider);
   assert.deepEqual(ids({ product: 'workbuddy' }), ['workbuddy', 'workbuddy-intl']);
   assert.deepEqual(ids({ product: 'qoder' }), ['qoder', 'qoder-cn']);
+  assert.deepEqual(ids({ product: 'qwenwork' }), ['qwenwork', 'qwenwork-cn']);
   assert.deepEqual(ids({ provider: 'workbuddy-intl' }), ['workbuddy-intl']);
-  assert.equal(ids({}).length, 5);
+  assert.equal(ids({}).length, 7);
+});
+
+test('千问办公：provider 注册（productOf 归一 + canSwitch 带快照可切 + quota 归一化）', async () => {
+  const constants = await import('../src/constants.js?qw' + Date.now());
+  assert.equal(constants.productOf('qwenwork'), 'qwenwork');
+  assert.equal(constants.productOf('qwenwork-cn'), 'qwenwork');
+  // publicAccount 走真实 store：qwenwork-cn 账号带快照即可切换
+  const tmpData = fsSync.mkdtempSync(path.join(os.tmpdir(), 'qw-smoke-'));
+  const prevData = process.env.CREDITDADDY_DATA;
+  process.env.CREDITDADDY_DATA = tmpData;
+  try {
+    const storeFresh = await import('../src/store.js?qw' + Date.now());
+    const pub = storeFresh.publicAccount({
+      id: 'qw1', name: '千问号', provider: 'qwenwork-cn', token: 'eyJtok',
+      uid: 'u-9', meta: { qwenworkAuth: { schemaVersion: 3 } },
+    });
+    assert.equal(pub.product, 'qwenwork');
+    assert.equal(pub.canSwitch, true);
+    const pubNoSnap = storeFresh.publicAccount({ id: 'qw2', name: 'n2', provider: 'qwenwork', token: 't2' });
+    assert.equal(pubNoSnap.canSwitch, true, 'qwenwork 双 provider 天然可切换（设备码登录即带快照）');
+    const { normalizeQwenworkQuota } = await import('../src/providers.js?qw' + Date.now());
+    const q = normalizeQwenworkQuota({ quota: { total: null, used: null, remaining: 899.9949, exceeded: false }, plan: { name: '个人基础版' } });
+    assert.deepEqual({ r: q.remaining, u: q.unit, plan: q.plan, n: q.parts.length, ex: q.exceeded },
+      { r: 899.9949, u: '积分', plan: '个人基础版', n: 1, ex: false });
+  } finally {
+    if (prevData === undefined) delete process.env.CREDITDADDY_DATA; else process.env.CREDITDADDY_DATA = prevData;
+    fsSync.rmSync(tmpData, { recursive: true, force: true });
+  }
 });
 
 // ── 浏览器登录（WorkBuddy / ZCode）：用假 fetch 走完整流程 ──

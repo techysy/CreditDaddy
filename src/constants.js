@@ -5,13 +5,30 @@
  *   openapi.qoder.sh      国际版：活动/签到、userinfo、配额、PAT 兑换
  *   openapi.qoder.com.cn  国内版：同上
  *
- * ⚠️ 非官方接口，Qoder 调整服务端时可能失效。
+ * 千问办公（Qwen Work / 内部名 qoderwork）与 Qoder 同一套客户端代码，登录走同款
+ * PKCE 设备码流，端点与 client_id 来自 10router open-sse + 本机真机日志交叉验证：
+ *   gateway.qwenwork.cn / gateway.qwenwork.ai   设备码登录、account-context、余额
+ *
+ * ⚠️ 非官方接口，Qoder / 千问办公调整服务端时可能失效。
  */
 
 import { readFileSync } from 'node:fs';
 
 export const OPENAPI_BASE = 'https://openapi.qoder.sh';
 export const CN_OPENAPI_BASE = 'https://openapi.qoder.com.cn';
+
+// ── 千问办公（双线同构，参照 10router open-sse/shared/qwenwork/constants.js）──
+export const QWENWORK_GATEWAY_BASE = 'https://gateway.qwenwork.ai';
+export const QWENWORK_CLIENT_ID = 'cc65e5fc-05bd-4f5d-a4e8-0df19aa3d75a';
+export const QWENWORK_REDIRECT_URI = 'qwenwork://';
+export const CN_QWENWORK_GATEWAY_BASE = 'https://gateway.qwenwork.cn';
+export const CN_QWENWORK_CLIENT_ID = 'e883ade2-e6e3-4d6d-adf7-f92ceff5fdcb';
+export const CN_QWENWORK_REDIRECT_URI = 'qwenwork-cn://';
+// 资料与配额都从 account-context 一次取全（data.user / data.plan / data.quota）
+export const QWENWORK_ACCOUNT_CONTEXT_PATH = '/api/v1/adapter/user/account-context?include=user,plan,quota,page,data_sharing';
+export const QWENWORK_DEVICE_TOKEN_POLL_PATH = '/api/v1/deviceToken/poll';
+// 刷新端点存在但 CD 不调：refresh_token 单次轮换（ory_rt_），官方客户端独占刷新，
+// CD 若抢刷必与客户端互杀（meoo test.12 同款事故）。
 
 // 网页端（账号设置 → 用量明细）同源 API：逐资源包明细只在这里提供，且只认浏览器登录后的会话 Cookie。
 export const WEB_BASE = 'https://qoder.com';
@@ -35,10 +52,12 @@ export const WEB_USAGE_PATH = '/api/v2/me/usages/big_model_credits';
 export const JOB_TOKEN_EXCHANGE_PATH = '/api/v1/jobToken/exchange';
 
 // 账号的 provider = 产品 + 区域。新增产品时在此登记，并在 providers.js 挂上对应实现。
-export const PROVIDERS = ['qoder', 'qoder-cn', 'workbuddy', 'workbuddy-intl', 'zcode', 'mirasim', 'catpaw', 'trae', 'trae-intl', 'minimax', 'minimax-global', 'tokenharbor', 'xiaomi-mimo', 'river', 'modelscope', 'longcat', 'doubao', 'loomy', 'lingxi', 'meoo', 'dumate', 'croli', 'crowllm'];
+export const PROVIDERS = ['qoder', 'qoder-cn', 'qwenwork', 'qwenwork-cn', 'workbuddy', 'workbuddy-intl', 'zcode', 'mirasim', 'catpaw', 'trae', 'trae-intl', 'minimax', 'minimax-global', 'tokenharbor', 'xiaomi-mimo', 'river', 'modelscope', 'longcat', 'doubao', 'loomy', 'lingxi', 'meoo', 'dumate', 'croli', 'crowllm'];
 export const PROVIDER_LABEL = {
   qoder: 'Qoder 国际版',
   'qoder-cn': 'Qoder 国内版',
+  qwenwork: 'QwenWork 国际版',
+  'qwenwork-cn': 'QwenWork 国内版',
   workbuddy: 'WorkBuddy 国内版',
   'workbuddy-intl': 'WorkBuddy 国际版',
   zcode: 'ZCode',
@@ -61,9 +80,10 @@ export const PROVIDER_LABEL = {
   croli: 'Croli',
   crowllm: 'CrowLLM',
 };
-/** provider → 产品线（qoder / workbuddy / zcode / mirasim / catpaw / trae / minimax / tokenharbor / xiaomi-mimo / river） */
+/** provider → 产品线（qoder / qwenwork / workbuddy / zcode / mirasim / catpaw / trae / minimax / tokenharbor / xiaomi-mimo / river） */
 export const productOf = (provider) => {
   const p = String(provider);
+  if (p.startsWith('qwenwork')) return 'qwenwork';
   if (p.startsWith('workbuddy')) return 'workbuddy';
   if (p.startsWith('zcode')) return 'zcode';
   if (p === 'mirasim') return 'mirasim';
@@ -115,6 +135,27 @@ export function buildExchangeHeaders() {
     'Cosy-Version': '1.0.0',
     'Cosy-ClientType': '5',
   };
+}
+
+/**
+ * 千问办公客户端身份头（X-QwenWork-*，源自真机抓包）。
+ * account-context / 余额接口不带这些头也能通（鉴权只看 Bearer），带上保持与官方客户端一致，
+ * 服务端策略收紧时不至于被一刀切。
+ */
+export function buildQwenworkHeaders(token) {
+  const h = {
+    Accept: 'application/json',
+    'User-Agent': 'qoderwork/2.1.0',
+    'X-QwenWork-Version': '2.1.0',
+    'X-QwenWork-Release-Version': '2.1.0-26111906',
+    'X-QwenWork-Build': '26111906',
+    'X-QwenWork-Platform': process.platform === 'win32' ? 'win32'
+      : process.platform === 'darwin' ? 'darwin' : 'linux',
+    'X-QwenWork-Arch': process.arch,
+    'X-QwenWork-Channel': 'stable',
+  };
+  if (token) h.Authorization = `Bearer ${token}`;
+  return h;
 }
 
 export const FETCH_TIMEOUT_MS = 15000;

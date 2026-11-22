@@ -2396,5 +2396,26 @@
   " · 付费 $": " · paid $",
   "钱包余额 $": "Wallet balance $",
   "该站点走登录窗静默续期（点此打开登录窗，GitHub 会话自动完成）": "This site renews via the login window (click to open — the GitHub session completes automatically)",
-  "打开登录窗静默续期中——进入钱包页后关闭即可": "Opening the login window for silent renewal — close it after reaching the wallet page"
+  "打开登录窗静默续期中——进入钱包页后关闭即可": "Opening the login window for silent renewal — close it after reaching the wallet page",
+  "国内客户端": "China client",
+  "国际客户端": "International client",
+  "QwenWork": "QwenWork",
+  "QwenWork 国际版": "QwenWork International",
+  "QwenWork 国内版": "QwenWork China",
+  "还没有 QwenWork 账号。<br>点「添加账号 → 浏览器登录」走官方设备码授权（与 Qoder 同款流程，无需客户端）；或点「本机导入」读取本机 QwenWork 客户端已登录的账号（本地解密 auth-v2.dat，凭据不出本机）。登录即带快照，多账号可一键切换进客户端。": "No QwenWork account yet.<br>Click \"Add Account → Browser Login\" for the official device-code authorization (same flow as Qoder, no client needed); or click \"Local Import\" to read accounts logged into the local QwenWork client (decrypts auth-v2.dat locally, credentials never leave this machine). Login captures a full snapshot, so multiple accounts can be switched into the client with one click.",
+  "读取本机 QwenWork 客户端当前登录的账号（本地解密 %APPDATA%\\QwenWorkCN\\auth-v2.dat，凭据不出本机），支持多账号保存切换。": "Reads the account currently logged into the local QwenWork client (decrypts %APPDATA%\\QwenWorkCN\\auth-v2.dat locally; credentials never leave this machine). Multiple accounts can be saved and switched.",
+  "需先退出 QwenWork；切换后重新打开 QwenWork 即为新账号。运行中的客户端退出时会把旧登录写回去，可选「关闭并强制切换」代为关进程。": "Quit QwenWork first; after switching, reopen QwenWork to get the new account. A running client writes its old login back on exit — use \"Close & Force Switch\" to terminate it for you.",
+  "QwenWork 客户端运行中，点我唤到前台": "QwenWork client is running — click to bring to front",
+  "QwenWork 客户端未运行，点我启动": "QwenWork client is not running — click to start",
+  "已重新启动 QwenWork 客户端": "QwenWork client relaunched",
+  "无法打开 QwenWork 客户端（桌面版才能自动拉起）": "Cannot open QwenWork client (auto-launch requires the desktop app)",
+  "QwenWork（全部）": "QwenWork (all)",
+  "仅 QwenWork 国际版": "QwenWork International only",
+  "仅 QwenWork 国内版": "QwenWork China only",
+  "本机同时装了 QwenWork 国内版与国际版，要打开哪一个？": "Both QwenWork China and International editions are installed — which one to open?",
+  "已启动 QwenWork 客户端": "QwenWork client launched",
+  "无法打开 QwenWork 客户端": "Could not open QwenWork client"
+,
+  "授权已完成，回到 CreditDaddy 即可": "Authorization complete — you can go back to CreditDaddy",
+  "本窗口可以关闭了": "This window can be closed now"
 }

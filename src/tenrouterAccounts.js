@@ -21,6 +21,8 @@ import { logger } from './logger.js';
 export const TENROUTER_PROVIDER_MAP = {
   qoder: 'qoder',
   'qoder-cn': 'qoder-cn',
+  qwenwork: 'qwenwork',              // 10R 原生 qwenwork 渠道（设备码流同款）——access-only 同步（ROTATING_RT_SYNC_PROVIDERS）
+  'qwenwork-cn': 'qwenwork-cn',
   workbuddy: 'codebuddy-cn',
   'workbuddy-intl': 'codebuddy-intl',
   minimax: 'minimax-code',             // #55：MiniMax 国内订阅线 → 10R minimax-code
@@ -51,7 +53,10 @@ export const mapProviderId = (provider) => TENROUTER_PROVIDER_MAP[provider] || n
  * 10R 端只持 access、从不触发轮换，token 过期前总有新值续上。
  * apikey 通道（buildConnPayload）本来只带 a.token，天然符合，无需处理。
  */
-const ROTATING_RT_SYNC_PROVIDERS = new Set(['croli']);
+// 千问办公同口径：ory_rt_ 单次轮换（官方客户端每小时换新），CD/10R 两副本必互杀——
+// 同步只推 accessToken（约 7 天有效），RT 留在客户端本机；客户端运行时 CD 的 status
+// 轮询会把最新 token 同步回账号库，下次手动同步即续上 10R 侧
+const ROTATING_RT_SYNC_PROVIDERS = new Set(['croli', 'qwenwork', 'qwenwork-cn']);
 
 const TIMEOUT_MS = 60_000;
 
@@ -207,7 +212,7 @@ export async function syncAccountsTo10r({ endpoint, key, adminPassword, accounts
       groups.set(target, list.map((a) => ({ ...a, refreshToken: null })));
     }
   }
-  if (!groups.size) throw new Error('没有可同步的账号（qoder / WorkBuddy / MiniMax / Loomy / Trae / DuMate / 灵犀 / Croli 系列）；zcode 待反代就绪后支持');
+  if (!groups.size) throw new Error('没有可同步的账号（qoder / 千问办公 / WorkBuddy / MiniMax / Loomy / Trae / DuMate / 灵犀 / Croli 系列）；zcode 待反代就绪后支持');
 
   let channel = 'apikey';
   let cookie = null;

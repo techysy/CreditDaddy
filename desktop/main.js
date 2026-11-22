@@ -820,6 +820,22 @@ async function openIncognitoWindow(url, { persistKey } = {}) {
   // 无刷新端点）——拦 /api/user/* 请求头摘取，storage 同形键交 daemon。
   attachCrowllmJwtSniffer(authWin.webContents, ses);
   attachShellContextMenu(authWin);
+  // 设备码流登录完成的最后一跳是 deep link（qwenwork-cn:// / qwenwork://，只有官方客户端
+  // 的协议处理器才认）——授权窗导航过去只会渲染「无法打开页面」错误页，让人误以为登录
+  // 失败（实际 nonce 早已在服务端绑定完成，面板侧 2s 轮询正在收尾）。拦下非 http(s)
+  // 导航，原地换成「授权已完成」提示页。
+  const authDonePage = () => {
+    authWin.webContents.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(
+      '<body style="font-family:system-ui,Segoe UI,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f6f7f9">'
+      + '<div style="text-align:center"><div style="font-size:44px;color:#16a34a">✓</div>'
+      + '<div style="font-size:15px;color:#333;margin-top:8px">' + Tt('授权已完成，回到 CreditDaddy 即可') + '</div>'
+      + '<div style="font-size:12px;color:#999;margin-top:6px">' + Tt('本窗口可以关闭了') + '</div></div></body>'));
+  };
+  authWin.webContents.on('will-navigate', (e, navUrl) => {
+    if (/^https?:/i.test(String(navUrl || ''))) return;
+    e.preventDefault();
+    authDonePage();
+  });
   // 同一次登录里网站自己弹的窗口（如第三方账号选择、二次验证）复用同一隐私 session
   authWin.webContents.setWindowOpenHandler(({ url: subUrl }) => {
     if (String(subUrl).toLowerCase().startsWith('https://')) {
@@ -1888,6 +1904,47 @@ function registerAuthWindowIpc() {
         }
       }
       return { ok: false, error: provider === 'qoder-cn' ? Tt('未找到 Qoder 国内版客户端') : Tt('未找到 Qoder 国际版客户端') };
+    } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
+  });
+  // 千问办公页切换后「打开客户端」：真实 exe 在 <install>\<版本>\ 子目录下（Qoder 的
+  // .qoder-versions 同款设计），版本目录里挑最新——按 semver 段 + 数字 build 后缀比，
+  // 字典序会把 2.9.0 排到 2.10.0 之上
+  ipcMain.handle('open-qwenwork-client', async (_e, provider) => {
+    try {
+      const os = require('node:os');
+      const fs = require('node:fs');
+      const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+      const base = provider === 'qwenwork' ? 'QwenWork' : 'QwenWorkCN';
+      const exeName = base + '.exe';
+      const verCmpDesc = (a, b) => {
+        const [av, ab] = String(a).split('-');
+        const [bv, bb] = String(b).split('-');
+        const xa = av.split('.').map(Number), xb = bv.split('.').map(Number);
+        for (let i = 0; i < Math.max(xa.length, xb.length); i++) {
+          if ((xa[i] || 0) !== (xb[i] || 0)) return (xb[i] || 0) - (xa[i] || 0);
+        }
+        return (Number(bb) || 0) - (Number(ab) || 0);
+      };
+      const cands = [];
+      for (const root of [path.join(local, 'Programs', base), path.join(process.env.ProgramFiles || 'C:\\Program Files', base)]) {
+        let vers = [];
+        try {
+          vers = fs.readdirSync(root, { withFileTypes: true })
+            .filter((e) => e.isDirectory() && /^\d+(\.\d+)*(-\d+)?$/.test(e.name))
+            .map((e) => e.name)
+            .sort(verCmpDesc);
+        } catch {}
+        for (const ver of vers) cands.push(path.join(root, ver, exeName));
+        cands.push(path.join(root, exeName));
+      }
+      for (const cand of cands) {
+        if (process.platform === 'win32' && fs.existsSync(cand)) {
+          const err = await shell.openPath(cand);
+          if (!err) return { ok: true };
+          return { ok: false, error: err };
+        }
+      }
+      return { ok: false, error: provider === 'qwenwork' ? Tt('未找到 QwenWork 国际版客户端') : Tt('未找到 QwenWork 国内版客户端') };
     } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
   });
   // MiniMax Code 页「打开客户端」

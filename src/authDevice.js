@@ -22,8 +22,11 @@ import {
   OPENAPI_BASE, CN_OPENAPI_BASE,
   LOGIN_URL, CN_LOGIN_URL,
   USERINFO_PATH, PROVIDER_LABEL,
+  QWENWORK_GATEWAY_BASE, QWENWORK_CLIENT_ID, QWENWORK_REDIRECT_URI,
+  CN_QWENWORK_GATEWAY_BASE, CN_QWENWORK_CLIENT_ID, CN_QWENWORK_REDIRECT_URI,
+  QWENWORK_DEVICE_TOKEN_POLL_PATH,
 } from './constants.js';
-import { publicAccount } from './store.js';
+import { publicAccount, normalizeExpiry } from './store.js';
 import { addAccount } from './accounts.js';
 import { logger } from './logger.js';
 import { t } from './i18n.js';
@@ -32,6 +35,8 @@ import { startZcodeLogin, pollZcodeLogin } from './zcodeAuth.js';
 import { startMiniMaxLogin, pollMiniMaxLogin } from './minimaxAuth.js';
 import { startTraeLogin, pollTraeLogin } from './traeAuth.js';
 import { startCroliLogin, pollCroliLogin } from './croliAuth.js';
+import { buildAuthSnapshot } from './qwenworkApp.js';
+import { fetchUserinfo as fetchQwenworkProfile } from './qwenworkClient.js';
 
 const FETCH_TIMEOUT_MS = 15000;
 const QODER_TTL_MS = 5 * 60 * 1000;   // Qoder 授权链接 5 分钟有效
@@ -123,10 +128,94 @@ async function pollQoderLogin(data) {
   };
 }
 
+// ── 千问办公：Qoder 同款设备码流，差异两处（10router 已全链验证 + 本机真机日志一致）──
+//   1. 授权 URL 要带 client_id + redirect_uri（Qoder 的落地页自带 client，千问的网关页是双版共用的）
+//   2. poll 200 但没 token = "已登记还在等用户授权"，算 pending 不算错
+function qwenworkEndpoints(provider) {
+  const cn = provider === 'qwenwork-cn';
+  return {
+    gateway: cn ? CN_QWENWORK_GATEWAY_BASE : QWENWORK_GATEWAY_BASE,
+    clientId: cn ? CN_QWENWORK_CLIENT_ID : QWENWORK_CLIENT_ID,
+    redirectUri: cn ? CN_QWENWORK_REDIRECT_URI : QWENWORK_REDIRECT_URI,
+  };
+}
+
+function startQwenworkLogin(provider) {
+  const ep = qwenworkEndpoints(provider);
+  const verifier = base64Url(crypto.randomBytes(32));
+  const challenge = base64Url(crypto.createHash('sha256').update(verifier).digest());
+  const nonce = crypto.randomUUID();
+  const machineId = crypto.randomUUID();
+  const params = new URLSearchParams({
+    challenge, challenge_method: 'S256', machine_id: machineId, nonce,
+    client_id: ep.clientId, redirect_uri: ep.redirectUri,
+  });
+  return {
+    url: `${ep.gateway}/device/selectAccounts?${params.toString()}`,
+    expiresInMs: QODER_TTL_MS,
+    intervalMs: QODER_POLL_MS,
+    data: { provider, nonce, verifier, machineId },
+  };
+}
+
+async function pollQwenworkLogin(data) {
+  const ep = qwenworkEndpoints(data.provider);
+  const url = `${ep.gateway}${QWENWORK_DEVICE_TOKEN_POLL_PATH}`
+    + '?nonce=' + encodeURIComponent(data.nonce)
+    + '&verifier=' + encodeURIComponent(data.verifier)
+    + '&challenge_method=S256';
+  const res = await fetchWithTimeout(url, { headers: { Accept: 'application/json', 'User-Agent': 'Go-http-client/2.0' } });
+  if (res.status === 202 || res.status === 404) return { status: 'pending' };
+
+  const text = await res.text();
+  if (!res.ok) {
+    let msg = '轮询失败 HTTP ' + res.status;
+    try { const b = JSON.parse(text); if (b.errorMessage || b.message) msg += '：' + (b.errorMessage || b.message); } catch {}
+    throw new Error(msg);
+  }
+  // 200 空 body / 非 JSON / 没 token：网关说「已登记，等用户在浏览器里完成授权」
+  //（线上网关实测会出现 200 空 body，10R 同款口径）——一律视为 pending，不中止轮询
+  let body = null;
+  try { body = JSON.parse(text); } catch {}
+  if (!body?.token) return { status: 'pending' };
+
+  const profile = await fetchQwenworkProfile({ provider: data.provider, token: body.token }).catch(() => null);
+  // expires_at 可能是毫秒数字（Qoder 同源协议）：归一化成 ISO——原样进 auth-v2 快照
+  // 会被 isValidAuthSnapshot 的 Date.parse 判 NaN，账号永远切不进客户端
+  const expiresAt = normalizeExpiry(body.expires_at)
+    || (body.expires_in ? new Date(Date.now() + Number(body.expires_in) * 1000).toISOString() : null);
+  return {
+    status: 'ok',
+    input: {
+      provider: data.provider,
+      token: body.token,
+      name: (profile?.name || profile?.email) || null,
+      email: profile?.email || null,
+      uid: body.user_id || profile?.id || null,
+      refreshToken: body.refresh_token || body.refreshToken || null,
+      expiresAt,
+      source: 'device',
+      meta: {
+        // 登录即带完整 auth-v2 快照：账号立刻可切换进客户端（不用再本机导入）
+        qwenworkAuth: buildAuthSnapshot(data.provider, {
+          token: body.token,
+          refreshToken: body.refresh_token || body.refreshToken,
+          expiresAt,
+          refreshTokenExpiresAt: normalizeExpiry(body.refresh_token_expires_at),
+          user: profile ? { id: profile.id, name: profile.name, email: profile.email, username: profile.username } : null,
+          loginDeviceId: data.machineId,
+        }),
+      },
+    },
+  };
+}
+
 // ── 统一入口 ──
 const FLOWS = {
   qoder: { start: startQoderLogin, poll: pollQoderLogin },
   'qoder-cn': { start: startQoderLogin, poll: pollQoderLogin },
+  qwenwork: { start: startQwenworkLogin, poll: pollQwenworkLogin },
+  'qwenwork-cn': { start: startQwenworkLogin, poll: pollQwenworkLogin },
   workbuddy: { start: startWorkbuddyLogin, poll: pollWorkbuddyLogin },
   'workbuddy-intl': { start: startWorkbuddyLogin, poll: pollWorkbuddyLogin },
   'zcode-bigmodel': { start: startZcodeLogin, poll: pollZcodeLogin },

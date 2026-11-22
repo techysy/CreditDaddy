@@ -80,6 +80,7 @@ import { runCheckinTick, getSchedulerInfo, dayKey, enableZcodeAutoClaimWindow, r
  *  直读时钟而非 /api/status 的缓存——PUT 保存后面板要立刻看到实排的下次触发时刻。 */
 const getSchedulerDailyPlan = () => zcodeDailyPlanInfo();
 import { detectQoderApps, readQoderAppAccounts, riskIdentityAvailable, riskIdentitySource, switchTo as qoderSwitchTo, qoderRunningCached, terminateQoder } from './qoderApp.js';
+import { detectQwenworkApps, readQwenworkAppAccounts, switchTo as qwenworkSwitchTo, qwenworkRunningCached, terminateQwenwork } from './qwenworkApp.js';
 import { umidInfo, installUmid } from './qoderUmid.js';
 import * as tenrouter from './tenrouter.js';
 import * as zcodeGateway from './zcodeGateway.js';
@@ -88,7 +89,7 @@ import { detectInstalls, scanLocalTokens, putCandidate, peekCandidate } from './
 import { PROVIDER_LABEL, APP_VERSION, PROVIDERS, PROJECT_URL } from './constants.js';
 import { getLocale, setLocale, normalizeLocale, loadDict, t as tr } from './i18n.js';
 
-const PRODUCT_IDS = ['qoder', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'loomy', 'dumate', 'croli'];
+const PRODUCT_IDS = ['qoder', 'qwenwork', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'loomy', 'dumate', 'croli'];
 
 /** 面板访问密码：面板「设置」写入的 settings.json.panelKey 优先（可设 / 可关）；
  *  未设置（或被面板关闭）时回退环境变量 CREDITDADDY_PASSWORD（fnOS / 命令行部署注入），
@@ -211,6 +212,43 @@ function qoderCurrentIds(accounts, qoder) {
   for (const provider of ['qoder', 'qoder-cn']) {
     const token = qoder.tokens?.[provider];
     const uid = qoder.uids?.[provider];
+    const sameProvider = accounts.filter((a) => a.provider === provider);
+    const byToken = token ? sameProvider.find((a) => a.token === token) : null;
+    const hit = byToken || (uid ? sameProvider.find((a) => a.uid && String(a.uid) === String(uid)) : null);
+    ids[provider] = hit?.id || null;
+  }
+  return ids;
+}
+
+// 千问办公当前登录缓存：面板 30s 一轮 status，DPAPI 解密结果没必要每轮重算
+let qwCurCache = { at: 0, data: null };
+async function qwenworkCurrentInfo() {
+  if (qwCurCache.data && Date.now() - qwCurCache.at < 60_000) return qwCurCache.data;
+  const data = { apps: detectQwenworkApps(), tokens: {}, uids: {}, backfill: [], updates: [] };
+  try {
+    const r = await readQwenworkAppAccounts();
+    for (const c of r.accounts) {
+      // 当前登录以 token 为准（与 Qoder 同口径：客户端刷新后 token 变而 uid 不变）
+      data.tokens[c.provider] = c.token || null;
+      data.uids[c.provider] = c.user.id || null;
+      if (c.user.id) {
+        data.backfill.push({ provider: c.provider, uid: c.user.id, authJson: c.authJson, file: c.file });
+        // 千问办公 refresh_token 每小时轮换：客户端运行时把最新快照带回给 status 做
+        // 「同 uid 但 token 已变」的同步（qoder 无此问题，token 30 天不续期）
+        data.updates.push({ provider: c.provider, uid: c.user.id, authJson: c.authJson, file: c.file });
+      }
+    }
+  } catch { /* 解密失败只留检测信息 */ }
+  qwCurCache = { at: Date.now(), data };
+  return data;
+}
+
+/** 账号库里哪个账号是本机千问办公当前登录（token 精确对齐优先，uid 兜底，同 Qoder 口径） */
+function qwenworkCurrentIds(accounts, qw) {
+  const ids = {};
+  for (const provider of ['qwenwork', 'qwenwork-cn']) {
+    const token = qw.tokens?.[provider];
+    const uid = qw.uids?.[provider];
     const sameProvider = accounts.filter((a) => a.provider === provider);
     const byToken = token ? sameProvider.find((a) => a.token === token) : null;
     const hit = byToken || (uid ? sameProvider.find((a) => a.uid && String(a.uid) === String(uid)) : null);
@@ -1343,6 +1381,46 @@ async function handleApi(req, res, url) {
         return json(res, e.qoderRunning || e.staleAuth ? 409 : 400, { error: e.message, code: e.qoderRunning ? 'QODER_RUNNING' : e.staleAuth ? 'QODER_AUTH_STALE' : undefined });
       }
     }
+    if (target.provider === 'qwenwork' || target.provider === 'qwenwork-cn') {
+      // 防丢号：先把本机当前登录的最新 auth 快照回写账号库（RT 每小时轮换，旧快照很快失效），再覆盖
+      try {
+        const lr = await readQwenworkAppAccounts();
+        const live = lr.accounts.find((c) => c.provider === target.provider);
+        if (live && live.user.id && String(live.user.id) !== String(target.uid)) {
+          await addAccount({
+            provider: live.provider, token: live.token, name: live.user.name || live.user.email,
+            uid: live.user.id, email: live.user.email, refreshToken: live.refreshToken, expiresAt: live.expiresAt,
+            source: 'local-app', meta: { qwenworkAuth: live.authJson, qwenworkAuthFile: live.file },
+          }, { trusted: true }).catch((e) => logger.warn('DAEMON', '同步 QwenWork 当前登录失败:{err}', { err: e.message }));
+        }
+      } catch (e) { logger.warn('DAEMON', '读取 QwenWork 当前登录失败:{err}', { err: e.message }); }
+      try {
+        // 强制切换：先关掉运行中的客户端，否则它退出时会把内存里的旧登录覆盖回文件
+        let closedClient = false;
+        if (body?.force === true) {
+          const t = terminateQwenwork({ provider: target.provider });
+          closedClient = t.closed === true;
+          if (closedClient) logger.info('DAEMON', '已关闭 QwenWork 客户端(强制切换)', {});
+          else if (t.running) logger.warn('DAEMON', '未能完全结束 QwenWork 进程,继续强制切换', {});
+        }
+        const r = await qwenworkSwitchTo(target, { force: body?.force === true });
+        // status 里的「千问办公当前登录」缓存 1 分钟：不放掉的话切完后面板仍把旧账号当当前账号
+        qwCurCache = { at: 0, data: null };
+        if (r.file && r.file !== target.meta?.qwenworkAuthFile) {
+          // 快照路径已失效、实际写进了本机新的数据目录：账号上的路径一并改成生效的那个
+          await withAccounts((list) => {
+            const cur = list.find((a) => a.id === target.id);
+            if (cur) cur.meta = { ...(cur.meta || {}), qwenworkAuthFile: r.file };
+          }).catch((e) => logger.warn('DAEMON', '更新 QwenWork 快照路径失败:{err}', { err: e.message }));
+        }
+        logger.info('DAEMON', r.alreadyActive ? 'QwenWork 当前已是 {name}' : 'QwenWork 已切换到 {name}(重新打开客户端生效)', { name: target.name || target.id });
+        return json(res, 200, { ok: true, closedClient, ...r });
+      } catch (e) {
+        // staleAuth：access token 已过期——写进去客户端刷新必失败，明说原因。
+        // RT 过期只 warn 不拦（qwenworkApp.switchTo 的语义），照常 200。
+        return json(res, e.qwenworkRunning || e.staleAuth ? 409 : 400, { error: e.message, code: e.qwenworkRunning ? 'QWENWORK_RUNNING' : e.staleAuth ? 'QWENWORK_AUTH_STALE' : undefined });
+      }
+    }
     if (target.provider === 'trae') {
       // 防丢号：先把 Trae 当前登录同步进账号库并建快照，再覆盖成目标账号的登录态
       try {
@@ -2066,7 +2144,7 @@ async function handleApi(req, res, url) {
 
   // ── 本机检测 / 凭据扫描 ──
   if (p === '/api/local/detect' && method === 'GET') {
-    return json(res, 200, { apps: detectQoderApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), trae: detectTrae(), minimax: detectMiniMax(), loomy: detectLoomy(), dumate: detectDumate(), croli: detectCroli(), legacy: detectInstalls() });
+    return json(res, 200, { apps: detectQoderApps(), qwenwork: detectQwenworkApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), trae: detectTrae(), minimax: detectMiniMax(), loomy: detectLoomy(), dumate: detectDumate(), croli: detectCroli(), legacy: detectInstalls() });
   }
   if (p === '/api/local/scan' && method === 'POST') {
     const existing = await loadAccounts();
@@ -2096,6 +2174,18 @@ async function handleApi(req, res, url) {
         meta: { qoderAuth: c.authJson, qoderAuthFile: c.file },
       }, { source: c.source });
     }
+    // 1.5) 千问办公客户端：解密 auth-v2.dat（v10 safeStorage；整份快照存 meta 供切换写回）
+    try {
+      const qw = await readQwenworkAppAccounts();
+      errors.push(...qw.errors);
+      for (const c of qw.accounts) {
+        addRecord({
+          provider: c.provider, token: c.token, name: c.user.name || c.user.email, uid: c.user.id, email: c.user.email,
+          refreshToken: c.refreshToken, expiresAt: c.expiresAt, source: 'local-app',
+          meta: { qwenworkAuth: c.authJson, qwenworkAuthFile: c.file },
+        }, { source: c.source });
+      }
+    } catch (e) { errors.push({ file: 'QwenWorkCN/auth-v2.dat', error: e.message }); }
     // 2) WorkBuddy 客户端：当前会话 + 历史会话
     const wb = await readWorkbuddySessions();
     errors.push(...wb.errors);
@@ -2382,6 +2472,29 @@ async function handleApi(req, res, url) {
     }
     // 妙手凭据文件只存 token：当前登录按 token 对齐账号库，避免每轮状态都打网关查 uid
     const cpToken = currentCatpawToken();
+    // 千问办公当前登录 + RT 轮换同步：客户端在登录态时每小时换新 refresh_token，
+    // 把最新快照回写同 uid 账号（token 变了才写），否则账号库里的切换快照 1 小时就作废
+    const qw = await qwenworkCurrentInfo();
+    const qwSync = qw.updates.length
+      && accounts.some((a) => (a.provider === 'qwenwork' || a.provider === 'qwenwork-cn')
+        && a.uid && qw.updates.some((b) => b.provider === a.provider && String(b.uid) === String(a.uid)
+          && (b.authJson.token !== a.token || !a.meta?.qwenworkAuth || a.meta.qwenworkAuth?.token !== b.authJson.token)));
+    if (qwSync) {
+      await withAccounts((list) => {
+        for (const b of qw.updates) {
+          const cur = list.find((a) => a.provider === b.provider && a.uid && b.uid && String(a.uid) === String(b.uid)
+            && a.meta?.qwenworkAuth?.token !== b.authJson.token);
+          if (cur) {
+            cur.meta = { ...(cur.meta || {}), qwenworkAuth: b.authJson, qwenworkAuthFile: b.file };
+            // token 顶层也跟着对齐：客户端刷新后旧 token 已单次作废，不更新会误判「凭据失效」
+            cur.token = b.authJson.token;
+            cur.refreshToken = b.authJson.refreshToken || cur.refreshToken;
+            cur.expiresAt = b.authJson.expiresAt || cur.expiresAt;
+            cur.updatedAt = new Date().toISOString();
+          }
+        }
+      }).catch((e) => logger.warn('DAEMON', '同步 QwenWork 登录快照失败:{err}', { err: e.message }));
+    }
     // MiniMax 国内/国际客户端凭据目录独立（~/.minimax/auth/prod/<cn|en>/），各自可能登录不同账号——
     // 按 token / record-key / uid-cache 三层对齐，分别得出两个当前 uid
     const mmToken = currentMiniMaxToken('cn');
@@ -2461,6 +2574,15 @@ async function handleApi(req, res, url) {
       qoderClient: {
         installed: qoder.apps.some((x) => x.installed), signedIn: qoder.apps.some((x) => x.signedIn), running: qoderRunningCached(),
         cnInstalled: qoder.apps.some((x) => x.installed && x.provider === 'qoder-cn'), intlInstalled: qoder.apps.some((x) => x.installed && x.provider === 'qoder'),
+      },
+      qwenworkCurrent: qwenworkCurrentIds(accounts, qw),
+      qwenworkCurrentToken: qw.tokens,
+      qwenworkCurrentUid: qw.uids,
+      // running 走轮询口径（winProc 快照），与 qoder 同理：/api/status 30s 一轮不能串行 spawn tasklist
+      qwenworkClient: {
+        installed: qw.apps.some((x) => x.installed), signedIn: qw.apps.some((x) => x.signedIn), running: qwenworkRunningCached(),
+        cnInstalled: qw.apps.some((x) => x.installed && x.provider === 'qwenwork-cn'), intlInstalled: qw.apps.some((x) => x.installed && x.provider === 'qwenwork'),
+        cnSignedIn: qw.apps.some((x) => x.signedIn && x.provider === 'qwenwork-cn'), intlSignedIn: qw.apps.some((x) => x.signedIn && x.provider === 'qwenwork'),
       },
       zcodeCurrentUid: currentZcodeUid(),
       zcodeCurrentIdentity: currentZcodeIdentity(),
@@ -2725,7 +2847,9 @@ export async function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
         if (!cfg.endpoint || !cfg.key) return json(res, 503, { error: '未配置 10Router 地址与虚拟 key' });
         // 已排除的渠道不回源（10R 端不该再留着这张卡——留给用户侧删卡；这里只拒绝刷新）
         const disabled = Array.isArray(cfg.quotaPushDisabledProviders) ? cfg.quotaPushDisabledProviders : [];
-        const sourceFamily = /^(minimax-free|xiaomi-mimo|river|modelscope|longcat|tokenharbor|lingxi)-/.exec(source);
+        // 多段 family 前缀长的在前（qwenwork-cn 若排在 qwenwork 后会被短前缀先吞掉，
+        // familyProvider 归错线、410 拦截失效）
+        const sourceFamily = /^(minimax-free|xiaomi-mimo|river|modelscope|longcat|tokenharbor|lingxi|qwenwork-cn|qwenwork|crowllm)-/.exec(source);
         const familyProvider = sourceFamily ? sourceFamily[1] : (source === 'tokenharbor' ? 'tokenharbor' : null);
         if (familyProvider && disabled.includes(familyProvider)) {
           return json(res, 410, { error: '该渠道的额度卡推送已关闭（CreditDaddy 账号管理弹窗可重新开启）' });
