@@ -254,12 +254,27 @@ export function maskToken(token) {
 
 const maskPhone = (p) => (typeof p === 'string' && p.length >= 7 ? p.slice(0, 3) + '****' + p.slice(-4) : null);
 
-function zcodeFlavor(meta) {
+export function zcodeFlavor(meta) {
   if (!meta) return null;
+  const lp = meta.loginProvider;
   const c = meta.credentials || {};
   const keys = Object.keys(c);
-  const hasZai = Boolean(c['oauth:zai:access_token'] || meta.loginProvider === 'zai' || keys.some((k) => k.includes('zai')));
-  const hasBig = Boolean(c['oauth:bigmodel:access_token'] || meta.loginProvider === 'bigmodel' || keys.some((k) => k.includes('bigmodel')));
+
+  // 1. ZCode 4.0 官方国内版（zai_cn）
+  const isZaiCn = lp === 'zai_cn' || lp === 'zcode-zai-cn' || lp === 'zcode-zai_cn'
+    || c['oauth:active_provider'] === 'zai_cn'
+    || Boolean(c['oauth:zai_cn:access_token'])
+    || keys.some((k) => k.startsWith('oauth:zai_cn:'));
+
+  if (isZaiCn) {
+    const hasLinkedBigModel = Boolean(meta.linkedBigModel || c['oauth:linked_bigmodel']);
+    return hasLinkedBigModel ? 'zai_cn_linked' : 'zai_cn';
+  }
+
+  // 2. 国际版 Z.ai vs 国内版 BigModel vs 双登录 (旧版)
+  const hasZai = Boolean(c['oauth:zai:access_token'] || lp === 'zai' || lp === 'zcode-zai' || c['oauth:active_provider'] === 'zai' || keys.some((k) => k.startsWith('oauth:zai:')));
+  const hasBig = Boolean(c['oauth:bigmodel:access_token'] || lp === 'bigmodel' || lp === 'zcode-bigmodel' || c['oauth:active_provider'] === 'bigmodel' || keys.some((k) => k.startsWith('oauth:bigmodel:')));
+
   return hasZai && hasBig ? 'both' : hasZai ? 'zai' : hasBig ? 'bigmodel' : null;
 }
 

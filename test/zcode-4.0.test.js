@@ -13,6 +13,7 @@ const zc = await import('../src/zcrypto.js');
 const zl = await import('../src/zcodeLocal.js');
 const zauth = await import('../src/zcodeAuth.js');
 const zclient = await import('../src/zcodeClient.js');
+const store = await import('../src/store.js');
 
 test('ZCode 4.0: enc:v1 与 enc:v2:os 编解码往返及格式识别', () => {
   const secret = zc.defaultSecret(ZHOME);
@@ -185,4 +186,110 @@ test('ZCode 4.0: switchTo 冷切换支持 zai_cn 账号', () => {
   // 4. provider_config.json 指向 zai-individual-coding-plan
   const curPcfg = JSON.parse(fs.readFileSync(p.providerConfig, 'utf8'));
   assert.equal(curPcfg.config.defaultModelSelection.providerId, 'account:zai-individual-coding-plan');
+});
+
+test('ZCode 4.0: zcodeFlavor 精确区分 zai_cn、zai_cn_linked、zai、bigmodel 与 both', () => {
+  // 1. ZCode 4.0 国内渠道（带 BigModel 绑定）
+  const fZaiCnLinked = store.zcodeFlavor({
+    loginProvider: 'zai_cn',
+    linkedBigModel: { customerId: '3851788492835867' },
+    credentials: {
+      'oauth:active_provider': 'zai_cn',
+      'oauth:zai_cn:access_token': 'tok1',
+      'oauth:linked_bigmodel': 'linked',
+    },
+  });
+  assert.equal(fZaiCnLinked, 'zai_cn_linked');
+
+  // 2. ZCode 4.0 国内渠道（无 BigModel 绑定）
+  const fZaiCn = store.zcodeFlavor({
+    loginProvider: 'zai_cn',
+    credentials: {
+      'oauth:active_provider': 'zai_cn',
+      'oauth:zai_cn:access_token': 'tok1',
+    },
+  });
+  assert.equal(fZaiCn, 'zai_cn');
+
+  // 3. 国际版 Z.ai 渠道
+  const fZai = store.zcodeFlavor({
+    loginProvider: 'zai',
+    credentials: {
+      'oauth:active_provider': 'zai',
+      'oauth:zai:access_token': 'tok-zai',
+    },
+  });
+  assert.equal(fZai, 'zai');
+
+  // 4. 智谱 BigModel 老渠道
+  const fBig = store.zcodeFlavor({
+    loginProvider: 'bigmodel',
+    credentials: {
+      'oauth:active_provider': 'bigmodel',
+      'oauth:bigmodel:access_token': 'tok-bm',
+      zcodejwttoken: 'jwt',
+    },
+  });
+  assert.equal(fBig, 'bigmodel');
+
+  // 5. 旧版双登录 (同时存有国际 Z.ai 与 BigModel 访问凭据)
+  const fBoth = store.zcodeFlavor({
+    loginProvider: 'zai',
+    credentials: {
+      'oauth:zai:access_token': 'tok-zai',
+      'oauth:bigmodel:access_token': 'tok-bm',
+    },
+  });
+  assert.equal(fBoth, 'both');
+});
+
+test('ZCode 4.0: identityLabel 支持在无 displayName/username/email 时由 userId 兜底', () => {
+  assert.equal(zc.identityLabel({ displayName: '张三' }), '张三');
+  assert.equal(zc.identityLabel({ username: 'zhangsan' }), 'zhangsan');
+  assert.equal(zc.identityLabel({ email: 'zhangsan@example.com' }), 'zhangsan@example.com');
+  // UID 长度 > 8 缩写
+  assert.equal(zc.identityLabel({ userId: '33841786516987046' }), 'UID 3384...7046');
+  // 短 UID 原样展示
+  assert.equal(zc.identityLabel({ userId: '12345' }), 'UID 12345');
+  assert.equal(zc.identityLabel({}), null);
+});
+
+test('ZCode 4.0: 本机扫描候选账号匹配已有账号时继承备注名并回显 flavor', () => {
+  const existing = [
+    {
+      id: 'acc-131',
+      name: '#131',
+      provider: 'zcode',
+      token: 'zcode-creds:33841786516987046',
+      uid: '33841786516987046',
+      meta: {
+        loginProvider: 'bigmodel',
+        credentials: { 'oauth:bigmodel:access_token': 'bm-tok' },
+      },
+    },
+  ];
+
+  const findExisting = (provider, token, uid) => existing.find((a) => (!provider || a.provider === provider)
+    && (a.token === token || (uid && a.uid && String(a.uid) === String(uid))));
+
+  // 模拟从客户端扫描到一个无 name、仅有 userId 的凭据
+  const scanned = {
+    provider: 'zcode',
+    token: 'zcode-creds:33841786516987046',
+    uid: '33841786516987046',
+    name: null,
+    meta: {
+      credentials: { 'oauth:bigmodel:access_token': 'bm-tok' },
+    },
+  };
+
+  const matched = findExisting(scanned.provider, scanned.token, scanned.uid);
+  assert.ok(matched);
+  assert.equal(matched.name, '#131');
+
+  const candName = matched?.name || scanned.name || null;
+  assert.equal(candName, '#131');
+
+  const flavor = store.zcodeFlavor(scanned.meta) || matched?.flavor;
+  assert.equal(flavor, 'bigmodel');
 });

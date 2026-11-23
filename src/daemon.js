@@ -49,7 +49,8 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { logger, getLogs, readArchiveJsonl } from './logger.js';
 import {
-  loadAccounts, loadState, withAccounts, publicAccount, dataDir, loadSettings, saveSettings, withSettings, normalizeAccountInput,
+  loadAccounts,
+  zcodeFlavor, loadState, withAccounts, publicAccount, dataDir, loadSettings, saveSettings, withSettings, normalizeAccountInput,
 } from './store.js';
 import { addAccount, importAccounts, refreshContext } from './accounts.js';
 import { productImpl } from './providers.js';
@@ -2148,18 +2149,27 @@ async function handleApi(req, res, url) {
   }
   if (p === '/api/local/scan' && method === 'POST') {
     const existing = await loadAccounts();
-    const known = (provider, token, uid) => existing.some((a) => (!provider || a.provider === provider)
-      && (a.token === token || (uid && a.uid === uid)));
+    const findExisting = (provider, token, uid) => existing.find((a) => (!provider || a.provider === provider)
+      && (a.token === token || (uid && a.uid && String(a.uid) === String(uid))));
+    const known = (provider, token, uid) => Boolean(findExisting(provider, token, uid));
     const candidates = [];
     const errors = [];
     const addRecord = (record, extra) => {
+      const matched = findExisting(record.provider, record.token, record.uid);
+      const flavor = record.provider === 'zcode'
+        ? (zcodeFlavor(record.meta) || matched?.flavor || null)
+        : (record.flavor || matched?.flavor || null);
       candidates.push({
         id: putCandidate({ token: record.token, record }),
         kind: 'app', provider: record.provider,
-        name: record.name, email: record.email, uid: record.uid, phone: record.meta?.phone ? record.meta.phone.slice(0, 3) + '****' + record.meta.phone.slice(-4) : null,
+        name: matched?.name || record.name || null,
+        email: record.email || matched?.email || null,
+        uid: record.uid || matched?.uid || null,
+        phone: record.meta?.phone ? record.meta.phone.slice(0, 3) + '****' + record.meta.phone.slice(-4) : (matched?.meta?.phone ? matched.meta.phone.slice(0, 3) + '****' + matched.meta.phone.slice(-4) : null),
         tokenMasked: record.token.slice(0, 5) + '...' + record.token.slice(-4),
         expiresAt: record.expiresAt, hasRefreshToken: Boolean(record.refreshToken),
-        imported: known(record.provider, record.token, record.uid),
+        imported: Boolean(matched),
+        flavor,
         ...extra,
       });
     };

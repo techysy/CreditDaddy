@@ -1502,7 +1502,9 @@ const provOf = (p) => {
 const provBadges = (p, regionOnly, flavor) => {
   const v = provOf(p);
   const zBadge = p === 'zcode' && flavor
-    ? (flavor === 'both' ? '<span class="badge intl">Z.ai</span><span class="badge cn">BigModel</span>'
+    ? (flavor === 'zai_cn_linked' ? '<span class="badge cn" title="' + T('ZCode 4.0 官方国内版（zchat.z.ai）') + '">' + T('Z.ai 国内 4.0') + '</span><span class="badge" title="' + T('已绑定智谱 BigModel 账户，同步套餐与资产') + '">' + T('已绑智谱') + '</span>'
+      : flavor === 'zai_cn' ? '<span class="badge cn" title="' + T('ZCode 4.0 官方国内版（zchat.z.ai）') + '">' + T('Z.ai 国内 4.0') + '</span>'
+      : flavor === 'both' ? '<span class="badge intl">Z.ai</span><span class="badge cn">BigModel</span>'
       : flavor === 'zai' ? '<span class="badge intl">Z.ai</span>'
       : '<span class="badge cn">BigModel</span>')
     : '';
@@ -2652,7 +2654,7 @@ function renderDash() {
   for (const a of state.accounts) {
     const ex = expiryCell(a);
     const st = statusOf(a);
-    const base = { view: a.product, name: maskName(a.name || a.email || a.id), badges: provBadges(a.provider) };
+    const base = { view: a.product, name: maskName(a.name || a.email || a.id), badges: provBadges(a.provider, false, a.flavor) };
     if (a.verified === false) att.push(Object.assign({ pill: 'fail', text: T('token 无效') }, base));
     else if (ex.label === '已过期') att.push(Object.assign({ pill: 'fail', text: T('token 已过期') }, base));
     else if (ex.warn) att.push(Object.assign({ pill: 'limited', text: ex.label.slice(5, 10) + T(' 过期') }, base));
@@ -2683,7 +2685,7 @@ function renderDash() {
       const r = a.lastResult;
       let [cls, txt] = RES[r.status] || ['pending', r.status];
       const label = r.status === 'checked-in' && r.amount ? txt + ' +' + fmtNum(r.amount) : txt;
-      return '<div class="item" data-view="' + a.product + '" title="' + esc(r.message || '') + '"><span class="item-main"><span class="item-name">' + esc(maskName(a.name || a.email || a.id)) + '</span>' + provBadges(a.provider) + '</span>'
+      return '<div class="item" data-view="' + a.product + '" title="' + esc(r.message || '') + '"><span class="item-main"><span class="item-name">' + esc(maskName(a.name || a.email || a.id)) + '</span>' + provBadges(a.provider, false, a.flavor) + '</span>'
         + '<span class="item-side"><span class="pill ' + cls + '">' + esc(label) + '</span><span class="item-time">' + fmtTime(r.at).slice(5) + '</span></span></div>';
     }).join('')
     : '<div class="muted-empty">' + T('还没有领取记录') + '</div>';
@@ -5830,8 +5832,10 @@ async function localScan() {
     let html = '';
     const cands = r.candidates.filter((c) => !state.addProduct || (c.provider ? provOf(c.provider).prod : 'qoder') === state.addProduct);
     for (const c of cands) {
-      const title = c.kind === 'app' ? esc(maskName(c.name || c.email || maskPhone(c.phone)) || T('(未命名)')) : '<span style="font-family:monospace">' + esc(c.tokenMasked) + '</span>';
-      const prov = (c.provider ? provBadges(c.provider) : '<span class="badge">' + esc(c.kind) + '</span>') + (c.current ? T('<span class="pill cur">当前登录</span>') : '');
+      const title = c.kind === 'app'
+        ? esc(maskName(c.name || c.email || maskPhone(c.phone) || (c.uid ? (String(c.uid).length > 8 ? 'UID ' + String(c.uid).slice(0, 4) + '...' + String(c.uid).slice(-4) : 'UID ' + c.uid) : '')) || T('(未命名)'))
+        : '<span style="font-family:monospace">' + esc(c.tokenMasked) + '</span>';
+      const prov = (c.provider ? provBadges(c.provider, false, c.flavor) : '<span class="badge">' + esc(c.kind) + '</span>') + (c.current ? T('<span class="pill cur">当前登录</span>') : '');
       const sub = c.kind === 'app'
         ? esc(c.source) + (c.email ? ' · ' + esc(mask(c.email)) : c.phone ? ' · ' + esc(maskPhone(c.phone)) : '') + (c.expiresAt ? T(' · 有效期至 ') + esc(fmtTime(c.expiresAt)) : '')
         : esc(c.source) + ' · ' + esc(String(c.file || '').split(/[\\/]/).pop()) + T('（') + c.hits + T(' 处）');

@@ -446,7 +446,15 @@ export function identityWithSecret(creds, secret, opts = {}) {
 }
 
 export function identityLabel(id) {
-  return id.displayName || id.username || id.email || null;
+  if (!id) return null;
+  if (id.displayName) return id.displayName;
+  if (id.username) return id.username;
+  if (id.email) return id.email;
+  if (id.userId) {
+    const s = String(id.userId);
+    return s.length > 8 ? `UID ${s.slice(0, 4)}...${s.slice(-4)}` : `UID ${s}`;
+  }
+  return null;
 }
 
 /** 是否已登录：有任意 oauth:*:access_token，或有非空 zcodejwttoken，或有套餐 identity */
