@@ -263,6 +263,10 @@
   .pill.fail { color: var(--err); border-color: var(--err-soft); }
   .pill.cur { color: #0f766e; border-color: rgba(20,184,166,.5); }
   html[data-theme="dark"] .pill.cur, html[data-theme="brutal"] .pill.cur { color: #0f766e; }
+  /* credit-line 内的「客户端当前」徽章：22px 大 pill 会撑高 12px 的积分行，
+     导致带徽章的卡比其他卡高一截（2026-11-23 用户反馈）。收成 .badge 尺寸
+     （16px 高 / 10px 字），行高不再被它决定，卡片高度恢复对称 */
+  .credit-line .pill.cur { height: 16px; padding: 1px 7px; font-size: 10px; font-weight: 500; }
   .pill.gw { color: #4338ca; border-color: rgba(99,102,241,.45); }
   html[data-theme="dark"] .pill.gw, html[data-theme="brutal"] .pill.gw { color: #4338ca; }
   .ops { display: flex; gap: 6px; flex-shrink: 0; }
