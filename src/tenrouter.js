@@ -42,6 +42,16 @@ const DEFAULT_CONFIG = {
 const LEGACY_SOURCES = ['zcode', 'opencode', 'mirasim', 'mimo', 'catpaw'];
 const SOURCES_VERSION = 4;   // 4: 新增 Croli IDE 逐轮账本来源（croli）；旧配置 sources 快照按 version 自动补新来源（妙手教训）
 
+// accountSync.providers 渠道版本迁移（同 sync.sources 的妙手教训口径）：老配置的
+// providers 是保存时的勾选快照，会静默挡掉此后上线的新渠道——2026-11-23 实锤：
+// qwenwork 双线上线次日 0 连接（额度卡不受影响，走 quotaPushDisabledProviders，所以
+// 「只有额度卡」）。表只进不退：savedVersion 低于行版本时并入缺失渠道，同时写回
+// providersVersion——用户此后手动取消勾选的渠道不再被复活。
+const ACCOUNT_SYNC_CURRENT_VERSION = 1;
+const ACCOUNT_SYNC_MIGRATIONS = [
+  { version: 1, providers: ['qwenwork', 'qwenwork-cn'] },   // 1: qwenwork 双线接入 10R 连接同步（2026-11-22）
+];
+
 export function loadConfig() {
   try {
     return normalizeLoaded(JSON.parse(fs.readFileSync(FILE(), 'utf8')));
@@ -66,6 +76,19 @@ function normalizeLoaded(c) {
   const sync = { ...DEFAULT_CONFIG.sync, ...(c.sync || {}) };
   const quotaPush = { ...DEFAULT_CONFIG.quotaPush, ...(c.quotaPush || {}) };
   const accountSync = { ...DEFAULT_CONFIG.accountSync, ...(c.accountSync || {}) };
+  // 渠道清单版本迁移：白名单非空（用户做过显式勾选）且缺新渠道时并入，把 providersVersion
+  // 顶到当前版本。providers 空数组 = 「全部候选渠道」（未做过勾选的老配置）天然包含新渠道，
+  // 无需迁移。
+  const savedAcVersion = Number(c.accountSync?.providersVersion) || 0;
+  if (savedAcVersion < ACCOUNT_SYNC_CURRENT_VERSION && Array.isArray(accountSync.providers) && accountSync.providers.length) {
+    for (const m of ACCOUNT_SYNC_MIGRATIONS) {
+      if (m.version > savedAcVersion) {
+        for (const p of m.providers) if (!accountSync.providers.includes(p)) accountSync.providers.push(p);
+      }
+    }
+    accountSync.providersVersion = ACCOUNT_SYNC_CURRENT_VERSION;
+    logger.info('TENROUTER', '账号同步渠道清单已迁移到 v' + ACCOUNT_SYNC_CURRENT_VERSION + '（并入新增渠道）');
+  }
   // 旧配置里的 sources 是保存时的快照，会盖掉新增来源（妙手因此被静默关掉）；
   // 只把此后新增的来源默认并入，用户手动关掉的保持关闭。
   const savedVersion = Number(c.sync?.sourcesVersion) || 1;

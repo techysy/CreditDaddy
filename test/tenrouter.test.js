@@ -592,6 +592,35 @@ test('quotaPush 配置：开关与频率保存、默认开启、最小频率 15 
 });
 
 
+test('accountSync 渠道版本迁移：老配置白名单快照自动并入新增渠道（qwenwork 0 连接事故口径）', () => {
+  const file = path.join(process.env.CREDITDADDY_HOME, 'tenrouter.json');
+  fs.mkdirSync(process.env.CREDITDADDY_HOME, { recursive: true });
+  // 2026-11-23 事故同款：qwenwork 上线前保存的白名单（还有已摘除的 meoo），双线被静默滤掉
+  fs.writeFileSync(file, JSON.stringify({
+    endpoint: 'http://nas:20127', key: 'sk-x',
+    accountSync: { enabled: true, providers: ['tokenharbor', 'qoder', 'workbuddy', 'meoo', 'lingxi'] },
+  }));
+  const c = tr.loadConfig();
+  assert.ok(c.accountSync.providers.includes('qwenwork') && c.accountSync.providers.includes('qwenwork-cn'), '新渠道应默认并入');
+  assert.ok(c.accountSync.providers.includes('qoder') && c.accountSync.providers.includes('meoo'), '已有勾选原样保留（含已下线渠道，不越权清理）');
+  assert.equal(c.accountSync.providersVersion, 1, '写回当前版本，此后手动取消勾选不再被复活');
+  // 空数组 = 未做过勾选的老配置（全部候选渠道），无需迁移也不写版本
+  fs.writeFileSync(file, JSON.stringify({
+    endpoint: 'http://nas:20127', key: 'sk-x',
+    accountSync: { enabled: true, providers: [] },
+  }));
+  const c2 = tr.loadConfig();
+  assert.deepEqual(c2.accountSync.providers, []);
+  assert.equal(c2.accountSync.providersVersion, undefined, '空清单不迁移（语义即全渠道）');
+  // 已是当前版本的配置不再动（用户手动取消勾选的渠道不复活）
+  fs.writeFileSync(file, JSON.stringify({
+    endpoint: 'http://nas:20127', key: 'sk-x',
+    accountSync: { enabled: true, providers: ['qoder'], providersVersion: 1 },
+  }));
+  const c3 = tr.loadConfig();
+  assert.deepEqual(c3.accountSync.providers, ['qoder']);
+});
+
 test('accountSync 渠道开关：providers 白名单过滤账号、enabled=false 直接短路', async () => {
   // 白名单只含 workbuddy：qoder 账号应被滤掉，连接只推 codebuddy-cn
   const m = mockFetch((url, init) => {
