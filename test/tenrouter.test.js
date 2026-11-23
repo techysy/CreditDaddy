@@ -602,6 +602,7 @@ test('accountSync 渠道版本迁移：老配置白名单快照自动并入新�
   }));
   const c = tr.loadConfig();
   assert.ok(c.accountSync.providers.includes('qwenwork') && c.accountSync.providers.includes('qwenwork-cn'), '新渠道应默认并入');
+  assert.ok(c.accountSync.providers.includes('croli'), 'croli 同批并入（30min access 重推吃同一白名单）');
   assert.ok(c.accountSync.providers.includes('qoder') && c.accountSync.providers.includes('meoo'), '已有勾选原样保留（含已下线渠道，不越权清理）');
   assert.equal(c.accountSync.providersVersion, 1, '写回当前版本，此后手动取消勾选不再被复活');
   // 空数组 = 未做过勾选的老配置（全部候选渠道），无需迁移也不写版本

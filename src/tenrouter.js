@@ -49,7 +49,10 @@ const SOURCES_VERSION = 4;   // 4: 新增 Croli IDE 逐轮账本来源（croli�
 // providersVersion——用户此后手动取消勾选的渠道不再被复活。
 const ACCOUNT_SYNC_CURRENT_VERSION = 1;
 const ACCOUNT_SYNC_MIGRATIONS = [
-  { version: 1, providers: ['qwenwork', 'qwenwork-cn'] },   // 1: qwenwork 双线接入 10R 连接同步（2026-11-22）
+  // 1: qwenwork 双线接入 10R 连接同步（2026-11-22）；croli 同批开放——10R #156 原生
+  //    croli 渠道（Clerk OAuth），CD 的 30min access 自动重推也吃这份白名单，
+  //    老配置没勾 croli 时重推恒被静默挡掉（2026-11-23 实锤）
+  { version: 1, providers: ['qwenwork', 'qwenwork-cn', 'croli'] },
 ];
 
 export function loadConfig() {

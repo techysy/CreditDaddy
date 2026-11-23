@@ -3606,8 +3606,11 @@ const AM_CHANNELS = [
   // lingxi 同口径：10R #127 起原生 lingxi 渠道（webCookie executor 出卡）+ PR #66 连接同步，
   // CD 的 lingxi-<hash> 灵点卡停推（quotaPushDisabledProviders 恒排除，三条推送路径都认）
   { provider: 'lingxi', label: 'WPS 灵犀', syncable: true, pushable: false },
-  // croli 纯本地产品线（10R 无 croli 渠道口径）：既不同步连接也不推额度卡
-  { provider: 'croli', label: 'Croli', syncable: false, pushable: false },
+  // croli：10R #156 原生渠道（Clerk OAuth，access-only 同步 + CD 独占刷新 + 30min
+  // 自动重推）——2026-11-23 起开放连接同步（此前标「纯本地」，但自动重推吃同一份
+  // accountSync.providers 白名单，老配置没勾时重推恒被静默挡掉）。10R 侧连接自身
+  // 出卡（registry 无 CD 推卡分支），渠道行不出「额度卡」主勾。
+  { provider: 'croli', label: 'Croli', syncable: true, pushable: false },
 ];
 
 function openTrAccountManage() {
