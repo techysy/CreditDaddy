@@ -220,6 +220,8 @@ const FLOWS = {
   'workbuddy-intl': { start: startWorkbuddyLogin, poll: pollWorkbuddyLogin },
   'zcode-bigmodel': { start: startZcodeLogin, poll: pollZcodeLogin },
   'zcode-zai': { start: startZcodeLogin, poll: pollZcodeLogin },
+  'zcode-zai-cn': { start: startZcodeLogin, poll: pollZcodeLogin },
+  'zcode-zai_cn': { start: startZcodeLogin, poll: pollZcodeLogin },
   minimax: { start: startMiniMaxLogin, poll: pollMiniMaxLogin },
   'minimax-global': { start: (kind) => startMiniMaxLogin('global'), poll: pollMiniMaxLogin },
   // Trae：授权码 + PKCE 的本地回调流（与设备码轮询不同，poll 查的是本机回调监听抓没抓到）；
@@ -231,7 +233,12 @@ const FLOWS = {
   croli: { start: startCroliLogin, poll: pollCroliLogin },
 };
 export const LOGIN_KINDS = Object.keys(FLOWS);
-const KIND_LABEL = { 'zcode-bigmodel': 'ZCode（BigModel）', 'zcode-zai': 'ZCode（Z.ai）' };
+const KIND_LABEL = {
+  'zcode-bigmodel': 'ZCode（BigModel）',
+  'zcode-zai': 'ZCode（Z.ai 国际）',
+  'zcode-zai-cn': 'ZCode（Z.ai 国内 4.0）',
+  'zcode-zai_cn': 'ZCode（Z.ai 国内 4.0）',
+};
 const labelOf = (kind) => KIND_LABEL[kind] || PROVIDER_LABEL[kind] || kind;
 
 function gcSessions() {

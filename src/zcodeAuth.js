@@ -2,14 +2,18 @@
  * ZCode 浏览器登录 — 与 ZCode 客户端的「CLI 轮询登录」同一协议（无需 zcode:// 回调，任何浏览器都能用）：
  *
  *   1. POST https://zcode.z.ai/api/v1/oauth/cli/init   Authorization: Bearer <本地随机 poll token>
- *      {provider: 'bigmodel' | 'zai'} → {flow_id, authorize_url, expires_at, poll_interval_sec}
+ *      {provider: 'bigmodel' | 'zai' | 'zai_cn'} → {flow_id, authorize_url, expires_at, poll_interval_sec}
+ *      - bigmodel: 智谱老平台登录（蓝白页）
+ *      - zai: Z.ai 国际版
+ *      - zai_cn: ZCode 4.0 全新国内渠道（zchat.z.ai，黑白 Z 手机号验证码）
  *      authorize_url 的回调指向 zcode.z.ai 自己的 /oauth/cli/callback，由服务端完成换 token
  *   2. 用户在浏览器（桌面版为隐私窗口）打开 authorize_url 登录授权
  *   3. GET /api/v1/oauth/cli/poll/{flow_id}（同一 poll token）→ status pending / ready / failed
- *      ready 时带 token（zcode JWT）、user、bigmodel{access_token, refresh_token} 或 zai{access_token}
- *   4. Z.ai 的 access_token 还要换一次业务 token：POST https://api.z.ai/api/auth/z/login {token}
+ *      ready 时带 token（zcode JWT）、user、bigmodel / zai / zai_cn 凭据与 linked_bigmodel
+ *   4. Z.ai 国际版的 access_token 还要换一次业务 token：POST https://api.z.ai/api/auth/z/login {token}
+ *      国内版 zai_cn 则直接使用服务端下发的 token
  *
- * 拿到的凭据按客户端 credentials.json 的格式（enc:v1 加密）组装，存进账号 meta，
+ * 拿到的凭据按客户端 credentials.json 的格式组装，存进账号 meta，
  * 之后与「本机导入」的账号完全一样：可查额度、可一键切换到 ZCode 客户端。
  */
 
@@ -31,9 +35,13 @@ async function fetchJson(url, init = {}) {
 
 const str = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 
-/** kind: 'zcode-bigmodel'（智谱 BigModel）| 'zcode-zai'（Z.ai 国际） */
+/** kind: 'zcode-bigmodel'（智谱 BigModel）| 'zcode-zai'（Z.ai 国际）| 'zcode-zai-cn' / 'zcode-zai_cn'（ZCode 4.0 官方国内版） */
 export async function startZcodeLogin(kind) {
-  const provider = kind === 'zcode-zai' ? 'zai' : 'bigmodel';
+  const provider = (kind === 'zcode-zai' || kind === 'zai')
+    ? 'zai'
+    : (kind === 'zcode-zai-cn' || kind === 'zcode-zai_cn' || kind === 'zai_cn')
+      ? 'zai_cn'
+      : 'bigmodel';
   const pollToken = crypto.randomBytes(32).toString('hex');
   const { res, body } = await fetchJson(API_BASE + '/api/v1/oauth/cli/init', {
     method: 'POST',
@@ -68,16 +76,54 @@ export async function pollZcodeLogin(data) {
 
   const jwt = str(d.token);
   const user = d.user && typeof d.user === 'object' ? d.user : {};
-  const userId = user.user_id !== undefined && user.user_id !== null ? String(user.user_id) : null;
-  let accessToken = data.provider === 'zai' ? str(d.zai?.access_token) : str(d.bigmodel?.access_token) || str(d.bigmodel?.accessToken);
-  const refreshToken = data.provider === 'bigmodel' ? str(d.bigmodel?.refresh_token) || str(d.bigmodel?.refreshToken) : null;
+  const userId = user.user_id !== undefined && user.user_id !== null
+    ? String(user.user_id)
+    : (user.id !== undefined && user.id !== null ? String(user.id) : null);
+
+  let accessToken;
+  if (data.provider === 'zai') {
+    accessToken = str(d.zai?.access_token) || str(d.zai?.accessToken);
+  } else if (data.provider === 'zai_cn') {
+    accessToken = str(d.zai?.access_token) || str(d.zai_cn?.access_token) || str(d.zai?.accessToken) || str(d.zai_cn?.accessToken);
+  } else {
+    accessToken = str(d.bigmodel?.access_token) || str(d.bigmodel?.accessToken);
+  }
+
+  let refreshToken = null;
+  if (data.provider === 'bigmodel') {
+    refreshToken = str(d.bigmodel?.refresh_token) || str(d.bigmodel?.refreshToken);
+  } else {
+    refreshToken = str(d.zai?.refresh_token) || str(d.zai_cn?.refresh_token) || str(d.zai?.refreshToken) || str(d.zai_cn?.refreshToken);
+  }
+
   if (!jwt || !accessToken || !userId) throw new Error('ZCode 授权返回缺少 token / 用户信息（上游结构可能变化）');
   if (data.provider === 'zai') accessToken = await resolveZaiBusinessToken(accessToken);
 
-  return { status: 'ok', input: buildAccountInput({ provider: data.provider, jwt, accessToken, refreshToken, user, userId }) };
+  // 提取 linkedBigModel（ZCode 4.0 中 Z.ai 账号绑定的 BigModel 资产）
+  let linkedBigModel = null;
+  if (d.bigmodel && typeof d.bigmodel === 'object') {
+    const custId = str(d.bigmodel.customer_id) || str(d.bigmodel.customerId);
+    const at = str(d.bigmodel.access_token) || str(d.bigmodel.accessToken);
+    if (custId && at) {
+      linkedBigModel = { customerId: custId, accessToken: at };
+    }
+  }
+
+  return {
+    status: 'ok',
+    input: buildAccountInput({
+      provider: data.provider,
+      jwt,
+      accessToken,
+      refreshToken,
+      user,
+      userId,
+      linkedBigModel,
+    }),
+  };
 }
 
-/** Z.ai OAuth token → 业务 access token（与客户端 ZaiBusinessTokenResolver 一致） */
+/** Z.ai 国际版 OAuth token → 业务 access token（与客户端 ZaiBusinessTokenResolver 一致） */
 async function resolveZaiBusinessToken(oauthToken) {
   const { res, body } = await fetchJson(ZAI_BUSINESS_LOGIN_URL, {
     method: 'POST',
@@ -91,8 +137,8 @@ async function resolveZaiBusinessToken(oauthToken) {
 }
 
 /** 按 ZCode credentials.json 的键名组装并用本机密钥加密（与客户端写出的格式一致） */
-export function buildCredentials({ provider, jwt, accessToken, refreshToken, user, userId }, secret) {
-  const label = str(user.name) || str(user.email) || userId;
+export function buildCredentials({ provider, jwt, accessToken, refreshToken, user, userId, linkedBigModel }, secret) {
+  const label = str(user.name) || str(user.email) || str(user.username) || userId;
   const userInfo = {
     id: userId, username: label, displayName: label,
     ...(str(user.avatar) ? { avatarUrl: user.avatar } : {}),
@@ -106,6 +152,24 @@ export function buildCredentials({ provider, jwt, accessToken, refreshToken, use
     zcodejwttoken: enc(jwt),
   };
   if (refreshToken) creds[`oauth:${provider}:refresh_token`] = enc(refreshToken);
+  if (linkedBigModel) {
+    creds['oauth:linked_bigmodel'] = enc(JSON.stringify({ userId, ...linkedBigModel }));
+  }
+
+  // 为客户端冷切后直接生效预填充 coding-plan identity
+  if (provider === 'zai_cn' || provider === 'zai') {
+    creds['account-provider:account:zai-start-plan:identity'] = enc(userId);
+    creds['account-provider:account:zai-individual-coding-plan:identity'] = enc(userId);
+    creds['account-provider:account:zai-team-coding-plan:identity'] = enc(userId);
+    if (linkedBigModel?.customerId) {
+      creds['account-provider:account:bigmodel-individual-coding-plan:identity'] = enc(String(linkedBigModel.customerId));
+      creds['account-provider:account:bigmodel-team-coding-plan:identity'] = enc(String(linkedBigModel.customerId));
+    }
+  } else if (provider === 'bigmodel') {
+    creds['account-provider:account:bigmodel-individual-coding-plan:identity'] = enc(userId);
+    creds['account-provider:account:bigmodel-team-coding-plan:identity'] = enc(userId);
+  }
+
   return creds;
 }
 
@@ -120,12 +184,12 @@ function buildAccountInput(parts) {
     name: zc.identityLabel(id),
     email: str(parts.user.email),
     source: 'browser',
-    // 不带 config / deviceMid：同一账号再次登录时保留已保存的客户端配置与虚拟设备 ID
     meta: {
       credentials,
       canonicalHash: zc.canonicalHash(credentials),
       capturedAt: new Date().toISOString(),
       loginProvider: parts.provider,
+      ...(parts.linkedBigModel ? { linkedBigModel: parts.linkedBigModel } : {}),
     },
   };
 }

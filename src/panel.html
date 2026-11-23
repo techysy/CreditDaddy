@@ -862,6 +862,7 @@
         <select class="input" id="dev-provider">
           <option value="qoder">Qoder 国际版</option><option value="qoder-cn">Qoder 国内版</option>
           <option value="workbuddy" data-i18n="WorkBuddy 国内版">WorkBuddy 国内版</option><option value="workbuddy-intl" data-i18n="WorkBuddy 国际版">WorkBuddy 国际版</option>
+          <option value="zcode-zai-cn" data-i18n="ZCode · Z.ai（国内 4.0）">ZCode · Z.ai（国内 4.0）</option>
           <option value="zcode-bigmodel" data-i18n="ZCode · BigModel（智谱）">ZCode · BigModel（智谱）</option><option value="zcode-zai" data-i18n="ZCode · Z.ai（国际）">ZCode · Z.ai（国际）</option>
           <option value="minimax" data-i18n="MiniMax Code 国内版">MiniMax Code 国内版</option><option value="minimax-global" data-i18n="MiniMax Code 国际版">MiniMax Code 国际版</option>
           <option value="trae" data-i18n="Trae 国内版">Trae 国内版</option><option value="trae-intl" data-i18n="Trae 国际版">Trae 国际版</option>
@@ -1461,6 +1462,7 @@ const PROV = {
   workbuddy: { prod: 'workbuddy', prodLabel: 'WorkBuddy', region: '国内版', cls: 'cn' },
   'workbuddy-intl': { prod: 'workbuddy', prodLabel: 'WorkBuddy', region: '国际版', cls: 'intl' },
   zcode: { prod: 'zcode', prodLabel: 'ZCode', region: '', cls: '' },
+  'zcode-zai-cn': { prod: 'zcode', prodLabel: 'ZCode', region: 'Z.ai 国内 4.0', cls: 'cn' },
   'zcode-bigmodel': { prod: 'zcode', prodLabel: 'ZCode', region: 'BigModel', cls: 'cn' },
   'zcode-zai': { prod: 'zcode', prodLabel: 'ZCode', region: 'Z.ai', cls: 'intl' },
   mirasim: { prod: 'mirasim', prodLabel: 'mirasim', region: '', cls: '' },
@@ -6758,7 +6760,7 @@ $('f-provider').addEventListener('change', () => {
 // 同一组槽）；国内线无 Google 跳板 → 槽位选择器**置灰**（不隐藏，明示「此线用不上」），
 // 其余提供方隐藏整块
 const GOOGLE_SSO_PROVIDERS = new Set(['croli', 'trae-intl', 'minimax-global', 'qoder', 'qwenwork']);
-const CN_NO_GOOGLE_PROVIDERS = new Set(['qoder-cn', 'qwenwork-cn', 'workbuddy', 'zcode-bigmodel', 'minimax', 'trae']);
+const CN_NO_GOOGLE_PROVIDERS = new Set(['qoder-cn', 'qwenwork-cn', 'workbuddy', 'zcode-zai-cn', 'zcode-zai_cn', 'zcode-bigmodel', 'minimax', 'trae']);
 $('dev-provider').addEventListener('change', () => {
   const v = $('dev-provider').value;
   const field = $('dev-croli-slot-field');

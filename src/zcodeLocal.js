@@ -84,7 +84,7 @@ export function liveToAccount(secretOpts) {
   const creds = readJson(p.credentials);
   if (!creds || !zc.isLoggedIn(creds)) return null;
   const secret = zc.defaultSecret(p.home, secretOpts);
-  const id = zc.identityWithSecret(creds, secret);
+  const id = zc.identityWithSecret(creds, secret, { credentialsPath: p.credentials });
   return {
     provider: 'zcode',
     // ZCode 没有单一 access_token 字段可直接当 Bearer 用（quota 会在多个候选 token 里试），
@@ -103,6 +103,8 @@ export function liveToAccount(secretOpts) {
       // 沿用本机当前的设备 ID：切回这个账号时还原成它原本的设备身份
       deviceMid: readJson(p.telemetry)?.deviceMid || null,
       capturedAt: new Date().toISOString(),
+      loginProvider: id.provider,
+      ...(id.linkedBigModel ? { linkedBigModel: id.linkedBigModel } : {}),
     },
   };
 }
@@ -112,8 +114,8 @@ export function currentZcodeIdentity() {
   const p = zcodePaths();
   const creds = readJson(p.credentials);
   if (!creds || !zc.isLoggedIn(creds)) return null;
-  const id = zc.identityWithSecret(creds, zc.defaultSecret(p.home));
-  return { uid: id.userId ?? null, email: id.email || null, username: id.username || null };
+  const id = zc.identityWithSecret(creds, zc.defaultSecret(p.home), { credentialsPath: p.credentials });
+  return { uid: id.userId ?? null, email: id.email || null, username: id.username || null, provider: id.provider || null };
 }
 
 /** ZCode 客户端当前登录账号的 uid（未登录返回 null） */
@@ -222,20 +224,23 @@ export function switchTo(account, { force = false } = {}) {
   atomicWriteJson(p.credentials, account.meta.credentials);
   ensureCodingPlanIdentity(account, p);
 
-  // 深度对齐 config.json：保证目标账号对应渠道（zai / bigmodel）处于启用状态，避免出现套餐「未登录」
+  // 深度对齐 config.json：保证目标账号对应渠道（zai / zai_cn / bigmodel）处于启用状态，避免出现套餐「未登录」
   const creds = account.meta.credentials || {};
-  const isZai = Boolean(creds['oauth:zai:access_token'] || account.meta.loginProvider === 'zai' || Object.keys(creds).some((k) => k.includes('zai')));
-  const isBig = Boolean(creds['oauth:bigmodel:access_token'] || account.meta.loginProvider === 'bigmodel' || Object.keys(creds).some((k) => k.includes('bigmodel')));
+  const prov = account.meta.loginProvider || (creds['oauth:active_provider'] ? zc.safeDecrypt(creds['oauth:active_provider'], secret) : null);
+  const isZaiCn = prov === 'zai_cn' || Boolean(creds['oauth:zai_cn:access_token']) || Boolean(creds['oauth:zai_cn:user_info']);
+  const isZai = !isZaiCn && (prov === 'zai' || Boolean(creds['oauth:zai:access_token']) || Boolean(creds['oauth:zai:user_info']));
+  const isBig = !isZaiCn && !isZai;
 
   const cfg = account.meta.config || readJson(p.config) || { provider: {} };
   cfg.provider = cfg.provider || {};
-  if (isZai) {
-    if (cfg.provider['builtin:zai']) cfg.provider['builtin:zai'].enabled = true;
-    if (cfg.provider['builtin:zai-start-plan']) cfg.provider['builtin:zai-start-plan'].enabled = true;
+  if (isZaiCn || isZai) {
+    cfg.provider['builtin:zai'] = { ...(cfg.provider['builtin:zai'] || {}), enabled: true };
+    cfg.provider['builtin:zai-start-plan'] = { ...(cfg.provider['builtin:zai-start-plan'] || {}), enabled: true };
     if (cfg.provider['builtin:bigmodel']) cfg.provider['builtin:bigmodel'].enabled = false;
+    if (cfg.provider['builtin:bigmodel-coding-plan']) cfg.provider['builtin:bigmodel-coding-plan'].enabled = false;
   } else if (isBig) {
-    if (cfg.provider['builtin:bigmodel']) cfg.provider['builtin:bigmodel'].enabled = true;
-    if (cfg.provider['builtin:bigmodel-coding-plan']) cfg.provider['builtin:bigmodel-coding-plan'].enabled = true;
+    cfg.provider['builtin:bigmodel'] = { ...(cfg.provider['builtin:bigmodel'] || {}), enabled: true };
+    cfg.provider['builtin:bigmodel-coding-plan'] = { ...(cfg.provider['builtin:bigmodel-coding-plan'] || {}), enabled: true };
     if (cfg.provider['builtin:zai']) cfg.provider['builtin:zai'].enabled = false;
     if (cfg.provider['builtin:zai-start-plan']) cfg.provider['builtin:zai-start-plan'].enabled = false;
   }
@@ -248,7 +253,7 @@ export function switchTo(account, { force = false } = {}) {
   // providerFamilyDomain 是客户端模型页的「家族显示开关」：
   // 设为 zai 时整个 BigModel 家族被隐藏（反之亦然），切号必须与 active_provider 同步对齐，
   // 否则客户端界面上目标渠道一栏直接消失 / 显示未登录（zcode-switch 同样写这个字段）。
-  if (isZai) {
+  if (isZaiCn || isZai) {
     set.modelProviderFamilyModes.zai = 'oauth';
     set.modelProviderFamilySelectedKeys.zai = 'coding-plan:builtin:zai-start-plan';
     set.providerFamilyDomain = 'zai';
@@ -262,7 +267,7 @@ export function switchTo(account, { force = false } = {}) {
 
   // 深度对齐 provider_config.json：默认模型选择指向目标账号的 Coding Plan，否则客户端模型页会判定「未登录」
   if (account.meta.providerConfig) atomicWriteJson(p.providerConfig, account.meta.providerConfig);
-  alignDefaultModelSelection(account, isZai ? 'zai' : isBig ? 'bigmodel' : null);
+  alignDefaultModelSelection(account, (isZaiCn || isZai) ? 'zai' : 'bigmodel');
 
   writeVirtualDeviceMid(account);
   return { switched: true, alreadyActive: false };
@@ -292,13 +297,30 @@ export function ensureCodingPlanIdentity(account, paths = zcodePaths()) {
     putIdentity('account:bigmodel-team-coding-plan', bigUid);
   }
 
-  // Z.ai：身份 ID 取自 oauth:zai:user_info.user_id
+  // Z.ai 国际版：身份 ID 取自 oauth:zai:user_info.user_id
   const zaiInfo = zc.decryptJsonOpt(creds['oauth:zai:user_info'], secret);
   const zaiUid = zaiInfo?.user_id ?? zaiInfo?.id ?? null;
   if (zaiUid) {
     putIdentity('account:zai-individual-coding-plan', zaiUid);
     putIdentity('account:zai-team-coding-plan', zaiUid);
     putIdentity('account:zai-start-plan', zaiUid);
+  }
+
+  // ZCode 4.0 国内版 zai_cn：身份 ID 取自 oauth:zai_cn:user_info.user_id / id
+  const zaiCnInfo = zc.decryptJsonOpt(creds['oauth:zai_cn:user_info'], secret);
+  const zaiCnUid = zaiCnInfo?.user_id ?? zaiCnInfo?.id ?? null;
+  if (zaiCnUid) {
+    putIdentity('account:zai-individual-coding-plan', zaiCnUid);
+    putIdentity('account:zai-team-coding-plan', zaiCnUid);
+    putIdentity('account:zai-start-plan', zaiCnUid);
+  }
+
+  // ZCode 4.0 linked_bigmodel：若关联了 BigModel 资产，把 customerId 补齐到 bigmodel coding-plan
+  const linked = zc.decryptJsonOpt(creds['oauth:linked_bigmodel'], secret);
+  const linkedCustId = linked?.customerId ?? linked?.customer_id ?? null;
+  if (linkedCustId) {
+    putIdentity('account:bigmodel-individual-coding-plan', linkedCustId);
+    putIdentity('account:bigmodel-team-coding-plan', linkedCustId);
   }
 
   if (changed) atomicWriteJson(paths.credentials, creds);

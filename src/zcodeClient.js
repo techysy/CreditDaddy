@@ -24,7 +24,7 @@ import tls from 'node:tls';
 import { PassThrough } from 'node:stream';
 import { execFile } from 'node:child_process';
 import { FETCH_TIMEOUT_MS } from './constants.js';
-import { defaultSecret, safeDecrypt } from './zcrypto.js';
+import { defaultSecret, safeDecrypt, decryptJsonOpt } from './zcrypto.js';
 import { ensureVirtualDeviceMid } from './zcodeLocal.js';
 
 const QUOTA_LIMIT_URL = 'https://open.bigmodel.cn/api/monitor/usage/quota/limit';
@@ -601,15 +601,23 @@ const SCREEN_RESOLUTION = '2560x1440';
 /** 从凭据里取遥测用的 user_id（oauth:<provider>:user_info 解密后的 id / user_id） */
 function telemetryUserId(account) {
   const creds = account?.meta?.credentials || {};
-  const secret = defaultSecret(os.homedir());
-  const provider = (safeDecrypt(creds['oauth:active_provider'], secret) || 'zai').trim() || 'zai';
-  const raw = creds[`oauth:${provider}:user_info`];
-  if (typeof raw !== 'string' || !raw) return null;
-  try {
-    const info = JSON.parse(safeDecrypt(raw, secret) || raw);
-    const pick = (k) => { const v = info?.[k]; return typeof v === 'string' && v.trim() ? v.trim() : null; };
-    return pick('id') || pick('user_id') || null;
-  } catch { return null; }
+  const secret = defaultSecret(process.env.ZCODE_HOME || os.homedir());
+  const active = (safeDecrypt(creds['oauth:active_provider'], secret) || '').trim();
+  const candidateProviders = [active, 'zai_cn', 'zai', 'bigmodel'].filter(Boolean);
+  for (const provider of candidateProviders) {
+    const raw = creds[`oauth:${provider}:user_info`];
+    if (typeof raw === 'string' && raw) {
+      try {
+        const info = JSON.parse(safeDecrypt(raw, secret) || raw);
+        const pick = (k) => { const v = info?.[k]; return typeof v === 'string' && v.trim() ? v.trim() : null; };
+        const uid = pick('id') || pick('user_id');
+        if (uid) return uid;
+      } catch {}
+    }
+  }
+  const linked = decryptJsonOpt(creds['oauth:linked_bigmodel'], secret);
+  if (linked?.customerId) return String(linked.customerId);
+  return null;
 }
 
 /**
@@ -723,7 +731,7 @@ const businessOk = (v) => {
 export function candidateTokens(account) {
   const creds = account.meta?.credentials || {};
   const config = account.meta?.config || {};
-  const secret = defaultSecret(os.homedir());
+  const secret = defaultSecret(process.env.ZCODE_HOME || os.homedir());
   const out = [];
   const add = (t) => { if (typeof t === 'string' && t.trim().length > 20 && !out.includes(t)) out.push(t); };
   const providers = Object.entries(config.provider || {})
@@ -734,9 +742,18 @@ export function candidateTokens(account) {
   }
   add(safeDecrypt(creds.zcodejwttoken, secret));
   const active = safeDecrypt(creds['oauth:active_provider'], secret) || 'zai';
-  for (const key of [`oauth:${active}:access_token`, 'oauth:bigmodel:access_token', 'oauth:zai:access_token']) {
+  for (const key of [
+    `oauth:${active}:access_token`,
+    'oauth:zai_cn:access_token',
+    'oauth:bigmodel:access_token',
+    'oauth:zai:access_token',
+  ]) {
     add(safeDecrypt(creds[key], secret));
   }
+  // 支持 linked_bigmodel access_token
+  const linked = decryptJsonOpt(creds['oauth:linked_bigmodel'], secret);
+  if (linked?.accessToken) add(linked.accessToken);
+  if (linked?.access_token) add(linked.access_token);
   return out;
 }
 
@@ -744,7 +761,7 @@ export function candidateTokens(account) {
 function billingTokens(account) {
   const creds = account.meta?.credentials || {};
   const config = account.meta?.config || {};
-  const secret = defaultSecret(os.homedir());
+  const secret = defaultSecret(process.env.ZCODE_HOME || os.homedir());
   const out = [];
   const jwt = safeDecrypt(creds.zcodejwttoken, secret);
   if (jwt && jwt.length > 20) out.push(jwt);
@@ -752,6 +769,8 @@ function billingTokens(account) {
     const k = p?.options?.apiKey;
     if (id.includes('start-plan') && typeof k === 'string' && !k.startsWith('enc:') && k.length > 20 && !out.includes(k)) out.push(k);
   }
+  const zaiCnToken = safeDecrypt(creds['oauth:zai_cn:access_token'], secret);
+  if (zaiCnToken && zaiCnToken.length > 20 && !out.includes(zaiCnToken)) out.push(zaiCnToken);
   return out;
 }
 
