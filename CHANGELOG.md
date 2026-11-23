@@ -19,6 +19,7 @@
 - **自审修复（打包前代码审查 10 项）**：导出白名单补 `qwenwork`（此前「QwenWork（全部）」静默导出全部产品线账号）；设备码轮询 200 空 body / 非 JSON 一律 pending（线上网关实测有 200 空 body，不中止登录）、`expires_at` 数值毫秒先 `normalizeExpiry` 再进快照（原样进 `Date.parse` 判 NaN，设备码登录的账号永远切不进客户端）；切换的运行检测/强杀按 provider 取自家 exe（双客户端各登各号不再互杀）；注册表兜底正则按 installName 构造（`QwenWorkCN 2.1.0` 不再漏检）+ 目录按路径段精确归属（`QwenWork` 是 `QwenWorkCN` 前缀，子串匹配互相误收）；额度卡拉取失败回退 `quotaSnapshot` 保数字、仅鉴权失效（401/403）出文字卡（crowllm 钱包同口径）；quota-refresh 渠道族正则补 `qwenwork-cn|qwenwork|crowllm`（长前缀在前，停推的卡不再被 10R 刷新按钮复活）；biz/团队账号 `remaining:null` 按 `total-used` 兜底（10R 同接口口径，不再 800 积分显示成 0 并误判用尽）；「打开客户端」版本目录按 semver 段 + 数字 build 后缀排序（字典序 2.9.0 会压过 2.10.0，同版本不同 build 判等落回 readdir 顺序）；仪表盘国内/国际客户端行各取各的 signedIn（此前共用全局 OR，未登录的一行误显「未导入的账号」）。
 - **面板**：标签栏 logo 直接拖动排序——nav 按钮可拖拽、横向按指针 X 判插入前后（dash 主页签固定），顺序落同一份 `compOrder`（qd_comp_order），仪表盘产品卡 / 组件设置 chips / 标签栏三处同步。
 - **ZCode 定时计划按周几排**：每日定时从单一「每天 HH:MM」升级为 7 天各一刻（`dailyPlanWeek[0..6]` = 周一..周日，null = 该日不排，落 zcode-net.json）——周末集成在 WEEKEND BUILD 活动里不用排，周一~四 20:00、周五 22:00 各行各配。老配置迁移为七天同刻行为不变；时钟按周计划扫下一个未来槽位（跨周/跨年），补跑口径不变（1h 钳制唤醒 + due 判定，只在当天有槽时放行）；弹窗七天时间行 + 保存定时、状态徽章/顶栏/仪表盘横幅按同刻分组显示（全周同刻回退「每天 HH:MM」）；四语 i18n。
+- **修复 CrowLLM 额度卡赠送额度双倍计算**：余额行的 balanceUsd 已含赠送（paid+earned），赠送拆分行未标 `detailOnly` 被 10R 的加性池再算一遍 → 卡面 219.98 实际只有 109.99（2026-11-23 用户报）。拆分行补 `detailOnly: true` 对齐 longcat 的 summary+detail 模式——卡面大数回到真实钱包余额，赠送额度仍在逐包明细里可见。
 
 ## [1.8.3] (2026-11-21)
 

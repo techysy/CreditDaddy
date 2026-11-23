@@ -154,7 +154,8 @@ export function buildCrowllmQuotaPayload(account, liveData = null) {
     },
   };
   // 赠送额度拆分行：earned_quota 只能在免费目录使用。站点不出拆分时整行省略，
-  // 总数行已覆盖。
+  // 总数行已覆盖。detailOnly: 余额行 balanceUsd 已含赠送（paid+earned），拆分行
+  // 若不标 detailOnly 会被 10R 的加性池再算一遍 → 卡面双倍（2026-11-23 用户报）。
   if (Number.isFinite(Number(snap.giftUsd)) && snap.giftUsd > 0) {
     payload.quotas.Gift = {
       name: '赠送额度 (USD)',
@@ -164,6 +165,7 @@ export function buildCrowllmQuotaPayload(account, liveData = null) {
       displayRemaining: true,
       isCreditBalance: true,
       giftPack: true,
+      detailOnly: true,
     };
   }
   return { source: cleanSource, payload };

@@ -112,6 +112,7 @@ test('buildCrowllmQuotaPayload：live 总行 + 赠送行 + 失效 message 卡 + 
   assert.equal(bal.isCreditBalance, true);
   assert.equal(payload.quotas.Gift.giftPack, true, '赠送额度拆分行');
   assert.equal(payload.quotas.Gift.total, 110);
+  assert.equal(payload.quotas.Gift.detailOnly, true, '赠送行不入加性池（余额已含赠送，否则双倍）');
 
   const dead = cw.buildCrowllmQuotaPayload(acct, { auth: false, code: 'NEED_LOGIN' });
   assert.match(dead.payload.message, /重新登录/);
