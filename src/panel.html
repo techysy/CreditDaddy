@@ -642,6 +642,10 @@
             <button class="hmenu-item danger" id="hm-restart" data-i18n="重启 CreditDaddy">重启 CreditDaddy</button>
           </div>
           <div class="hmenu-ver"><span id="hmenu-version">CreditDaddy</span><a id="hmenu-channel" href="https://github.com/techysy/CreditDaddy/releases/latest" target="_blank" rel="noopener" hidden>Releases</a></div>
+          <div class="hint" style="padding:4px 10px 8px;line-height:1.5">
+            <div data-i18n="本软件永久免费开源，唯一官方发布渠道是 GitHub Releases——任何付费购买的版本均非官方。">本软件永久免费开源，唯一官方发布渠道是 GitHub Releases——任何付费购买的版本均非官方。</div>
+            <div id="hmenu-build-src" hidden></div>
+          </div>
         </div>
       </div>
     </div>
@@ -979,6 +983,20 @@
       <span data-i18n="支付后请在备注里留下您的 GitHub 用户名 —— 便于将您署名加入贡献者列表 ❤️">支付后请在备注里留下您的 GitHub 用户名 —— 便于将您署名加入贡献者列表 ❤️</span>
     </div>
     <div class="modal-actions"><button class="btn primary" data-close data-i18n="关闭">关闭</button></div>
+  </div>
+</div>
+
+<!-- 首次启动免费声明（反倒卖）：只弹一次，确认后落盘 settings.freeNoticeShown。
+     文案三段：免费开源声明 / 唯一官方渠道 / 付费购买处置指引。只读展示，不改任何设置。 -->
+<div class="mask" id="m-free-notice">
+  <div class="modal">
+    <div class="modal-title"><span data-i18n="使用前必读">使用前必读</span></div>
+    <div class="hint" style="line-height:1.8">
+      <p style="margin:0 0 10px;font-weight:700;color:var(--text)" data-i18n="CreditDaddy 是永久免费开源软件（AGPL-3.0），不售卖、没有付费版。">CreditDaddy 是永久免费开源软件（AGPL-3.0），不售卖、没有付费版。</p>
+      <p style="margin:0 0 10px" data-i18n="唯一官方发布渠道是 GitHub Releases（github.com/techysy/CreditDaddy），安装包一律免费下载。">唯一官方发布渠道是 GitHub Releases（github.com/techysy/CreditDaddy），安装包一律免费下载。</p>
+      <p style="margin:0" data-i18n="如果你付费购买了本软件，那是倒卖行为——与本项目无关，请立即申请退款并向平台举报卖家。">如果你付费购买了本软件，那是倒卖行为——与本项目无关，请立即申请退款并向平台举报卖家。</p>
+    </div>
+    <div class="modal-actions"><button class="btn primary" id="free-notice-ok" data-i18n="我知道了">我知道了</button></div>
   </div>
 </div>
 
@@ -2695,12 +2713,32 @@ function renderStatus() {
   if (!s) return;
   const buildTag = s.build && s.build.commit ? ' (' + s.build.commit + ')' : '';
   $('ver').textContent = 'v' + s.version + buildTag + T(' · 数据目录 ') + s.dataDir;
+  // 首次启动免费声明的判据（反倒卖）：status 到达即记账，开屏定时器据此决定弹不弹
+  window.__freeNoticeShown = s.freeNoticeShown === true;
   if (s.build) $('ver').title = (s.build.commit || '') + (s.build.builtAt ? ' · ' + s.build.builtAt : '') + (s.build.channel && s.build.channel !== 'release' ? ' · ' + s.build.channel + (s.build.dirty ? '-dirty' : '') : '');
   document.title = 'CreditDaddy v' + s.version;
   if (s.homepage) $('hm-home').href = s.homepage;
   // 菜单脚注版本：面板版本 + 数据目录（与品牌区同一个口径，换行折行由 CSS 收敛）
   $('hmenu-version').textContent = 'CreditDaddy v' + s.version;
   $('hmenu-version').title = s.dataDir ? T('数据目录 ') + s.dataDir : '';
+  // 关于分区脚注：构建来源行（反倒卖三件套之二）——有 build.json 时展示版本 + 构建渠道/提交，
+  // 让买家能对着官方 Releases 核对自家安装包是哪来的；无构建身份（npm/源码跑）不占位
+  {
+    const el = $('hmenu-build-src');
+    if (el) {
+      const b = s.build;
+      if (b && (b.commit || b.channel)) {
+        el.hidden = false;
+        el.textContent = T('本机构建：v{version} · {channel}{dirty} · {commit}', {
+          version: s.version,
+          channel: b.channel || '-',
+          dirty: b.dirty ? '-dirty' : '',
+          commit: b.commit || '',
+        });
+        el.title = b.builtAt || '';
+      } else el.hidden = true;
+    }
+  }
   // 状态胶囊：领取中显示强调色文字，空闲显示「下次自动领取 HH:MM」（时间用 <b> 提权重）
   const sch = s.scheduler || {};
   const chip = $('sched');
@@ -6973,6 +7011,29 @@ function hideBootBusy() { const b = $('boot-busy'); if (!b) return; clearTimeout
   // 先直接请求（本机模式无需密码）；需要密码时 api() 会弹框并重试
   api('/api/status').then(start).catch((e) => { hideBootBusy(); toast(e.code === 'PANEL_KEY'
     ? T('未输入面板访问密码，刷新页面可重试') : T('无法连接守护进程：') + e.message, false); });
+})();
+
+// ── 首次启动免费声明（反倒卖三件套之一）：settings.freeNoticeShown 非真时开屏弹一次，
+// 点「我知道了」PUT 落盘，此后不再弹。声明也常驻「关于」分区脚注，不看开屏也能找到。
+(function freeNoticeOnce() {
+  const mask = document.getElementById('m-free-notice');
+  if (!mask) return;
+  let done = false;
+  document.getElementById('free-notice-ok')?.addEventListener('click', async () => {
+    if (done) return;
+    done = true;
+    mask.classList.remove('show');
+    try { await api('/api/settings', { method: 'PUT', json: { freeNoticeShown: true } }); }
+    catch { /* 落盘失败下次仍会弹——宁可重弹不漏弹 */ }
+  });
+  // 等 status 拿到 freeNoticeShown 再决定；密码门挡着时 api() 先走密码流程，不影响这里
+  const timer = setInterval(() => {
+    const shown = window.__freeNoticeShown;
+    if (shown === undefined) return;
+    clearInterval(timer);
+    if (!shown) openModal('m-free-notice');
+  }, 400);
+  setTimeout(() => clearInterval(timer), 30000);   // 兜底：status 一直没到就不再等
 })();
 </script>
 <!-- 语言切换加载态 -->

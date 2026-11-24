@@ -2659,6 +2659,8 @@ async function handleApi(req, res, url) {
       doubaoClient: (() => { const d = detectDoubao(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       croliClient: (() => { const d = detectCroli(); return { installed: d.installed, signedIn: d.signedIn, running: d.running, expired: d.expired }; })(),
       croliCurrentUid: (() => { const c = readCroliCredential(); return c ? (croliUidOf(c.accessToken) || null) : null; })(),
+      // 首次启动免费声明（反倒卖三件套）：面板按此决定开屏是否弹一次；确认后 PUT 落盘
+      freeNoticeShown: (await loadSettings().catch(() => ({}))).freeNoticeShown === true,
       keyRequired: panelKeyRequired(),
     });
   }
@@ -2688,6 +2690,11 @@ async function handleApi(req, res, url) {
     // 只有携带密码字段才走密码分支：纯语言/其它设置的请求此前会掉进
     // 「请提供新密码」400，面板 api() 抛错导致语言切换点了不刷新（i18n 切换失效根因）
     if (body?.panelKey !== undefined || body?.disable === true) return await handleSettingsPut(res, body);
+    // 首次启动免费声明已读（反倒卖三件套）：只置 true 的一次性落盘，不参与 resync
+    if (body?.freeNoticeShown === true) {
+      await saveSettings({ freeNoticeShown: true });
+      return json(res, 200, { ok: true, panelKeyEnabled: panelKeyRequired(), locale: getLocale() });
+    }
     if (body?.locale !== undefined) return json(res, 200, { ok: true, panelKeyEnabled: panelKeyRequired(), locale: getLocale() });
     if (resyncedCheckin) return json(res, 200, { ok: true });
     return json(res, 400, { error: '请求未携带任何设置字段' });

@@ -1,5 +1,8 @@
 <div align="center">
 
+<!-- 反倒卖免费声明：本软件永久免费，付费购买均为倒卖 -->
+**🆓 CreditDaddy 是永久免费开源软件（AGPL-3.0），不售卖、没有付费版。唯一官方发布渠道是本仓库的 [GitHub Releases](https://github.com/techysy/CreditDaddy/releases/latest)——如果你在闲鱼、淘宝等任何平台付费购买了本软件，那是倒卖行为，与本项目无关，请立即申请退款并向平台举报卖家。**
+
 <img src="desktop/icon.png" width="96" alt="CreditDaddy">
 
 # CreditDaddy

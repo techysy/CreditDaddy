@@ -6,13 +6,19 @@
 
 ## [Unreleased]
 
-- **账号会话更名与豆包导入体验优化（2026-11-24）**：
+## [1.8.4] (2026-11-24)
+
+本版主题:**反倒卖免费声明三件套（首次启动开屏声明 + 关于分区构建来源 + README 免费横幅）+ 账号会话更名与豆包导入体验优化 + 千问办公产品线收尾**.
+Theme: **Anti-resale free-software notice trio (first-launch splash notice + About-section build provenance + README free banner) + account-session rename and Doubao import polish + QwenWork line wrap-up**.
+
+- **反倒卖免费声明三件套**：闲鱼出现原封搬运官方安装包改名倒卖（5.11 元），本版让买家一眼看到官方免费声明、去退款并举报——
+  - **首次启动开屏声明（只弹一次）**：`settings.freeNoticeShown` 落盘控制，「使用前必读」弹窗三段文案（永久免费开源 AGPL-3.0 / 唯一官方渠道 GitHub Releases / 付费购买即倒卖可退款举报）；`/api/status` 下发 `freeNoticeShown`、`PUT /api/settings` 落盘，四语词条（en/ja/ko/zh-TW）随包。
+  - **关于分区构建来源**：聚合菜单「关于」脚注常驻免费声明 + 本机构建行（`v{version} · {channel}{dirty} · {commit}`，读随包 build.json）——买家可对照官方 Releases 核对自家安装包来源；npm/源码运行无构建身份时不占位。
+  - **README 顶部免费横幅**：置顶声明永久免费、唯一官方渠道、付费购买可退款举报。
+- **账号会话更名与豆包导入体验优化**：
   - **全站统一更名**：全站所有面向用户的界面与提示统一将「网页会话」更名为「账号会话」（导航入口、产品卡片、说明文档、错误提示、同步提示等），保留底层协议字段对齐 10Router 兼容性。
   - **豆包卡片操作精简**：豆包卡片撤掉无意义的「网页版」与「粘贴捕获」，直接提供「本机导入」按钮，简化操作路径并支持「打开豆包」快捷启动客户端。
   - **账号会话缓存刷新修复**：修复导入账号后 cookieSites 前端缓存未强制刷新的问题，并在导入与扫描后强制刷新本地站点缓存，实现就地即时回显与重新探测。
-
-本版主题:**新增千问办公（Qwen Work）独立产品线——国内/国际双线全量接入（设备码登录 + 本机凭据导入 + 账号切换 + RT 轮换自动同步 + 双主题图标 + 10Router access-only 同步）**.
-
 - **新增千问办公产品线（qoderwork 同源实锤）**：千问办公与 Qoder 是同一套客户端代码（内部名 `qoderwork`——versions.json、日志 `biz_variant`、asar 内 `qoderRequestTimeoutMs` 三处实锤），按 Qoder 模式全量接入。双 provider：`qwenwork`（国际，gateway.qwenwork.ai）/ `qwenwork-cn`（国内，gateway.qwenwork.cn），协议细节与 10router open-sse 双源互证：
   - **登录三线**：**设备码授权**（Qoder 同款 PKCE + nonce + machine_id；与 Qoder 的差异一处——authUrl 必带 `client_id` + `redirect_uri`，client_id 是 UUID 常量而非产品名字符串，来自真机登录日志；poll 对 202/404/200 空 body 一律视为 pending）；**本机导入**（解密 `%APPDATA%\QwenWorkCN\auth-v2.dat`，Electron safeStorage v10，DPAPI codec 与 Qoder 同构；legacy `auth.dat` 是 SDK 占位符，不作登录依据）；浏览器登录成功即带完整 auth-v2 快照，账号落库即可切换。
   - **账号切换**：整份 auth-v2.dat 快照写回客户端（防丢号：切换前先把本机当前登录回写账号库；force 先关客户端再写，切完自动拉起；快照路径失效时按 Qoder 口径报错指引重新导入，绝不盲写其他位置）。快照校验对齐客户端 `isValidWebIdentityData` 硬校验（loginMethod=browser / refreshStrategy=oauth_web_identity / identityVersion / loginDeviceId 缺一不可，浏览器登录侧由 `buildAuthSnapshot` 补全）。过期语义与 Qoder 不同：**access token（约 7 天）过期才硬拦（staleAuth），refresh_token 过期只 warn**——千问办公的 RT（ory_rt_）单次轮换且约 1 小时寿命，硬拦会把所有闲置快照判死。
