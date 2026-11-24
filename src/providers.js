@@ -264,7 +264,7 @@ const PRODUCTS = {
     // 与其他产品线的套餐/积分口径不同，面板以独立产品页呈现。
     checkin: (account) => checkinDoubao(account),
     quota: async (account) => {
-      const cookie = account.meta?.cookieSiteSession?.cookie;
+      const cookie = account.meta?.cookieSiteSession?.cookie || account.token || account.cookie;
       const st = await fetchDoubaoStatus(cookie);
       if (!st.auth) {
         const e = new Error('豆包会话已失效，请重新登录捕获');

@@ -120,7 +120,7 @@ export async function fetchDoubaoStatus(cookie, uid = '') {
  */
 export async function checkinDoubao(account) {
   const base = { accountId: account.id, account: account.name || account.id, provider: 'doubao' };
-  const cookie = account.meta?.cookieSiteSession?.cookie || account.cookie;
+  const cookie = account.meta?.cookieSiteSession?.cookie || account.token || account.cookie;
   if (!cookie) return { ...base, status: 'failed', message: '缺少豆包会话 cookie（请重新登录捕获）' };
 
   const uid = account.uid || '';

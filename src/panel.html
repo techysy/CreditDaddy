@@ -1480,9 +1480,8 @@ const PROV = {
 // croli：ops/checkin 每日 +100（streak 第 3 天起 +20），调度器侧 productImpl.checkin 自动覆盖
 const CHECKIN_PRODUCTS = new Set(['qoder', 'workbuddy', 'trae', 'minimax', 'croli']);
 // 网页会话卡支持「立即签到」的站点：provider 在 providers.js 挂了 checkin 且非 entryOnly
-// （豆包虽挂了 checkin 实现，但定位是纯打开入口、CD 不代签，不在此列）
-const FREE_CHECKIN_SITES = new Set(['lingxi', 'meoo']);   // meoo 回退网页会话线（1.8.0）：签到走网页会话页
-const CLIENT_LABEL = { qoder: 'Qoder', qwenwork: 'QwenWork', workbuddy: 'WorkBuddy', zcode: 'ZCode', mirasim: 'mirasim', catpaw: '妙手', trae: 'Trae', minimax: 'MiniMax', loomy: 'Loomy', dumate: 'DuMate', meoo: 'Meoo', croli: 'Croli' };
+const FREE_CHECKIN_SITES = new Set(['lingxi', 'meoo', 'doubao']);
+const CLIENT_LABEL = { qoder: 'Qoder', qwenwork: 'QwenWork', workbuddy: 'WorkBuddy', zcode: 'ZCode', mirasim: 'mirasim', catpaw: '妙手', trae: 'Trae', minimax: 'MiniMax', loomy: 'Loomy', dumate: 'DuMate', meoo: 'Meoo', croli: 'Croli', doubao: '豆包' };
 // 产品页顶部改用「有效套餐 N/M」而不是「剩余积分」的产品（单位不是积分：Token / % / Credits）。
 // ⚠️ 只影响**产品页头部文案**；「能不能并进仪表盘剩余积分合计」由下方的 CREDIT_SUM_EXCLUDED
 // 单独判定——两者曾经共用这一个集合，导致 Loomy（单位确实是「积分」）被顺手排除出合计（issue #45）。
@@ -3509,7 +3508,7 @@ function renderFreePool() {
             + '</div>'
             + '<div style="display:flex;align-items:center;gap:8px;flex:none">'
             + '<span class="dim" style="font-size:11.5px">' + (acc.capturedAt ? esc(fmtTime(acc.capturedAt)) : '–') + '</span>'
-            + (site.id === 'doubao' && canCapture ? '<button class="icon-btn" data-open-doubao="1" title="' + T('打开豆包客户端（签到请在客户端内完成）') + '">' + I.play + '</button>' : '')
+            + (site.id === 'doubao' && canCapture ? '<button class="icon-btn" data-open-doubao="1" title="' + T('打开豆包客户端') + '">' + I.play + '</button>' : '')
             + (FREE_CHECKIN_SITES.has(site.id) ? '<button class="icon-btn' + (state.busy[acc.id] ? ' busy' : '') + '" data-act="checkin" data-site="' + esc(site.id) + '" data-id="' + esc(acc.id) + '" title="' + T('立即签到（已签自动跳过，不会重复提交）') + '">' + (state.busy[acc.id] ? I.refresh : I.play) + '</button>' : '')
             + (site.noReprobe !== true
               ? '<button class="icon-btn" data-act="reprobe" data-site="' + esc(site.id) + '" data-id="' + esc(acc.id) + '" title="' + T('就地重探（免登录，用已存会话刷新身份与额度）') + '">' + I.refresh + '</button>'

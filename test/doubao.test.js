@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 process.env.CREDITDADDY_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'creditdaddy-doubao-'));
 
@@ -191,4 +192,46 @@ test('cookieSites 配置表的 provider 全部在 PROVIDERS 白名单（豆包�
   for (const site of COOKIE_SITES) {
     assert.ok(PROVIDERS.includes(site.provider), `站点 ${site.id} 的 provider "${site.provider}" 不在 PROVIDERS 白名单——收割上报会被 store 拒绝`);
   }
+  const doubao = COOKIE_SITES.find((s) => s.id === 'doubao');
+  assert.ok(doubao, 'doubao 站点必须存在');
+  assert.equal(doubao.entryOnly, undefined, 'doubao 已恢复为完整产品线，不得为 entryOnly');
+  assert.equal(doubao.verify, 'api', 'doubao 验证模式为 api');
+});
+
+test('doubaoClient：支持 account.token 作为会话 Cookie 兜底', async () => {
+  const restore = stubFetch(async (url) => {
+    if (url.includes('/detail/')) return mkRes(DETAIL_SIGNED);
+    throw new Error('unexpected url');
+  });
+  try {
+    const r = await dc.checkinDoubao({ id: 'db2', name: '豆包B', provider: 'doubao', token: 'sid=TOKEN_BASED' });
+    assert.equal(r.status, 'already');
+  } finally { restore(); }
+});
+
+test('doubaoLocal：decryptCookieValue 正确解密 v10 并剥离 32B Binding 头', async () => {
+  const { decryptCookieValue } = await import('../src/doubaoLocal.js');
+  const mockKey = crypto.randomBytes(32);
+  const nonce = crypto.randomBytes(12);
+  const plainText = 'sessionid_value_123456';
+  const prefix32 = crypto.randomBytes(32);
+  const payload = Buffer.concat([prefix32, Buffer.from(plainText, 'utf8')]);
+
+  const cipher = crypto.createCipheriv('aes-256-gcm', mockKey, nonce);
+  const ct = Buffer.concat([cipher.update(payload), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  const rawEncrypted = Buffer.concat([Buffer.from('v10'), nonce, ct, tag]);
+
+  const dec = decryptCookieValue(rawEncrypted, mockKey);
+  assert.equal(dec, plainText, '解密后应正确剥离 32B 头并还原明文 Cookie');
+});
+
+test('doubaoLocal：detectDoubao 结构完整且为纯同步执行', async () => {
+  const { detectDoubao } = await import('../src/doubaoLocal.js');
+  const d = detectDoubao();
+  assert.equal(typeof d, 'object');
+  assert.equal(typeof d.exists, 'boolean');
+  assert.equal(typeof d.clientInstalled, 'boolean');
+  assert.equal(typeof d.running, 'boolean');
+  assert.equal(typeof d.dataDir, 'string');
 });

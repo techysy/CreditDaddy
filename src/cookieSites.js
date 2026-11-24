@@ -198,14 +198,13 @@ export const COOKIE_SITES = [
     label: '豆包',
     loginUrl: 'https://www.doubao.com',
     homeUrl: 'https://www.doubao.com',
-    // 探测 = 任务面板数据接口本身（issue #32，2026-10-19/20 实测）：POST detail 带会话 cookie
-    // 返 200 {code:0}，未登录返 200 {code:710012001,"login invalid"}——用 match 判业务码而非 HTTP 状态。
-    // 活动页 UI 有「仅支持电脑版」前端墙，但接口不吃这套（纯 cookie 鉴权，无 a_bogus 签名）。
-    // 最终定位（用户拍板）：豆包 = 纯「快速打开客户端」入口。网页会话 cookie 下 detail
-    // 返回残缺数据（额度恒 0、签到状态不可信），额度可见也做不实——不加会话捕获探测，
-    // 只在面板出示快捷按钮。
-    entryOnly: true,       // 只出「打开豆包」按钮，无会话捕获 / 无探测 / 无账号行
-    hint: '登录后捕获会话，CD 只读展示体验额度与签到状态（+200/天）；签到请在「打开豆包」里手动完成（活动在客户端内，CD 不代签）。凭据只存本机。'
+    // 探测 = 任务面板数据接口本身（issue #32）：POST detail 带会话 cookie
+    // 返 200 {code:0}，未登录返 200 {code:710012001,"login invalid"}。
+    // 本机客户端会话（doubaoLocal 解密）自带合法客户端指纹与完整 session，可稳定通过风控并拿到真实体验额度与签到发放。
+    verify: 'api',
+    cookieUrls: ['https://www.doubao.com', 'https://doubao.com'],
+    accountName: '豆包',
+    hint: '每日自动签到（+200 额度/天）与体验额度监控。支持直接走「添加账号 → 本机导入」（读取解密豆包桌面客户端 Session）。',
   },
   {
     id: 'lingxi',
