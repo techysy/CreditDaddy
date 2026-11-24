@@ -335,7 +335,7 @@
   "<div class=\"sort-hint\">点按切换显隐（置灰 = 隐藏）；按住拖动调整顺序。</div>": "<div class=\"sort-hint\">タップで表示/非表示を切替(グレー = 非表示)。ドラッグで並び替え。</div>",
   "<div class=\"sort-hint\">默认按剩余积分从多到少；直接按住拖动卡片调整顺序。</div>": "<div class=\"sort-hint\">既定は残りクレジットの多い順。カードをドラッグして並び替えできます。</div>",
   "<div class=\"sort-hint\">暂无账号</div>": "<div class=\"sort-hint\">アカウントなし</div>",
-  "<div class=\"stat\"><span title=\"国内版每日签到送积分\">领取（国内）</span><strong>": "<div class=\"stat\"><span title=\"国内版は毎日のチェックインでクレジットを付与\">受け取り(国内)</span><strong>",
+  "<div class=\"stat\"><span title=\"国内版每日签到送积分\">已领（国内）</span><strong>": "<div class=\"stat\"><span title=\"国内版は毎日のチェックインでクレジットを付与\">済み(国内)</span><strong>",
   "<div class=\"stat\"><span>查询失败</span><strong>": "<div class=\"stat\"><span>照会失敗</span><strong>",
   "<div class=\"stat\"><span>额度告急</span><strong>": "<div class=\"stat\"><span>残りわずかなクォータ</span><strong>",
   "<div class=\"stat\"><span>供应商连接</span><strong>": "<div class=\"stat\"><span>プロバイダー接続</span><strong>",

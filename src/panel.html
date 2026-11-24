@@ -189,15 +189,15 @@
 
   /* shell panel */
   .panel { background: var(--surface); border: 1px solid var(--border-subtle); border-radius: 18px; box-shadow: 0 1px 2px rgba(0,0,0,.03); overflow: hidden; }
-  .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-subtle); flex-wrap: wrap; }
-  .summary { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-  .stat { display: flex; align-items: baseline; gap: 5px; white-space: nowrap; }
+  .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border-subtle); flex-wrap: wrap; }
+  .summary { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .stat { display: flex; align-items: baseline; gap: 4px; white-space: nowrap; }
   .stat span { color: var(--text-3); font-weight: 500; }
   .stat strong { font-weight: 700; font-variant-numeric: tabular-nums; }
   .divider { width: 1px; height: 16px; background: var(--border-subtle); }
-  .actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .actions { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 
-  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 6px 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text-2); font-size: 12px; font-weight: 600; cursor: pointer; transition: all .15s; line-height: 1.2; white-space: nowrap; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text-2); font-size: 12px; font-weight: 600; cursor: pointer; transition: all .15s; line-height: 1.2; white-space: nowrap; }
   .btn:hover { background: var(--hover); border-color: var(--border-strong); color: var(--text); }
   .btn.primary { background: var(--btn-bg); color: var(--btn-fg); border-color: var(--btn-bg); }
   .btn.primary:hover { opacity: .88; }
@@ -251,7 +251,7 @@
   .badge.prod.croli { color: #84cc16; background: rgba(132,204,24,.14); }
   html[data-theme="dark"] .badge.prod.croli, html[data-theme="brutal"] .badge.prod.croli { color: #a3e635; }
   .seg-ctl { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--hover); }
-  .seg-ctl button { border: none; background: transparent; color: var(--text-2); font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 7px; cursor: pointer; }
+  .seg-ctl button { border: none; background: transparent; color: var(--text-2); font-size: 12px; font-weight: 600; padding: 4px 5px; border-radius: 7px; cursor: pointer; }
   .seg-ctl button.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
   html[data-theme="dark"] .seg-ctl button.active { background: rgba(255,255,255,.1); }
   html[data-theme="brutal"] .seg-ctl button.active { background: #fffdf7; box-shadow: 2px 2px 0 0 #14131a; }
@@ -2359,7 +2359,7 @@ function renderProd() {
   if (prod === 'workbuddy') {
     // 国内版 = 每日签到送积分；国际版无签到动作（活跃领取线已删），只统计国内
     const cnAcc = acc.filter((a) => a.provider === 'workbuddy');
-    $('s-done-wrap').innerHTML = (cnAcc.length ? T('<div class="stat"><span title="国内版每日签到送积分">领取（国内）</span><strong>') + cnAcc.filter(isDone).length + ' / ' + cnAcc.length + '</strong></div><div class="divider"></div>' : '');
+    $('s-done-wrap').innerHTML = (cnAcc.length ? T('<div class="stat"><span title="国内版每日签到送积分">已领（国内）</span><strong>') + cnAcc.filter(isDone).length + ' / ' + cnAcc.length + '</strong></div><div class="divider"></div>' : '');
   } else {
     // 从 WorkBuddy 页切回来时 s-done 可能被 innerHTML 换没了，先重建结构再写值
     if (!$('s-done')) $('s-done-wrap').innerHTML = T('<div class="stat"><span>今日已领</span><strong id="s-done"></strong></div><div class="divider"></div>');
@@ -6794,6 +6794,9 @@ $('btn-checkin-all').innerHTML = I.play + T('全部领取');
 for (const id of ['btn-add', 'btn-add-dash']) $(id).innerHTML = I.plus + T('添加账号');
 for (const id of ['btn-import', 'btn-import-dash']) { $(id).innerHTML = I.upload + T('导入'); $(id).onclick = pickImport; }
 for (const id of ['btn-export', 'btn-export-dash']) $(id).innerHTML = I.download + T('导出');
+// WorkBuddy 页头统计+双过滤段最宽（账号多时动作按钮会被挤到第二排）：产品页的导入/导出收成纯图标按钮，仪表盘保持文字
+$('btn-import').title = T('导入'); $('btn-export').title = T('导出');
+$('btn-import').innerHTML = I.upload; $('btn-export').innerHTML = I.download;
 $('btn-checkin-all').onclick = () => checkinAll($('btn-checkin-all'));
 $('btn-checkin').onclick = () => checkinAll($('btn-checkin'), state.view);
 $('wt-act').onclick = () => claimWbActivities($('wt-act'));

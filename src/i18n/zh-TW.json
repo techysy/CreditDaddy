@@ -335,7 +335,7 @@
   "<div class=\"sort-hint\">点按切换显隐（置灰 = 隐藏）；按住拖动调整顺序。</div>": "<div class=\"sort-hint\">點按切換顯隱（置灰 = 隱藏）；按住拖動調整順序。</div>",
   "<div class=\"sort-hint\">默认按剩余积分从多到少；直接按住拖动卡片调整顺序。</div>": "<div class=\"sort-hint\">默認按剩餘積分從多到少；直接按住拖動卡片調整順序。</div>",
   "<div class=\"sort-hint\">暂无账号</div>": "<div class=\"sort-hint\">暫無賬號</div>",
-  "<div class=\"stat\"><span title=\"国内版每日签到送积分\">领取（国内）</span><strong>": "<div class=\"stat\"><span title=\"國內版每日簽到送積分\">領取（國內）</span><strong>",
+  "<div class=\"stat\"><span title=\"国内版每日签到送积分\">已领（国内）</span><strong>": "<div class=\"stat\"><span title=\"國內版每日簽到送積分\">已領（國內）</span><strong>",
   "<div class=\"stat\"><span>查询失败</span><strong>": "<div class=\"stat\"><span>查詢失敗</span><strong>",
   "<div class=\"stat\"><span>额度告急</span><strong>": "<div class=\"stat\"><span>額度告急</span><strong>",
   "<div class=\"stat\"><span>供应商连接</span><strong>": "<div class=\"stat\"><span>供應商連接</span><strong>",
