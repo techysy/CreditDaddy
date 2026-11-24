@@ -188,7 +188,7 @@ export function buildLongcatQuotaPayload(account, liveData = null) {
       payload: {
         provider: 'longcat',
         label,
-        message: liveData.error || t('LongCat 会话已失效，请在 CreditDaddy「网页会话」页重新登录捕获'),
+        message: liveData.error || t('LongCat 会话已失效，请在 CreditDaddy「账号会话」页重新登录捕获'),
       },
     };
   }
@@ -243,7 +243,7 @@ export function buildLongcatQuotaPayload(account, liveData = null) {
       };
     }
   } else {
-    payload.message = liveData?.error || t('LongCat 资源包已耗尽或会话未捕获，请在 CreditDaddy「网页会话」页重新登录捕获');
+    payload.message = liveData?.error || t('LongCat 资源包已耗尽或会话未捕获，请在 CreditDaddy「账号会话」页重新登录捕获');
   }
 
   return { source, payload };

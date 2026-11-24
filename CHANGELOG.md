@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+- **账号会话更名与豆包导入体验优化（2026-11-24）**：
+  - **全站统一更名**：全站所有面向用户的界面与提示统一将「网页会话」更名为「账号会话」（导航入口、产品卡片、说明文档、错误提示、同步提示等），保留底层协议字段对齐 10Router 兼容性。
+  - **豆包卡片操作精简**：豆包卡片撤掉无意义的「网页版」与「粘贴捕获」，直接提供「本机导入」按钮，简化操作路径并支持「打开豆包」快捷启动客户端。
+  - **账号会话缓存刷新修复**：修复导入账号后 cookieSites 前端缓存未强制刷新的问题，并在导入与扫描后强制刷新本地站点缓存，实现就地即时回显与重新探测。
+
 本版主题:**新增千问办公（Qwen Work）独立产品线——国内/国际双线全量接入（设备码登录 + 本机凭据导入 + 账号切换 + RT 轮换自动同步 + 双主题图标 + 10Router access-only 同步）**.
 
 - **新增千问办公产品线（qoderwork 同源实锤）**：千问办公与 Qoder 是同一套客户端代码（内部名 `qoderwork`——versions.json、日志 `biz_variant`、asar 内 `qoderRequestTimeoutMs` 三处实锤），按 Qoder 模式全量接入。双 provider：`qwenwork`（国际，gateway.qwenwork.ai）/ `qwenwork-cn`（国内，gateway.qwenwork.cn），协议细节与 10router open-sse 双源互证：

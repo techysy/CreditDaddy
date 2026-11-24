@@ -2,7 +2,7 @@
  * 小米 MiMo 开放平台（platform.xiaomimimo.com）控制台会话与余额抓取（issue #26）。
  *
  * 10Router 的 xiaomi-mimo 云端 API Key 上游为按量计费，没有配额 API；
- * 小米控制台提供了用户资料与充值余额接口。CreditDaddy 在网页会话收割线（#23）下：
+ * 小米控制台提供了用户资料与充值余额接口。CreditDaddy 在账号会话收割线（#23）下：
  *  1. 用会话 Cookie 抓取小米控制台的账号 UID 与实时余额；
  *  2. 按 10Router 外部配额规范（#24）将余额数值以单值余额卡（isStoredValueRow）
  *     形式推送到 10Router（source: xiaomi-mimo-{userId}）。
@@ -120,7 +120,7 @@ export function buildXiaomiMimoQuotaPayload(account, liveData = null) {
       payload: {
         provider: 'xiaomi-mimo',
         label: String(account?.name || '').trim() || `Xiaomi MiMo (UID: ${userId})`,
-        message: liveData.error || t('小米控制台会话已失效，请在 CreditDaddy「网页会话」页重新登录捕获'),
+        message: liveData.error || t('小米控制台会话已失效，请在 CreditDaddy「账号会话」页重新登录捕获'),
       },
     };
   }
@@ -199,7 +199,7 @@ export function buildXiaomiMimoQuotaPayload(account, liveData = null) {
     }
     payload.quotas = quotas;
   } else {
-    payload.message = liveData?.error || t('小米控制台会话已失效，请在 CreditDaddy「网页会话」页重新登录捕获');
+    payload.message = liveData?.error || t('小米控制台会话已失效，请在 CreditDaddy「账号会话」页重新登录捕获');
   }
 
   return { source: cleanSource, payload };

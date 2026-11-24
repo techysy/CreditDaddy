@@ -4,7 +4,7 @@
 
 # CreditDaddy
 
-**AI 编程工具多账号本地管理 + 每日积分自动领取（领鸡蛋）助手：Qoder · WorkBuddy · ZCode · mirasim · 妙手 · Trae · MiniMax · ModelScope · 豆包 Doubao · 讯飞 Loomy · DuMate 百度搭子 · Meoo 秒悟，集成 10Router 额度总览、用量同步与网页会话额度卡（Token Harbor / 小米 MiMo / River / ModelScope 魔搭 / LongCat）**
+**AI 编程工具多账号本地管理 + 每日积分自动领取（领鸡蛋）助手：Qoder · WorkBuddy · ZCode · mirasim · 妙手 · Trae · MiniMax · ModelScope · 豆包 Doubao · 讯飞 Loomy · DuMate 百度搭子 · Meoo 秒悟，集成 10Router 额度总览、用量同步与账号会话额度卡（Token Harbor / 小米 MiMo / River / ModelScope 魔搭 / LongCat）**
 
 [![Release](https://img.shields.io/github/v/release/techysy/CreditDaddy?label=%E7%89%88%E6%9C%AC&color=2563eb)](https://github.com/techysy/CreditDaddy/releases/latest)
 [![CI](https://img.shields.io/github/actions/workflow/status/techysy/CreditDaddy/ci.yml?branch=main&label=CI)](https://github.com/techysy/CreditDaddy/actions/workflows/ci.yml)
@@ -73,7 +73,7 @@
 - **内置隐私（无痕）授权**：桌面版提供隔离的一次性会话窗口进行网页登录授权，不污染系统浏览器 Cookie，支持同平台无缝扩增多账号。
 - **全流程浏览器登录**：支持五家产品线在面板内直接完成网页 / 设备码授权并入库 —— Qoder 设备码授权（PKCE + nonce）、WorkBuddy 状态轮询、ZCode CLI 轮询（支持智谱 BigModel 与 Z.ai）、MiniMax 官方 OAuth 设备码授权（S256 PKCE）、Trae 官方同款授权码 + PKCE（国内 / 国际双线）。
   > ⚠️ **Trae 浏览器登录需「同机」完成**：Trae 采用官方客户端同款机制，授权完成后浏览器会回跳 `http://127.0.0.1:<端口>` 的本机回调（由 CreditDaddy 监听）。因此请在**运行 CreditDaddy 的同一台机器**上打开授权链接完成登录——回跳打在本机回环才算送达。**远程场景（如 fnOS / NAS 网页面板在另一台电脑的浏览器里打开）回跳会落在你眼前的电脑上，浏览器报「无法访问 / 拒绝连接」属预期现象**，此时登录不会完成；NAS 上请改用「本机导入」（Trae 客户端装在同一台 NAS 时）或桌面版 / 同机浏览器操作。其余四家产品线为设备码 / 服务端回调，不受此限制，可跨机远程操作。
-- **网页会话免费额度捕获**：配置驱动的通用浏览器 cookie 捕获框架，接入 Token Harbor / 小米 MiMo / River AI / ModelScope 魔搭 / LongCat（美团）/ Meoo 秒悟六家「凭据只在网页会话」的供应商——桌面版隐私窗登录自动收割（含 localStorage 凭据变体与鉴权 cookie 轮询等待），支持**会话池多登录槽**（每站点 6 个独立持久分区，Chrome 多 profile 式主号/小号并存，打开网页版先弹会话选择器）、按身份归户、粘贴捕获兜底、就地重探（免重登刷新身份与余额）与三色探活呼吸灯 + 死会话低频重试；凭据只存本机（桌面版下加密落盘），面板「免费额度」页统一管理。
+- **账号会话免费额度捕获**：配置驱动的通用浏览器 cookie 捕获框架，接入 Token Harbor / 小米 MiMo / River AI / ModelScope 魔搭 / LongCat（美团）/ Meoo 秒悟六家「凭据只在账号会话」的供应商——桌面版隐私窗登录自动收割（含 localStorage 凭据变体与鉴权 cookie 轮询等待），支持**会话池多登录槽**（每站点 6 个独立持久分区，Chrome 多 profile 式主号/小号并存，打开网页版先弹会话选择器）、按身份归户、粘贴捕获兜底、就地重探（免重登刷新身份与余额）与三色探活呼吸灯 + 死会话低频重试；凭据只存本机（桌面版下加密落盘），面板「免费额度」页统一管理。
 
 **自动领取与资产保障**
 - **每日智能轮询**：本地守护进程每 ~2 小时自动扫描执行；当日已领成功的账号自动记忆跳过，未开启活动的账号不落记忆，以每日 10:00 (UTC+8) 刷新周期为准自动重试。
@@ -81,7 +81,7 @@
 - **ZCode 活动智能轮询**：支持免验证码活动直领，遇到图形验证码时桌面版自动拉起静默验证（高风险弹出人工窗口处理），NAS / CLI 环境自动标记提示。
 - **凭据导出导入**：支持口令加密备份，格式与 10Router OAuth 迁移标准（`10router-oauth-secure-v1`）无缝互通，实现多端授权轻松迁移。
 - **安全边界**：守护进程仅监听 `127.0.0.1` 本机回环，严格校验 Host 头防止 DNS 重绑定，拦截跨站 Origin 杜绝 CSRF；存储位于 `~/.creditdaddy`（0600 权限 + 原子写 + 串行锁），无遥测、无第三方依赖。可选**面板访问密码**（scrypt 存储 + 防爆破限流）与数据面网关 **IP 白名单**；桌面版账号凭据文件另走 **AES-256-GCM 静态加密**（密钥由 safeStorage/DPAPI 绑当前系统用户，拷走文件无当前用户会话解不开）。完整防线清单（存储 / 传输 / 进程 / 输入四层，对照代码可验证）见 [docs/security-model.md](docs/security-model.md)。
-- **多账号隔离与防关联**：每账号独立凭据快照与设备身份（Trae deviceId 按 uid 确定性派生、ZCode 各账号独立凭据文件、网页会话线按身份归户），账号之间互不共享会话。⚠️ 但**同一平台的多个账号共享同一出口 IP 时上游可以关联**——设备归属被标记后同机器的兄弟号可能被连带。建议在 10Router 侧用 **Proxy Pools**（连接级代理池）给不同账号配不同出口 IP，并控制单号并发；跨平台指纹共享无影响（各平台账号体系独立）。
+- **多账号隔离与防关联**：每账号独立凭据快照与设备身份（Trae deviceId 按 uid 确定性派生、ZCode 各账号独立凭据文件、账号会话线按身份归户），账号之间互不共享会话。⚠️ 但**同一平台的多个账号共享同一出口 IP 时上游可以关联**——设备归属被标记后同机器的兄弟号可能被连带。建议在 10Router 侧用 **Proxy Pools**（连接级代理池）给不同账号配不同出口 IP，并控制单号并发；跨平台指纹共享无影响（各平台账号体系独立）。
 
 ## 10Router 集成
 
@@ -91,7 +91,7 @@
 - **账号同步（一键推送为 10Router 连接）**：把本机 Qoder / WorkBuddy 账号直接推为 10Router 上游连接。配置 10Router 面板密码后走 **OAuth 通道**（accessToken + refreshToken，10R 端按身份去重并原位更新、自动续期，反复同步幂等）；仅配虚拟 key 时走 **apikey 通道**（同名连接不覆盖，token 过期后需重新同步）。zcode → GLM 映射待反代就绪后补充（映射表已留接口）。
 - **用量自动同步（10Router 1.0.7+）**：内置与 10router-sync 插件一致的同步逻辑，支持一键或每小时自动同步本机 ZCode（`db.sqlite` 官方渠道）、OpenCode（`opencode.db`）、mirasim（`usage-*.ndjson`）、小米 MiMo（`mimocode.db`）的真实用量，以及**妙手（CatPaw）云端用量**（`v1/usage/token/daily` 按天 token 总量；当天桶隔天入账，云端无输入/输出拆分、整包计入输入，模型列默认 `unknown`，可在 `tenrouter.json` 的 `sync.catpawModel` 标注）至 10Router 统计。支持断点续传与 2 天重叠补偿。10Router 按**行内容签名**（时间戳 / provider / model / token 数等）去重，行内容还在变（会话进行中、按天桶增长）会被当成新行——因此客户端发出去的行保证已定型：1 小时结算窗内暂不发送、妙手按天桶只发差量、缺时间戳的行直接跳过；日志显示「新增 N 行，跳过 M 行重复」让去重结果可见。
 - *注：读取 SQLite 依赖 Node 22.5+ 内置的 `node:sqlite`（桌面版与 fnOS nodejs_v24 环境原生支持）。*
-- **外部配额卡推送（10Router 联动）**：把网页会话站点的免费额度以「外部配额卡」推入 10Router 配额追踪器——Token Harbor / 小米 MiMo / River / ModelScope / LongCat / MiniMax 免费线各自成 source，余额数字与逐包明细腿直接出卡（储值口径 / 今日-长期拆分 / 赠送包徽注），会话失效自动降级状态卡；载荷经出口强校验**只带标量数字，凭据永不出本机**。卡面带签名回调 `refreshUrl`，10Router 侧点「刷新配额」即回源 CreditDaddy 现拉最新余额重推（8 天过期 + HMAC 签名 + 限流）；同名认领可把额度卡挂到连接卡上，改账号别名即时生效。
+- **外部配额卡推送（10Router 联动）**：把账号会话站点的免费额度以「外部配额卡」推入 10Router 配额追踪器——Token Harbor / 小米 MiMo / River / ModelScope / LongCat / MiniMax 免费线各自成 source，余额数字与逐包明细腿直接出卡（储值口径 / 今日-长期拆分 / 赠送包徽注），会话失效自动降级状态卡；载荷经出口强校验**只带标量数字，凭据永不出本机**。卡面带签名回调 `refreshUrl`，10Router 侧点「刷新配额」即回源 CreditDaddy 现拉最新余额重推（8 天过期 + HMAC 签名 + 限流）；同名认领可把额度卡挂到连接卡上，改账号别名即时生效。
 
 ## 产品线说明
 
@@ -138,8 +138,8 @@
 - **刷新轮换互斥的处理**：MiniMax 的 refreshToken 是一次性轮换的，本机客户端会独立刷新。为避免 CreditDaddy 用陈旧快照刷新触发 `invalid_grant`：本机导入账号在刷新前会从 `auth.json` 重读最新 refreshToken 对齐，刷新成功后再安全回写文件（仅客户端未运行时，运行中回写会作废客户端内存里的 token 故跳过）。浏览器登录拿到的是独立 `loginEpoch` 凭据链，不与本机客户端共用，从根上消除互斥。
 - **本地网关**：内置 Anthropic 兼容端点 `POST /gateway/minimax/v1/messages`，10Router 建 anthropic-compatible 节点指向即可把 MiniMax 当普通供应商调度；多账号轮换、401 自动刷新重试、429 冷却、SSE / JSON 流式透传、局域网 IP 白名单（与 ZCode 体验包接口同机制）。
 
-### 网页会话免费额度站点（配置驱动捕获框架）
-六家「凭据只存在于浏览器会话」的供应商共用一套配置驱动的网页会话捕获框架（`src/cookieSites.js` 站点表 + `src/externalQuota.js` 推卡 + 各站点 client）：面板「免费额度」页登录窗捕获，凭据只存本机账号库（桌面版下加密落盘），余额数字推 10Router 外部配额出卡。共同纪律：**余额接口即探测**（会话有效返 200 JSON、失效返 401）、就地重探免重登、死会话低频重试、载荷零凭据。
+### 账号会话免费额度站点（配置驱动捕获框架）
+六家「凭据只存在于浏览器会话」的供应商共用一套配置驱动的账号会话捕获框架（`src/cookieSites.js` 站点表 + `src/externalQuota.js` 推卡 + 各站点 client）：面板「免费额度」页登录窗捕获，凭据只存本机账号库（桌面版下加密落盘），余额数字推 10Router 外部配额出卡。共同纪律：**余额接口即探测**（会话有效返 200 JSON、失效返 401）、就地重探免重登、死会话低频重试、载荷零凭据。
 
 | 站点 | 凭据形态 | 额度口径 |
 | --- | --- | --- |
@@ -296,7 +296,7 @@ creditdaddy help                    # 查看完整命令行帮助
 | `POST` | `/api/tenrouter/sync` | 立即触发本机模型用量向 10Router 同步 |
 | `POST` | `/api/tenrouter/sync-accounts` | 把本机账号推送到 10Router 连接 `{adminPassword?}`（OAuth / apikey 双通道） |
 | `GET` / `POST` | `/api/qoder/umid` | 获取 / 一键安装 Linux 平台 Qoder 设备身份组件 |
-| `GET` | `/api/cookie-sites` | 网页会话站点列表与已捕获账号（含探活痕迹 / 捕获时间） |
+| `GET` | `/api/cookie-sites` | 账号会话站点列表与已捕获账号（含探活痕迹 / 捕获时间） |
 | `POST` | `/api/cookie-sites/:id/capture` | 站点会话收割入库（桌面登录窗关闭时上报，余额/探测 API 即验证） |
 | `POST` | `/api/cookie-sites/:id/reprobe` | 用已存会话就地重探（身份 + 余额回填，免重登） |
 | `POST` | `/api/tenrouter/push-quota` | 立即向 10Router 推送一轮外部配额卡 |
@@ -341,7 +341,7 @@ CreditDaddy/
 │   ├── catpawLocal.js          # 本机妙手凭据 AES-GCM 解密与切号
 │   ├── checkin.js              # 自动轮询调度器
 │   ├── constants.js            # 服务接口与固定头常量
-│   ├── cookieSites.js          # 网页会话站点表（配置驱动捕获框架）
+│   ├── cookieSites.js          # 账号会话站点表（配置驱动捕获框架）
 │   ├── daemon.js               # 本地 HTTP API 与前端面板静态服务
 │   ├── externalQuota.js        # 10Router 外部配额卡推送（零凭据载荷）
 │   ├── i18n.js · i18n/         # 多语言运行时与词典（en/ja/ko/zh-TW）

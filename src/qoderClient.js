@@ -136,7 +136,7 @@ export async function fetchUsageDetail(account) {
   if (!cookie) return null;
   const res = await webReq(account.provider, `${webBase(account.provider)}${WEB_USAGE_PATH}`, { headers: webHeaders(cookie, account.provider) });
   if (res.status === 401 || res.status === 403) {
-    const err = new Error(`网页会话已失效 (HTTP ${res.status})`);
+    const err = new Error(`账号会话已失效 (HTTP ${res.status})`);
     err.auth = true;
     throw err;
   }

@@ -402,7 +402,7 @@ test('账号同步：OAuth 通道登录换会话，transfer 分组推送完整�
   } finally { m.restore(); }
 });
 
-test('账号同步：apikey 通道 qoder 新建连接挂上网页会话；缺会话的进摘要提醒（issue #44）', async () => {
+test('账号同步：apikey 通道 qoder 新建连接挂上账号会话；缺会话的进摘要提醒（issue #44）', async () => {
   const m = mockFetch(() => ({ status: 201, body: { connection: { id: 'x' } } }));
   try {
     const r = await ta.syncAccountsTo10r({
@@ -426,10 +426,10 @@ test('账号同步：apikey 通道 qoder 新建连接挂上网页会话；缺会
     const b2 = m.calls.find((c) => JSON.parse(c.init.body).name === '没会话');
     const psd2 = JSON.parse(b2.init.body).providerSpecificData;
     assert.equal(psd2.creditDaddySync, true, '无会话也带 CD 同步标记（10R 徽章据此区分来源）');
-    assert.equal(psd2.creditDaddyWebSession, undefined, '无会话时不带网页会话');
+    assert.equal(psd2.creditDaddyWebSession, undefined, '无会话时不带账号会话');
 
     // apikey 通道拿不到逐账号探测结果，本地缺会话的账号必须在摘要里点名
-    assert.match(r.summary, /未带网页会话 1/);
+    assert.match(r.summary, /未带账号会话 1/);
     assert.match(r.summary, /没会话/);
     assert.ok(!/有会话，/.test(r.summary), '有会话的账号不被点名');
   } finally { m.restore(); }
@@ -459,9 +459,9 @@ test('账号同步：OAuth 通道回显 10Router 的会话探测失败清单（i
     });
     assert.equal(r.channel, 'oauth');
     assert.deepEqual(r.results[0].webSessions.failures, [{ id: 'c2', name: '旧登录', reason: 'HTTP 401' }]);
-    assert.match(r.summary, /网页会话已失效 1/);
+    assert.match(r.summary, /账号会话已失效 1/);
     assert.match(r.summary, /旧登录/);
-    assert.ok(!r.summary.includes('未带网页会话'), '两组都带会话 → 不重复报缺失');
+    assert.ok(!r.summary.includes('未带账号会话'), '两组都带会话 → 不重复报缺失');
   } finally { m.restore(); }
 });
 
@@ -483,7 +483,7 @@ test('账号同步：旧版 10Router 无探测结果时，缺会话仍按本地�
       ],
     });
     assert.equal(r.results[0].webSessions, null);
-    assert.match(r.summary, /未带网页会话 2（A、B/);
+    assert.match(r.summary, /未带账号会话 2（A、B/);
     assert.ok(!r.summary.includes('W'), '非 qoder 账号不参与会话提醒');
   } finally { m.restore(); }
 });

@@ -124,7 +124,7 @@ async function syncViaTransfer({ endpoint, cookie, groups }) {
     results.push({
       provider: target, count: list.length, status: (d.failed || 0) ? 'partial' : 'ok',
       imported: d.imported || 0, updated: d.updated || 0, skipped: d.skipped || 0, failed: d.failed || 0,
-      // 10Router issue #44：导入端会探测刚同步过去的网页会话是否仍可用，
+      // 10Router issue #44：导入端会探测刚同步过去的账号会话是否仍可用，
       // 失败清单直接回显到本端摘要（见 syncAccountsTo10r 的 sessionWarns）。
       webSessions: d.webSessions || null,
     });
@@ -151,7 +151,7 @@ async function syncViaProviders({ endpoint, key, groups }) {
 }
 
 /**
- * 连接体（POST /api/providers 的单账号载荷）。网页会话两种走同一形状（issue #23）：
+ * 连接体（POST /api/providers 的单账号载荷）。账号会话两种走同一形状（issue #23）：
  * - qoder 专属老形状 meta.qoderWebSession（issue #44：usage 侧不区分 authType）
  * - 通用站点 meta.cookieSiteSession（tokenharbor 等,10R 卡片直接读 creditDaddyWebSession）
  */
@@ -160,7 +160,7 @@ export function buildConnPayload(a, target) {
   const qc = a.meta?.qoderWebSession?.cookie && String(a.provider).startsWith('qoder') ? a.meta.qoderWebSession : null;
   const sc = a.meta?.cookieSiteSession?.cookie ? a.meta.cookieSiteSession : null;
   // creditDaddySync：所有经 CreditDaddy 同步的连接都带标记，10R 连接行据此亮「CD Sync」徽章
-  //（此前只有 qoder 网页会话带 creditDaddyWebSession，CodeBuddy 等连接在 10R 上看不出同步来源）
+  //（此前只有 qoder 账号会话带 creditDaddyWebSession，CodeBuddy 等连接在 10R 上看不出同步来源）
   const psd = { creditDaddySync: true, userId: a.uid || null };
   if (qc) psd.creditDaddyWebSession = { cookie: qc.cookie, capturedAt: qc.capturedAt || null, userId: a.uid || null };
   else if (sc) psd.creditDaddyWebSession = { cookie: sc.cookie, capturedAt: sc.capturedAt || null, userId: null };
@@ -239,7 +239,7 @@ export async function syncAccountsTo10r({ endpoint, key, adminPassword, accounts
   if (sum('failed')) parts.push(`失败 ${sum('failed')}`);
   if (unmapped.size) parts.push('跳过 ' + [...unmapped].map(([p, n]) => `${p} ×${n}`).join('、'));
   if (traeIntl.length) parts.push(`跳过 Trae 国际版 ×${traeIntl.length}（CreditDaddy 的 Trae 线仅支持国内站）`);
-  // issue #44：Qoder 网页会话决定 10Router 端「套餐内 Credits」能不能显示。
+  // issue #44：Qoder 账号会话决定 10Router 端「套餐内 Credits」能不能显示。
   // OAuth 通道：10Router 导入时已逐账号探测，失效清单原样带回（deadNames）；
   // 两条通道都要点名本地就没有会话的账号（apikey 通道 webSessions 恒为
   // null，条件自动适用；OAuth 通道里已被探测过的组不重复报）。
@@ -256,8 +256,8 @@ export async function syncAccountsTo10r({ endpoint, key, adminPassword, accounts
       }
     }
   }
-  if (sessionless.length) parts.push(`未带网页会话 ${sessionless.length}（${sessionless.join('、')}，在 CreditDaddy 重新浏览器登录 Qoder 后再同步可补齐逐资源包明细）`);
-  if (deadNames.length) parts.push(`网页会话已失效 ${deadNames.length}（${deadNames.join('、')}，重新登录 Qoder 网页后再次同步）`);
+  if (sessionless.length) parts.push(`未带账号会话 ${sessionless.length}（${sessionless.join('、')}，在 CreditDaddy 重新浏览器登录 Qoder 后再同步可补齐逐资源包明细）`);
+  if (deadNames.length) parts.push(`账号会话已失效 ${deadNames.length}（${deadNames.join('、')}，重新登录 Qoder 网页后再次同步）`);
   const summary = (channel === 'oauth' ? '账号同步完成（OAuth 通道）：' : '账号同步完成（apikey 通道，token 过期后需重新同步）：')
     + (parts.join('，') || '无变化')
     + (failed.length ? `；${failed.map((r) => r.provider + '：' + (r.error || r.status)).join('；')}` : '');

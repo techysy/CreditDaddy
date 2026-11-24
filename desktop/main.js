@@ -904,7 +904,7 @@ async function harvestQoderWebSession(ses) {
     } catch (e) {
       note = '连接失败：' + (e?.cause?.code || e?.message || e);
     }
-    if (note) notify('Qoder', Tt('{kind} 网页会话收割上报失败：{note}', { kind: t.kind, note }));
+    if (note) notify('Qoder', Tt('{kind} 账号会话收割上报失败：{note}', { kind: t.kind, note }));
   }
   if (boundTotal > 0) {
     try { if (win && !win.isDestroyed()) win.webContents.send('qoder-web-session:bound', { bound: boundTotal }); } catch { /* ignore */ }

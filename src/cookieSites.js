@@ -112,7 +112,7 @@ export const COOKIE_SITES = [
     // one-hub/new-api 系中转：钱包额度（含活动赠送）只在登录后的 /api/user/self（quota
     // 字段，500000 quota = $1），连接的 chat key 读不到（/v1/dashboard/billing/subscription
     // 恒回假上限 100000000，2026-11-21 实测）——与 tokenharbor/lingxi 同款，凭据只能是
-    // 网页会话 Cookie。登录入口走邀请码池轮换（与 croli/meoo 同口径），未带码回退主链接。
+    // 账号会话 Cookie。登录入口走邀请码池轮换（与 croli/meoo 同口径），未带码回退主链接。
     loginUrl: 'https://crowllm.com/sign-up',
     loginUrls: [
       'https://crowllm.com/sign-up?aff=xGk0',
@@ -198,13 +198,14 @@ export const COOKIE_SITES = [
     label: '豆包',
     loginUrl: 'https://www.doubao.com',
     homeUrl: 'https://www.doubao.com',
+    localImportOnly: true, // 撤掉无意义的网页版与粘贴捕获，直接提供本机客户端导入
     // 探测 = 任务面板数据接口本身（issue #32）：POST detail 带会话 cookie
     // 返 200 {code:0}，未登录返 200 {code:710012001,"login invalid"}。
     // 本机客户端会话（doubaoLocal 解密）自带合法客户端指纹与完整 session，可稳定通过风控并拿到真实体验额度与签到发放。
     verify: 'api',
     cookieUrls: ['https://www.doubao.com', 'https://doubao.com'],
     accountName: '豆包',
-    hint: '每日自动签到（+200 额度/天）与体验额度监控。支持直接走「添加账号 → 本机导入」（读取解密豆包桌面客户端 Session）。',
+    hint: '每日自动签到（+200 额度/天）与体验额度监控。支持直接点击右上角「本机导入」（读取解密本机豆包桌面客户端 Session）。',
   },
   {
     id: 'lingxi',
@@ -220,9 +221,9 @@ export const COOKIE_SITES = [
     accountName: 'WPS 灵犀',
     hint: '每日自动签到（+100 灵点，七天一轮第七天 200）+ 推送 10Router 出余额卡。多号分别捕获即分行并存。',
   },
-  // Meoo 秒悟回退网页会话线（1.8.0 实测：OAuth refresh token 单次轮换，与 10R 共享后
+  // Meoo 秒悟回退账号会话线（1.8.0 实测：OAuth refresh token 单次轮换，与 10R 共享后
   // 任一侧轮换即作废另一侧副本——CD 端恒 invalid_token 无法自动续期）。凭据 =
-  // meoo.com 网页会话 Cookie（阿里云 SSO 手机号 + 短信登录后由浏览器写入），
+  // meoo.com 账号会话 Cookie（阿里云 SSO 手机号 + 短信登录后由浏览器写入），
   // 不支持 Meoo CLI 的 OAuth Bearer。会话失效统一 401 / NEED_LOGIN，重新登录捕获即可。
   {
     id: 'meoo',
@@ -258,7 +259,7 @@ export const COOKIE_SITES = [
     // （from=oa_dumate 标记个人版渠道，登录成功落 console.bce.baidu.com 会话）。
     // 与「本机导入」（本地解密客户端 auth.json）互为两条独立凭据线，凭据同形可互认归户。
     // hideFromWebPage：DuMate 已是完整产品线，登录线入口在其自身页「添加账号 → 网页版」，
-    // 网页会话页不再列出（API 与捕获机制保持全量，cookieSiteCapture 仍走本条目）。
+    // 账号会话页不再列出（API 与捕获机制保持全量，cookieSiteCapture 仍走本条目）。
     loginUrl: 'https://login.bce.baidu.com/?from=oa_dumate&redirect=https%3A%2F%2Fconsole.bce.baidu.com%2F',
     homeUrl: 'https://www.dumate.cn',
     verify: 'api',

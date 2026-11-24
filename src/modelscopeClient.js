@@ -207,7 +207,7 @@ export function buildModelScopeQuotaPayload(account, liveData = null) {
       payload: {
         provider: 'modelscope',
         label: (nameStr || (email ? `ModelScope (${email})` : 'ModelScope')).slice(0, 100),
-        message: liveData.error || t('ModelScope 会话已失效，请在 CreditDaddy「网页会话」页重新登录捕获'),
+        message: liveData.error || t('ModelScope 会话已失效，请在 CreditDaddy「账号会话」页重新登录捕获'),
       },
     };
   }
@@ -268,7 +268,7 @@ export function buildModelScopeQuotaPayload(account, liveData = null) {
       };
     }
   } else {
-    payload.message = liveData?.error || t('ModelScope 会话已失效，请在 CreditDaddy「网页会话」页重新登录捕获');
+    payload.message = liveData?.error || t('ModelScope 会话已失效，请在 CreditDaddy「账号会话」页重新登录捕获');
   }
 
   return { source, payload };

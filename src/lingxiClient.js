@@ -171,7 +171,7 @@ export function lingxiSnapshot(packs) {
 export async function checkinLingxi(account, ctx = {}) {
   const cookie = account?.meta?.cookieSiteSession?.cookie;
   if (!cookie) {
-    const e = new Error('灵犀会话缺失，请在「网页会话」页重新登录捕获');
+    const e = new Error('灵犀会话缺失，请在「账号会话」页重新登录捕获');
     e.auth = true;
     throw e;
   }
@@ -184,7 +184,7 @@ export async function checkinLingxi(account, ctx = {}) {
     return { status: 'failed', message: t('灵犀签到查询失败：{err}', { err: e.message }) };
   }
   if (!status.auth) {
-    const e = new Error('灵犀会话已失效，请到「网页会话」页重新登录捕获');
+    const e = new Error('灵犀会话已失效，请到「账号会话」页重新登录捕获');
     e.auth = true;
     throw e;
   }
@@ -291,7 +291,7 @@ export function buildLingxiQuotaPayload(account, liveData = null) {
       payload: {
         provider: 'lingxi',
         label,
-        message: liveData.error || t('灵犀会话已失效，请在 CreditDaddy「网页会话」页重新登录捕获'),
+        message: liveData.error || t('灵犀会话已失效，请在 CreditDaddy「账号会话」页重新登录捕获'),
       },
     };
   }

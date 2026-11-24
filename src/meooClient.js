@@ -168,7 +168,7 @@ const sleepMs = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export async function checkinMeoo(account, ctx = {}) {
   const cookie = account?.meta?.cookieSiteSession?.cookie || account?.token;
   if (!cookie) {
-    return { status: 'failed', authExpired: true, message: t('Meoo 会话缺失，请在「网页会话」页登录 meoo.com 后捕获') };
+    return { status: 'failed', authExpired: true, message: t('Meoo 会话缺失，请在「账号会话」页登录 meoo.com 后捕获') };
   }
   const fetchImpl = ctx?.fetchImpl;
   const sleep = ctx?.sleep || sleepMs;
@@ -184,7 +184,7 @@ export async function checkinMeoo(account, ctx = {}) {
     return { status: 'failed', message: t('Meoo 首登积分领取失败：{err}', { err: e?.message || 'network' }) };
   }
   if (!r.auth) {
-    return { status: 'failed', authExpired: true, message: t('Meoo 会话已失效（{code}），请到「网页会话」页重新登录 meoo.com 并捕获', { code: r.code || 'NEED_LOGIN' }) };
+    return { status: 'failed', authExpired: true, message: t('Meoo 会话已失效（{code}），请到「账号会话」页重新登录 meoo.com 并捕获', { code: r.code || 'NEED_LOGIN' }) };
   }
   if (!r.ok) {
     return { status: 'failed', message: t('Meoo 首登积分领取失败：{err}', { err: [r.code, r.message].filter(Boolean).join(' ').slice(0, 120) }) };
@@ -222,9 +222,9 @@ export async function checkinMeoo(account, ctx = {}) {
  */
 export async function fetchMeooQuota(account, ctx = {}) {
   const cookie = account?.meta?.cookieSiteSession?.cookie || account?.token;
-  if (!cookie) throw authError(t('Meoo 会话缺失，请在「网页会话」页登录 meoo.com 后捕获'));
+  if (!cookie) throw authError(t('Meoo 会话缺失，请在「账号会话」页登录 meoo.com 后捕获'));
   const ent = await fetchMeooEntitlement(cookie, { fetchImpl: ctx?.fetchImpl });
-  if (!ent.auth) throw authError(t('Meoo 会话已失效（{code}），请到「网页会话」页重新登录 meoo.com 并捕获', { code: ent.code || 'NEED_LOGIN' }));
+  if (!ent.auth) throw authError(t('Meoo 会话已失效（{code}），请到「账号会话」页重新登录 meoo.com 并捕获', { code: ent.code || 'NEED_LOGIN' }));
   if (!ent.ok) throw new Error(t('Meoo 积分查询失败：{err}', { err: ent.code || '' }));
   const balance = Number.isFinite(ent.balance) ? ent.balance : 0;
   const SOURCE_LABEL = { DAILY_LOGIN: '每日首登', INVITE_REWARD: '邀请奖励', SUBSCRIPTION: '订阅' };

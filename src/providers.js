@@ -124,14 +124,14 @@ async function qoderWebDetail(account, ctx = {}) {
     const d = await fetchUsageDetail(account);
     if (!d) return null;
     if (account.uid && d.user_id && d.user_id !== account.uid) {
-      ctx.log?.('网页会话与账号不匹配，忽略资源包明细');
+      ctx.log?.('账号会话与账号不匹配，忽略资源包明细');
       return null;
     }
     return d;
   } catch (e) {
     if (e.auth) {
       await clearQoderWebSession(account, ctx);
-      ctx.log?.('Qoder 网页会话已失效，无法显示逐资源包明细（面板里重新登录一次即可）');
+      ctx.log?.('Qoder 账号会话已失效，无法显示逐资源包明细（面板里重新登录一次即可）');
     }
     return null;
   }

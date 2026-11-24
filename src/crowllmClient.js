@@ -108,7 +108,7 @@ export function buildCrowllmQuotaPayload(account, liveData = null) {
       payload: {
         provider: 'crowllm',
         label,
-        message: 'CrowLLM 会话已失效，请在 CreditDaddy「网页会话」页重新登录捕获',
+        message: 'CrowLLM 会话已失效，请在 CreditDaddy「账号会话」页重新登录捕获',
       },
     };
   }

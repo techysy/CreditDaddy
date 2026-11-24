@@ -4,7 +4,7 @@
  * 凭据 = WorkOS SPA 会话（localStorage `workos:access-token` / `workos:refresh-token` /
  * `workos:expires-at` / `workos:user`）——console API 只认 `Authorization: Bearer <WorkOS JWT>`，
  * cookie 无关。`rv_` 开头的 API key 只能打 api.river.ai 的 OpenAI 兼容面（/v1/models 等），
- * **看不到余额**（/v1/billing 等是 gRPC UNIMPLEMENTED），所以走网页会话线
+ * **看不到余额**（/v1/billing 等是 gRPC UNIMPLEMENTED），所以走账号会话线
  * （issue #23 收割线的 localStorage 变体，desktop 侧按 site.localStorageKeys 收割）。
  *
  * 余额：GET /api/billing/account → { balance_usd: number, ... }（联调实测消费口径）。
@@ -329,7 +329,7 @@ export function buildRiverQuotaPayload(account, liveData = null) {
       payload: {
         provider: 'river',
         label: (nameStr || (email ? `River AI (${email})` : 'River AI')).slice(0, 100),
-        message: liveData.error || t('River 控制台会话已失效，请在 CreditDaddy「网页会话」页重新登录捕获'),
+        message: liveData.error || t('River 控制台会话已失效，请在 CreditDaddy「账号会话」页重新登录捕获'),
       },
     };
   }
@@ -365,7 +365,7 @@ export function buildRiverQuotaPayload(account, liveData = null) {
       },
     };
   } else {
-    payload.message = liveData?.error || t('River 控制台会话已失效，请在 CreditDaddy「网页会话」页重新登录捕获');
+    payload.message = liveData?.error || t('River 控制台会话已失效，请在 CreditDaddy「账号会话」页重新登录捕获');
   }
 
   return { source, payload };

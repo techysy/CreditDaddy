@@ -36,7 +36,7 @@ const ZCODE_FIRST_DELAY_MS = 2 * 60 * 1000;
 // 各产品「业务日」刷新时点（UTC+8）：Qoder 每日 10:00 放出/重置领取资格，其余产品按 00:00。
 // 签到日 = 对应时点起的日历日：dayKey(now, provider) = (now + (8 - 刷新小时)h) 的 UTC 日期
 const DAY_REFRESH_HOUR_UTC8 = { qoder: 10, 'qoder-cn': 10 };
-// 领取日志的积分单位：默认 Credits（Qoder/WorkBuddy 系），网页会话线各自带单位
+// 领取日志的积分单位：默认 Credits（Qoder/WorkBuddy 系），账号会话线各自带单位
 const CHECKIN_UNIT = { lingxi: '灵点', doubao: '额度', meoo: '秒悟积分', dumate: '积分', croli: '积分' };
 
 let timerHandle = null;
@@ -527,8 +527,8 @@ export function stopScheduler() {
 }
 
 
-// ── Qoder 网页会话保活监视（10R 联调反馈：三账号 cookie 齐过期才在 10R 卡面发现）──
-// 网页会话 cookie 无法离线续期（必须真浏览器登录），但可以**提前发现**：每日用已存
+// ── Qoder 账号会话保活监视（10R 联调反馈：三账号 cookie 齐过期才在 10R 卡面发现）──
+// 账号会话 cookie 无法离线续期（必须真浏览器登录），但可以**提前发现**：每日用已存
 // cookie 真探测一次（probeWebSession），失效落 meta.qoderWebDead——面板徽章从
 // 「7 天陈旧」升级成「已失效」红色态，导出提示同步点名，不再等 10R 卡面亮红。
 let wsWatchTimer = null;
@@ -561,7 +561,7 @@ export async function runWebSessionWatchTick() {
         else delete hit.meta.qoderWebDead;
         hit.updatedAt = new Date().toISOString();
       });
-      if (dead) logger.warn('WEBSession', '{name} 网页会话已失效（探测接口拒绝）——请重新「浏览器登录」补 cookie', { name: a.name || a.id });
+      if (dead) logger.warn('WEBSession', '{name} 账号会话已失效（探测接口拒绝）——请重新「浏览器登录」补 cookie', { name: a.name || a.id });
     }
   }
 }
@@ -569,7 +569,7 @@ export async function runWebSessionWatchTick() {
 export function startWebSessionWatch() {
   if (wsWatchTimer) return;
   const tick = () => runWebSessionWatchTick().catch((e) =>
-    logger.warn('WEBSession', '网页会话保活监视失败:{err}', { err: e?.message || e }));
+    logger.warn('WEBSession', '账号会话保活监视失败:{err}', { err: e?.message || e }));
   setTimeout(tick, 45 * 1000).unref?.();   // 启动 45 秒后先跑一轮首检
   wsWatchTimer = setInterval(tick, WS_WATCH_INTERVAL_MS);
   wsWatchTimer.unref?.();

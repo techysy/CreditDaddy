@@ -140,7 +140,7 @@
   .dot.on { background: var(--ok); opacity: 1; box-shadow: 0 0 5px var(--ok); }
   .dot.pulse { animation: dot-pulse 2.2s ease-out infinite; }
   @keyframes dot-pulse { 0% { box-shadow: 0 0 0 0 rgba(46, 229, 157, .45); } 70% { box-shadow: 0 0 0 5px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
-  /* 网页会话账号行探活灯：绿=上次重探通过；黄=探测失败（网络/结构变化，旧数字仍挂着）；
+  /* 账号会话账号行探活灯：绿=上次重探通过；黄=探测失败（网络/结构变化，旧数字仍挂着）；
      红=会话失效（401/403，需要重新登录捕获） */
   .dot.probe-warn { background: var(--warn, #f59e0b); opacity: 1; box-shadow: 0 0 5px var(--warn, #f59e0b); }
   .dot.probe-dead { background: #f56d7d; opacity: 1; box-shadow: 0 0 5px #f56d7d; }
@@ -660,7 +660,7 @@
     <button data-view="dumate" title="DuMate"><img src="data:image/png;base64,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" class="nav-mark-img" alt="DuMate"><span class="cnt" id="cnt-dumate">0</span></button>
     <button data-view="croli" title="Croli"><img src="data:image/png;base64,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" class="nav-mark-img" alt="Croli"><span class="cnt" id="cnt-croli">0</span></button>
     <button data-view="qwenwork" title="QwenWork"><img src="data:image/png;base64,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" class="nav-mark-img qw-icon-light" alt="QwenWork"><img src="data:image/png;base64,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" class="nav-mark-img qw-icon-dark" alt="QwenWork"><span class="cnt" id="cnt-qwenwork">0</span></button>
-    <button data-view="free" title="网页会话"><svg viewBox="0 0 24 24" class="nav-mark"><rect width="24" height="24" rx="6" fill="#141416"/><path d="M6.5 8l4 4-4 4M12.5 16h5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg><span class="cnt" id="cnt-free">0</span></button>
+    <button data-view="free" title="账号会话"><svg viewBox="0 0 24 24" class="nav-mark"><rect width="24" height="24" rx="6" fill="#141416"/><path d="M6.5 8l4 4-4 4M12.5 16h5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg><span class="cnt" id="cnt-free">0</span></button>
     <button data-view="tenrouter" title="10Router"><svg viewBox="0 0 24 24" class="nav-mark"><defs><linearGradient id="tr-nav-g" x1="0" y1="0" x2="0" y2="24" gradientUnits="userSpaceOnUse"><stop stop-color="#F97815"/><stop offset="1" stop-color="#C2590A"/></linearGradient></defs><rect width="24" height="24" rx="6" fill="url(#tr-nav-g)"/><text x="12" y="17" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="12" font-weight="800" fill="#fff" text-anchor="middle">10</text></svg><span class="cnt" id="cnt-tenrouter">–</span></button>
   </nav>
 
@@ -749,7 +749,7 @@
     </div>
   </section>
 
-  <!-- 网页会话：Token Harbor / 小米 MiMo 等网页控制台与登录态资产 -->
+  <!-- 账号会话：Token Harbor / 小米 MiMo 等网页控制台与登录态资产 -->
   <section class="view" id="view-free">
     <div class="panel">
       <div class="toolbar">
@@ -1050,7 +1050,7 @@
   </div>
 </div>
 
-<!-- 10Router 账号管理：账号同步 + 网页会话 Cookie 捕获（原「Cookie 会话」按钮与「设置」里的账号同步合并） -->
+<!-- 10Router 账号管理：账号同步 + 账号会话 Cookie 捕获（原「Cookie 会话」按钮与「设置」里的账号同步合并） -->
 <div class="mask" id="m-am">
   <div class="modal">
     <div class="modal-title"><span data-i18n="账号管理">账号管理</span><button class="close" data-close>✕</button></div>
@@ -1063,7 +1063,7 @@
       </div>
       <div style="margin-top:10px" id="am-sync-channels"></div>
     </div>
-    <div class="field" style="margin-top:14px"><label data-i18n="网页会话">网页会话</label>
+    <div class="field" style="margin-top:14px"><label data-i18n="账号会话">账号会话</label>
       <div class="hint" data-i18n="为「额度只在网页 dashboard」的供应商捕获登录会话(cookie),同步给 10Router 点亮配额卡片;凭据全程只存本机(账号库加密)。">为「额度只在网页 dashboard」的供应商捕获登录会话(cookie),同步给 10Router 点亮配额卡片;凭据全程只存本机(账号库加密)。</div>
       <div id="cookie-sites-body" style="margin-top:10px;display:grid;gap:8px"></div>
     </div>
@@ -1079,7 +1079,7 @@
     <div class="modal-actions"><button class="btn" data-close>取消</button><button class="btn" id="dlg-alt" style="display:none">备选</button><button class="btn primary" id="dlg-ok" data-i18n="确定">确定</button></div>
   </div>
 </div>
-<!-- 会话池（网页会话站点的多登录槽管理） -->
+<!-- 会话池（账号会话站点的多登录槽管理） -->
 <div class="mask" id="m-pool">
   <div class="modal sm">
     <div class="modal-title"><span id="pool-title"></span><button class="close" data-close>✕</button></div>
@@ -1338,7 +1338,7 @@ const COMPONENTS = [
   { id: 'loomy', label: 'Loomy' },
   { id: 'dumate', label: 'DuMate' },
   { id: 'croli', label: 'Croli' },
-  { id: 'free', label: '网页会话' },
+  { id: 'free', label: '账号会话' },
   { id: 'tenrouter', label: '10Router' },
 ];
 // 捐赠二维码随日夜主题切换（顶层定义：applyTheme 的调用早于原块级定义，块内 function 不可达）
@@ -1479,7 +1479,7 @@ const PROV = {
 // 支持每日签到的产品（ZCode / mirasim / 妙手 额度靠套餐或滚动窗口发放，不做签到）
 // croli：ops/checkin 每日 +100（streak 第 3 天起 +20），调度器侧 productImpl.checkin 自动覆盖
 const CHECKIN_PRODUCTS = new Set(['qoder', 'workbuddy', 'trae', 'minimax', 'croli']);
-// 网页会话卡支持「立即签到」的站点：provider 在 providers.js 挂了 checkin 且非 entryOnly
+// 账号会话卡支持「立即签到」的站点：provider 在 providers.js 挂了 checkin 且非 entryOnly
 const FREE_CHECKIN_SITES = new Set(['lingxi', 'meoo', 'doubao']);
 const CLIENT_LABEL = { qoder: 'Qoder', qwenwork: 'QwenWork', workbuddy: 'WorkBuddy', zcode: 'ZCode', mirasim: 'mirasim', catpaw: '妙手', trae: 'Trae', minimax: 'MiniMax', loomy: 'Loomy', dumate: 'DuMate', meoo: 'Meoo', croli: 'Croli', doubao: '豆包' };
 // 产品页顶部改用「有效套餐 N/M」而不是「剩余积分」的产品（单位不是积分：Token / % / Credits）。
@@ -1859,7 +1859,7 @@ function initTheme() {
 // ── 状态 / 渲染 ──
 // 统一「领鸡蛋」语义：全部签到产品线 = 领取积分（workbuddy-intl 的「活跃」语义随活跃领取线删除）
 function statusOf(a) {
-  // CHECKIN_PRODUCTS = 产品页四线；FREE_CHECKIN_SITES = 网页会话签到线（灵犀）——
+  // CHECKIN_PRODUCTS = 产品页四线；FREE_CHECKIN_SITES = 账号会话签到线（灵犀）——
   // 同一套 todayDone/日界比对逻辑出徽标，自动签到轮签过的号在卡片上也有迹可循
   if (!CHECKIN_PRODUCTS.has(a.product) && !FREE_CHECKIN_SITES.has(a.product)) {
     // ZCode 无「每日签到」口径，但活动领取的结果必须落到徽标上：
@@ -2147,7 +2147,7 @@ function cardHtml(a) {
     + (a.product === 'croli' ? T('<button class="icon-btn" data-act="invite" title="填写邀请码（好友安装 Croli 并完成首个任务后，你得 2500 / 好友得 3000 积分）">') + I.gift + '</button>' : '')
     + (a.product === 'croli' ? T('<button class="icon-btn" data-act="my-invite" title="我的邀请码（查看本账号的专属邀请码与邀请链接，复制分享）">') + I.invite + '</button>' : '')
     + (canCheckin && a.provider !== 'workbuddy-intl' ? '<button class="icon-btn' + (state.busy[a.id] ? ' busy' : '') + '" data-act="checkin" title="' + T('立即领取') + '">' + (state.busy[a.id] ? I.refresh : I.play) + '</button>' : '')
-    + (a.qoderWebDead ? '<button class="icon-btn" data-act="webrenew" title="' + T('网页会话已失效——打开登录窗口重新授权，关闭窗口时自动补 cookie（API token 不受影响）') + '">' + I.swap + '</button>' : '')
+    + (a.qoderWebDead ? '<button class="icon-btn" data-act="webrenew" title="' + T('账号会话已失效——打开登录窗口重新授权，关闭窗口时自动补 cookie（API token 不受影响）') + '">' + I.swap + '</button>' : '')
     + (a.canSwitch && !isCurrent && st.cls !== 'fail' ? (a.codebuddyIdeFlavor ? '<button class="icon-btn" data-act="switch" title="' + esc(T('切换 CodeBuddy IDE 到此账号')) + '">' + I.swap + '</button>' : T('<button class="icon-btn" data-act="switch" title="切换 ') + (CLIENT_LABEL[a.product] ? T(CLIENT_LABEL[a.product]) : prodLabel(a.product)) + T(' 客户端到此账号">') + I.swap + '</button>') : '')
     + T('<button class="icon-btn" data-act="quota" title="刷新积分">') + I.refresh + '</button>'
     + T('<button class="icon-btn del" data-act="del" title="删除（点两次确认）">') + I.trash + '</button>'
@@ -2312,11 +2312,11 @@ const EMPTY_TIP = {
   trae: '还没有 Trae 账号。<br>点「添加账号 → 本机导入」可读取本机 Trae 客户端当前登录的账号（本地解密 storage.json 凭据，token 不出本机），或用「浏览器登录」走官方授权码流程直接添加（无需客户端）。多账号可混合两种方式逐个添加。',
   minimax: '还没有 MiniMax 账号。<br>点「添加账号 → 本机导入」可读取本机 MiniMax Code 客户端当前登录的账号，或用浏览器登录 / 粘贴 Bearer Token 添加。',
   loomy: '还没有 Loomy 账号。<br>点「添加账号 → 本机导入」可读取本机 Loomy 客户端当前登录的账号（Token 有效期约 14 天，免客户端运行），支持多账号保存切换，并可一键同步给 10Router 网关。',
-  dumate: '还没有 DuMate 账号。<br>点「添加账号 → 本机导入」可读取本机 DuMate 百度搭子客户端当前登录的账号（本地解密会话 Cookie，凭据不出本机）；或在「网页会话」页走浏览器登录个人版入口捕获。每日自动领取登录赠送积分，并可一键同步给 10Router 网关。',
-  meoo: '还没有 Meoo 账号。<br>到「网页会话」页点 Meoo 行的「网页版」登录 meoo.com（阿里云账号手机号 + 短信）后自动捕获，每日首登积分自动领取。',
+  dumate: '还没有 DuMate 账号。<br>点「添加账号 → 本机导入」可读取本机 DuMate 百度搭子客户端当前登录的账号（本地解密会话 Cookie，凭据不出本机）；或在「账号会话」页走浏览器登录个人版入口捕获。每日自动领取登录赠送积分，并可一键同步给 10Router 网关。',
+  meoo: '还没有 Meoo 账号。<br>到「账号会话」页点 Meoo 行的「网页版」登录 meoo.com（阿里云账号手机号 + 短信）后自动捕获，每日首登积分自动领取。',
   croli: '还没有 Croli 账号。<br>点「添加账号 → 本机导入」可读取本机 Croli 客户端当前登录的账号（直读 %APPDATA%\\Croli\\auth.json，凭据不出本机）；或用「浏览器登录」走 Clerk 授权（Google / GitHub / 邮箱任选）。每日自动签到（+100 积分，连续 3 天起额外 +20）。',
   qwenwork: '还没有 QwenWork 账号。<br>点「添加账号 → 浏览器登录」走官方设备码授权（与 Qoder 同款流程，无需客户端）；或点「本机导入」读取本机 QwenWork 客户端已登录的账号（本地解密 auth-v2.dat，凭据不出本机）。登录即带快照，多账号可一键切换进客户端。',
-  lingxi: '还没有 WPS 灵犀账号。<br>到 lingxi.kdocs.cn 登录（WPS 账号）后在「网页会话」页捕获会话，或点「添加账号 → 网页登录」。CD 每日自动签到（+100 灵点，七天一轮第七天 200）并同步余额到 10Router。',
+  lingxi: '还没有 WPS 灵犀账号。<br>到 lingxi.kdocs.cn 登录（WPS 账号）后在「账号会话」页捕获会话，或点「添加账号 → 网页登录」。CD 每日自动签到（+100 灵点，七天一轮第七天 200）并同步余额到 10Router。',
 };
 
 function renderProd() {
@@ -2509,7 +2509,7 @@ function renderDash() {
   const failed = signable.filter((a) => statusOf(a).cls === 'fail').length;
   const credit = creditSum(state.accounts.filter((a) => a.product !== 'zcode'));
   const byProd = orderedVisibleComps().filter((id) => id !== 'tenrouter').map((id) => prodLabel(id) + ' ' + ofProduct(id).length).join(' · ');
-  // 网页会话签到线（灵犀、豆包等）今日进度，freeDashCard 用；账号要同时在 cookieSites 视图里才算
+  // 账号会话签到线（灵犀、豆包等）今日进度，freeDashCard 用；账号要同时在 cookieSites 视图里才算
   const freeCheckinRows = (state.cookieSites || []).flatMap((s) => FREE_CHECKIN_SITES.has(s.id) ? (s.accounts || []) : []);
   const freeCheckinProgress = freeCheckinRows.length
     ? { done: freeCheckinRows.filter((acc) => { const full = state.accounts.find((x) => x.id === acc.id); return full && isDone(full); }).length, total: freeCheckinRows.length }
@@ -2843,6 +2843,14 @@ document.addEventListener('click', async (e) => {
         else toast((r && r.error) || T('无法启动豆包客户端'), false);
       }).catch((err) => toast(String(err && err.message || err), false));
     } else toast(T('需要桌面版 CreditDaddy'), false);
+    return;
+  }
+  const importSiteBtn = e.target.closest('[data-local-import-site]');
+  if (importSiteBtn) {
+    const siteId = importSiteBtn.dataset.localImportSite;
+    if (siteId === 'doubao') {
+      importDoubaoLocal(importSiteBtn);
+    }
     return;
   }
   if (e.target.closest('#free-show-all')) {
@@ -3278,7 +3286,53 @@ function trSetupHtml() {
     + '<button class="btn primary" data-tr="settings">' + I.plus + T('配置 10Router</button></div>');
 }
 
-// ── 免费额度池（Token Harbor 等网页会话型供应商） ──
+async function importDoubaoLocal(btn) {
+  if (btn) btn.disabled = true;
+  toast(T('正在读取本机豆包客户端凭据…'));
+  try {
+    const scanRes = await api('/api/local/scan', { method: 'POST' });
+    const cands = scanRes.candidates || [];
+    const cand = cands.find((c) => c.provider === 'doubao' || c.record?.provider === 'doubao');
+    if (!cand) {
+      const err = (scanRes.errors || []).find((e) => e.file && e.file.toLowerCase().includes('doubao'));
+      if (err) {
+        toast(T('读取豆包凭据失败：') + err.error, false);
+      } else {
+        toast(T('未发现已登录的豆包客户端账号，请先在豆包客户端登录'), false);
+      }
+      return;
+    }
+    let impAccount = null;
+    try {
+      const impRes = await api('/api/local/import', { json: { candidateId: cand.id, provider: 'doubao' } });
+      impAccount = impRes.account;
+      toast((impRes.updated ? T('已用本机凭据更新：') : T('已导入：')) + (impRes.account.name || impRes.account.id));
+    } catch (e) {
+      if (e.message && e.message.includes('已存在')) {
+        toast(T('豆包账号已导入且信息已是最新'));
+      } else {
+        throw e;
+      }
+    }
+    await loadCookieSites(true);
+    await loadAccounts();
+    const targetId = impAccount?.id || (state.accounts || []).find((a) => a.provider === 'doubao')?.id;
+    if (targetId) {
+      api('/api/cookie-sites/doubao/reprobe', { method: 'POST', json: { accountId: targetId } })
+        .then(() => loadCookieSites(true))
+        .then(() => { if (state.view === 'free') renderFreePool(); })
+        .catch(() => {});
+    }
+    if (state.view === 'free') renderFreePool();
+    else render();
+  } catch (e) {
+    toast(e.message, false);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ── 免费额度池（Token Harbor 等账号会话型供应商） ──
 state.cookieSites = state.cookieSites || null;
 async function loadCookieSites(force) {
   if (state.cookieSites && !force) return state.cookieSites;
@@ -3353,21 +3407,32 @@ function renderFreePool() {
     const stateTxt = rows.length
       ? T('<span class="badge ok">已捕获 ') + rows.length + T(' 个会话</span>')
       : T('<span class="badge limited">未捕获</span>');
-    const siteDisabled = site.disabled === true;
-    const btn = siteDisabled
-      ? T('<button class="btn" disabled title="网页 cookie 无法参与该站活动（活动校验客户端环境）">网页版（暂不可用）</button>')
-      : canCapture
-        ? '<button class="btn primary" data-capture-site="' + esc(site.id) + '" title="' + T('多槽在用时先弹「选择会话」；单槽直接用已存会话开窗（有会话直接进控制台，没有则先登录）') + '">' + I.plus + T('网页版') + '</button>'
-        : T('<button class="btn" disabled title="需要桌面版 CreditDaddy(无痕登录窗)">网页版</button>');
-    // 「粘贴捕获」：部分站点（小米账号 SSO）登录态挂设备指纹，CD 无痕窗也会被静默 SSO
-    // 拉回同一账号——多号并存走系统浏览器登录新号后手动粘 cookie（不依赖登录窗）。
-    const pasteBtn = ' <button class="btn" data-paste-capture="' + esc(site.id) + '" title="' + T('在其他浏览器登录该站点后，把会话 cookie 粘贴进来捕获（多账号并存的可靠路径）') + '">' + T('粘贴捕获') + '</button>';
-    // 「会话池」：Chrome 多 profile 式登录槽管理——同一站点最多 6 个独立持久登录分区，
-    // 每槽可登录不同账号并排养号（换号 = 选另一槽开窗，不再来回清除登录态）。
-    // 原「清除已存会话」收进池子（每槽单独清），主行不再占一个按钮位。
-    const poolBtn = canCapture
-      ? ' <button class="btn" data-session-pool="' + esc(site.id) + '" title="' + T('管理该站点的登录会话池：多槽各自登录不同账号、改名备注或清除') + '">' + T('会话池') + '</button>'
-      : '';
+    const isLocalImportOnly = site.localImportOnly === true || site.id === 'doubao';
+    let btnsHtml = '';
+    if (isLocalImportOnly) {
+      const importBtn = '<button class="btn primary" data-local-import-site="' + esc(site.id) + '" title="' + T('读取并解密本机豆包桌面客户端当前登录账号') + '">' + I.plus + T('本机导入') + '</button>';
+      const openDoubaoBtn = site.id === 'doubao' && canCapture
+        ? ' <button class="btn" data-open-doubao="1" title="' + T('启动豆包桌面客户端') + '">' + I.play + T('打开豆包') + '</button>'
+        : '';
+      btnsHtml = importBtn + openDoubaoBtn;
+    } else {
+      const siteDisabled = site.disabled === true;
+      const btn = siteDisabled
+        ? T('<button class="btn" disabled title="网页 cookie 无法参与该站活动（活动校验客户端环境）">网页版（暂不可用）</button>')
+        : canCapture
+          ? '<button class="btn primary" data-capture-site="' + esc(site.id) + '" title="' + T('多槽在用时先弹「选择会话」；单槽直接用已存会话开窗（有会话直接进控制台，没有则先登录）') + '">' + I.plus + T('网页版') + '</button>'
+          : T('<button class="btn" disabled title="需要桌面版 CreditDaddy(无痕登录窗)">网页版</button>');
+      // 「粘贴捕获」：部分站点（小米账号 SSO）登录态挂设备指纹，CD 无痕窗也会被静默 SSO
+      // 拉回同一账号——多号并存走系统浏览器登录新号后手动粘 cookie（不依赖登录窗）。
+      const pasteBtn = ' <button class="btn" data-paste-capture="' + esc(site.id) + '" title="' + T('在其他浏览器登录该站点后，把会话 cookie 粘贴进来捕获（多账号并存的可靠路径）') + '">' + T('粘贴捕获') + '</button>';
+      // 「会话池」：Chrome 多 profile 式登录槽管理——同一站点最多 6 个独立持久登录分区，
+      // 每槽可登录不同账号并排养号（换号 = 选另一槽开窗，不再来回清除登录态）。
+      // 原「清除已存会话」收进池子（每槽单独清），主行不再占一个按钮位。
+      const poolBtn = canCapture
+        ? ' <button class="btn" data-session-pool="' + esc(site.id) + '" title="' + T('管理该站点的登录会话池：多槽各自登录不同账号、改名备注或清除') + '">' + T('会话池') + '</button>'
+        : '';
+      btnsHtml = btn + pasteBtn + poolBtn;
+    }
     // 站点级红字警示（site.warnHtml，站点配置声明、此处统一渲染）：
     // 用于「接入该站点有工具之外的代价」这类必须前置告知的情况（如注册新号可能被电话推广）
     const warn = site.warnHtml ? '<div style="margin:2px 0 6px;font-size:12px;font-weight:600;color:var(--danger,#e5484d)">' + site.warnHtml + '</div>' : '';
@@ -3383,6 +3448,7 @@ function renderFreePool() {
       if (site.id === 'xiaomi-mimo') return '¥ ' + Number(v).toFixed(2);
       if (site.id === 'river') return '$ ' + Number(v).toFixed(2);
       if (site.id === 'longcat') return Number(v).toLocaleString() + ' Token';
+      if (site.id === 'doubao') return Number(v).toLocaleString() + ' 点';
       return Number(v).toFixed(0);
     };
 
@@ -3464,6 +3530,12 @@ function renderFreePool() {
           return '<span class="pill ok" style="font-weight:600">' + T('钱包余额 $') + bal.toFixed(2) + '</span>' + detail;
         }
       }
+      if (site.id === 'doubao') {
+        const bal = acc.quota?.total;
+        if (Number.isFinite(bal)) {
+          return '<span class="pill ok" style="font-weight:600">' + T('体验额度 ') + Number(bal).toLocaleString() + '</span>';
+        }
+      }
       if (site.id === 'tokenharbor') {
         const used = acc.quota?.used;
         if (Number.isFinite(used)) {
@@ -3479,7 +3551,7 @@ function renderFreePool() {
       ? '<div style="margin-top:6px;border-top:1px dashed var(--border-subtle);padding-top:10px;display:grid;gap:8px">'
         + rows.map((acc) => {
           const metricHtml = formatAccMetric(acc);
-          // 网页会话签到线（灵犀）：徽标复用产品行同一套 statusOf（todayDone 日界比对）——
+          // 账号会话签到线（灵犀）：徽标复用产品行同一套 statusOf（todayDone 日界比对）——
           // 手动/自动签到的结果都落到卡片行上，不只靠转瞬即逝的 toast
           const accFull = state.accounts.find((x) => x.id === acc.id);
           const st = accFull && FREE_CHECKIN_SITES.has(site.id) ? statusOf(accFull) : null;
@@ -3518,7 +3590,9 @@ function renderFreePool() {
             + ((metricHtml || stBadgeHtml) ? '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding-left:14px">' + metricHtml + stBadgeHtml + '</div>' : '')
             + '</div>';
         }).join('') + '</div>'
-      : T('<div class="muted-empty" style="padding:16px 0 6px">还没有该站点的账号，点右上角「网页版」登录后自动捕获</div>');
+      : (isLocalImportOnly
+        ? T('<div class="muted-empty" style="padding:16px 0 6px">还没有豆包账号，请先在豆包桌面端登录后，点击右上角「本机导入」</div>')
+        : T('<div class="muted-empty" style="padding:16px 0 6px">还没有该站点的账号，点右上角「网页版」登录后自动捕获</div>'));
 
     // justify-content 不用 space-between：网格行高被最高卡撑齐后，单行账号会被推到卡底（沉底）
     const eyeBtn = '<button class="icon-btn" data-free-hide="' + esc(site.id) + '" title="' + T('隐藏此站点卡片（「全部显示」可恢复）') + '">' + I.eyeOff + '</button>';
@@ -3528,7 +3602,7 @@ function renderFreePool() {
       + '<span style="font-size:14px;font-weight:700">' + esc(site.label || site.name) + '</span>'
       + stateTxt
       + '</div>'
-      + '<div style="display:flex;align-items:center;gap:6px">' + btn + pasteBtn + poolBtn + eyeBtn + '</div>'
+      + '<div style="display:flex;align-items:center;gap:6px">' + btnsHtml + eyeBtn + '</div>'
       + '</div>'
       + warn
       + hint
@@ -3545,7 +3619,7 @@ function renderCookieSites() {
   if (!body) return;
   const canCapture = Boolean(window.creditdaddy && typeof window.creditdaddy.openAuthWindow === 'function');
   if (!state.cookieSites) { body.innerHTML = T('<div class="dim">加载中…</div>'); loadCookieSites().then(() => renderCookieSites()); return; }
-  // hideFromWebPage（DuMate）：登录入口在其自身产品页，网页会话页不再列出（捕获机制仍走全量列表）
+  // hideFromWebPage（DuMate）：登录入口在其自身产品页，账号会话页不再列出（捕获机制仍走全量列表）
   const sites = state.cookieSites.filter((s) => !s.hideFromWebPage);
   if (!sites.length) { body.innerHTML = T('<div class="muted-empty">暂无可捕获的供应商</div>'); return; }
   body.innerHTML = sites.map((site) => {
@@ -3553,9 +3627,12 @@ function renderCookieSites() {
     const stateTxt = rows.length
       ? T('<span class="dim">已捕获 ') + rows.length + T(' 个会话</span>')
       : T('<span class="dim">未捕获</span>');
-    const btn = canCapture
-      ? '<button class="btn" data-capture-site="' + esc(site.id) + '">' + T('网页版') + '</button>'
-      : T('<button class="btn" disabled title="需要桌面版 CreditDaddy(无痕登录窗)">网页版</button>');
+    const isLocalImportOnly = site.localImportOnly === true || site.id === 'doubao';
+    const btn = isLocalImportOnly
+      ? '<button class="btn" data-local-import-site="' + esc(site.id) + '">' + T('本机导入') + '</button>'
+      : canCapture
+        ? '<button class="btn" data-capture-site="' + esc(site.id) + '">' + T('网页版') + '</button>'
+        : T('<button class="btn" disabled title="需要桌面版 CreditDaddy(无痕登录窗)">网页版</button>');
     const warn = site.warnHtml ? '<div style="font-size:12px;font-weight:600;color:var(--danger,#e5484d)">' + site.warnHtml + '</div>' : '';
     // hint 两行截断（同 renderFreePool）：悬浮 title 看全量
     const hint = site.hint ? T('<div class="hint" style="display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;cursor:default" title="{t}">{t}</div>', { t: esc(site.hint) }) : '';
@@ -3572,7 +3649,7 @@ function renderCookieSites() {
 /**
  * 「账号管理」弹窗：把两件同性质的事收在一处——
  *   1. 账号同步：本机 Qoder / WorkBuddy 账号推为 10Router 上游连接（原藏在「设置」弹窗底部）
- *   2. Cookie 会话：网页会话型供应商的捕获入口（原名「Cookie 会话」按钮）
+ *   2. Cookie 会话：账号会话型供应商的捕获入口（原名「Cookie 会话」按钮）
  * 面板密码栏同步展示：账号同步走 OAuth 通道时要它（带 refreshToken，自动续期）。
  *
  * 渠道开关（每渠道一行勾选）：取消勾选 = 两边都不再推——
@@ -3583,7 +3660,7 @@ function renderCookieSites() {
 const AM_CHANNELS = [
   { provider: 'minimax', label: 'MiniMax 国内版', syncable: true },
   { provider: 'minimax-global', label: 'MiniMax 国际版', syncable: true },
-  // tokenharbor：sk- key 来源（网页会话捕获 key）——只喂额度监控卡，10R 无连接概念
+  // tokenharbor：sk- key 来源（账号会话捕获 key）——只喂额度监控卡，10R 无连接概念
   { provider: 'tokenharbor', label: 'Token Harbor', syncable: false },
   { provider: 'xiaomi-mimo', label: '小米 MiMo', syncable: false },
   { provider: 'river', label: 'River AI', syncable: false },
@@ -3654,11 +3731,11 @@ function renderAmChannels() {
       ? '<label class="check" style="gap:5px"><input type="checkbox" data-am-push="' + ch.provider + '"' + (pushOn ? ' checked' : '') + '> <span>额度卡</span></label>'
       : '';
     // 「连接」只在真正可同步的渠道出现（tokenharbor 是 key 来源、小米/River/魔搭/LongCat 是
-    // 网页会话额度源——都没有连接概念，不渲染禁用勾选框装样子）
+    // 账号会话额度源——都没有连接概念，不渲染禁用勾选框装样子）
     const syncCtl = syncable
       ? '<label class="check" style="gap:5px"><input type="checkbox" data-am-sync="' + ch.provider + '"' + (syncOn ? ' checked' : '') + (!enabled ? ' disabled' : '') + '> <span>连接</span></label>'
       : '';
-    // 渠道形态角标：纯连接渠道「10R 自身出卡」；纯额度卡来源（Key / 网页会话）「仅额度卡」
+    // 渠道形态角标：纯连接渠道「10R 自身出卡」；纯额度卡来源（Key / 账号会话）「仅额度卡」
     const badge = !pushable
       ? '<span class="dim" style="font-size:11px;margin-left:auto;flex:none">' + T('10R 自身出卡') + '</span>'
       : (!syncable ? '<span class="dim" style="font-size:11px;margin-left:auto;flex:none">' + T('仅额度卡') + '</span>' : '');
@@ -3740,7 +3817,7 @@ $('view-free')?.addEventListener('click', (e) => {
     openModal('m-pool');
     return;
   }
-  // 「清除已存会话」（账号管理弹窗里的网页会话行仍用）：抹掉该站点槽 1 的持久登录分区
+  // 「清除已存会话」（账号管理弹窗里的账号会话行仍用）：抹掉该站点槽 1 的持久登录分区
   const clr = e.target.closest && e.target.closest('[data-clear-session]');
   if (clr) {
     const sid = clr.dataset.clearSession;
@@ -3757,7 +3834,7 @@ $('view-free')?.addEventListener('click', (e) => {
   // 就地重探：用已存会话 cookie 重跑身份+额度（身份解析失败/额度过期时免登录修复）
   const rep = e.target.closest && e.target.closest('[data-act="reprobe"]');
   if (rep) { onCardClick({ target: rep, preventDefault: () => {} }); return; }
-  // 网页会话卡「立即签到」（灵犀线）：CD 代签每日任务，成功后顺带重探把新余额顶上卡
+  // 账号会话卡「立即签到」（灵犀线）：CD 代签每日任务，成功后顺带重探把新余额顶上卡
   const chk = e.target.closest && e.target.closest('[data-act="checkin"]');
   if (chk) { checkinFreeAccount(chk.dataset.site, chk.dataset.id); return; }
   // 账号名点击改备注名（10R「同名认领」的匹配键就从这里改）
@@ -3774,14 +3851,14 @@ $('btn-free-sync-10r')?.addEventListener('click', async () => {
   if (!(tr.config && tr.config.configured)) return toast(T('请先保存 10Router 设置'), false);
   btn.disabled = true;
   try {
-    // 只推网页会话渠道的额度卡（webSessionOnly）——账号连接同步不在这里做：那是
+    // 只推账号会话渠道的额度卡（webSessionOnly）——账号连接同步不在这里做：那是
     // 10Router 页「账号管理」弹窗的职责（还带渠道开关）；本机凭据线（如 minimax-free）
-    // 也不搭车，本页的「同步」语义就只管网页会话卡。
+    // 也不搭车，本页的「同步」语义就只管账号会话卡。
     const r = await api('/api/tenrouter/push-quota', { method: 'POST', json: { webSessionOnly: true }, timeoutMs: 300_000 });
     const failed = (r.results || []).filter((x) => x.status === 'failed');
     if (failed.length) toast(T('额度卡部分推送失败：') + failed.map((x) => x.source + '（' + x.error + '）').join('；'), false);
     else if ((r.results || []).length) toast(T('额度卡已推送到 10Router 配额页'), true);
-    else toast(T('没有可推送的额度卡（网页会话账号为空或推送开关已关闭）'), false);
+    else toast(T('没有可推送的额度卡（账号会话账号为空或推送开关已关闭）'), false);
   } catch (e) { toast(e.message, false); }
   btn.disabled = false;
 });
@@ -3819,7 +3896,7 @@ $('free-settings-push-now')?.addEventListener('click', async () => {
   const btn = $('free-settings-push-now');
   btn.disabled = true;
   try {
-    // 与本页「同步到 10Router」同口径：只推网页会话渠道的额度卡
+    // 与本页「同步到 10Router」同口径：只推账号会话渠道的额度卡
     const r = await api('/api/tenrouter/push-quota', { method: 'POST', json: { webSessionOnly: true }, timeoutMs: 300_000 });
     const failed = (r.results || []).filter((x) => x.status === 'failed');
     if (failed.length) toast(T('额度卡部分推送失败：') + failed.map((x) => x.source + '（' + x.error + '）').join('；'), false);
@@ -4043,9 +4120,9 @@ if (window.creditdaddy && typeof window.creditdaddy.onCookieCaptured === 'functi
       });
   });
 }
-// Qoder 网页会话收割绑定完成（桌面壳在收割上报返回 bound>0 时推送）：
-// 「缺网页会话」徽章即时消失，并按**手动刷新同款口径**重查额度（live 真探上游
-// 重拉逐资源包明细）——网页会话刚绑定，缓存快照里还是旧数据/无明细，只把徽章
+// Qoder 账号会话收割绑定完成（桌面壳在收割上报返回 bound>0 时推送）：
+// 「缺账号会话」徽章即时消失，并按**手动刷新同款口径**重查额度（live 真探上游
+// 重拉逐资源包明细）——账号会话刚绑定，缓存快照里还是旧数据/无明细，只把徽章
 // 藏掉等于没修。此前靠登录成功后的 12s/30s setTimeout 猜收割时机（收割在登录窗
 // 关闭后才走，时机不稳），猜错徽章挂到 30s 周期轮、明细要等手动刷新才出来。
 // 网页面板（npm/CLI 场景无 preload）收不到事件，仍由周期轮兜底。
@@ -4122,7 +4199,7 @@ function renderTenrouter() {
     + '<button class="btn" data-tr="refresh"' + (tr.loading ? ' disabled' : '') + '>' + (tr.loading ? T('刷新中…') : T('刷新额度')) + '</button>'
     + T('<button class="btn" data-tr="sync" title="用量同步：自动开关、同步来源与手动同步（点我打开）"') + (tr.syncing || c.syncing ? ' disabled' : '') + '>'
     + '<span class="dot' + (c.sync.enabled ? ' on' : '') + '"></span>' + (tr.syncing || c.syncing ? T('同步中…') : T('用量同步')) + '</button>'
-    + '<button class="btn" data-tr="account-manage" title="' + T('账号同步与网页会话 Cookie 捕获') + '">' + T('账号管理') + '</button>'
+    + '<button class="btn" data-tr="account-manage" title="' + T('账号同步与账号会话 Cookie 捕获') + '">' + T('账号管理') + '</button>'
     + T('<button class="btn" data-tr="settings">设置</button>')
     + '</div></div>'
     + tabStrip
@@ -4130,7 +4207,7 @@ function renderTenrouter() {
   if (!state.cookieSites) loadCookieSites().then(() => { if (state.view === 'tenrouter') renderTenrouter(); });
 }
 
-/** 网页会话仪表盘卡：站点/会话计数 + 签到线今日进度（灵犀），点击进「网页会话」页。
+/** 账号会话仪表盘卡：站点/会话计数 + 签到线今日进度（灵犀），点击进「账号会话」页。
  *  进度由调用方（renderDash）算好传入——本函数在顶层，引用不到 renderDash 的局部变量
  *  （test.6 曾直接引用导致 ReferenceError、仪表盘半渲染卡首页）。 */
 function freeDashCard(lxProgress) {
@@ -4139,7 +4216,7 @@ function freeDashCard(lxProgress) {
   const rows = T('<span class="lbl">已捕获站点</span><span class="val">') + sites.length + '</span>'
     + T('<span class="lbl">会话总数</span><span class="val">') + sessions + '</span>'
     + T('<span class="lbl">今日领取</span><span class="val">') + (lxProgress ? lxProgress.done + ' / ' + lxProgress.total : T('暂无签到站点')) + '</span>';
-  return '<div class="prodcard" draggable="true" data-view="free"><div class="prod-head"><span class="prod-name"><svg viewBox="0 0 24 24" class="dot prod-mark-img"><rect width="24" height="24" rx="5" fill="#5B8DEF"/><circle cx="9" cy="14" r="3.2" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M11.5 11.5 L17 6 M13.5 6h3.5v3.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>网页会话</span>'
+  return '<div class="prodcard" draggable="true" data-view="free"><div class="prod-head"><span class="prod-name"><svg viewBox="0 0 24 24" class="dot prod-mark-img"><rect width="24" height="24" rx="5" fill="#5B8DEF"/><circle cx="9" cy="14" r="3.2" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M11.5 11.5 L17 6 M13.5 6h3.5v3.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>账号会话</span>'
     + '<span class="badge">' + sessions + T(' 个会话</span></span><span class="prod-go">查看') + I.chevRight + '</span></div><div class="prod-rows">' + rows + '</div></div>';
 }
 
@@ -4311,12 +4388,15 @@ async function syncAfterZcodeClaims() {
 async function loadAccounts() {
   const data = await api('/api/accounts');
   state.accounts = data.accounts;
+  if (state.cookieSites) {
+    try { await loadCookieSites(true); } catch {}
+  }
   render();
   renderStatus();
   loadQuotas();
 }
 // 轻量刷新账号列表（只重拉 /api/accounts + 重绘，不重查每账号额度）：
-// 「缺网页会话」徽章的数据源 qoderWebCapturedAt 在账号 meta 里，网页会话是在登录窗
+// 「缺账号会话」徽章的数据源 qoderWebCapturedAt 在账号 meta 里，账号会话是在登录窗
 // 关闭时才收割绑定的（晚于登录成功提示数秒），登录成功后与周期轮询里都要按这个口径补拉。
 async function refreshAccountList() {
   try { state.accounts = (await api('/api/accounts')).accounts; render(); } catch (e) { /* 下一轮再试 */ }
@@ -4434,7 +4514,7 @@ async function checkinOne(id) {
   delete state.busy[id];
   await loadStatus(); await loadAccounts(); loadLogs();
 }
-// 网页会话卡「立即签到」（灵犀线，#53 追加）：结果文案直接用 daemon 返回的 message
+// 账号会话卡「立即签到」（灵犀线，#53 追加）：结果文案直接用 daemon 返回的 message
 // （自带「灵点」单位，产品线通用的「+N Credits」口径不适配）；签到轮只写 lastResult
 // 不动 quotaSnapshot，签到成功后补一次就地重探，余额胶囊立即跟上
 async function checkinFreeAccount(site, id) {
@@ -5006,10 +5086,10 @@ async function onCardClick(e) {
     if (name === null) return;
     try {
       await api('/api/accounts/' + encodeURIComponent(id), { method: 'PATCH', json: { name } });
-      // 推卡 label 跟随别名——网页会话型账号改完名立刻推一轮，10R 侧同名认领不等下一个周期
+      // 推卡 label 跟随别名——账号会话型账号改完名立刻推一轮，10R 侧同名认领不等下一个周期
       if (['river', 'xiaomi-mimo', 'tokenharbor', 'modelscope'].includes(a?.provider)) api('/api/tenrouter/push-quota', { method: 'POST' }).catch(() => {});
       await loadAccounts();
-      // 网页会话页的行名来自 cookie-sites 视图——改完同步刷新，别名即刻可见（推送 label 也随它走）
+      // 账号会话页的行名来自 cookie-sites 视图——改完同步刷新，别名即刻可见（推送 label 也随它走）
       await loadCookieSites(true);
       if (state.view === 'free') renderFreePool();
     }
@@ -5770,7 +5850,7 @@ function openAdd(product) {
   const tabShown = {
     local: true,
     qr: product === 'dumate',   // DuMate 扫码登录（纯 HTTP 二维码线，同 10R）
-    web: product === 'dumate',  // DuMate 网页版登录（无痕窗捕获，入口自网页会话页迁入）
+    web: product === 'dumate',  // DuMate 网页版登录（无痕窗捕获，入口自账号会话页迁入）
     // trae：OAuth 授权码 + PKCE 浏览器登录已闭环（FLOWS.trae，国内站），入口与设备码线同窗
     // croli：同款 OAuth PKCE 浏览器登录线（clerk.croli.net，协议同桌面端），本机导入为主入口
     device: product !== 'mirasim' && product !== 'catpaw' && product !== 'loomy' && product !== 'dumate',
@@ -5859,6 +5939,7 @@ async function localScan() {
       try {
         const d = await api('/api/local/import', { json: { candidateId: b.dataset.cid, provider: b.dataset.prov } });
         toast((d.updated ? T('已更新：') : T('已导入：')) + (d.account.name || d.account.id));
+        await loadCookieSites(true);
         await loadAccounts();
         localScan();
       } catch (e) { toast(e.message, false); b.disabled = false; }
@@ -5923,7 +6004,7 @@ async function pollDevice(sessionId, n, gen) {
       toast(r.already ? T('已更新「') + (r.account.name || r.account.id) + T('」的登录凭据') : T('已添加：') + (r.account.name || r.account.id));
       if (r.account.id) delete state.quotas[r.account.id];   // 旧 token 的积分查询结果（可能是失败）作废，马上重查
       await loadStatus(); await loadAccounts();
-      // 网页会话 Cookie 在登录窗「关闭」后才收割绑定（晚于本提示数秒且时机不稳）——
+      // 账号会话 Cookie 在登录窗「关闭」后才收割绑定（晚于本提示数秒且时机不稳）——
       // 到位时桌面壳推 qoder-web-session:bound 事件刷新（onQoderWebSessionBound），
       // 这里只保留两轮轻量补拉兜住非桌面场景（网页面板无 preload 收不到事件）。
       setTimeout(refreshAccountList, 12000);
@@ -6035,7 +6116,7 @@ $('btn-loomy-login').addEventListener('click', async () => {
   }
 });
 
-// Qoder 卡片徽章：网页会话（Cookie）缺失或超 7 天时点名提醒——
+// Qoder 卡片徽章：账号会话（Cookie）缺失或超 7 天时点名提醒——
 // 10Router 的「套餐内 Credits」逐资源包明细依赖它（同 qoderWebSessionNote 口径）。
 // 正常状态不出徽章，只在需要「浏览器登录」补 cookie 时出橙色警示，避免噪音。
 function qoderWebBadge(a) {
@@ -6046,19 +6127,19 @@ function qoderWebBadge(a) {
   // 保活监视（每 6 小时真探测一次）判死的会话：红色徽章——不是「可能过期」而是确认失效，
   // 10R 侧「套餐内 Credits」此刻已经拿不到明细（401 回退聚合行），重新登录才能恢复。
   if (deadAt) {
-    const tip = T('网页会话已失效（') + fmtTime(deadAt).slice(0, 10) + T(' 探测确认）：10Router「套餐内 Credits」明细已回退聚合行，用「浏览器登录」重新登录一次 Qoder 即可补上') + proxyHint;
-    return '<span class="badge web web-dead" title="' + esc(tip) + '">' + T('网页会话已失效') + '</span>';
+    const tip = T('账号会话已失效（') + fmtTime(deadAt).slice(0, 10) + T(' 探测确认）：10Router「套餐内 Credits」明细已回退聚合行，用「浏览器登录」重新登录一次 Qoder 即可补上') + proxyHint;
+    return '<span class="badge web web-dead" title="' + esc(tip) + '">' + T('账号会话已失效') + '</span>';
   }
   if (at && Date.now() - new Date(at).getTime() <= 7 * 86400000) return '';
   const stale = Boolean(at);
   const tip = stale
-    ? T('网页会话已超过 7 天（') + fmtTime(at).slice(0, 10) + T(' 抓取），可能已过期：导出到 10Router 后「套餐内 Credits」可能缺失，用「浏览器登录」重新登录一次 Qoder 即可补上') + proxyHint
-    : T('缺少 Qoder 网页会话（Cookie）：导出到 10Router 后「套餐内 Credits」可能缺失，用「浏览器登录」登录一次 Qoder 即可自动抓取') + proxyHint;
-  return '<span class="badge web web-warn" title="' + esc(tip) + '">' + (stale ? T('网页会话过期') : T('缺网页会话')) + '</span>';
+    ? T('账号会话已超过 7 天（') + fmtTime(at).slice(0, 10) + T(' 抓取），可能已过期：导出到 10Router 后「套餐内 Credits」可能缺失，用「浏览器登录」重新登录一次 Qoder 即可补上') + proxyHint
+    : T('缺少 Qoder 账号会话（Cookie）：导出到 10Router 后「套餐内 Credits」可能缺失，用「浏览器登录」登录一次 Qoder 即可自动抓取') + proxyHint;
+  return '<span class="badge web web-warn" title="' + esc(tip) + '">' + (stale ? T('账号会话过期') : T('缺账号会话')) + '</span>';
 }
 
-// 导出弹窗里的网页会话提示（10Router issue #44）：
-// 10Router 的「套餐内 Credits」逐资源包明细依赖随账号导出的 Qoder 网页会话
+// 导出弹窗里的账号会话提示（10Router issue #44）：
+// 10Router 的「套餐内 Credits」逐资源包明细依赖随账号导出的 Qoder 账号会话
 // （openapi 聚合值在部分账号上会归零）。会话缺失或明显过期 → 导出前点名提醒，
 // 否则用户在 10Router 端只会看到套餐积分凭空消失。
 function qoderWebSessionNote() {
@@ -6082,9 +6163,9 @@ function qoderWebSessionNote() {
   const names = (arr) => arr.map((x) => maskName(x.name || x.email || x.uid || x.id)).join(T('、'));
   const bits = [];
   if (dead.length) bits.push(T('会话已失效：') + names(dead));
-  if (missing.length) bits.push(T('没有网页会话：') + names(missing));
+  if (missing.length) bits.push(T('没有账号会话：') + names(missing));
   if (stale.length) bits.push(T('会话已超过 7 天：') + names(stale));
-  return T('10router 的「套餐内 Credits」逐资源包明细依赖 Qoder 网页会话（') + bits.join(T('；'))
+  return T('10router 的「套餐内 Credits」逐资源包明细依赖 Qoder 账号会话（') + bits.join(T('；'))
     + T('）。这些账号过去后套餐积分会缺失——在「浏览器登录」重新登录一次 Qoder 再导出即可补上。');
 }
 function refreshExportNote() {
@@ -6852,7 +6933,7 @@ function hideBootBusy() { const b = $('boot-busy'); if (!b) return; clearTimeout
     applyDictFromServer().then(() => {
     window.__syncTheme?.();   // 头部主题按钮的图标/标题在字典到达后重渲染（initTheme 时字典还没到，T() 当时只能回落中文）
     loadStatus().then(loadAccounts).then(hideBootBusy, (e) => { toast(e.message, false); hideBootBusy(); });
-    // 网页会话仪表盘卡的数据源（站点/会话计数、灵犀签到进度）：懒加载，到了就重绘仪表盘
+    // 账号会话仪表盘卡的数据源（站点/会话计数、灵犀签到进度）：懒加载，到了就重绘仪表盘
     loadCookieSites().then(() => { if (state.view === 'dash') renderDash(); });
     loadSettings().then(renderCompMenu);
     loadZNet();

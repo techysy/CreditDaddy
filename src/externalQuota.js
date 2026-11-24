@@ -7,7 +7,7 @@
  * 也会整体拒绝嵌套结构），所以这里每个 builder 出口前都过一遍 assertScalarOnly。
  *
  * 首批 source（issue #24「建议的首批接线」）：
- *  - `tokenharbor`  ：TH 免费额度网页读数（CD 已捕获的网页会话 → dashboard 解析）；
+ *  - `tokenharbor`  ：TH 免费额度网页读数（CD 已捕获的账号会话 → dashboard 解析）；
  *  - `minimax-free` ：MiniMax Code 免费线算力币/签到额度——挂在 10Router 的 minimax-free 提供商（订阅线 minimax-code 是 10R 自己的直连线，两者不同卡）
  *    路由卡走 CD 本地网关，配额只有 CD 查得到，推数字正好补它的盲区。
  *
@@ -57,7 +57,7 @@ export function snapshotAgeTag(snap) {
  * 是浏览器视角，能过风控；daemon 侧 Node fetch 拿空壳页——所以数字在捕获那一刻就解析入库，
  * 推送不再打网络）。快照过旧（超过 7 天，或 resetAt 已过期——TH 刷新后数字作废）按
  * 「读取失败」计数，全行皆旧时降级为文字状态卡提示重新捕获。
- * @param accounts CD 账号库里已捕获的 tokenharbor 网页会话账号
+ * @param accounts CD 账号库里已捕获的 tokenharbor 账号会话账号
  */
 export function buildTokenHarborPayload(accounts, { now = Date.now() } = {}) {
   const rows = {};
@@ -89,7 +89,7 @@ export function buildTokenHarborPayload(accounts, { now = Date.now() } = {}) {
     payload.plan = 'Free Tier';
     if (failed) payload.label = t('Token Harbor Free（{n} 个会话读取失败）', { n: failed }).slice(0, 100);
   } else {
-    payload.message = t('Token Harbor 网页会话失效或未捕获，请在 CreditDaddy「网页会话」页重新登录捕获');
+    payload.message = t('Token Harbor 账号会话失效或未捕获，请在 CreditDaddy「账号会话」页重新登录捕获');
   }
   assertScalarOnly(payload, 'tokenharbor');
   return payload;

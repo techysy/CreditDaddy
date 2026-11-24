@@ -1530,13 +1530,13 @@ async function handleApi(req, res, url) {
     const kind = body?.kind === 'qoder-cn' ? 'qoder-cn' : 'qoder';
     // 诊断：登录窗关闭时两个域都会上报；收到 0 条 Cookie 说明窗口内根本没建立该域的网站会话
     const count = body?.diag?.cookieCount;
-    logger.info('DAEMON', 'Qoder 网页会话收割({kind}):{result}', { kind, result: typeof count === 'number' ? '{count} 条 Cookie' : '已上报', count });
+    logger.info('DAEMON', 'Qoder 账号会话收割({kind}):{result}', { kind, result: typeof count === 'number' ? '{count} 条 Cookie' : '已上报', count });
     if (!cookie || cookie.length > 16384) return json(res, 200, { ok: true, bound: 0, empty: true });
     const { probeWebSession } = await import('./qoderClient.js');
     const probe = await probeWebSession(kind, cookie);
     if (!probe?.user_id) {
-      logger.warn('DAEMON', 'Qoder {edition}网页会话探测未通过(接口不认这份 Cookie),已丢弃', { edition: kind === 'qoder-cn' ? '国内版' : '国际版' });
-      return json(res, 400, { error: '网页会话无效（探测接口未通过）' });
+      logger.warn('DAEMON', 'Qoder {edition}账号会话探测未通过(接口不认这份 Cookie),已丢弃', { edition: kind === 'qoder-cn' ? '国内版' : '国际版' });
+      return json(res, 400, { error: '账号会话无效（探测接口未通过）' });
     }
     const now = new Date().toISOString();
     const bound = await withAccounts((list) => {
@@ -1562,9 +1562,9 @@ async function handleApi(req, res, url) {
         pending[probe.user_id] = { kind, cookie, capturedAt: now };
         settings.pendingQoderWebSessions = pending;
       });
-      logger.info('DAEMON', '收到 Qoder 网页会话(uid {uid}...),暂无匹配账号,已暂存待绑定', { uid: probe.user_id.slice(0, 8) });
+      logger.info('DAEMON', '收到 Qoder 账号会话(uid {uid}...),暂无匹配账号,已暂存待绑定', { uid: probe.user_id.slice(0, 8) });
     } else {
-      logger.info('DAEMON', '已绑定 Qoder 网页会话到 {n} 个账号(逐资源包明细可用)', { n: bound });
+      logger.info('DAEMON', '已绑定 Qoder 账号会话到 {n} 个账号(逐资源包明细可用)', { n: bound });
     }
     return json(res, 200, { ok: true, bound });
   }
