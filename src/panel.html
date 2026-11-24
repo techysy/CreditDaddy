@@ -2509,10 +2509,10 @@ function renderDash() {
   const failed = signable.filter((a) => statusOf(a).cls === 'fail').length;
   const credit = creditSum(state.accounts.filter((a) => a.product !== 'zcode'));
   const byProd = orderedVisibleComps().filter((id) => id !== 'tenrouter').map((id) => prodLabel(id) + ' ' + ofProduct(id).length).join(' · ');
-  // 网页会话签到线（灵犀）今日进度，freeDashCard 用；账号要同时在 cookieSites 视图里才算
-  const lxRows = (state.cookieSites || []).flatMap((s) => s.id === 'lingxi' ? (s.accounts || []) : []);
-  const lxProgress = lxRows.length
-    ? { done: lxRows.filter((acc) => { const full = state.accounts.find((x) => x.id === acc.id); return full && isDone(full); }).length, total: lxRows.length }
+  // 网页会话签到线（灵犀、豆包等）今日进度，freeDashCard 用；账号要同时在 cookieSites 视图里才算
+  const freeCheckinRows = (state.cookieSites || []).flatMap((s) => FREE_CHECKIN_SITES.has(s.id) ? (s.accounts || []) : []);
+  const freeCheckinProgress = freeCheckinRows.length
+    ? { done: freeCheckinRows.filter((acc) => { const full = state.accounts.find((x) => x.id === acc.id); return full && isDone(full); }).length, total: freeCheckinRows.length }
     : null;
   // 明细按「可合并的积分口径」动态生成，而不是写死三个产品：
   // 新增产品线（如 Loomy）只要额度单位是「积分」就自动出现在这里，不会再出现
@@ -2640,7 +2640,7 @@ function renderDash() {
   };
   $('prods').innerHTML = orderedVisibleComps().map((id) => {
     if (id === 'tenrouter') return trDashCard();
-    if (id === 'free') return freeDashCard(lxProgress);
+    if (id === 'free') return freeDashCard(freeCheckinProgress);
     const p = PRODUCTS.find((x) => x.id === id);
     return p ? prodCardHtml(p) : '';
   }).join('');
