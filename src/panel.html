@@ -3618,7 +3618,8 @@ function renderFreePool() {
             + '</div>'
             + '<div style="display:flex;align-items:center;gap:8px;flex:none">'
             + '<span class="dim" style="font-size:11.5px">' + (acc.capturedAt ? esc(fmtTime(acc.capturedAt)) : '–') + '</span>'
-            + (site.id === 'doubao' && canCapture ? '<button class="icon-btn" data-open-doubao="1" title="' + T('打开豆包客户端') + '">' + I.play + '</button>' : '')
+            // 豆包不再放「打开客户端」小按钮（2026-11-24 用户实测与签到按钮并排成两个播放图标）：
+            // 卡片右上角已有「打开豆包」，账号行只留签到/重探/删除，与其它站点卡一致
             + (FREE_CHECKIN_SITES.has(site.id) ? '<button class="icon-btn' + (state.busy[acc.id] ? ' busy' : '') + '" data-act="checkin" data-site="' + esc(site.id) + '" data-id="' + esc(acc.id) + '" title="' + T('立即签到（已签自动跳过，不会重复提交）') + '">' + (state.busy[acc.id] ? I.refresh : I.play) + '</button>' : '')
             + (site.noReprobe !== true
               ? '<button class="icon-btn" data-act="reprobe" data-site="' + esc(site.id) + '" data-id="' + esc(acc.id) + '" title="' + T('就地重探（免登录，用已存会话刷新身份与额度）') + '">' + I.refresh + '</button>'
