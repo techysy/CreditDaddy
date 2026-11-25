@@ -70,12 +70,40 @@ test('用量转换：与 10router-sync 插件同一口径', () => {
     { id: 'r2', ts: String(Date.now() - 30 * 1000), provider: 'anthropic', model: 'claude-haiku-5-5', viaRelay: true, upstreamHost: 'relay.mirasim.ai', input: 5, output: 1, status: 200 },
   ];
   fs.writeFileSync(file, rows.map((r) => JSON.stringify(r)).join('\n'));
-  const cm = us.collectMirasim ? us.collectMirasim([file], 'http://192.168.31.101:20127') : null;
-  if (cm) {
-    assert.equal(cm.entries.length, 1);   // 只剩官方中继行（r2 未定型不算）
-    assert.equal(cm.entries[0].model, 'claude-opus-5-5');
-    assert.ok(cm.notes.some((n) => n.includes('直连上游')));
-  }
+  const cm = us.collectMirasim([file], 'http://192.168.31.101:20127');
+  assert.equal(cm.entries.length, 1);   // 只剩官方中继行（r2 未定型不算）
+  assert.equal(cm.entries[0].model, 'claude-opus-5-5');
+  assert.ok(cm.notes.some((n) => n.includes('直连上游')));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('mirasim 双写去重：0-token 占位行不占坑，同 id 只发定型行（11-18 断供修复）', () => {
+  // mirasim 自 2026-11-18 起对每次中继调用先写一行 0-token 占位行、随后写同 id 的定型行
+  // （带 token 与 payer/relayMetered）。原先先到先得的 id 去重让占位行占坑后被 0-token
+  // 过滤拦下、定型行反被当重复丢弃 → 该来源一行都发不出去。
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mir-dup-'));
+  const file = path.join(dir, 'usage-2026-11.ndjson');
+  const relay = (o) => ({ provider: 'anthropic', model: 'claude-opus-5-5', viaRelay: true, upstreamHost: 'relay.mirasim.ai', status: 200, ...o });
+  const PH = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  fs.writeFileSync(file, [
+    // 真实顺序：占位行在前，定型行在后
+    relay({ id: 'dup1', ts: '2026-11-20T00:00:00.000Z', ...PH }),
+    relay({ id: 'dup1', ts: '2026-11-20T00:00:02.000Z', input: 12427, cacheRead: 100, output: 27, payer: 'personal', relayMetered: true }),
+    // 乱序（定型行先到）也要取定型行
+    relay({ id: 'dup2', ts: '2026-11-20T03:00:05.000Z', input: 5, output: 6 }),
+    relay({ id: 'dup2', ts: '2026-11-20T03:00:00.000Z', ...PH }),
+    // 只有占位行（调用没定型）：没有可记的量，不发
+    relay({ id: 'only-ph', ts: '2026-11-20T04:00:00.000Z', ...PH }),
+    // 无 id 的行照旧逐行处理（不参与合并）
+    relay({ ts: '2026-11-20T05:00:00.000Z', input: 1, output: 1 }),
+  ].map((r) => JSON.stringify(r)).join('\n') + '\n');
+  const cm = us.collectMirasim([file], 'http://192.168.31.101:20127');
+  assert.deepEqual(cm.entries.map((e) => e.meta.mirasimCallId), ['dup1', 'dup2', null]);
+  const d1 = cm.entries[0];
+  assert.deepEqual(d1.tokens, { prompt_tokens: 12527, completion_tokens: 27, cache_read_input_tokens: 100 });   // 真实输入 = input + cacheRead + cacheWrite
+  assert.equal(d1.timestamp, '2026-11-20T00:00:02.000Z', '时间戳以定型行为准（10R 行签名含 timestamp）');
+  assert.equal(cm.entries[1].timestamp, '2026-11-20T03:00:05.000Z', '乱序时仍取定型行的时间戳');
+  assert.equal(cm.entries.length, 3, '占位行单独存在的调用不发');
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

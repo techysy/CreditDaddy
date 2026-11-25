@@ -481,32 +481,56 @@ function collectMimo(files, now = Date.now()) {
   return { entries: out, notes: (unsettled ? [`暂不同步 ${unsettled} 行未定型的消息（1 小时内完成或完成时间缺失，结束后再同步，避免同一消息记两行）`] : []).concat(skippedNoTs ? [`跳过 ${skippedNoTs} 行缺时间戳的消息`] : []) };
 }
 
-function collectMirasim(files, endpoint, now = Date.now()) {
-  const out = [];
-  const seen = new Set();
-  let selfHosted = 0, relayed = 0, unsettled = 0;
+/** mirasim 一行的 token 总量（0-token 就是「占位行」的判据） */
+function mirasimTokenTotal(e) {
+  return (e.input || 0) + (e.output || 0) + (e.cacheRead || 0) + (e.cacheWrite || 0);
+}
+
+export function collectMirasim(files, endpoint, now = Date.now()) {
+  const rows = [];
   for (const f of files) {
     for (const line of fs.readFileSync(f, 'utf8').split('\n')) {
       if (!line.trim()) continue;
       let e;
       try { e = JSON.parse(line); } catch { continue; }
       if (!e || typeof e !== 'object') continue;
-      if (e.id) { if (seen.has(e.id)) continue; seen.add(e.id); }
-      if (isSelfHostedUpstream(e.upstreamHost, endpoint)) { selfHosted++; continue; }
-      // 只同步走 mirasim 官方中继（relay.mirasim.ai）的调用（2026-10-21 用户拍板）：
-      // mirasim IDE 里直连上游的调用，上游就是本机 10Router——10R 已原生记账（落在
-      // codebuddy-cn 等连接名下），CD 再导一遍就是同一批调用记两笔（10R 用量表里
-      // glm-5.3-flashx 出现 codebuddy-cn 3,800 + mirasim-anthropic 2,917 两行重复）。
-      // viaRelay=true 的行走 mirasim 官方云中继，10R 没见过，才是 CD 该补的账。
-      // direct 行 upstreamHost 全为 null 无从判上游，viaRelay 就是现成的分界（实测
-      // relay 行全部是 claude/kimi 家族、direct 行全部是 glm/deepseek/gemini，零交叉）。
-      if (!e.viaRelay) { relayed++; continue; }
-      if (!((e.input || 0) + (e.output || 0) + (e.cacheRead || 0) + (e.cacheWrite || 0))) continue;
-      // 刚发生的调用可能还在补字段（durationMs / token 等），定型前先不发
-      const tsMs = Date.parse(e.ts);
-      if (!Number.isFinite(tsMs) || now - tsMs < SETTLE_MS) { unsettled++; continue; }
-      out.push(convertMirasimRow(e));
+      rows.push(e);
     }
+  }
+  // mirasim 自 2026-11-18 起对每次中继调用（viaRelay=true）先写一行 0-token 占位行、
+  // 随后写同 id 的定型行（带 token 与 payer/relayMetered）。原先「先到先得」的 id 去重
+  // 让占位行占坑（紧接着被下面的 0-token 过滤拦下不发）、定型行反被当重复丢弃 →
+  // 11-18 之后 mirasim 来源一行都发不出去（实测 usage-2026-11.ndjson：relay 181 行、可发 0 行）。
+  // 改为「同一 id 先合并成一行、再走过滤」：取 token 总量最大的一行（并列取先到的一行），
+  // 于是代表行就是定型行，时间戳与 10R 行签名都以它为准。
+  // 「只同步 viaRelay 行」的口径不变（2026-10-21 用户拍板）：直连行的上游就是本机 10R，
+  // 10R 已原生记账，导过来会双记。
+  const best = new Map();   // id → rows 中代表行（定型行）的下标
+  for (let i = 0; i < rows.length; i++) {
+    const id = rows[i].id;
+    if (!id) continue;
+    const prev = best.get(id);
+    if (prev === undefined || mirasimTokenTotal(rows[i]) > mirasimTokenTotal(rows[prev])) best.set(id, i);
+  }
+  const out = [];
+  let selfHosted = 0, relayed = 0, unsettled = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const e = rows[i];
+    if (e.id && best.get(e.id) !== i) continue;   // 同 id 只处理代表行，其余（占位行）丢弃
+    if (isSelfHostedUpstream(e.upstreamHost, endpoint)) { selfHosted++; continue; }
+    // 只同步走 mirasim 官方中继（relay.mirasim.ai）的调用（2026-10-21 用户拍板）：
+    // mirasim IDE 里直连上游的调用，上游就是本机 10Router——10R 已原生记账（落在
+    // codebuddy-cn 等连接名下），CD 再导一遍就是同一批调用记两笔（10R 用量表里
+    // glm-5.3-flashx 出现 codebuddy-cn 3,800 + mirasim-anthropic 2,917 两行重复）。
+    // viaRelay=true 的行走 mirasim 官方云中继，10R 没见过，才是 CD 该补的账。
+    // direct 行 upstreamHost 全为 null 无从判上游，viaRelay 就是现成的分界（实测
+    // relay 行全部是 claude/kimi 家族、direct 行全部是 glm/deepseek/gemini，零交叉）。
+    if (!e.viaRelay) { relayed++; continue; }
+    if (!mirasimTokenTotal(e)) continue;   // 只有占位行（无定型行）的调用：没有可记的量，不发
+    // 刚发生的调用可能还在补字段（durationMs / token 等），定型前先不发
+    const tsMs = Date.parse(e.ts);
+    if (!Number.isFinite(tsMs) || now - tsMs < SETTLE_MS) { unsettled++; continue; }
+    out.push(convertMirasimRow(e));
   }
   return { entries: out, notes: (selfHosted ? [`跳过 ${selfHosted} 行经 10Router 中转的调用（已在 10Router 记账）`] : []).concat(relayed ? [`跳过 ${relayed} 行直连上游的调用（上游为本机 10Router，已在 10Router 记账）`] : []).concat(unsettled ? [`暂不同步 ${unsettled} 行 1 小时内的新调用（等记录定型）`] : []) };
 }
