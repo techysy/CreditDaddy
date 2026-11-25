@@ -34,7 +34,6 @@ import { startWorkbuddyLogin, pollWorkbuddyLogin } from './workbuddyAuth.js';
 import { startZcodeLogin, pollZcodeLogin } from './zcodeAuth.js';
 import { startMiniMaxLogin, pollMiniMaxLogin } from './minimaxAuth.js';
 import { startTraeLogin, pollTraeLogin } from './traeAuth.js';
-import { startCroliLogin, pollCroliLogin } from './croliAuth.js';
 import { buildAuthSnapshot } from './qwenworkApp.js';
 import { fetchUserinfo as fetchQwenworkProfile } from './qwenworkClient.js';
 
@@ -228,9 +227,6 @@ const FLOWS = {
   // trae-intl 走国际站（www.trae.ai，同协议同 client_id，#99 10R 侧全链验证）
   trae: { start: startTraeLogin, poll: pollTraeLogin },
   'trae-intl': { start: startTraeLogin, poll: pollTraeLogin },
-  // Croli：授权码 + PKCE 的本地回调流（协议同桌面端 croli-server，clerk.croli.net，
-  // redirect_uri=/callback loopback 通配；凭据 = Clerk JWT + refresh 轮换）
-  croli: { start: startCroliLogin, poll: pollCroliLogin },
 };
 export const LOGIN_KINDS = Object.keys(FLOWS);
 const KIND_LABEL = {

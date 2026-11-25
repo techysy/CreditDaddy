@@ -112,7 +112,7 @@ export const COOKIE_SITES = [
     // one-hub/new-api 系中转：钱包额度（含活动赠送）只在登录后的 /api/user/self（quota
     // 字段，500000 quota = $1），连接的 chat key 读不到（/v1/dashboard/billing/subscription
     // 恒回假上限 100000000，2026-11-21 实测）——与 tokenharbor/lingxi 同款，凭据只能是
-    // 账号会话 Cookie。登录入口走邀请码池轮换（与 croli/meoo 同口径），未带码回退主链接。
+    // 账号会话 Cookie。登录入口走邀请码池轮换（与 meoo 同口径），未带码回退主链接。
     loginUrl: 'https://crowllm.com/sign-up',
     loginUrls: [
       'https://crowllm.com/sign-up?aff=xGk0',

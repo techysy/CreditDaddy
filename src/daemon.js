@@ -70,7 +70,6 @@ import { liveToAccount as traeLiveAccount, detectTrae, switchTo as traeSwitchTo,
 import { liveToAccount as minimaxLiveAccount, detectMiniMax, detectMiniMaxBuildLang, currentMiniMaxUid, currentMiniMaxToken, currentMiniMaxRecordKey } from './minimaxLocal.js';
 import { liveToAccount as loomyLiveAccount, hardSwitchLoomy, currentLoomyUid, detectLoomy } from './loomyLocal.js';
 import { liveToAccount as dumateLiveAccount, detectDumate, readDumateCredential, hardSwitchDumate } from './dumateLocal.js';
-import { liveToAccount as croliLiveAccount, detectCroli, readCroliCredential, hardSwitchCroli, croliSubOf as croliUidOf } from './croliLocal.js';
 import { liveToAccount as doubaoLiveAccount, detectDoubao } from './doubaoLocal.js';
 import * as minimaxGateway from './minimaxGateway.js';
 import * as traeGateway from './traeGateway.js';
@@ -91,7 +90,7 @@ import { detectInstalls, scanLocalTokens, putCandidate, peekCandidate } from './
 import { PROVIDER_LABEL, APP_VERSION, PROVIDERS, PROJECT_URL } from './constants.js';
 import { getLocale, setLocale, normalizeLocale, loadDict, t as tr } from './i18n.js';
 
-const PRODUCT_IDS = ['qoder', 'qwenwork', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'loomy', 'dumate', 'croli'];
+const PRODUCT_IDS = ['qoder', 'qwenwork', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'loomy', 'dumate'];
 
 /** 面板访问密码：面板「设置」写入的 settings.json.panelKey 优先（可设 / 可关）；
  *  未设置（或被面板关闭）时回退环境变量 CREDITDADDY_PASSWORD（fnOS / 命令行部署注入），
@@ -884,14 +883,15 @@ async function handleApi(req, res, url) {
         parts: [],
       } });
     }
+    const impl = productImpl(account.provider);
+    if (!impl || typeof impl.quota !== 'function') return json(res, 410, { error: '该产品线已下架' });
     try {
       const log = (m) => logger.info('QUOTA', '{name}:{msg}', { name: account.name || account.id, msg: m });
       const ctx = { log, ...refreshContext(account, log) };
-      return json(res, 200, { quota: await productImpl(account.provider).quota(account, ctx) });
+      return json(res, 200, { quota: await impl.quota(account, ctx) });
     } catch (e) {
-      // err.auth（croliClient 等抛的凭据失效标记）随 502 带出——面板 expiryCell 据此把
-      // 「凭据有效·自动续期」假绿灯改写成「续期失败·请重新授权」（refresh 轮换制下
-      // 客户端退出即作废快照 rt，光有 expiresAt 的预期值会误导）
+      // err.auth（凭据失效标记）随 502 带出——面板 expiryCell 据此把
+      // 「凭据有效·自动续期」假绿灯改写成「续期失败·请重新授权」
       return json(res, 502, { error: e.message, auth: e.auth === true });
     }
   }
@@ -1059,32 +1059,6 @@ async function handleApi(req, res, url) {
     const r = await fetchDumateMyInviteCode(account.token);
     if (!r.ok) return json(res, r.auth === false ? 401 : 502, { error: r.error });
     return json(res, 200, { ok: true, code: r.code, type: r.type, activityId: r.activityId });
-  }
-  // Croli 邀请码兑换：POST /v1/invite/redeem {inviteCode, source}（好友安装 Croli 并完成首个任务后双方得积分）
-  const croliInviteMatch = p.match(/^\/api\/accounts\/([\w-]+)\/croli\/invite$/);
-  if (croliInviteMatch && method === 'POST') {
-    const body = await readBody(req).catch(() => ({}));
-    const code = String(body?.code || '').trim();
-    if (!code) return json(res, 400, { error: '邀请码不能为空' });
-    const accounts = await loadAccounts();
-    const account = accounts.find((a) => a.id === croliInviteMatch[1] && a.provider === 'croli');
-    if (!account) return json(res, 404, { error: 'Croli 账号不存在' });
-    const { redeemCroliInviteCode } = await import('./croliClient.js');
-    const r = await redeemCroliInviteCode(account.token, code);
-    if (!r.ok) return json(res, r.authExpired ? 401 : 400, { error: r.error });
-    logger.info('DAEMON', 'Croli {name} 邀请码已兑换:{code}', { name: account.name, code });
-    return json(res, 200, { ok: true, message: r.message, result: r.result });
-  }
-  // Croli 我的邀请码：POST /v1/invite/code {rotate:false}（只读不轮换）
-  const croliMyInviteMatch = p.match(/^\/api\/accounts\/([\w-]+)\/croli\/my-invite-code$/);
-  if (croliMyInviteMatch && method === 'GET') {
-    const accounts = await loadAccounts();
-    const account = accounts.find((a) => a.id === croliMyInviteMatch[1] && a.provider === 'croli');
-    if (!account) return json(res, 404, { error: 'Croli 账号不存在' });
-    const { fetchCroliMyInviteCode } = await import('./croliClient.js');
-    const r = await fetchCroliMyInviteCode(account.token);
-    if (!r.ok) return json(res, r.auth === false ? 401 : 502, { error: r.error });
-    return json(res, 200, { ok: true, code: r.code, inviterRewardCredits: r.inviterRewardCredits, inviteeRewardCredits: r.inviteeRewardCredits });
   }
   // 网络出口偏好（全局——Qoder/ZCode/cookie 探测等全部出口都走它）：默认「直连优先、代理兜底」，
   // 可切「代理优先、直连兜底」；代理地址可面板配置（存 zcode-net.json，0600；键名 zcode 前缀是历史遗留）
@@ -1321,26 +1295,6 @@ async function handleApi(req, res, url) {
       } catch (e) {
         logger.warn('DAEMON', 'DuMate 切换到 {name} 失败:{err}', { name: target.name || target.id, err: e.message });
         return json(res, e.dumateNotInstalled ? 409 : 400, { error: e.message, code: e.dumateNotInstalled ? 'DUMATE_NOT_INSTALLED' : undefined });
-      }
-    }
-    if (target.provider === 'croli') {
-      try {
-        // 防丢号：切前把本机当前登录的最新凭据快照回写账号库（sidecar 会自动轮换
-        // refresh token，账号库里的旧快照可能已被作废），再覆盖
-        const live = await croliLiveAccount();
-        if (live && live.token && live.token !== target.token) {
-          await addAccount(live, { trusted: true }).catch((e) => logger.warn('DAEMON', '同步 Croli 当前登录失败:{err}', { err: e.message }));
-        }
-      } catch (e) {}
-      try {
-        // 硬切换：杀壳 + croli-server sidecar → 原子写 auth.json → 延时复核；面板收到 closedClient 后重开客户端。
-        // refresh 轮换制：写入的 rt 快照可能已被客户端刷过作废——失效时用户在客户端重登该账号再导入
-        const r = await hardSwitchCroli(target);
-        logger.info('DAEMON', r.alreadyActive ? 'Croli 当前已是 {name}' : r.verified ? 'Croli 已切换到 {name}(凭据已写入并重开客户端)' : 'Croli 已切换到 {name},但凭据复核未落定(疑似有进程回写)', { name: target.name || target.id });
-        return json(res, 200, { ok: true, ...r });
-      } catch (e) {
-        logger.warn('DAEMON', 'Croli 切换到 {name} 失败:{err}', { name: target.name || target.id, err: e.message });
-        return json(res, e.croliNotInstalled ? 409 : 400, { error: e.message, code: e.croliNotInstalled ? 'CROLI_NOT_INSTALLED' : undefined });
       }
     }
     if (target.provider === 'qoder' || target.provider === 'qoder-cn') {
@@ -2183,7 +2137,7 @@ async function handleApi(req, res, url) {
 
   // ── 本机检测 / 凭据扫描 ──
   if (p === '/api/local/detect' && method === 'GET') {
-    return json(res, 200, { apps: detectQoderApps(), qwenwork: detectQwenworkApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), trae: detectTrae(), minimax: detectMiniMax(), loomy: detectLoomy(), dumate: detectDumate(), croli: detectCroli(), doubao: detectDoubao(), legacy: detectInstalls() });
+    return json(res, 200, { apps: detectQoderApps(), qwenwork: detectQwenworkApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), trae: detectTrae(), minimax: detectMiniMax(), loomy: detectLoomy(), dumate: detectDumate(), doubao: detectDoubao(), legacy: detectInstalls() });
   }
   if (p === '/api/local/scan' && method === 'POST') {
     const existing = await loadAccounts();
@@ -2296,11 +2250,6 @@ async function handleApi(req, res, url) {
       const dm = await dumateLiveAccount();
       if (dm) addRecord(dm, { source: 'DuMate 当前登录', current: true });
     } catch (e) { errors.push({ file: 'qianfan-desktop-app/auth.json', error: e.message }); }
-    // 8.6) Croli 客户端：直读 %APPDATA%\Croli\auth.json（明文 Clerk JWT，sidecar 自动续期）
-    try {
-      const cl = await croliLiveAccount();
-      if (cl) addRecord(cl, { source: 'Croli 当前登录', current: true });
-    } catch (e) { errors.push({ file: 'Croli/auth.json', error: e.message }); }
     // 8.7) 豆包桌面客户端：本地解密 User Data\Network\Cookies（DPAPI + AES-256-GCM + DuplicateHandle 热提取）
     try {
       const db = await doubaoLiveAccount();
@@ -2604,7 +2553,6 @@ async function handleApi(req, res, url) {
         lingxi: dayKey(Date.now(), 'lingxi'),   // 网页会话签到线（#53）：0 点翻日，徽标/isDone 的日界比对用
         meoo: dayKey(Date.now(), 'meoo'),       // Meoo 首登积分线：同为 0 点翻日
         dumate: dayKey(Date.now(), 'dumate'),   // DuMate 每日登录赠送积分：0 点翻日
-        croli: dayKey(Date.now(), 'croli'),     // Croli 每日签到：0 点翻日
         zcode: dayKey(Date.now(), 'zcode'),     // ZCode 活动领取：单日活动 0 点刷新——徽标按日界而非 26h 窗口（2026-11-20 用户实测「还有前一天的领取记录」）
       },
       scheduler: await getSchedulerInfo(),
@@ -2657,8 +2605,6 @@ async function handleApi(req, res, url) {
       dumateClient: (() => { const d = detectDumate(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       dumateCurrentUid: readDumateCredential()?.uid || null,
       doubaoClient: (() => { const d = detectDoubao(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
-      croliClient: (() => { const d = detectCroli(); return { installed: d.installed, signedIn: d.signedIn, running: d.running, expired: d.expired }; })(),
-      croliCurrentUid: (() => { const c = readCroliCredential(); return c ? (croliUidOf(c.accessToken) || null) : null; })(),
       // 首次启动免费声明（反倒卖三件套）：面板按此决定开屏是否弹一次；确认后 PUT 落盘
       freeNoticeShown: (await loadSettings().catch(() => ({}))).freeNoticeShown === true,
       keyRequired: panelKeyRequired(),

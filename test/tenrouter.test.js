@@ -495,7 +495,7 @@ test('配置版本迁移：旧来源快照自动并入新增来源，显式保�
     // 旧版保存的来源快照：用户手动关掉了 opencode / mimo
     fs.writeFileSync(f, JSON.stringify({ ...orig, sync: { enabled: false, sources: ['zcode', 'mirasim'] } }));
     let c = tr.loadConfig();
-    assert.deepEqual([...c.sync.sources].sort(), ['10r', 'croli', 'mirasim', 'zcode']);   // 新增来源默认并入（v4 起 croli），手动关掉的不复活
+    assert.deepEqual([...c.sync.sources].sort(), ['10r', 'mirasim', 'zcode']);   // 新增来源默认并入（v3 起 10r），手动关掉的不复活
     await tr.updateConfig({ sources: ['mirasim'] });
     c = tr.loadConfig();
     assert.deepEqual(c.sync.sources, ['mirasim']);   // 显式保存过勾选结果后不再自动并入
@@ -568,10 +568,10 @@ test('来源版本迁移：v2 配置自动并入 10r，不复活已禁用的旧�
     sync: { enabled: true, sources: ['zcode', 'mimo'], sourcesVersion: 2 }, syncState: {}, lastSync: null,
   }));
   const c = tr.loadConfig();
-  assert.ok(c.sync.sources.includes('10r') && c.sync.sources.includes('croli'), '新来源应默认并入');
+  assert.ok(c.sync.sources.includes('10r'), '新来源应默认并入');
   assert.ok(c.sync.sources.includes('zcode') && c.sync.sources.includes('mimo'), '已有勾选保留');
   assert.ok(!c.sync.sources.includes('catpaw'), '用户没勾的旧来源不复活');
-  assert.equal(c.sync.sourcesVersion, 4);
+  assert.equal(c.sync.sourcesVersion, 3);
 });
 
 test('quotaPush 配置：开关与频率保存、默认开启、最小频率 15 分钟', async () => {
@@ -602,7 +602,6 @@ test('accountSync 渠道版本迁移：老配置白名单快照自动并入新�
   }));
   const c = tr.loadConfig();
   assert.ok(c.accountSync.providers.includes('qwenwork') && c.accountSync.providers.includes('qwenwork-cn'), '新渠道应默认并入');
-  assert.ok(c.accountSync.providers.includes('croli'), 'croli 同批并入（30min access 重推吃同一白名单）');
   assert.ok(c.accountSync.providers.includes('qoder') && c.accountSync.providers.includes('meoo'), '已有勾选原样保留（含已下线渠道，不越权清理）');
   assert.equal(c.accountSync.providersVersion, 1, '写回当前版本，此后手动取消勾选不再被复活');
   // 空数组 = 未做过勾选的老配置（全部候选渠道），无需迁移也不写版本
@@ -689,132 +688,6 @@ test('buildConnPayload：Trae 账号携带登录注册的设备指纹（10R 签�
   // 非纯数字设备号（老数据形状）不携带
   const weird = buildConnPayload({ id: 'tr-3', provider: 'trae', token: 'jwt', uid: 'u-1', meta: { traeDevice: { deviceId: 'not-digits' } } }, 'trae-cn');
   assert.equal(weird.providerSpecificData.creditDaddyTraeDevice, undefined);
-});
-
-test('账号同步：croli 走 OAuth 通道剥 refreshToken（rotating rt 只推 access，meoo test.12 口径）', async () => {
-  const seen = [];
-  const m = mockFetch((url, init) => {
-    seen.push({ url: String(url), init });
-    if (String(url).endsWith('/api/auth/login')) {
-      return { status: 200, body: { success: true }, headers: { 'set-cookie': 'auth_token=abc123; Path=/; HttpOnly' } };
-    }
-    if (String(url).endsWith('/api/auth/logout')) return { status: 200, body: { success: true } };
-    return { status: 200, body: { imported: 0, updated: 1, skipped: 0, failed: 0 } };
-  });
-  try {
-    const r = await ta.syncAccountsTo10r({
-      endpoint: 'http://127.0.0.1:20127', key: 'sk-x', adminPassword: 'pw-1',
-      accounts: [
-        { id: '1', provider: 'croli', token: 'croli-access-jwt', refreshToken: 'croli-rotating-rt', uid: 'user_croliA', name: 'Croli A' },
-        { id: '2', provider: 'qoder', token: 'qoder-access', refreshToken: 'qoder-reusable-rt', name: 'Q1' },
-      ],
-    });
-    assert.equal(r.channel, 'oauth');
-    const imports = seen.filter((s) => s.url.endsWith('/api/oauth/transfer/import'));
-    assert.equal(imports.length, 2);
-    for (const s of imports) {
-      const body = JSON.parse(s.init.body);
-      const payload = openTransfer(body.blob, body.passphrase);
-      const acc = payload.accounts[0];
-      if (body.provider === 'croli') {
-        assert.equal(acc.refreshToken, null, 'croli 的 rotating rt 必须剥空——10R 只持 access');
-        assert.equal(acc.accessToken, 'croli-access-jwt');
-        assert.equal(acc.uid, 'user_croliA');
-      } else {
-        assert.equal(acc.refreshToken, 'qoder-reusable-rt', 'rt 可重复使用的 provider 照常全量同步');
-      }
-    }
-  } finally { m.restore(); }
-});
-
-test('账号同步：croli 重推守门——未配置/渠道关/白名单排除均静默退出', async () => {
-  assert.equal(await ta.resyncCroliAccessToken(null), null, '未配置');
-  assert.equal(await ta.resyncCroliAccessToken({}), null, '无 endpoint');
-  assert.equal(await ta.resyncCroliAccessToken({ endpoint: 'http://x', key: 'sk-x', accountSync: { enabled: false } }), null, '渠道关闭');
-  assert.equal(
-    await ta.resyncCroliAccessToken({ endpoint: 'http://x', key: 'sk-x', accountSync: { providers: ['qoder'] } }),
-    null, '白名单不含 croli',
-  );
-});
-
-test('账号同步：croli 重推——token 变化才推、成败都记基准、同 token 不重推', async () => {
-  const seen = [];
-  const m = mockFetch((url) => {
-    if (String(url).endsWith('/api/auth/login')) {
-      return { status: 200, body: { success: true }, headers: { 'set-cookie': 'auth_token=t; Path=/' } };
-    }
-    if (String(url).endsWith('/api/auth/logout')) return { status: 200, body: {} };
-    return { status: 200, body: { imported: 0, updated: 1, skipped: 0, failed: 0 } };
-  });
-  try {
-    const cfg = { endpoint: 'http://127.0.0.1:20127', key: 'sk-x', adminPassword: 'pw-1' };
-    const acct = { provider: 'croli', token: 'access-v1', refreshToken: 'rt-never-synced', uid: 'user_croliA', name: 'Croli A' };
-    const first = await ta.resyncCroliAccessToken(cfg, { account: acct });
-    assert.equal(first.pushed, true, '首次推送');
-    // 推的是剥离了 rt 的拷贝：原账号对象不能被改动
-    assert.equal(acct.refreshToken, 'rt-never-synced');
-    const same = await ta.resyncCroliAccessToken(cfg, { account: acct });
-    assert.equal(same.pushed, false);
-    assert.equal(same.reason, 'token-unchanged', '同 token 不重推（基准已记录）');
-    // token 换新（官方 sidecar 轮换）→ 再次推送
-    const renewed = { ...acct, token: 'access-v2' };
-    const second = await ta.resyncCroliAccessToken(cfg, { account: renewed });
-    assert.equal(second.pushed, true);
-    const imports = m.calls.filter((s) => String(s.url).endsWith('/api/oauth/transfer/import'));
-    assert.equal(imports.length, 2, 'v1 + v2 各推一次');
-  } finally { m.restore(); }
-});
-
-test('croli 来源：convertCroliTurn 行定型（provider 固定、tokens 拆分、时区戳标准化）', () => {
-  const e = us.convertCroliTurn({
-    conversation_id: 42, turn_key: 'conv42-turn7', occurred_at: '2026-11-20T15:56:57.439+00:00',
-    model: 'glm-5.3-flash', input_tokens: 100, output_tokens: 20,
-    cache_creation_tokens: 5, cache_read_tokens: 900, total_tokens: 1025, duration_ms: 1234,
-  });
-  assert.equal(e.provider, 'croli');
-  assert.equal(e.model, 'glm-5.3-flash');
-  assert.equal(e.timestamp, '2026-11-20T15:56:57.439Z', '带时区 ISO → UTC 标准化');
-  assert.equal(e.status, 'ok');
-  assert.equal(e.cost, 0, '积分/trial 池计费，不按量');
-  assert.deepEqual(e.tokens, { prompt_tokens: 100, completion_tokens: 20, cache_creation_tokens: 5, cache_read_tokens: 900 });
-  assert.equal(e.endpoint, 'croli://conversation/42');
-  assert.equal(e.meta.source, 'croli');
-  assert.equal(e.meta.turnKey, 'conv42-turn7');
-  assert.equal(us.convertCroliTurn({ ...{}, occurred_at: null, input_tokens: 1 }), null, '缺时间戳不能兜底 Date.now');
-});
-
-test('croli 来源：collectCroli 快照读 + turn_key 库内去重', async () => {
-  if (!(await us.sqliteAvailable())) { console.log('skip: node:sqlite unavailable (CI Node 20)'); return; }
-  const { DatabaseSync } = await import('node:sqlite');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'croli-test-'));
-  try {
-    const dbPath = path.join(dir, 'croli.db');
-    const db = new DatabaseSync(dbPath);
-    db.exec(`CREATE TABLE token_usage_turn (id integer PRIMARY KEY AUTOINCREMENT, conversation_id integer NOT NULL, turn_key varchar NOT NULL, occurred_at timestamp_with_timezone_text NOT NULL, model varchar NULL, input_tokens bigint NOT NULL DEFAULT 0, output_tokens bigint NOT NULL DEFAULT 0, cache_creation_tokens bigint NOT NULL DEFAULT 0, cache_read_tokens bigint NOT NULL DEFAULT 0, total_tokens bigint NOT NULL DEFAULT 0, duration_ms bigint NOT NULL DEFAULT 0)`);
-    db.prepare('INSERT INTO token_usage_turn (conversation_id, turn_key, occurred_at, model, input_tokens, output_tokens, cache_read_tokens, total_tokens, duration_ms) VALUES (?,?,?,?,?,?,?,?,?)').run(1, 't1', '2026-11-20T15:56:57.439+00:00', 'glm-5.3-flash', 100, 20, 900, 1020, 10);
-    db.prepare('INSERT INTO token_usage_turn (conversation_id, turn_key, occurred_at, model, input_tokens, output_tokens, total_tokens) VALUES (?,?,?,?,?,?,?)').run(1, 't1', '2026-11-20T15:56:57.439+00:00', 'glm-5.3-flash', 100, 20, 120);  // 同 turn_key 重复行
-    db.prepare('INSERT INTO token_usage_turn (conversation_id, turn_key, occurred_at, model, input_tokens, output_tokens, total_tokens) VALUES (?,?,?,?,?,?,?)').run(1, 't2', '2026-11-20T15:57:10.000+00:00', 'glm-5.3-flash', 50, 5, 55);
-    db.close();
-    const r = await us.collectSource('croli', { paths: { croli: [dbPath] } });
-    assert.equal(r.entries.length, 2, '同 turn_key 只出一行');
-    assert.equal(r.entries[0].meta.turnKey, 't1');
-    assert.deepEqual(r.notes, []);
-    assert.equal(r.files, 1);
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
-});
-
-test('croli 来源：sourcePaths 发现 croli.db（CROLI_DB 显式覆盖）', () => {
-  const explicit = path.join(os.tmpdir(), 'croli-explicit-' + process.pid + '.db');
-  fs.writeFileSync(explicit, 'x');
-  const p = us.sourcePaths(os.homedir(), { APPDATA: path.join(os.tmpdir(), 'no-such-appdata-x'), CROLI_DB: explicit }, 'win32');
-  assert.deepEqual(p.croli, [explicit]);
-  fs.rmSync(explicit, { force: true });
-  const fakeAppData = fs.mkdtempSync(path.join(os.tmpdir(), 'croli-appdata-'));
-  fs.mkdirSync(path.join(fakeAppData, 'Croli'), { recursive: true });
-  fs.writeFileSync(path.join(fakeAppData, 'Croli', 'croli.db'), 'x');
-  const p2 = us.sourcePaths(os.homedir(), { APPDATA: fakeAppData }, 'win32');
-  assert.ok(p2.croli.some((f) => f.endsWith(path.join('Croli', 'croli.db'))), '默认路径含 %APPDATA%/Croli/croli.db');
-  fs.rmSync(fakeAppData, { recursive: true, force: true });
 });
 
 test('zcode 来源：死表检测——最后记录超 7 天时 notes 提示（ZCode 0.16.9 静默失效）', async () => {

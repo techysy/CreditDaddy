@@ -324,7 +324,6 @@ export function publicAccount(a) {
       a.provider === 'trae-intl' ||
       a.provider === 'loomy' ||
       a.provider === 'dumate' ||
-      a.provider === 'croli' ||
       String(a.provider).startsWith('qwenwork')
     ),
     canSwitchWorkbuddyClient: Boolean(meta.session?.account || (a.provider.startsWith('workbuddy') && Boolean(a.token))),

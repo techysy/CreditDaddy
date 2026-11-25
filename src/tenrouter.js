@@ -40,7 +40,7 @@ const DEFAULT_CONFIG = {
 };
 // v1.0.0 及更早保存的来源全集；版本迁移只补「此后新增」的来源，不复活用户手动关掉的
 const LEGACY_SOURCES = ['zcode', 'opencode', 'mirasim', 'mimo', 'catpaw'];
-const SOURCES_VERSION = 4;   // 4: 新增 Croli IDE 逐轮账本来源（croli）；旧配置 sources 快照按 version 自动补新来源（妙手教训）
+const SOURCES_VERSION = 3;   // 3: 新增 10Router 本机库（10r）；旧配置按 version 自动补新来源
 
 // accountSync.providers 渠道版本迁移（同 sync.sources 的妙手教训口径）：老配置的
 // providers 是保存时的勾选快照，会静默挡掉此后上线的新渠道——2026-11-23 实锤：
@@ -49,10 +49,8 @@ const SOURCES_VERSION = 4;   // 4: 新增 Croli IDE 逐轮账本来源（croli�
 // providersVersion——用户此后手动取消勾选的渠道不再被复活。
 const ACCOUNT_SYNC_CURRENT_VERSION = 1;
 const ACCOUNT_SYNC_MIGRATIONS = [
-  // 1: qwenwork 双线接入 10R 连接同步（2026-11-22）；croli 同批开放——10R #156 原生
-  //    croli 渠道（Clerk OAuth），CD 的 30min access 自动重推也吃这份白名单，
-  //    老配置没勾 croli 时重推恒被静默挡掉（2026-11-23 实锤）
-  { version: 1, providers: ['qwenwork', 'qwenwork-cn', 'croli'] },
+  // 1: qwenwork 双线接入 10R 连接同步（2026-11-22）
+  { version: 1, providers: ['qwenwork', 'qwenwork-cn'] },
 ];
 
 export function loadConfig() {
@@ -298,6 +296,7 @@ async function doSync({ dryRun, trigger }) {
   if (!isConfigured(c)) throw Object.assign(new Error('尚未配置 10Router 地址与 key'), { code: 'NOT_CONFIGURED' });
   const results = [];
   for (const id of c.sync.sources) {
+    if (!SOURCES.includes(id)) continue;
     const label = SOURCE_LABEL[id];
     try {
       const { entries, notes, files, nextSentTotals } = await collectSource(id, {

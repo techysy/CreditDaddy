@@ -28,8 +28,8 @@ import path from 'node:path';
 import { loadAccounts } from './store.js';
 import { fetchCatpawTokenDaily } from './catpawClient.js';
 
-export const SOURCES = ['zcode', 'opencode', 'mirasim', 'mimo', 'catpaw', '10r', 'croli'];
-export const SOURCE_LABEL = { zcode: 'ZCode', opencode: 'OpenCode', mirasim: 'mirasim', mimo: '小米 MiMo', catpaw: '妙手', '10r': '10Router 本机', croli: 'Croli IDE' };
+export const SOURCES = ['zcode', 'opencode', 'mirasim', 'mimo', 'catpaw', '10r'];
+export const SOURCE_LABEL = { zcode: 'ZCode', opencode: 'OpenCode', mirasim: 'mirasim', mimo: '小米 MiMo', catpaw: '妙手', '10r': '10Router 本机' };
 const OVERLAP_MS = 2 * 86400e3;
 /** 结算窗：时间戳在此窗口内的行可能还在被来源更新（token 累计、时间字段回填），暂不发送 */
 const SETTLE_MS = 60 * 60 * 1000;
@@ -78,18 +78,12 @@ export function sourcePaths(home = os.homedir(), env = process.env, platform = p
     routerDb.push(path.join(home, '.9router', 'db', 'data.sqlite'));
   }
   const exist = (list) => list.filter((p) => { try { return fs.statSync(p).isFile(); } catch { return false; } });
-  // Croli IDE 的逐轮账本（token_usage_turn）：provider 只指向 ds.croli.net（不经 10R），
-  // 加 croli 来源没有重复记账风险。CROLI_DB 可显式指向另一个库
-  const croliDb = [];
-  if (env.CROLI_DB) croliDb.push(env.CROLI_DB);
-  if (platform === 'win32') croliDb.push(path.join(roaming, 'Croli', 'croli.db'));
-  else croliDb.push(path.join(home, '.local', 'share', 'Croli', 'croli.db'));
   let mirasim = [];
   const insights = path.join(home, '.mirasim', 'insights');
   try {
     mirasim = fs.readdirSync(insights).filter((f) => /^usage-\d{4}-\d{2}\.ndjson$/.test(f)).sort().map((f) => path.join(insights, f));
   } catch {}
-  return { zcode: exist(zcode), opencode: exist(opencode), mirasim, mimo: exist(mimo), '10r': exist(routerDb), croli: exist(croliDb) };
+  return { zcode: exist(zcode), opencode: exist(opencode), mirasim, mimo: exist(mimo), '10r': exist(routerDb) };
 }
 
 /** 本机检测到哪些来源 */
@@ -133,38 +127,6 @@ export function convertZcodeRow(row) {
     meta: {
       source: 'zcode', zcodeProviderId: row.provider_id || null, agent: row.agent || null,
       sessionId: row.session_id || null, durationMs: row.duration_ms ?? null, planUsage: true,
-    },
-  };
-}
-
-/**
- * Croli IDE 逐轮账本行（croli.db token_usage_turn，Codex 引擎逐轮落库）。
- * provider 固定 'croli'：Croli 的模型网关只有 ds.croli.net 一个上游（计费走积分/trial
- * 订阅池，不经 10R，无重复记账），渠道拆分没有意义，模型走 model 字段。
- * occurred_at 是毫秒级 ISO（带时区）——10R 的导入签名含 timestamp，行级天然唯一，
- * 与 zcode 的 ms 级 started_at 同口径。
- */
-export function convertCroliTurn(row) {
-  const ms = Date.parse(row.occurred_at);
-  if (!Number.isFinite(ms) || ms <= 0) return null;   // 缺时间戳不能用 Date.now() 兜底：每次同步都是一条“新行”
-  const tokens = {
-    prompt_tokens: row.input_tokens || 0,
-    completion_tokens: row.output_tokens || 0,
-    ...(row.cache_creation_tokens ? { cache_creation_tokens: row.cache_creation_tokens } : {}),
-    ...(row.cache_read_tokens ? { cache_read_tokens: row.cache_read_tokens } : {}),
-  };
-  return {
-    timestamp: new Date(ms).toISOString(),
-    provider: 'croli',
-    model: row.model || 'unknown',
-    connectionId: null, apiKey: null,
-    endpoint: 'croli://conversation/' + (row.conversation_id ?? 'unknown'),
-    cost: 0,   // 积分/trial 订阅池计费，不是按量
-    status: 'ok',
-    tokens,
-    meta: {
-      source: 'croli', conversationId: row.conversation_id ?? null, turnKey: row.turn_key || null,
-      durationMs: row.duration_ms ?? null,
     },
   };
 }
@@ -490,28 +452,6 @@ function collectOpencode(files, now = Date.now()) {
   return { entries: out, notes: (active ? [`暂不同步 ${active} 个进行中的会话（1 小时内仍有更新，结束后再同步，避免同一会话记两行）`] : []).concat(skippedNoTs ? [`跳过 ${skippedNoTs} 行缺时间戳的会话`] : []) };
 }
 
-/** Croli 逐轮账本：turn_key 唯一 + occurred_at 落库即定型（Codex 引擎逐轮写死，无回填），
- *  不设 SETTLE 窗，与 zcode 同口径；重叠窗的迟到行由 10R 端签名去重兜底。 */
-function collectCroli(files) {
-  const out = [];
-  const seen = new Set();
-  let skippedNoTs = 0;
-  for (const f of files) {
-    withSnapshot(f, (db) => {
-      for (const r of db.prepare('SELECT conversation_id, turn_key, occurred_at, model, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, total_tokens, duration_ms FROM token_usage_turn ORDER BY occurred_at ASC').all()) {
-        // turn_key 是行级稳定签名（conversation 内唯一编号），库内兜底去重
-        const k = `${r.conversation_id}|${r.turn_key}`;
-        if (seen.has(k)) continue;
-        seen.add(k);
-        const e = convertCroliTurn(r);
-        if (!e) { skippedNoTs++; continue; }
-        out.push(e);
-      }
-    });
-  }
-  return { entries: out, notes: skippedNoTs ? [`跳过 ${skippedNoTs} 行缺时间戳的记录（无稳定签名，避免每次同步都当成新行）`] : [] };
-}
-
 function collectMimo(files, now = Date.now()) {
   const out = [];
   const seen = new Set();
@@ -587,8 +527,7 @@ export async function collectSource(id, { endpoint, paths = sourcePaths(), catpa
     : id === 'opencode' ? collectOpencode(files)
       : id === 'mimo' ? collectMimo(files)
         : id === '10r' ? collectRouter(files, endpoint)
-          : id === 'croli' ? collectCroli(files)
-            : collectMirasim(files, endpoint);
+          : collectMirasim(files, endpoint);
   return { ...r, files: files.length };
 }
 

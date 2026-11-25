@@ -2003,27 +2003,6 @@ function registerAuthWindowIpc() {
       return { ok: false, error: Tt('未找到 DuMate 客户端可执行文件') };
     } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
   });
-  // Croli 客户端拉起（安装目录 %LOCALAPPDATA%\Programs\Croli）
-  ipcMain.handle('open-croli-client', async () => {
-    try {
-      const os = require('node:os');
-      const fs = require('node:fs');
-      const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
-      const cands = [
-        path.join(local, 'Programs', 'Croli', 'Croli.exe'),
-        'C:\\Program Files\\Croli\\Croli.exe',
-        'C:\\Program Files (x86)\\Croli\\Croli.exe',
-      ];
-      for (const cand of cands) {
-        if (process.platform === 'win32' && fs.existsSync(cand)) {
-          const err = await shell.openPath(cand);
-          if (!err) return { ok: true };
-          return { ok: false, error: err };
-        }
-      }
-      return { ok: false, error: Tt('未找到 Croli 客户端可执行文件') };
-    } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
-  });
   // WorkBuddy 切号后自动拉起：国内（WorkBuddy）/ 国际（WorkBuddyAI）是两个独立客户端，只拉目标档位
   ipcMain.handle('open-workbuddy-client', async (_e, flavor) => {
     try {

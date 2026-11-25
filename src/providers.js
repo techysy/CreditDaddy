@@ -23,7 +23,6 @@ import { fetchDoubaoStatus, checkinDoubao } from './doubaoClient.js';
 import { checkinLingxi, fetchLingxiQuota } from './lingxiClient.js';
 import { checkinMeoo, fetchMeooQuota } from './meooClient.js';
 import { checkinDumate, fetchDumateQuota } from './dumateClient.js';
-import { checkinCroli, fetchCroliQuota, verifyCroliAccount } from './croliClient.js';
 import { fetchLoomyQuota, verifyLoomyAccount } from './loomyClient.js';
 import { fetchUserinfo as fetchQwenworkUserinfo, fetchQuotaUsage as fetchQwenworkQuota } from './qwenworkClient.js';
 /** 从 userinfo 响应中挑一个可读的显示名 */
@@ -36,7 +35,7 @@ export function displayNameFrom(ui) {
 
 /**
  * 千问办公 account-context → 统一积分结构。个人版是积分余额制（quota.total/used 常为
- * null，remaining = 剩余积分，实测 899.99），口径与 Croli 积分余额一致：一条余额行，
+ * null，remaining = 剩余积分，实测 899.99）：一条余额行，
  * 套餐名（个人基础版等）挂 plan 字段给额度卡副标题用。
  * biz/团队账号 remaining 可能为 null 而 total/used 有值——按 10R 同接口口径用
  * total-used 兜底，别把 800 积分算成 0 并误判「已用尽」。
@@ -336,22 +335,6 @@ const PRODUCTS = {
     label: '讯飞 Loomy',
     quota: (account) => fetchLoomyQuota(account),
     verify: (account) => verifyLoomyAccount(account),
-  },
-  croli: {
-    label: 'Croli',
-    // 独立产品线（2026-11-20）：凭据 = Clerk access token（JWT 24h + refresh 轮换），
-    // 两条线同形：本机导入（读 %APPDATA%\Croli\auth.json，sidecar 自动续期）/
-    // 浏览器登录（CD 自造 OAuth PKCE，clerk.croli.net）。
-    // 「签到」= POST ops/checkin（ops/home 先查 daily-checkin 任务状态，幂等）；
-    // 验证 = balance 200 即有效，uid 取 JWT sub 归户。
-    checkin: (account, ctx) => checkinCroli(account, ctx),
-    quota: (account, ctx) => fetchCroliQuota(account, ctx),
-    verify: async (account) => {
-      const v = await verifyCroliAccount(account);
-      if (!v.auth) { const e = new Error(v.error || 'Croli 凭据已失效，请重新本机导入或浏览器登录'); e.auth = true; throw e; }
-      if (!v.ok) throw new Error(v.error || 'Croli 身份验证失败');
-      return { name: v.name || null, uid: v.uid ? String(v.uid) : null };
-    },
   },
   // 码道 CodeArts（issue #40）已于 2026-10-30 撤下：华为云控制台会话受闲置超时 +
   // WAF 指印绑定，本机无法续期，实测当日内即失效，无法支撑每日定时签到。详见
