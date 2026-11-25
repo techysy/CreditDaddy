@@ -342,8 +342,7 @@
   .ann-ico { display: inline-flex; align-items: center; justify-content: center; }
   .ann-badge { position: absolute; top: -4px; right: -4px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px; background: #ef4444; color: #fff; font-size: 9.5px; font-weight: 700; line-height: 15px; text-align: center; pointer-events: none; box-sizing: border-box; font-variant-numeric: tabular-nums; }
   .ann-badge[hidden] { display: none; }
-  .ann-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  @media (max-width: 640px) { .ann-grid { grid-template-columns: 1fr; } }
+  .ann-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
   .ann-banner { grid-column: 1 / -1; padding: 8px 11px; border-radius: 9px; font-size: 12px; line-height: 1.5; background: var(--tertiary); color: var(--text-2); }
   .ann-banner.warn { background: var(--warn-soft); color: var(--warn); }
   .ann-card { border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); padding: 11px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
@@ -360,7 +359,7 @@
   html[data-theme="brutal"] .ann-card.lvl-feature  { background: #e6f0ff; }
   html[data-theme="brutal"] .ann-card.lvl-info     { background: var(--surface); }
   .ann-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
-  .ann-card-title { font-size: 13px; font-weight: 700; line-height: 1.45; color: var(--text); }
+  .ann-card-title { font-size: 13px; font-weight: 700; line-height: 1.45; color: var(--text); min-width: 0; overflow-wrap: anywhere; }
   .ann-card-date { flex: none; font-size: 10.5px; color: var(--text-3); font-variant-numeric: tabular-nums; padding-top: 2px; }
   .ann-card-body { font-size: 12px; line-height: 1.6; color: var(--text-2); white-space: pre-line; }
   .ann-card-link { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 600; color: #4f86ff; text-decoration: none; align-self: flex-start; margin-top: auto; padding-top: 2px; }
@@ -563,6 +562,8 @@
       <!-- 只读状态：下一次自动领取（领取中变强调色）。窄屏自动隐藏，操作按钮优先 -->
       <span id="sched" class="sched-chip"></span>
       <span class="head-sep"></span>
+      <button class="icon-btn ann-btn" id="announcements-btn" title="公告"><span class="ann-ico" id="announcements-ico"></span><span class="ann-badge" id="announcements-badge" hidden></span></button>
+      <button class="icon-btn" id="donate-btn" title="捐赠支持"></button>
       <button class="icon-btn" id="btn-theme" title="主题"></button>
       <div class="head-setpop">
         <button class="icon-btn" id="btn-comp" title="面板设置：访问密码、组件显隐与排序、账号卡片排序"></button>
@@ -621,8 +622,6 @@
         </div>
         
       </div>
-      <button class="icon-btn ann-btn" id="announcements-btn" title="公告"><span class="ann-ico" id="announcements-ico"></span><span class="ann-badge" id="announcements-badge" hidden></span></button>
-      <button class="icon-btn" id="donate-btn" title="捐赠支持"></button>
       <!-- 聚合菜单（最右侧）：工作区 / 外观 / 语言 / 关于四分区，下拉紧贴按钮（图标由 JS 注入，Lucide 描边同款）。
            主题两处入口联动：菜单分段控件（跟随系统/亮色/暗色） + 头部独立按钮一键循环，都经 applyThemeMode 同一存储 -->
       <div class="hmenu">
@@ -1006,7 +1005,7 @@
 
 <!-- 公告弹窗（对齐 10Router AnnouncementsModal：等级色卡、90 天自动隐藏、最多展示 10 条、未读角标与本地持久化） -->
 <div class="mask" id="m-announcements">
-  <div class="modal" style="width:720px">
+  <div class="modal" style="width:480px;max-width:calc(100vw - 32px)">
     <div class="modal-title">
       <span data-i18n="公告">公告</span>
       <div class="row" style="gap:6px">
