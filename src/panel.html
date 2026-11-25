@@ -535,18 +535,6 @@
       <span id="sched" class="sched-chip"></span>
       <span class="head-sep"></span>
       <button class="icon-btn" id="btn-theme" title="主题"></button>
-      <!-- Google 会话池管理（跨产品全局资源）：六槽状态一览 + 打开验证 / 清除单槽 -->
-      <div class="head-setpop">
-        <button class="icon-btn" id="btn-google" title="Google 会话槽：四条 Google SSO 线共享的登录态池，查看/清除"></button>
-        <div class="setpop" id="m-google">
-          <div class="modal">
-            <div class="modal-title"><span data-i18n="Google 会话槽">Google 会话槽</span><button class="close" data-close>✕</button></div>
-            <div class="hint" data-i18n="这些槽记住的是各授权窗里登录过的 Google 账号会话（Croli / Trae 国际版 / MiniMax 国际版 / Qoder 四线共享）：同槽再次授权 Google 免重登。注意：槽里有会话只说明「Google 登录过」，不代表 Croli 等产品授权已完成——授权结果以账号库为准。清除某个槽 = 抹掉该槽的 Google 登录态，下次授权需重新登录 Google（产品账号库不受影响）。">这些槽记住的是各授权窗里登录过的 Google 账号会话（Croli / Trae 国际版 / MiniMax 国际版 / Qoder 四线共享）：同槽再次授权 Google 免重登。注意：槽里有会话只说明「Google 登录过」，不代表 Croli 等产品授权已完成——授权结果以账号库为准。清除某个槽 = 抹掉该槽的 Google 登录态，下次授权需重新登录 Google（产品账号库不受影响）。</div>
-            <div id="google-slots" style="margin-top:10px;display:flex;flex-direction:column;gap:8px"></div>
-            <div class="modal-actions"><button class="btn" id="btn-google-close" data-close data-i18n="关闭">关闭</button></div>
-          </div>
-        </div>
-      </div>
       <div class="head-setpop">
         <button class="icon-btn" id="btn-comp" title="面板设置：访问密码、组件显隐与排序、账号卡片排序"></button>
         <!-- 面板设置（右上角齿轮） -->
@@ -631,6 +619,7 @@
           </div>
           <div class="hmenu-group">
             <div class="hmenu-title" data-i18n="工作区">工作区</div>
+            <button class="hmenu-item" id="hm-google" title="Google 会话槽：四条 Google SSO 线共享的登录态池，查看/清除">Google 会话槽</button>
             <button class="hmenu-item" id="hm-update">检查更新</button>
             <button class="hmenu-item" id="changelog-brief-btn">更新日志</button>
           </div>
@@ -983,6 +972,16 @@
       <span data-i18n="支付后请在备注里留下您的 GitHub 用户名 —— 便于将您署名加入贡献者列表 ❤️">支付后请在备注里留下您的 GitHub 用户名 —— 便于将您署名加入贡献者列表 ❤️</span>
     </div>
     <div class="modal-actions"><button class="btn primary" data-close data-i18n="关闭">关闭</button></div>
+  </div>
+</div>
+
+<!-- Google 会话槽管理（跨产品全局资源）：六槽状态一览 + 备注 / 清除单槽 -->
+<div class="mask" id="m-google">
+  <div class="modal">
+    <div class="modal-title"><span data-i18n="Google 会话槽">Google 会话槽</span><button class="close" data-close>✕</button></div>
+    <div class="hint" data-i18n="这些槽记住的是各授权窗里登录过的 Google 账号会话（Croli / Trae 国际版 / MiniMax 国际版 / Qoder 四线共享）：同槽再次授权 Google 免重登。注意：槽里有会话只说明「Google 登录过」，不代表 Croli 等产品授权已完成——授权结果以账号库为准。清除某个槽 = 抹掉该槽的 Google 登录态，下次授权需重新登录 Google（产品账号库不受影响）。">这些槽记住的是各授权窗里登录过的 Google 账号会话（Croli / Trae 国际版 / MiniMax 国际版 / Qoder 四线共享）：同槽再次授权 Google 免重登。注意：槽里有会话只说明「Google 登录过」，不代表 Croli 等产品授权已完成——授权结果以账号库为准。清除某个槽 = 抹掉该槽的 Google 登录态，下次授权需重新登录 Google（产品账号库不受影响）。</div>
+    <div id="google-slots" style="margin-top:10px;display:flex;flex-direction:column;gap:8px"></div>
+    <div class="modal-actions"><button class="btn" id="btn-google-close" data-close data-i18n="关闭">关闭</button></div>
   </div>
 </div>
 
@@ -1768,6 +1767,7 @@ function initTheme() {
   window.addEventListener('scroll', closeHmenu, true);
   // 菜单项图标：与头部按钮同款 Lucide 描边（静态文字前插图标）
   const withIcon = (id, icon) => { const b = $(id); if (b) b.innerHTML = icon + b.textContent; };
+  withIcon('hm-google', googleMark);
   withIcon('hm-update', I.refresh);
   withIcon('changelog-brief-btn', I.book);
   withIcon('hm-home', I.github);      // 由头部独立图标收进「关于」分区
@@ -1873,7 +1873,7 @@ function initTheme() {
   // Sponsors 按钮跳转（桌面版走 IPC 桥，网页直接开浏览器）
   $('donate-btn').onclick = () => {
     closeHmenu();
-    const mg = $('m-google'); if (mg) mg.classList.remove('show');
+    closeModal('m-google');
     openModal('m-donate');
   };
 }
@@ -6274,16 +6274,15 @@ async function submitImport(password) {
 // 全局组件开关：收起 Qoder / WorkBuddy / ZCode / 10Router 的标签页与仪表盘对应卡片
 $('btn-comp').innerHTML = I.settings;
 
-// ── Google 会话槽管理（右上角图标 → 弹窗）──
+// ── Google 会话槽管理（右上角「工作区」菜单 → 独立居中弹窗）──
 // 分区状态探针走桌面壳 googleSlotState IPC（cookie 数 > 0 = 有登录痕迹）；非桌面环境
-// （网页面板）探针不可用——按钮隐藏，入口与能力同步消失，不出「点了没反应」的死按钮。
+// （网页面板）探针不可用——菜单项隐藏，入口与能力同步消失，不出「点了没反应」的死按钮。
 const GOOGLE_SLOTS = [1, 2, 3, 4, 5, 6];
 // 槽位备注（本机 localStorage，不进账号库）：「师洋」「AI」…贴 Chrome profile 名
 const googleSlotNick = (n) => { try { return localStorage.getItem('qd_google_slot_nick_' + n) || ''; } catch { return ''; } };
 const setGoogleSlotNick = (n, v) => { try { v ? localStorage.setItem('qd_google_slot_nick_' + n, v) : localStorage.removeItem('qd_google_slot_nick_' + n); } catch {} };
 const googleApi = () => (window.creditdaddy && typeof window.creditdaddy.googleSlotState === 'function' ? window.creditdaddy : null);
 if (googleApi()) {
-  $('btn-google').innerHTML = googleMark;
   const renderGoogleSlots = async () => {
     const box = $('google-slots');
     box.innerHTML = '<div class="empty" style="padding:12px">…</div>';
@@ -6329,20 +6328,13 @@ if (googleApi()) {
       });
     });
   };
-  $('btn-google').addEventListener('click', (e) => {
-    e.stopPropagation();
-    const pop = $('m-google');
-    const willOpen = !pop.classList.contains('show');
-    if (willOpen) renderGoogleSlots();
-    pop.classList.toggle('show', willOpen);
-  });
-  // 点外部收起（与设置弹层同款纪律）
-  document.addEventListener('click', (e) => {
-    const pop = $('m-google');
-    if (pop.classList.contains('show') && !pop.contains(e.target) && e.target !== $('btn-google') && !$('btn-google').contains(e.target)) pop.classList.remove('show');
+  $('hm-google').addEventListener('click', () => {
+    $('hmenu-pop')?.classList.remove('show');
+    renderGoogleSlots();
+    openModal('m-google');
   });
 } else {
-  $('btn-google').style.display = 'none';
+  $('hm-google').style.display = 'none';
 }
 
 // ── 卡片拖拽排序（产品面板 + 10Router）：手动顺序优先级最高，落库 localStorage ──
