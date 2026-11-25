@@ -17,9 +17,10 @@ import { fetchJsonRace } from './zcodeClient.js';
 import { FETCH_TIMEOUT_MS } from './constants.js';
 
 const DETAIL_URL = 'https://www.doubao.com/alice/ug/campaign/v3/detail/';
-const CHECKIN_URL = 'https://www.doubao.com/alice/ug/campaign/landing/checkin';
+const CHECKIN_URL = 'https://www.doubao.com/alice/ug/campaign/item/reward/claim/';
 /** 任务面板所属活动组（pc 端激励任务 v3；签到是其中的 daily_signin 任务） */
 const CAMPAIGN_GROUP = 'pc_incentive_task_mvp_v3';
+const CAMPAIGN_ITEM = 'daily_signin';
 
 /**
  * 客户端指纹伪装（issue #32 用户实测反馈：纯网页 cookie 裸 UA 打活动接口吃「请求非法」，
@@ -69,6 +70,7 @@ const postJson = (url, cookie, body, uid) => fetchJsonRace(url, {
     Referer: 'https://www.doubao.com/pc/agent-explore',
     Origin: 'https://www.doubao.com',
     'User-Agent': CLIENT_UA,
+    'Agw-Js-Conv': 'str',
   },
   body: JSON.stringify(body),
   timeoutMs: FETCH_TIMEOUT_MS,
@@ -145,7 +147,11 @@ export async function checkinDoubao(account) {
 
   let body = null;
   try {
-    const res = await postJson(apiUrl(CHECKIN_URL, uid), cookie, { scene: CAMPAIGN_GROUP }, uid);
+    const res = await postJson(apiUrl(CHECKIN_URL, uid), cookie, {
+      task_id: '',
+      campaign_group_code: CAMPAIGN_GROUP,
+      campaign_item_code: CAMPAIGN_ITEM,
+    }, uid);
     const text = await res.text();
     body = JSON.parse(text);
   } catch (e) {
@@ -160,6 +166,22 @@ export async function checkinDoubao(account) {
   }
   if (code !== 0) return { ...base, status: 'failed', message: `${body.msg || body.message || '签到失败'}（code ${code}）` };
   const d = body.data || {};
+  const bizError = d.biz_error;
+  if (bizError) {
+    const bizCode = String(bizError.code ?? '');
+    // 官方前端逻辑：'0', '4', '6' 视为成功或已领/幂等
+    if (bizCode === '4' || d.idempotent === true) {
+      return { ...base, status: 'already', message: '今天已签到（服务端已发放）' };
+    }
+    if (!['0', '6'].includes(bizCode)) {
+      return {
+        ...base,
+        status: 'failed',
+        message: bizError.message ? `豆包：${bizError.message}` : `领取未成功（code ${bizCode}）`,
+      };
+    }
+  }
+
   if (d.idempotent === true) return { ...base, status: 'already', message: '今天已签到（服务端幂等去重）' };
   const amount = Number(d.reward_amount) || st.checkin.rewardAmount || 200;
   const days = Number(d.continuous_days) || st.checkin.continuousDays + 1;

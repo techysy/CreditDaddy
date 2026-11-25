@@ -60,20 +60,44 @@ const DETAIL_UNSIGNED = {
 const CLAIM_OK = {
   code: 0,
   data: {
-    checked_in: true,
-    checkin_date: '2026-10-20',
+    task_status: 3,
     continuous_days: 3,
     idempotent: false,
     reward_amount: 200,
-    reward_code: 'quota_grant',
-    reward_status: 3,
-    reward_type: 'quota_grant',
   },
   msg: '',
   message: '',
 };
 
 const CLAIM_IDEMPOTENT = { ...CLAIM_OK, data: { ...CLAIM_OK.data, idempotent: true } };
+
+const CLAIM_BIZ_WARNING = {
+  code: 0,
+  data: {
+    biz_error: {
+      code: 3,
+      message: '领取结果确认中，请稍后重试',
+      toast_status: 'warning',
+    },
+    task_status: 0,
+  },
+  msg: '',
+  message: '',
+};
+
+const CLAIM_BIZ_ALREADY = {
+  code: 0,
+  data: {
+    biz_error: {
+      code: 4,
+      message: '已领取',
+      toast_status: 'info',
+    },
+    task_status: 3,
+  },
+  msg: '',
+  message: '',
+};
 
 const LOGIN_INVALID = { data: null, code: 710012001, msg: '登录已过期，请重新登录', message: 'login invalid' };
 
@@ -119,10 +143,14 @@ test('fetchDoubaoStatus：会话失效（code 710012001 → auth=false）', asyn
 
 test('checkinDoubao：未签 → claim 成功（+200 额度，连续天数 +1）', async () => {
   const calls = [];
-  const restore = stubFetch(async (url) => {
+  let claimPayload = null;
+  const restore = stubFetch(async (url, init) => {
     calls.push(String(url));
     if (url.includes('/detail/')) return mkRes(DETAIL_UNSIGNED);
-    if (url.includes('/landing/checkin')) return mkRes(CLAIM_OK);
+    if (url.includes('/item/reward/claim/')) {
+      claimPayload = JSON.parse(init.body);
+      return mkRes(CLAIM_OK);
+    }
     throw new Error('unexpected url ' + url);
   });
   try {
@@ -131,6 +159,11 @@ test('checkinDoubao：未签 → claim 成功（+200 额度，连续天数 +1）
     assert.equal(r.claimedAmount, 200);
     assert.match(r.message, /连续 3 天/);
     assert.equal(calls.length, 2, '先 detail 后 checkin');
+    assert.deepEqual(claimPayload, {
+      task_id: '',
+      campaign_group_code: 'pc_incentive_task_mvp_v3',
+      campaign_item_code: 'daily_signin',
+    });
   } finally { restore(); }
 });
 
@@ -156,6 +189,30 @@ test('checkinDoubao：claim 返回 idempotent=true → already（服务端幂等
     const r = await dc.checkinDoubao({ id: 'db1', name: '豆包A', provider: 'doubao', meta: { cookieSiteSession: { cookie: 'sid=X' } } });
     assert.equal(r.status, 'already');
     assert.match(r.message, /幂等/);
+  } finally { restore(); }
+});
+
+test('checkinDoubao：claim 返回 biz_error code 3 → failed 且展示业务友好文案', async () => {
+  const restore = stubFetch(async (url) => {
+    if (url.includes('/detail/')) return mkRes(DETAIL_UNSIGNED);
+    return mkRes(CLAIM_BIZ_WARNING);
+  });
+  try {
+    const r = await dc.checkinDoubao({ id: 'db1', name: '豆包A', provider: 'doubao', meta: { cookieSiteSession: { cookie: 'sid=X' } } });
+    assert.equal(r.status, 'failed');
+    assert.match(r.message, /领取结果确认中/);
+  } finally { restore(); }
+});
+
+test('checkinDoubao：claim 返回 biz_error code 4 → already（服务端已发放）', async () => {
+  const restore = stubFetch(async (url) => {
+    if (url.includes('/detail/')) return mkRes(DETAIL_UNSIGNED);
+    return mkRes(CLAIM_BIZ_ALREADY);
+  });
+  try {
+    const r = await dc.checkinDoubao({ id: 'db1', name: '豆包A', provider: 'doubao', meta: { cookieSiteSession: { cookie: 'sid=X' } } });
+    assert.equal(r.status, 'already');
+    assert.match(r.message, /已发放/);
   } finally { restore(); }
 });
 

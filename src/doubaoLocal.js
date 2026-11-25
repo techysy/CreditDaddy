@@ -43,6 +43,7 @@ export function candidateClientPath() {
   const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
   const candidates = [
     path.join(local, 'Programs', 'Doubao', 'Doubao.exe'),
+    path.join(local, 'Doubao', 'Application', 'Doubao.exe'),
     path.join(local, 'Doubao', 'Application', 'app', 'Doubao.exe'),
     'C:\\Program Files\\Doubao\\Doubao.exe',
     'C:\\Program Files (x86)\\Doubao\\Doubao.exe',
