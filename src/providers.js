@@ -19,7 +19,8 @@ import { fetchTraeQuota, checkinTrae, verifyTraeAccount } from './traeClient.js'
 /** Trae 国际账号判定：provider trae-intl 或旧线账号带 isIntl 标记（浏览器 OAuth / 本机导入都落这个键） */
 const isTraeIntl = (account) => account?.provider === 'trae-intl' || Boolean(account?.meta?.isIntl);
 import { fetchMiniMaxQuota, checkinMiniMax, verifyMiniMaxAccount } from './minimaxClient.js';
-import { fetchDoubaoStatus, checkinDoubao } from './doubaoClient.js';
+import { fetchDoubaoStatus, checkinDoubao, resolveDoubaoDevice } from './doubaoClient.js';
+import { extractDoubaoUid } from './doubaoLocal.js';
 import { checkinLingxi, fetchLingxiQuota } from './lingxiClient.js';
 import { checkinMeoo, fetchMeooQuota } from './meooClient.js';
 import { checkinDumate, fetchDumateQuota } from './dumateClient.js';
@@ -264,7 +265,8 @@ const PRODUCTS = {
     checkin: (account) => checkinDoubao(account),
     quota: async (account) => {
       const cookie = account.meta?.cookieSiteSession?.cookie || account.token || account.cookie;
-      const st = await fetchDoubaoStatus(cookie);
+      const uid = extractDoubaoUid(cookie) || account.uid || '';
+      const st = await fetchDoubaoStatus(cookie, uid, resolveDoubaoDevice(account));
       if (!st.auth) {
         const e = new Error('豆包会话已失效，请重新登录捕获');
         e.auth = true;

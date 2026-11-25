@@ -70,7 +70,7 @@ import { liveToAccount as traeLiveAccount, detectTrae, switchTo as traeSwitchTo,
 import { liveToAccount as minimaxLiveAccount, detectMiniMax, detectMiniMaxBuildLang, currentMiniMaxUid, currentMiniMaxToken, currentMiniMaxRecordKey } from './minimaxLocal.js';
 import { liveToAccount as loomyLiveAccount, hardSwitchLoomy, currentLoomyUid, detectLoomy } from './loomyLocal.js';
 import { liveToAccount as dumateLiveAccount, detectDumate, readDumateCredential, hardSwitchDumate } from './dumateLocal.js';
-import { liveToAccount as doubaoLiveAccount, detectDoubao } from './doubaoLocal.js';
+import { liveToAccount as doubaoLiveAccount, detectDoubao, extractDoubaoUid, readDoubaoDeviceInfo } from './doubaoLocal.js';
 import * as minimaxGateway from './minimaxGateway.js';
 import * as traeGateway from './traeGateway.js';
 import { fetchClaimPlans, claimPlan, fetchCaptchaConfig, proxyFirst, setProxyFirst, proxyUrl, setProxyUrl, autoClaimEnabled, autoClaimUntil, setAutoClaimEnabled, claimIntervalMin, setClaimIntervalMin, claimWindowMin, setClaimWindowMin, dailyClaimPlan, setDailyClaimPlan } from './zcodeClient.js';
@@ -496,8 +496,10 @@ async function reprobeCookieAccount(site, a) {
     if (site.id === 'doubao') {
       // 豆包（issue #32）：detail 接口一次拿全（会话有效性 + 签到状态 + 累计点数），
       // 重探 = 刷新额度快照；无 10R 同步（豆包不推外部配额卡，错误文案不再误导）
-      const { fetchDoubaoStatus } = await import('./doubaoClient.js');
-      const st = await fetchDoubaoStatus(cookie, a.uid || '').catch((e) => ({ auth: false, code: e?.message || 'network' }));
+      const { fetchDoubaoStatus, resolveDoubaoDevice } = await import('./doubaoClient.js');
+      const dbUid = extractDoubaoUid(cookie) || a.uid || '';
+      const dbDevice = resolveDoubaoDevice(a);
+      const st = await fetchDoubaoStatus(cookie, dbUid, dbDevice).catch((e) => ({ auth: false, code: e?.message || 'network' }));
       if (!st.auth) return finish({ id: a.id, name: a.name, ok: false, error: '豆包会话已失效，请重新登录捕获' });
       await withAccounts((list) => {
         const hit = list.find((x) => x.id === a.id);
@@ -1885,19 +1887,11 @@ async function handleApi(req, res, url) {
           logger.warn('COOKIE-SITE', '{name} 未读到会话 cookie', { name: site.name });
           return json(res, 400, { error: '未读到豆包登录会话，请在登录窗完成登录后再关闭' });
         }
-        const st = await fetchDoubaoStatus(cookie);
+        doubaoUid = extractDoubaoUid(cookie);
+        const st = await fetchDoubaoStatus(cookie, doubaoUid || '');
         if (!st.auth) {
           logger.warn('COOKIE-SITE', '{name} 探测被拒:{code}', { name: site.name, code: st.code });
           return json(res, 401, { error: '会话不可用，请重新登录豆包后再捕获（' + (st.code || '探测失败') + '）' });
-        }
-        const m = /multi_sids=([^;]+)/.exec(cookie);
-        if (m) {
-          const first = decodeURIComponent(m[1]).split('|')[0];
-          doubaoUid = first.split(':')[0] || null;
-        }
-        if (!doubaoUid) {
-          const u = /uid_tt=([^;]+)/.exec(cookie);
-          if (u) doubaoUid = decodeURIComponent(u[1]).trim();
         }
         if (doubaoUid) {
           doubaoMasked = doubaoUid.length > 8 ? `${doubaoUid.slice(0, 4)}…${doubaoUid.slice(-4)}` : doubaoUid;

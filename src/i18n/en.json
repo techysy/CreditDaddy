@@ -2497,5 +2497,7 @@
   "；每日定时计划 ": "; daily schedule ",
   "；礼物图标 = 手动临时领。</span></div>": "; gift icon = manual one-off claim.</span></div>",
   "；绑定改动重启后生效": "; binding changes take effect after restart",
-  "；要现在领，点右上角「自动领取」→「立即开跑」": "; to claim now, click \"Auto-claim\" (top right) → \"Run now\""
+  "；要现在领，点右上角「自动领取」→「立即开跑」": "; to claim now, click \"Auto-claim\" (top right) → \"Run now\"",
+  "豆包风控拦截（code 710010702），请打开豆包客户端完成今日签到": "Doubao risk-control blocked (code 710010702). Please open the Doubao client to complete today’s check-in.",
+  "豆包未确认签到完成，请稍后重试": "Doubao did not confirm check-in completion, please try again later."
 }

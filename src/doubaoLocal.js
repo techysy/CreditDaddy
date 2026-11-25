@@ -37,6 +37,86 @@ export function localStateFile() {
   return path.join(doubaoDataDir(), 'Local State');
 }
 
+/** 从 Cookie 串或键值对解析 Cookie 映射 */
+export function parseCookieHeader(cookieInput) {
+  if (!cookieInput) return {};
+  if (typeof cookieInput === 'object') return cookieInput;
+  const map = {};
+  for (const part of String(cookieInput).split(';')) {
+    const idx = part.indexOf('=');
+    if (idx <= 0) continue;
+    const name = part.slice(0, idx).trim();
+    const val = part.slice(idx + 1).trim();
+    if (name) map[name] = val;
+  }
+  return map;
+}
+
+/**
+ * 从豆包 Cookie 提取当前活跃账号 UID：
+ * multi_sids 格式为 `uid1:sid1|uid2:sid2|...`，优先匹配与当前 sessionid / sid_tt
+ * 一致的条目（切号或多账号场景下，[0] 往往是旧账号，只有匹配当前会话 sid 才是真 UID）；
+ * 若无 sessionid 或未命中，则回退 multi_sids 首项或 uid_tt。
+ */
+export function extractDoubaoUid(cookieInput) {
+  const cookieMap = parseCookieHeader(cookieInput);
+  const activeSid = cookieMap.sessionid || cookieMap.sessionid_ss || cookieMap.sid_tt || '';
+  if (cookieMap.multi_sids) {
+    let entries = [];
+    try {
+      entries = decodeURIComponent(cookieMap.multi_sids).split('|').filter(Boolean);
+    } catch {
+      entries = String(cookieMap.multi_sids).split('|').filter(Boolean);
+    }
+    if (activeSid) {
+      for (const entry of entries) {
+        const sep = entry.indexOf(':');
+        if (sep > 0) {
+          const entryUid = entry.slice(0, sep).trim();
+          const entrySid = entry.slice(sep + 1).trim();
+          if (entryUid && entrySid && entrySid === activeSid) return entryUid;
+        }
+      }
+    }
+    for (const entry of entries) {
+      const firstUid = entry.split(':')[0]?.trim();
+      if (firstUid) return firstUid;
+    }
+  }
+  if (cookieMap.uid_tt) {
+    try { return decodeURIComponent(cookieMap.uid_tt).trim() || null; } catch {
+      return String(cookieMap.uid_tt).trim() || null;
+    }
+  }
+  return null;
+}
+
+/**
+ * 读取本机豆包客户端设备标识与版本号（用于对齐客户端请求指纹，非敏感信息）。
+ */
+export function readDoubaoDeviceInfo() {
+  let deviceId = '';
+  let installId = '';
+  try {
+    const lsPath = localStateFile();
+    if (fs.existsSync(lsPath)) {
+      const ls = JSON.parse(fs.readFileSync(lsPath, 'utf8'));
+      deviceId = String(ls?.aha?.device?.device_id || '').trim();
+      installId = String(ls?.aha?.device?.install_id || '').trim();
+    }
+  } catch {}
+  let pcVersion = '';
+  try {
+    const hotFixDir = path.join(doubaoDataDir(), 'hot_fix');
+    if (fs.existsSync(hotFixDir)) {
+      const vers = fs.readdirSync(hotFixDir).filter((d) => /^\d+\.\d+\.\d+/.test(d)).sort();
+      if (vers.length) pcVersion = vers[vers.length - 1];
+    }
+  } catch {}
+  if (!deviceId && !installId && !pcVersion) return null;
+  return { deviceId, installId, pcVersion };
+}
+
 export function candidateClientPath() {
   if (process.env.DOUBAO_CLIENT_PATH) return process.env.DOUBAO_CLIENT_PATH;
   if (process.platform !== 'win32') return null;
@@ -240,7 +320,7 @@ export async function readDoubaoProfileCookies(profileDirName = 'Default') {
   const cookiePairs = [];
   try {
     const db = new DatabaseSync(tmp, { readOnly: true });
-    const rows = db.prepare("SELECT name, encrypted_value FROM cookies WHERE host_key LIKE '%doubao.com'").all();
+    const rows = db.prepare("SELECT name, encrypted_value FROM cookies WHERE host_key LIKE '%doubao.com' AND (path = '/' OR path IS NULL OR path = '')").all();
     for (const r of rows) {
       try {
         const val = decryptCookieValue(r.encrypted_value, masterKey);
@@ -257,15 +337,7 @@ export async function readDoubaoProfileCookies(profileDirName = 'Default') {
 
   if (cookiePairs.length === 0) return null;
 
-  // 提取 UID：优先从 multi_sids（格式 uid:sid|...）提取首个主 UID，其次 uid_tt
-  let uid = null;
-  if (cookieMap.multi_sids) {
-    const first = decodeURIComponent(cookieMap.multi_sids).split('|')[0];
-    uid = first.split(':')[0] || null;
-  }
-  if (!uid && cookieMap.uid_tt) {
-    uid = decodeURIComponent(cookieMap.uid_tt).trim();
-  }
+  const uid = extractDoubaoUid(cookieMap);
 
   return {
     profileDirName,
@@ -350,6 +422,7 @@ export async function liveToAccount() {
   const name = cred.displayName
     ? `豆包 (${cred.displayName})`
     : (cred.uid ? `豆包 (${String(cred.uid).slice(0, 6)}…)` : '豆包 (本机)');
+  const doubaoDevice = readDoubaoDeviceInfo();
 
   return {
     provider: 'doubao',
@@ -362,6 +435,7 @@ export async function liveToAccount() {
     meta: {
       cookieSiteId: 'doubao',
       displayName: cred.displayName,
+      ...(doubaoDevice ? { doubaoDevice } : {}),
       cookieSiteSession: {
         cookie: cred.cookieHeader,
         capturedAt: new Date().toISOString(),

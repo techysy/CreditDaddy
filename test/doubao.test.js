@@ -60,10 +60,14 @@ const DETAIL_UNSIGNED = {
 const CLAIM_OK = {
   code: 0,
   data: {
-    task_status: 3,
+    checked_in: true,
+    checkin_date: '2026-10-20',
     continuous_days: 3,
     idempotent: false,
     reward_amount: 200,
+    reward_code: 'quota_grant',
+    reward_status: 3,
+    reward_type: 'quota_grant',
   },
   msg: '',
   message: '',
@@ -141,13 +145,13 @@ test('fetchDoubaoStatus：会话失效（code 710012001 → auth=false）', asyn
   } finally { restore(); }
 });
 
-test('checkinDoubao：未签 → claim 成功（+200 额度，连续天数 +1）', async () => {
+test('checkinDoubao：未签 → landing/checkin 成功（+200 额度，连续天数 +1）', async () => {
   const calls = [];
   let claimPayload = null;
   const restore = stubFetch(async (url, init) => {
     calls.push(String(url));
     if (url.includes('/detail/')) return mkRes(DETAIL_UNSIGNED);
-    if (url.includes('/item/reward/claim/')) {
+    if (url.includes('/landing/checkin')) {
       claimPayload = JSON.parse(init.body);
       return mkRes(CLAIM_OK);
     }
@@ -159,11 +163,7 @@ test('checkinDoubao：未签 → claim 成功（+200 额度，连续天数 +1）
     assert.equal(r.claimedAmount, 200);
     assert.match(r.message, /连续 3 天/);
     assert.equal(calls.length, 2, '先 detail 后 checkin');
-    assert.deepEqual(claimPayload, {
-      task_id: '',
-      campaign_group_code: 'pc_incentive_task_mvp_v3',
-      campaign_item_code: 'daily_signin',
-    });
+    assert.deepEqual(claimPayload, { scene: 'pc_incentive_task_mvp_v3' });
   } finally { restore(); }
 });
 
@@ -291,4 +291,76 @@ test('doubaoLocal：detectDoubao 结构完整且为纯同步执行', async () =>
   assert.equal(typeof d.clientInstalled, 'boolean');
   assert.equal(typeof d.running, 'boolean');
   assert.equal(typeof d.dataDir, 'string');
+});
+
+test('doubaoLocal：extractDoubaoUid 优先匹配活跃 sessionid 对应的 multi_sids 条目', async () => {
+  const { extractDoubaoUid } = await import('../src/doubaoLocal.js');
+  const multi = encodeURIComponent('111111:sid_old|222222:sid_other|333333:sid_active|444444:sid_extra');
+  assert.equal(
+    extractDoubaoUid(`multi_sids=${multi}; sessionid=sid_active; sid_tt=sid_active; uid_tt=999999`),
+    '333333',
+    '多账号共存时应按 sessionid 精确匹配活跃 UID 而非盲取第 1 条'
+  );
+  assert.equal(
+    extractDoubaoUid(`multi_sids=${multi}; uid_tt=999999`),
+    '111111',
+    '无 sessionid 时回退 multi_sids 首项'
+  );
+  assert.equal(extractDoubaoUid('uid_tt=999999'), '999999', '无 multi_sids 时回退 uid_tt');
+});
+
+test('checkinDoubao：携带桌面设备上下文时使用 582478/pc_client 参数与 csrf 头', async () => {
+  const seen = [];
+  const restore = stubFetch(async (url, init) => {
+    seen.push({ url: String(url), headers: init.headers });
+    if (url.includes('/detail/')) return mkRes(DETAIL_UNSIGNED);
+    if (url.includes('/landing/checkin')) return mkRes(CLAIM_OK);
+    throw new Error('unexpected url ' + url);
+  });
+  try {
+    const r = await dc.checkinDoubao({
+      id: 'db_pc',
+      name: '豆包 (工作)',
+      provider: 'doubao',
+      uid: '333333',
+      meta: {
+        doubaoDevice: { deviceId: '3581551264702008', installId: '1998259083587290', pcVersion: '2.37.16' },
+        cookieSiteSession: { cookie: 'sessionid=sid_active; passport_csrf_token=csrf_abc' },
+      },
+    });
+    assert.equal(r.status, 'checked-in');
+    assert.equal(seen.length, 2);
+    for (const req of seen) {
+      const u = new URL(req.url);
+      assert.equal(u.searchParams.get('aid'), '582478');
+      assert.equal(u.searchParams.get('client_platform'), 'pc_client');
+      assert.equal(u.searchParams.get('device_id'), '3581551264702008');
+      assert.equal(u.searchParams.get('fp'), 'verify_3581551264702008');
+      assert.equal(u.searchParams.get('iid'), '1998259083587290');
+      assert.equal(req.headers['x-tt-passport-csrf-token'], 'csrf_abc');
+      assert.match(req.headers['User-Agent'], /SamanthaDoubao\/2\.37\.16/);
+    }
+  } finally { restore(); }
+});
+
+test('checkinDoubao：服务端返回 710010702 / checked_in=false → failed 且提示明确', async () => {
+  let restore = stubFetch(async (url) => {
+    if (url.includes('/detail/')) return mkRes(DETAIL_UNSIGNED);
+    return mkRes({ data: null, code: 710010702, msg: '系统错误', message: 'system error' });
+  });
+  try {
+    const r1 = await dc.checkinDoubao({ id: 'db1', name: '豆包A', provider: 'doubao', token: 'sid=X' });
+    assert.equal(r1.status, 'failed');
+    assert.match(r1.message, /710010702/);
+  } finally { restore(); }
+
+  restore = stubFetch(async (url) => {
+    if (url.includes('/detail/')) return mkRes(DETAIL_UNSIGNED);
+    return mkRes({ code: 0, data: { checked_in: false }, msg: '' });
+  });
+  try {
+    const r2 = await dc.checkinDoubao({ id: 'db1', name: '豆包A', provider: 'doubao', token: 'sid=X' });
+    assert.equal(r2.status, 'failed');
+    assert.match(r2.message, /未确认签到完成/);
+  } finally { restore(); }
 });
