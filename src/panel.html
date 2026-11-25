@@ -604,6 +604,7 @@
         </div>
         
       </div>
+      <button class="icon-btn" id="donate-btn" title="捐赠支持"></button>
       <!-- 聚合菜单（最右侧）：工作区 / 外观 / 语言 / 关于四分区，下拉紧贴按钮（图标由 JS 注入，Lucide 描边同款）。
            主题两处入口联动：菜单分段控件（跟随系统/亮色/暗色） + 头部独立按钮一键循环，都经 applyThemeMode 同一存储 -->
       <div class="hmenu">
@@ -638,7 +639,6 @@
             <a class="hmenu-item" id="hm-home" href="https://github.com/techysy/CreditDaddy" target="_blank" rel="noopener" data-i18n="项目主页">项目主页</a>
             <a class="hmenu-item" href="https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=481hbb68-39fd-4568-9dfb-9173be3650e6&qr_code=true" target="_blank" rel="noopener" data-i18n="飞书交流群">飞书交流群</a>
             <button class="hmenu-item" id="feedback-btn" data-i18n="提交 Issue">提交 Issue</button>
-            <button class="hmenu-item" id="donate-btn" data-i18n="捐赠支持">捐赠支持</button>
             <button class="hmenu-item danger" id="hm-restart" data-i18n="重启 CreditDaddy">重启 CreditDaddy</button>
           </div>
           <div class="hmenu-ver"><span id="hmenu-version">CreditDaddy</span><a id="hmenu-channel" href="https://github.com/techysy/CreditDaddy/releases/latest" target="_blank" rel="noopener" hidden>Releases</a></div>
@@ -1773,7 +1773,7 @@ function initTheme() {
   withIcon('hm-home', I.github);      // 由头部独立图标收进「关于」分区
   withIcon('hm-restart', I.power);
   withIcon('feedback-btn', I.msg);
-  withIcon('donate-btn', I.heart);
+  if ($('donate-btn')) $('donate-btn').innerHTML = I.heart;
   // 飞书交流群（<a> 无 id，按 href 定位）——纸飞机图标
   const fsLink = document.querySelector('#hmenu-pop a[href*="applink.feishu.cn"]');
   if (fsLink) fsLink.innerHTML = I.send + fsLink.textContent;
@@ -1871,7 +1871,11 @@ function initTheme() {
 
   // 捐赠：弹窗展示三渠道（爱发电 / 支付宝 / 微信——国内用户为主，与 10Router 一致）；
   // Sponsors 按钮跳转（桌面版走 IPC 桥，网页直接开浏览器）
-  $('donate-btn').onclick = () => { closeHmenu(); openModal('m-donate'); };
+  $('donate-btn').onclick = () => {
+    closeHmenu();
+    const mg = $('m-google'); if (mg) mg.classList.remove('show');
+    openModal('m-donate');
+  };
 }
 
 // ── 状态 / 渲染 ──
