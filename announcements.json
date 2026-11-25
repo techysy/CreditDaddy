@@ -1,0 +1,51 @@
+{
+  "_format": {
+    "level": "feature(蓝框,新功能) | promo(绿框,免费模型活动) | info(默认) | warning(行为变更) | critical(紧急)",
+    "title/body": "中文主字段，所有界面默认显示",
+    "titleEn/bodyEn": "可选英文；英文界面优先显示，缺省回退主字段",
+    "date": "YYYY-MM-DD，超过 90 天自动隐藏",
+    "link": "可选，显示「了解更多」按钮",
+    "note": "id 唯一且不变更（未读红点与已读标记依赖它）；本文件推送到 main 即生效，无需发版；条数纪律：公告只放「持续生效/仍需用户行动」的内容，功能发布类随版本进更新日志，不留长挂；展示门禁：弹窗只渲染最新 10 条（MAX_DISPLAY_ITEMS=10，超出自动收起），正文一两句话讲完，细节走链接或更新日志"
+  },
+  "updatedAt": "2026-11-25",
+  "items": [
+    {
+      "id": "2026-11-25-free-opensource-official",
+      "date": "2026-11-25",
+      "level": "critical",
+      "title": "永久免费开源声明：唯一官方发布渠道为 GitHub Releases",
+      "body": "CreditDaddy 是永久免费开源软件（AGPL-3.0），没有付费版。任何付费购买的版本均非官方，请立即申请退款并向平台举报倒卖卖家。",
+      "titleEn": "Free & open-source notice: GitHub Releases is the only official channel",
+      "bodyEn": "CreditDaddy is permanently free and open-source (AGPL-3.0) with no paid edition. Any copy you paid for is unofficial — request a refund immediately and report the reseller.",
+      "link": "https://github.com/techysy/CreditDaddy/releases"
+    },
+    {
+      "id": "2026-11-25-doubao-personal-only",
+      "date": "2026-11-25",
+      "level": "warning",
+      "title": "豆包每日签到仅限个人账号，飞书企业号不支持",
+      "body": "豆包激励任务仅面向个人账号开放，飞书企业账号无法参与；若触发风控拦截（710010702），请在面板点击「打开豆包」使用客户端完成当日签到。",
+      "titleEn": "Doubao daily check-in supports personal accounts only (Feishu enterprise excluded)",
+      "bodyEn": "Doubao's check-in campaign is limited to personal accounts — Feishu enterprise accounts are not eligible. If risk control triggers (710010702), click \"Open Doubao\" in the panel to complete check-in in the desktop app."
+    },
+    {
+      "id": "2026-11-25-croli-retired",
+      "date": "2026-11-25",
+      "level": "info",
+      "title": "Croli 产品线已下架，历史账号数据保留只读兼容",
+      "body": "自 v1.8.4-test.21 起已移除 Croli 渠道的新增、签到及 10Router 同步入口；旧账号库中留存的 Croli 记录仍可安全加载与清理，不会导致报错。",
+      "titleEn": "Croli provider retired; legacy account records remain safely readable",
+      "bodyEn": "Croli support (adding, check-in, and 10Router sync) has been removed since v1.8.4-test.21. Existing Croli entries in your local store remain safely readable for cleanup without errors."
+    },
+    {
+      "id": "2026-11-25-tenrouter-integration",
+      "date": "2026-11-25",
+      "level": "feature",
+      "title": "支持与 10Router 联动：一键同步账号与外部额度卡",
+      "body": "在「10Router」页签填写地址与虚拟 Key 后，可将本机托管账号及小米 MiMo / River / ModelScope / LongCat / WPS 灵犀等外部额度卡同步至 10Router。",
+      "titleEn": "10Router integration: one-click account & external quota card sync",
+      "bodyEn": "Configure your 10Router endpoint and virtual key in the 10Router tab to sync managed accounts and external quota cards (Xiaomi MiMo, River, ModelScope, LongCat, WPS Lingxi) to 10Router.",
+      "link": "https://github.com/techysy/10router"
+    }
+  ]
+}

@@ -33,6 +33,7 @@
  *   POST   /api/qoder/umid/install     下载官方 qodercli 并提取设备身份组件
  *   GET    /api/logs                   最近日志
  *   GET    /api/status                 守护进程状态
+ *   GET    /api/announcements          在线公告（?check=1 强制刷新；10 分钟 TTL；失败兜底随包 announcements.json）
  *   GET    /api/settings               面板设置（访问密码开关状态，不回显密码）
  *   PUT    /api/settings               设置/修改/关闭面板访问密码 {panelKey? | disable?}
  *   POST   /api/export                 导出账号 {password, provider?}（口令必填，10router 兼容加密文件）
@@ -89,6 +90,7 @@ import { startDeviceFlow, pollDeviceFlow, LOGIN_KINDS } from './authDevice.js';
 import { detectInstalls, scanLocalTokens, putCandidate, peekCandidate } from './localDetect.js';
 import { PROVIDER_LABEL, APP_VERSION, PROVIDERS, PROJECT_URL } from './constants.js';
 import { getLocale, setLocale, normalizeLocale, loadDict, t as tr } from './i18n.js';
+import { getAnnouncements } from './announcements.js';
 
 const PRODUCT_IDS = ['qoder', 'qwenwork', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'loomy', 'dumate'];
 
@@ -2603,6 +2605,18 @@ async function handleApi(req, res, url) {
       freeNoticeShown: (await loadSettings().catch(() => ({}))).freeNoticeShown === true,
       keyRequired: panelKeyRequired(),
     });
+  }
+
+  // 在线公告（?check=1 强制刷新；10 分钟内存 TTL；非阻塞后台刷新；始终回 200 合法结构）
+  if (p === '/api/announcements' && method === 'GET') {
+    const check = url.searchParams.get('check') === '1';
+    const feed = await getAnnouncements({ check });
+    const body = JSON.stringify(feed);
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'public, max-age=60',
+    });
+    return res.end(body);
   }
 
   // Panel 设置：GET 读取（只回状态不回显密码），PUT 设置 / 修改 / 关闭访问密码

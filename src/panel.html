@@ -337,6 +337,37 @@
   .modal.sm { width: 360px; }
   #m-dialog .modal.sm { width: 440px; }
   .changelog-sec + .changelog-sec { border-top: 1px dashed var(--border-subtle); margin-top: 10px; padding-top: 10px; }
+  /* 公告按钮角标 + 公告弹窗（对齐 10Router AnnouncementsModal + 适配亮色/暗色/狂野派三主题） */
+  .ann-btn { position: relative; }
+  .ann-ico { display: inline-flex; align-items: center; justify-content: center; }
+  .ann-badge { position: absolute; top: -4px; right: -4px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px; background: #ef4444; color: #fff; font-size: 9.5px; font-weight: 700; line-height: 15px; text-align: center; pointer-events: none; box-sizing: border-box; font-variant-numeric: tabular-nums; }
+  .ann-badge[hidden] { display: none; }
+  .ann-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  @media (max-width: 640px) { .ann-grid { grid-template-columns: 1fr; } }
+  .ann-banner { grid-column: 1 / -1; padding: 8px 11px; border-radius: 9px; font-size: 12px; line-height: 1.5; background: var(--tertiary); color: var(--text-2); }
+  .ann-banner.warn { background: var(--warn-soft); color: var(--warn); }
+  .ann-card { border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); padding: 11px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .ann-card.lvl-critical { border-color: rgba(239, 68, 68, .42); background: rgba(239, 68, 68, .09); }
+  .ann-card.lvl-warning  { border-color: rgba(245, 158, 11, .42); background: rgba(245, 158, 11, .10); }
+  .ann-card.lvl-promo    { border-color: rgba(34, 197, 94, .42); background: rgba(34, 197, 94, .09); }
+  .ann-card.lvl-feature  { border-color: rgba(59, 130, 246, .42); background: rgba(59, 130, 246, .09); }
+  .ann-card.lvl-info     { border-color: var(--border); background: var(--surface-2); }
+  html[data-theme="brutal"] .ann-badge { border: 1.5px solid #14131a; line-height: 12px; }
+  html[data-theme="brutal"] .ann-card { border: 1.5px solid #14131a; box-shadow: 2px 2px 0 0 #14131a; }
+  html[data-theme="brutal"] .ann-card.lvl-critical { background: #ffe5e5; }
+  html[data-theme="brutal"] .ann-card.lvl-warning  { background: #fff0d1; }
+  html[data-theme="brutal"] .ann-card.lvl-promo    { background: #e3f9ec; }
+  html[data-theme="brutal"] .ann-card.lvl-feature  { background: #e6f0ff; }
+  html[data-theme="brutal"] .ann-card.lvl-info     { background: var(--surface); }
+  .ann-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+  .ann-card-title { font-size: 13px; font-weight: 700; line-height: 1.45; color: var(--text); }
+  .ann-card-date { flex: none; font-size: 10.5px; color: var(--text-3); font-variant-numeric: tabular-nums; padding-top: 2px; }
+  .ann-card-body { font-size: 12px; line-height: 1.6; color: var(--text-2); white-space: pre-line; }
+  .ann-card-link { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 600; color: #4f86ff; text-decoration: none; align-self: flex-start; margin-top: auto; padding-top: 2px; }
+  .ann-card-link:hover { text-decoration: underline; }
+  .ann-card-link svg { width: 13px; height: 13px; flex-shrink: 0; }
+  .donate-anti-resale { margin-top: 10px; padding: 9px 12px; border-radius: 10px; background: var(--warn-soft); border: 1px solid rgba(245, 158, 11, .35); font-size: 12px; line-height: 1.6; color: var(--text); }
+  html[data-theme="brutal"] .donate-anti-resale { background: #fff0d1; border: 1.5px solid #14131a; box-shadow: 2px 2px 0 0 #14131a; }
   .modal-title { display: flex; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 700; margin-bottom: 12px; }
   .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
   .close { border: none; background: none; color: var(--text-3); font-size: 16px; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
@@ -590,6 +621,7 @@
         </div>
         
       </div>
+      <button class="icon-btn ann-btn" id="announcements-btn" title="公告"><span class="ann-ico" id="announcements-ico"></span><span class="ann-badge" id="announcements-badge" hidden></span></button>
       <button class="icon-btn" id="donate-btn" title="捐赠支持"></button>
       <!-- 聚合菜单（最右侧）：工作区 / 外观 / 语言 / 关于四分区，下拉紧贴按钮（图标由 JS 注入，Lucide 描边同款）。
            主题两处入口联动：菜单分段控件（跟随系统/亮色/暗色） + 头部独立按钮一键循环，都经 applyThemeMode 同一存储 -->
@@ -940,6 +972,10 @@
   <div class="modal">
     <div class="modal-title"><span data-i18n="捐赠支持">捐赠支持</span><button class="close" data-close>✕</button></div>
     <div class="hint" data-i18n="如果 CreditDaddy 对你有帮助，欢迎支持一下开发——免费渠道的每一行代码都是咖啡驱动的。">如果 CreditDaddy 对你有帮助，欢迎支持一下开发——免费渠道的每一行代码都是咖啡驱动的。</div>
+    <div class="donate-anti-resale">
+      <span style="font-weight:700" data-i18n="本软件永久免费开源，唯一官方发布渠道是 GitHub Releases——任何付费购买的版本均非官方。">本软件永久免费开源，唯一官方发布渠道是 GitHub Releases——任何付费购买的版本均非官方。</span>
+      <a href="https://github.com/techysy/CreditDaddy/releases" target="_blank" rel="noopener" style="margin-left:6px;color:#4f86ff;font-weight:600;text-decoration:none;white-space:nowrap" data-i18n="前往 GitHub Releases">前往 GitHub Releases</a>
+    </div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px">
       <div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 10px;border:1px solid var(--border-subtle);border-radius:10px">
         <span style="font-size:26px">⚡</span>
@@ -965,6 +1001,24 @@
       <span data-i18n="支付后请在备注里留下您的 GitHub 用户名 —— 便于将您署名加入贡献者列表 ❤️">支付后请在备注里留下您的 GitHub 用户名 —— 便于将您署名加入贡献者列表 ❤️</span>
     </div>
     <div class="modal-actions"><button class="btn primary" data-close data-i18n="关闭">关闭</button></div>
+  </div>
+</div>
+
+<!-- 公告弹窗（对齐 10Router AnnouncementsModal：等级色卡、90 天自动隐藏、最多展示 10 条、未读角标与本地持久化） -->
+<div class="mask" id="m-announcements">
+  <div class="modal" style="width:720px">
+    <div class="modal-title">
+      <span data-i18n="公告">公告</span>
+      <div class="row" style="gap:6px">
+        <button class="btn" id="ann-refresh-btn" title="检查最新公告" data-i18n="刷新">刷新</button>
+        <button class="close" data-close>✕</button>
+      </div>
+    </div>
+    <div id="announcements-body"></div>
+    <div class="modal-actions">
+      <button class="btn" id="ann-mark-read-btn" data-i18n="全部标为已读">全部标为已读</button>
+      <button class="btn primary" data-close data-i18n="关闭">关闭</button>
+    </div>
   </div>
 </div>
 
@@ -1301,6 +1355,9 @@ const I = {
   // 纸飞机（Lucide send）：飞书交流群入口用
   send: svg('<path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/>'),
   heart: svg('<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>'),
+  // 喇叭（Lucide megaphone）：顶栏公告入口
+  megaphone: svg('<path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>'),
+  extLink: svg('<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>'),
 };
 
 const $ = (id) => document.getElementById(id);
@@ -1763,6 +1820,7 @@ function initTheme() {
   withIcon('hm-home', I.github);      // 由头部独立图标收进「关于」分区
   withIcon('hm-restart', I.power);
   withIcon('feedback-btn', I.msg);
+  if ($('announcements-ico')) $('announcements-ico').innerHTML = I.megaphone;
   if ($('donate-btn')) $('donate-btn').innerHTML = I.heart;
   // 飞书交流群（<a> 无 id，按 href 定位）——纸飞机图标
   const fsLink = document.querySelector('#hmenu-pop a[href*="applink.feishu.cn"]');
@@ -1866,6 +1924,13 @@ function initTheme() {
     closeModal('m-google');
     openModal('m-donate');
   };
+  if ($('announcements-btn')) {
+    $('announcements-btn').onclick = () => {
+      closeHmenu();
+      closeModal('m-google');
+      openAnnouncementsModal(false);
+    };
+  }
 }
 
 // ── 状态 / 渲染 ──
@@ -6818,8 +6883,177 @@ document.querySelectorAll('.dash-cols .fold-head').forEach((h) => {
 });
 applyDashFold();
 
+// ── 在线公告（对齐 10Router AnnouncementsModal：90 天自动隐藏、最多展示 10 条、未读角标与本地已读持久化） ──
+const ANN_CACHE_KEY = 'cd.announcements.cache';
+const ANN_SEEN_KEY = 'cd.announcements.seen';
+const ANN_SYNC_KEY = 'cd.announcements.syncedAt';
+const ANN_SYNC_TTL_MS = 5 * 60 * 1000;
+const ANN_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
+const ANN_MAX_DISPLAY = 10;
+const ANN_LEVELS = new Set(['feature', 'promo', 'info', 'warning', 'critical']);
+const ANN_LEVEL_RANK = { critical: 0, warning: 1, promo: 2, feature: 3, info: 4 };
+let annSyncInFlight = false;
+let annCurrentIds = [];
+let annLoadSeq = 0;
+
+function annReadJson(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch { return fallback; }
+}
+function annWriteJson(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
+function readSeenAnnouncementIds() {
+  const ids = annReadJson(ANN_SEEN_KEY, []);
+  return Array.isArray(ids) ? ids : [];
+}
+function normalizeAnnouncementsFeed(raw) {
+  const items = Array.isArray(raw) ? raw : (Array.isArray(raw && raw.items) ? raw.items : []);
+  const now = Date.now();
+  return items
+    .filter((it) => it && typeof it.id === 'string' && typeof it.title === 'string')
+    .map((it) => ({
+      id: it.id,
+      title: it.title,
+      titleEn: typeof it.titleEn === 'string' ? it.titleEn : '',
+      body: typeof it.body === 'string' ? it.body : '',
+      bodyEn: typeof it.bodyEn === 'string' ? it.bodyEn : '',
+      date: typeof it.date === 'string' ? it.date : '',
+      level: ANN_LEVELS.has(it.level) ? it.level : 'info',
+      link: typeof it.link === 'string' && /^https?:\/\//.test(it.link) ? it.link : '',
+    }))
+    .filter((it) => {
+      const t = Date.parse(it.date);
+      return !Number.isFinite(t) || (now - t <= ANN_MAX_AGE_MS);
+    })
+    .sort((a, b) => {
+      const ra = ANN_LEVEL_RANK[a.level] ?? 4;
+      const rb = ANN_LEVEL_RANK[b.level] ?? 4;
+      if (ra !== rb) return ra - rb;
+      return (b.date || '').localeCompare(a.date || '');
+    });
+}
+function computeUnreadAnnouncements() {
+  const cached = normalizeAnnouncementsFeed(annReadJson(ANN_CACHE_KEY, null));
+  const seen = new Set(readSeenAnnouncementIds());
+  return cached.slice(0, ANN_MAX_DISPLAY).filter((it) => !seen.has(it.id)).length;
+}
+function renderAnnouncementsBadge() {
+  const badge = $('announcements-badge');
+  if (!badge) return;
+  const unread = computeUnreadAnnouncements();
+  badge.hidden = unread <= 0;
+  badge.textContent = unread > 0 ? (unread > 9 ? '9+' : String(unread)) : '';
+}
+function markAnnouncementsSeen(ids) {
+  if (!Array.isArray(ids) || !ids.length) return;
+  const merged = Array.from(new Set([...readSeenAnnouncementIds(), ...ids]));
+  annWriteJson(ANN_SEEN_KEY, merged);
+  renderAnnouncementsBadge();
+}
+async function syncAnnouncementsCache() {
+  if (annSyncInFlight) return;
+  if (Date.now() - Number(annReadJson(ANN_SYNC_KEY, 0)) < ANN_SYNC_TTL_MS) return;
+  annSyncInFlight = true;
+  try {
+    const data = await api('/api/announcements');
+    const items = normalizeAnnouncementsFeed(data);
+    annWriteJson(ANN_CACHE_KEY, { items });
+    annWriteJson(ANN_SYNC_KEY, Date.now());
+    renderAnnouncementsBadge();
+  } catch {
+    // 后台静默同步失败时保留旧缓存
+  } finally {
+    annSyncInFlight = false;
+  }
+}
+function renderAnnouncementsBody(items, { loading = false, stale = false, error = '' } = {}) {
+  const box = $('announcements-body');
+  if (!box) return;
+  if (loading && items.length === 0) {
+    box.innerHTML = '<div class="hint" style="padding:18px 0;text-align:center">' + esc(T('加载中…')) + '</div>';
+    return;
+  }
+  if (error && items.length === 0) {
+    box.innerHTML = '<div class="hint" style="padding:18px 0;text-align:center">' + esc(T('未能加载公告：')) + esc(error) + '</div>';
+    return;
+  }
+  if (items.length === 0) {
+    box.innerHTML = '<div class="hint" style="padding:18px 0;text-align:center">' + esc(T('暂无公告')) + '</div>';
+    return;
+  }
+  const shown = items.slice(0, ANN_MAX_DISPLAY);
+  const hiddenCount = items.length - shown.length;
+  const isEn = state.locale === 'en';
+  const parts = ['<div class="ann-grid">'];
+  if (stale) {
+    parts.push('<div class="ann-banner warn">' + esc(T('当前显示最近缓存，暂无法连接公告源。')) + '</div>');
+  }
+  if (hiddenCount > 0) {
+    parts.push('<div class="ann-banner">' + esc(T('仅展示最新 10 条公告，更早条目已自动隐藏。')) + '</div>');
+  }
+  for (const it of shown) {
+    const title = (isEn && it.titleEn) ? it.titleEn : it.title;
+    const body = (isEn && it.bodyEn) ? it.bodyEn : it.body;
+    parts.push('<article class="ann-card lvl-' + esc(it.level) + '">');
+    parts.push('<div class="ann-card-head"><div class="ann-card-title">' + esc(title) + '</div>'
+      + (it.date ? '<time class="ann-card-date">' + esc(it.date) + '</time>' : '') + '</div>');
+    if (body) parts.push('<p class="ann-card-body">' + esc(body) + '</p>');
+    if (it.link) {
+      parts.push('<a class="ann-card-link" href="' + esc(it.link) + '" target="_blank" rel="noopener">'
+        + esc(T('了解更多')) + I.extLink + '</a>');
+    }
+    parts.push('</article>');
+  }
+  parts.push('</div>');
+  box.innerHTML = parts.join('');
+}
+async function openAnnouncementsModal(forceCheck = false) {
+  const seq = ++annLoadSeq;
+  const cached = normalizeAnnouncementsFeed(annReadJson(ANN_CACHE_KEY, null));
+  annCurrentIds = cached.map((it) => it.id);
+  openModal('m-announcements');
+  renderAnnouncementsBody(cached, { loading: cached.length === 0 });
+  const refreshBtn = $('ann-refresh-btn');
+  if (refreshBtn) refreshBtn.disabled = true;
+  try {
+    const data = await api(forceCheck ? '/api/announcements?check=1' : '/api/announcements');
+    if (seq !== annLoadSeq) return;
+    const items = normalizeAnnouncementsFeed(data);
+    annWriteJson(ANN_CACHE_KEY, { items });
+    annWriteJson(ANN_SYNC_KEY, Date.now());
+    annCurrentIds = items.map((it) => it.id);
+    renderAnnouncementsBody(items, { stale: false });
+    const shownIds = items.slice(0, ANN_MAX_DISPLAY).map((it) => it.id);
+    if (shownIds.length) markAnnouncementsSeen(shownIds);
+    else renderAnnouncementsBadge();
+  } catch (err) {
+    if (seq !== annLoadSeq) return;
+    if (cached.length > 0) {
+      renderAnnouncementsBody(cached, { stale: true });
+      markAnnouncementsSeen(cached.slice(0, ANN_MAX_DISPLAY).map((it) => it.id));
+    } else {
+      renderAnnouncementsBody([], { error: (err && err.message) || 'Failed' });
+    }
+  } finally {
+    if (refreshBtn && seq === annLoadSeq) refreshBtn.disabled = false;
+  }
+}
+$('ann-refresh-btn')?.addEventListener('click', () => openAnnouncementsModal(true));
+$('ann-mark-read-btn')?.addEventListener('click', () => {
+  const ids = annCurrentIds.length ? annCurrentIds : normalizeAnnouncementsFeed(annReadJson(ANN_CACHE_KEY, null)).map((it) => it.id);
+  markAnnouncementsSeen(ids);
+  toast(T('已全部标为已读'), true);
+});
+window.addEventListener('storage', (e) => {
+  if (!e || !e.key || e.key === ANN_CACHE_KEY || e.key === ANN_SEEN_KEY) renderAnnouncementsBadge();
+});
+
 // ── 启动：先直接请求（本机模式无需密钥）；只有服务端返回 401 时才询问密钥 ──
 initTheme();
+renderAnnouncementsBadge();
 applyView();
 function hideBootBusy() { const b = $('boot-busy'); if (!b) return; clearTimeout(hideBootBusy._t); b.classList.add('fade'); setTimeout(() => b.remove(), 300); }
 (function boot() {
@@ -6828,6 +7062,7 @@ function hideBootBusy() { const b = $('boot-busy'); if (!b) return; clearTimeout
     hideBootBusy._t = setTimeout(hideBootBusy, 9000);
     applyDictFromServer().then(() => {
     window.__syncTheme?.();   // 头部主题按钮的图标/标题在字典到达后重渲染（initTheme 时字典还没到，T() 当时只能回落中文）
+    syncAnnouncementsCache().catch(() => {});
     loadStatus().then(loadAccounts).then(hideBootBusy, (e) => { toast(e.message, false); hideBootBusy(); });
     // 账号会话仪表盘卡的数据源（站点/会话计数、灵犀签到进度）：懒加载，到了就重绘仪表盘
     loadCookieSites().then(() => { if (state.view === 'dash') renderDash(); });
