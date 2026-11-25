@@ -525,7 +525,13 @@ export function collectMirasim(files, endpoint, now = Date.now()) {
     // viaRelay=true 的行走 mirasim 官方云中继，10R 没见过，才是 CD 该补的账。
     // direct 行 upstreamHost 全为 null 无从判上游，viaRelay 就是现成的分界（实测
     // relay 行全部是 claude/kimi 家族、direct 行全部是 glm/deepseek/gemini，零交叉）。
-    if (!e.viaRelay) { relayed++; continue; }
+    // antigravity 例外（2026-11-25 用户拍板纳入）：它是 mirasim 内置 agent，直连打的是
+    // Google 官方（agy.exe 内 cloudcode-pa / generativelanguage.googleapis.com），既不走
+    // mirasim 云中继也不走 10R（NAS 与本机实例都没有 gemini 通道），两侧零留痕——
+    // 「直连=10R 已记账」的前提对它不成立，不发就是永久漏账（实测 64 行 / 2.4 亿 token）。
+    // 将来若 10R 上了 gemini 通道，那条调用会带上 10R 的 upstreamHost，被上面的
+    // isSelfHostedUpstream 先拦下，不会双记。
+    if (!e.viaRelay && e.provider !== 'antigravity') { relayed++; continue; }
     if (!mirasimTokenTotal(e)) continue;   // 只有占位行（无定型行）的调用：没有可记的量，不发
     // 刚发生的调用可能还在补字段（durationMs / token 等），定型前先不发
     const tsMs = Date.parse(e.ts);

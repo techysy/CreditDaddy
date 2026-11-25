@@ -107,6 +107,27 @@ test('mirasim 双写去重：0-token 占位行不占坑，同 id 只发定型行
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('mirasim 直连：antigravity 例外放行，其余直连行仍按 10R 已记账跳过', () => {
+  // 直连行的默认口径是「上游就是本机 10R，10R 已原生记账」（2026-10-21 拍板），
+  // 但 antigravity 是 mirasim 内置 agent、直连 Google 官方，两侧都没留痕 → 必须发（2026-11-25 拍板纳入）。
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mir-direct-'));
+  const file = path.join(dir, 'usage-2026-11.ndjson');
+  const direct = (o) => ({ viaRelay: false, upstreamHost: null, status: 200, ...o });
+  fs.writeFileSync(file, [
+    direct({ id: 'ag1', ts: '2026-11-20T00:00:00.000Z', provider: 'antigravity', model: 'gemini-4-hydrogen', agent: 'antigravity', input: 8931, cacheRead: 356406, output: 3548, reasoning: 2745 }),
+    direct({ id: 'ag2', ts: '2026-11-20T01:00:00.000Z', provider: 'antigravity', model: 'gemini-3.8-flash', input: 0, output: 0 }),   // 0-token：照旧不发
+    direct({ id: 'glm', ts: '2026-11-20T02:00:00.000Z', provider: 'anthropic', model: 'glm-5.3-flashx', input: 99, output: 2 }),     // 直连 10R：跳过
+    direct({ id: 'ag-on-10r', ts: '2026-11-20T03:00:00.000Z', provider: 'antigravity', model: 'gemini-4-hydrogen', upstreamHost: '192.168.31.101:20127', input: 50, output: 5 }),   // 将来 10R 上了 gemini 通道：本机过滤先拦，不双记
+  ].map((r) => JSON.stringify(r)).join('\n') + '\n');
+  const cm = us.collectMirasim([file], 'http://192.168.31.101:20127');
+  assert.deepEqual(cm.entries.map((e) => e.meta.mirasimCallId), ['ag1'], '只有 antigravity 直连行发出');
+  assert.deepEqual(cm.entries[0].tokens, { prompt_tokens: 365337, completion_tokens: 3548, cache_read_input_tokens: 356406, reasoning_tokens: 2745 });
+  assert.equal(cm.entries[0].provider, 'mirasim-antigravity');
+  assert.ok(cm.notes.some((n) => n.includes('直连上游')), '其余直连行仍计入跳过说明');
+  assert.ok(cm.notes.some((n) => n.includes('经 10Router 中转')), '打到 10R 的 antigravity 行走本机过滤');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('增量筛选：水位线往前重叠 2 天，返回新的最大时间戳', () => {
   const e = (d) => ({ timestamp: new Date(Date.UTC(2026, 8, d)).toISOString() });
   const all = [e(1), e(10), e(19), e(20)];
