@@ -323,11 +323,13 @@ async function fetchViaProxy(url, { method = 'GET', headers = {}, body = null, t
   if (isHttps) {
     const socket = await connectTunnel(proxy, `${u.hostname}:443`);
     const tlsSocket = tls.connect({ socket, servername: u.hostname });
-    // TLS 握手失败（代理在 CONNECT 之后断链 / 证书异常）此前没有 'error' 监听：事件在交给
-    // https.request 之前发出 → 无监听者 → 按未捕获异常掀翻守护进程（2026-10-05 线上崩溃，issue #72）。
-    // 改成 await 握手完成，失败按普通请求错误抛给调用方（fetchJsonRace 照常回退另一条路）。
-    // 常驻的空监听兜住「握手成功 → request 接管 socket」之间的空窗；不影响 http 自己的错误处理
-    // ——'error' 广播给所有监听者，req 那条照走。
+    // issue #72 同一函数内的另一处隐患（报告者把 2026-10-05 那次崩溃归到这里）：
+    // tls.connect() 只给底层裸 socket 挂了监听，tlsSocket 自己要到交给 https.request 那一刻
+    // 才有监听者 —— 握手失败若落在这个交接窗口里就按 Unhandled 'error' event 掀翻守护进程。
+    // 常驻空监听封住窗口（PR #73）；再改成 await 握手完成（PR #74）：握手失败按普通请求
+    // 错误抛给调用方（fetchJsonRace 照常回退另一条路），且握手段从此被外部取消管住——
+    // 此前 request 尚未创建，signal 与 timeout 都还没接上，黑洞代理能把整条调用链吊死。
+    // 'error' 是广播语义：req 自己的错误路径照常走，请求该失败还是失败。
     tlsSocket.on('error', () => {});
     await new Promise((up, down) => {
       const off = () => { tlsSocket.removeListener('secureConnect', ok); tlsSocket.removeListener('error', fail); signal?.removeEventListener('abort', onAbort); };
@@ -336,8 +338,6 @@ async function fetchViaProxy(url, { method = 'GET', headers = {}, body = null, t
       const onAbort = () => fail(Object.assign(new Error('请求已取消'), { name: 'AbortError' }));
       tlsSocket.once('secureConnect', ok);
       tlsSocket.once('error', fail);
-      // 握手挂死也必须被两段式限时 / 墙钟 / 外部取消管住：此前 request 尚未创建，
-      // 那些 signal 与 timeout 都还没接上，黑洞代理会把整条调用链吊死
       if (signal) {
         if (signal.aborted) return fail(signal.reason || new Error('请求已取消'));
         signal.addEventListener('abort', onAbort, { once: true });
@@ -368,11 +368,10 @@ async function fetchViaProxy(url, { method = 'GET', headers = {}, body = null, t
       // 流式转发：经代理的响应（含网关 SSE 补全）逐块到达，而不是整包收完才 resolve——
       // 此前代理优先模式下客户端在整个生成期间一个字节都收不到，首 token 超时必然误报
       const pass = new PassThrough();
-      // destroy(err) 的 'error' 在下一 tick 才发出，而调用方要到开始读 body 才挂上监听——
-      // 上游在此之前掐断连接（代理优先 + 长流式最常见），事件就没有监听者，Node 按
-      // Unhandled 'error' event 直接 throw，整个守护进程退出（issue #72：47860 停摆 19 小时）。
-      // 兜一个监听者即可：pass 已进入 errored 状态，body 的读取照常 reject 同一个错误，
-      // 调用方语义不变（只是不再升级成进程级异常）。
+      // 必须挂一个 'error' 监听：上游中途掐断时 pass.destroy(err) 会发 'error'（下一 tick），
+      // 调用方若还没开始读 body，就没有监听者，Node 会按 Unhandled 'error' event
+      // 直接把整个守护进程带走（#72：47860 停摆 19 小时）。读 body 的一方仍会从迭代里
+      // 拿到这个错误——pass 已进入 errored 状态，body 读取照常 reject，调用方语义不变。
       pass.on('error', () => {});
       res.pipe(pass);
       res.on('error', (e) => pass.destroy(e));

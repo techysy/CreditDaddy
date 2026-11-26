@@ -71,6 +71,7 @@ import { liveToAccount as traeLiveAccount, detectTrae, switchTo as traeSwitchTo,
 import { liveToAccount as minimaxLiveAccount, detectMiniMax, detectMiniMaxBuildLang, currentMiniMaxUid, currentMiniMaxToken, currentMiniMaxRecordKey } from './minimaxLocal.js';
 import { liveToAccount as loomyLiveAccount, hardSwitchLoomy, currentLoomyUid, detectLoomy } from './loomyLocal.js';
 import { liveToAccount as dumateLiveAccount, detectDumate, readDumateCredential, hardSwitchDumate } from './dumateLocal.js';
+import { liveToAccount as autoclawLiveAccount, detectAutoclaw, currentAutoclawUid } from './autoclawLocal.js';
 import { liveToAccount as doubaoLiveAccount, detectDoubao, extractDoubaoUid, readDoubaoDeviceInfo } from './doubaoLocal.js';
 import * as minimaxGateway from './minimaxGateway.js';
 import * as traeGateway from './traeGateway.js';
@@ -92,7 +93,7 @@ import { PROVIDER_LABEL, APP_VERSION, PROVIDERS, PROJECT_URL } from './constants
 import { getLocale, setLocale, normalizeLocale, loadDict, t as tr } from './i18n.js';
 import { getAnnouncements } from './announcements.js';
 
-const PRODUCT_IDS = ['qoder', 'qwenwork', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'loomy', 'dumate'];
+const PRODUCT_IDS = ['qoder', 'qwenwork', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'loomy', 'dumate', 'autoclaw'];
 
 /** 面板访问密码：面板「设置」写入的 settings.json.panelKey 优先（可设 / 可关）；
  *  未设置（或被面板关闭）时回退环境变量 CREDITDADDY_PASSWORD（fnOS / 命令行部署注入），
@@ -2170,9 +2171,68 @@ async function handleApi(req, res, url) {
     }
   }
 
+  // ── AutoClaw 国内版（+86）短信直登：CD 独占的小号（口径 (a)，见 docs/autoclaw-login-invite-sync-feasibility.md） ──
+  if (p === '/api/autoclaw-cn/sms/send' && method === 'POST') {
+    const body = await readBody(req).catch(() => ({}));
+    try {
+      const { sendAutoclawSms } = await import('./autoclawAuth.js');
+      const r = await sendAutoclawSms(body?.phone);
+      return json(res, 200, { success: true, phone: r.phone });
+    } catch (e) {
+      return json(res, 400, { error: e.message });
+    }
+  }
+  if (p === '/api/autoclaw-cn/sms/login' && method === 'POST') {
+    const body = await readBody(req).catch(() => ({}));
+    try {
+      const { loginAutoclawSms } = await import('./autoclawAuth.js');
+      const r = await loginAutoclawSms({ phone: body?.phone, code: body?.code });
+      return json(res, 200, { success: true, duplicate: r.duplicate, account: publicAccount(r.account) });
+    } catch (e) {
+      return json(res, 400, { error: e.message });
+    }
+  }
+
+  // ── AutoClaw 邀请（裂变）码：端点反解自客户端 app.asar，10Router 全无实现 ──
+  // 我的邀请码（读）。⚠ 上游 bind_inviter_reward_event="bind_and_query"：读 status 也参与
+  // 发奖结算，所以这条只在面板打开弹窗时打一次，绝不进额度轮询 / 状态轮询。
+  const acMyInviteMatch = p.match(/^\/api\/accounts\/([\w-]+)\/autoclaw\/my-invite-code$/);
+  if (acMyInviteMatch && method === 'GET') {
+    const account = (await loadAccounts()).find((a) => a.id === acMyInviteMatch[1] && String(a.provider).startsWith('autoclaw'));
+    if (!account) return json(res, 404, { error: 'AutoClaw 账号不存在' });
+    try {
+      const { resolveAutoclawAuth, fetchAutoclawInviteStatus, normalizeAutoclawInvite } = await import('./autoclawClient.js');
+      // 凭据回写走标准 refreshContext（autoclaw 不在它的写回分支里 = 绝不写客户端文件）
+      const auth = await resolveAutoclawAuth(account, refreshContext(account, (m) => logger.info('AUTOCLAW', m, {})));
+      const data = await fetchAutoclawInviteStatus(auth.accessToken, { region: auth.region, deviceId: auth.deviceId });
+      return json(res, 200, { ok: true, ...normalizeAutoclawInvite(data) });
+    } catch (e) {
+      return json(res, e.auth ? 401 : 502, { error: e.message });
+    }
+  }
+  // 填写邀请码（写，有副作用：每号仅一次，成功不可撤销）
+  const acInviteMatch = p.match(/^\/api\/accounts\/([\w-]+)\/autoclaw\/invite$/);
+  if (acInviteMatch && method === 'POST') {
+    const body = await readBody(req).catch(() => ({}));
+    const code = String(body?.code || '').trim();
+    if (!code) return json(res, 400, { error: '缺少邀请码' });
+    const account = (await loadAccounts()).find((a) => a.id === acInviteMatch[1] && String(a.provider).startsWith('autoclaw'));
+    if (!account) return json(res, 404, { error: 'AutoClaw 账号不存在' });
+    try {
+      const { resolveAutoclawAuth, bindAutoclawInviteCode } = await import('./autoclawClient.js');
+      const auth = await resolveAutoclawAuth(account, refreshContext(account, (m) => logger.info('AUTOCLAW', m, {})));
+      await bindAutoclawInviteCode(auth.accessToken, code, { region: auth.region, deviceId: auth.deviceId });
+      logger.info('AUTOCLAW', '{name} 邀请码已绑定', { name: account.name || account.uid });
+      return json(res, 200, { ok: true });
+    } catch (e) {
+      logger.warn('AUTOCLAW', '{name} 邀请码绑定失败:{err}', { name: account.name || account.uid, err: e.message });
+      return json(res, e.auth ? 401 : 400, { error: e.message });
+    }
+  }
+
   // ── 本机检测 / 凭据扫描 ──
   if (p === '/api/local/detect' && method === 'GET') {
-    return json(res, 200, { apps: detectQoderApps(), qwenwork: detectQwenworkApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), trae: detectTrae(), minimax: detectMiniMax(), loomy: detectLoomy(), dumate: detectDumate(), doubao: detectDoubao(), legacy: detectInstalls() });
+    return json(res, 200, { apps: detectQoderApps(), qwenwork: detectQwenworkApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), trae: detectTrae(), minimax: detectMiniMax(), loomy: detectLoomy(), dumate: detectDumate(), autoclaw: detectAutoclaw(), doubao: detectDoubao(), legacy: detectInstalls() });
   }
   if (p === '/api/local/scan' && method === 'POST') {
     const existing = await loadAccounts();
@@ -2285,6 +2345,14 @@ async function handleApi(req, res, url) {
       const dm = await dumateLiveAccount();
       if (dm) addRecord(dm, { source: 'DuMate 当前登录', current: true });
     } catch (e) { errors.push({ file: 'qianfan-desktop-app/auth.json', error: e.message }); }
+    // 8.6) AutoClaw（智谱澳龙）桌面客户端：本地解密 %APPDATA%\autoclaw\auth.json
+    //      （Electron safeStorage：Local State + DPAPI + v10 AES-256-GCM，复用 qoderApp 的 codec）。
+    //      归属线由 JWT 的 source_id 决定（agent* = 国内短信号），liveToAccount 已按实际线返回 provider，
+    //      所以面板选「AutoClaw」也能把国内号导进正确的线。只读，不写客户端文件。
+    try {
+      const ac = await autoclawLiveAccount();
+      if (ac) addRecord(ac, { source: 'AutoClaw 当前登录', current: true });
+    } catch (e) { errors.push({ file: 'autoclaw/auth.json', error: e.message }); }
     // 8.7) 豆包桌面客户端：本地解密 User Data\Network\Cookies（DPAPI + AES-256-GCM + DuplicateHandle 热提取）
     try {
       const db = await doubaoLiveAccount();
@@ -2588,6 +2656,7 @@ async function handleApi(req, res, url) {
         lingxi: dayKey(Date.now(), 'lingxi'),   // 网页会话签到线（#53）：0 点翻日，徽标/isDone 的日界比对用
         meoo: dayKey(Date.now(), 'meoo'),       // Meoo 首登积分线：同为 0 点翻日
         dumate: dayKey(Date.now(), 'dumate'),   // DuMate 每日登录赠送积分：0 点翻日
+        autoclaw: dayKey(Date.now(), 'autoclaw'),   // AutoClaw 每日签到：上游按北京时间 0 点换日（10R autoclawCheckin 同口径）
         zcode: dayKey(Date.now(), 'zcode'),     // ZCode 活动领取：单日活动 0 点刷新——徽标按日界而非 26h 窗口（2026-11-20 用户实测「还有前一天的领取记录」）
       },
       scheduler: await getSchedulerInfo(),
@@ -2639,6 +2708,9 @@ async function handleApi(req, res, url) {
       loomyClient: (() => { const d = detectLoomy(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       dumateClient: (() => { const d = detectDumate(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       dumateCurrentUid: readDumateCredential()?.uid || null,
+      // AutoClaw：一个客户端只登一个号（国际/国内由 JWT source_id 决定归属），所以单套字段
+      autoclawClient: (() => { const d = detectAutoclaw(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
+      autoclawCurrentUid: currentAutoclawUid(),
       doubaoClient: (() => { const d = detectDoubao(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       // 首次启动免费声明（反倒卖三件套）：面板按此决定开屏是否弹一次；确认后 PUT 落盘
       freeNoticeShown: (await loadSettings().catch(() => ({}))).freeNoticeShown === true,
