@@ -1566,7 +1566,7 @@ const PROV = {
   quwork: { prod: 'quwork', prodLabel: 'QuWork', region: '', cls: '' },
   meoo: { prod: 'meoo', prodLabel: 'Meoo 秒悟', region: '', cls: '' },
 };
-// 支持每日签到的产品（ZCode / mirasim / 妙手 额度靠套餐或滚动窗口发放，不做签到）
+// 支持每日签到的产品（ZCode / mirasim / 妙手 额度靠套餐、按笔额度或滚动窗口发放，不做签到）
 const CHECKIN_PRODUCTS = new Set(['qoder', 'workbuddy', 'trae', 'minimax', 'croli', 'quwork']);
 // 账号会话卡支持「立即签到」的站点：provider 在 providers.js 挂了 checkin 且非 entryOnly
 const FREE_CHECKIN_SITES = new Set(['lingxi', 'meoo', 'doubao']);
@@ -2164,35 +2164,78 @@ function creditHtml(a) {
       + '<span class="credit dim">' + planBadge + (planBadge && expHtml ? ' · ' : '') + expHtml + '</span></div>';
   }
 
-  // 多窗口配额体系（mirasim 等）：每个窗口平等等权，独立一行带分散对齐的名称、数值与三档细水位条
-  if (a.product === 'mirasim' && q.parts && q.parts.length) {
-    const isExhausted = q.exceeded || (q.remaining <= 0);
+  // mirasim 现行「额度」口径（2026-11-25 对照 mirasim 设置 › 额度页重做）：
+  // 主数 = 个人额度余额，逐笔一行带绝对到期日（先用最早到期的那笔）；空间额度只在
+  // 本机客户端连着空间时补一行。老「5h 滚动窗口 / 7d 全局上限 / 分模型上限」那套平台
+  // 额度已不是现行发放方式，不再展示——它的 reset_at 还是 2126 年的占位值，按周期
+  // 倒计时渲染会算出「36492 天后重置」这种荒谬数字。
+  if (a.product === 'mirasim' && (q.lots || q.windows)) {
+    const lots = q.lots || [];
+    const windows = q.windows || [];
+    // mirasim 额度页的「额度明细」只列还没用完的笔（花完的进「额度变动」历史），同口径
+    const alive = lots.filter((l) => l.remaining > 0);
     const planBadge = q.plan ? '<span class="badge">' + esc(T(q.plan)) + T(' 套餐</span>') : '';
-    const expLabel = q.planExpiresAt ? '<span class="dim">' + fmtTime(q.planExpiresAt).slice(0, 10) + T(' 到期</span>') : '';
-    // 状态采用温和的徽章，避免整行大红字制造恐慌
-    // pill 不再用 mirasimClient 拼好的 bottleneckLabel（上游窗口名原文 + '已用尽' 拼串，
-    // 英文界面会出「30d已用尽」这类混语）——改面板侧按词典分别 T()：窗口名走词条
-    // （'5小时窗口'→'5h window' 等，上游新名如 '30d' 拉丁原样），「已用尽」单独走词条。
-    const topStatus = isExhausted
+    const isExhausted = q.exceeded || (q.remaining <= 0);
+    // 个人额度接口读不到、又没有降级余量时如实显示「—」，不编一个 0 出来
+    const noNumber = q.warning || (q.partial && !(q.total > 0) && !(q.space && q.space.remaining > 0));
+    const topStatus = noNumber
+      ? T('<span class="lbl">可用额度</span><b>—</b>')
+      : isExhausted
       ? '<span class="pill pending">' + esc(q.bottleneck ? T(q.bottleneck.name) + T('已用尽') : T('额度已用尽')) + '</span>'
-      : T('<span class="lbl">可用额度</span><b>') + fmtNum(q.remaining) + '%</b>';
+      : T('<span class="lbl">可用额度</span><b>') + fmtNum(q.remaining) + '</b>' + esc(T(q.unit || '额度'));
 
-    const fmtUnits = (n) => (n >= 10000 ? (n / 10000).toFixed(2) + T('万') : fmtNum(Math.round(n)));
-    const rows = q.parts.map((p) => {
-      const pct = p.remainingPercentage ?? (p.total > 0 ? Math.max(0, Math.min(100, (p.remaining / p.total) * 100)) : 0);
-      const isZero = pct <= 0;
-      const numTxt = p.total > 0 ? fmtUnits(p.remaining) + ' / ' + fmtUnits(p.total) : '';
-      // 数值保持中性温和排版，不用鲜红大字恐吓用户
-      const pctTxt = isZero
-        ? T('<span class="dim">剩 0%</span>')
-        : T('<span>剩 ') + fmtNum(pct) + '%</span>';
-      const valHtml = pctTxt + (numTxt ? ' <small class="dim">(' + numTxt + ')</small>' : '') + ' ' + relResetHtml(p);
-      return trLine(p.name, valHtml) + trMeter(pct);
-    }).join('');
+    const dimBits = [];
+    if (planBadge) dimBits.push(planBadge);
+    // 与 mirasim 额度页同措辞：「最早一笔 2027-02-22 到期」
+    if (q.earliestExpiresAt) dimBits.push(T('最早一笔 ') + fmtTime(q.earliestExpiresAt).slice(0, 10) + T(' 到期'));
+    if (q.space) dimBits.push(T('空间额度 余 ') + fmtNum(q.space.remaining));
+
+    const lotRow = (l) => {
+      const pct = l.total > 0 ? Math.max(0, Math.min(100, (l.remaining / l.total) * 100)) : 0;
+      const val = T('<span>剩 ') + fmtNum(l.remaining) + ' / ' + fmtNum(l.total) + '</span>'
+        + ' <small class="dim">' + (l.expiresAt ? fmtTime(l.expiresAt).slice(0, 10) + T(' 到期') : T('不过期')) + '</small>';
+      return trLine(T(l.name), val) + trMeter(pct);
+    };
+    // 逐笔按到期先后排（与消费次序一致）
+    let rows = alive.map(lotRow).join('');
+    if (!rows && windows.length && !lots.length) {
+      // 降级：个人额度接口不可用（lots 读不到），只剩老窗口——按百分比展示
+      // （绝对值是「分」单位，不能直接示人）。笔全部用尽时不走这里：顶部已有
+      // 「个人额度已用尽」，再把 30d 窗口行塞回来就是用户截图里那行老口径。
+      rows = windows.map((w) => trLine(T(w.name), T('<span>剩 ') + fmtNum(w.remainingPercentage) + '%</span>') + trMeter(w.remainingPercentage)).join('');
+    }
+
+    // 分段条：逐笔剩余额按额度占比分段，用掉的部分补灰尾段
+    const barTotal = q.total > 0 ? q.total : 0;
+    let bar = '';
+    if (barTotal > 0 && alive.length) {
+      bar = alive.map((l, i) => '<span class="seg" style="flex:' + (l.remaining / barTotal).toFixed(4)
+        + ' 1 0;--a:' + Math.max(.45, .85 - i * .05) + '" title="' + esc(T(l.name)) + T('：剩余 ') + fmtNum(l.remaining) + ' / ' + fmtNum(l.total)
+        + (l.expiresAt ? T('，') + fmtTime(l.expiresAt).slice(0, 10) + T(' 到期') : '') + '"></span>').join('');
+      const usedAmt = Math.max(0, barTotal - alive.reduce((s, l) => s + l.remaining, 0));
+      if (usedAmt > 0) bar += '<span class="seg used" style="flex:' + (usedAmt / barTotal).toFixed(4) + ' 1 0" title="' + T('已使用 ') + fmtNum(usedAmt) + '"></span>';
+    } else if (barTotal > 0) {
+      const p = Math.min(100, Math.max(0, q.remainingPercentage || 0));
+      bar = '<span class="seg" style="flex:' + (p / 100).toFixed(4) + ' 1 0"></span>'
+        + (p < 99.99 ? '<span class="seg used" style="flex:' + ((100 - p) / 100).toFixed(4) + ' 1 0"></span>' : '');
+    }
+
+    // 与 mirasim 额度页同措辞：「Antigravity、Claude Code、Pi 等 5 个单独设了来源，不跟这里走」
+    const srcs = q.agentSources || [];
+    let srcNote = '';
+    if (srcs.length) {
+      const names = srcs.map((x) => x.label);
+      const shown = names.slice(0, 3).join('、') + (names.length > 3 ? T(' 等 {n} 个', { n: names.length }) : '');
+      const detail = srcs.map((x) => x.label + '：' + T(x.source === 'local' ? '本机账号' : 'Mirasim 额度')).join('\n');
+      srcNote = '<div class="dim" style="font-size:11px;margin-top:3px" title="' + esc(detail) + '">'
+        + esc(shown) + T(' 单独设了额度来源，不跟这里的额度走') + '</div>';
+    }
 
     return '<div class="credit-line"><span class="credit">' + topStatus + '</span>'
-      + '<span class="credit dim">' + planBadge + (planBadge && expLabel ? ' · ' : '') + expLabel + '</span></div>'
-      + '<div class="mirasim-windows">' + rows + '</div>';
+      + '<span class="credit dim">' + dimBits.join(' · ') + '</span></div>'
+      + (rows ? '<div class="mirasim-windows" title="' + T('先用最早到期的那笔') + '">' + rows + '</div>' : '')
+      + srcNote
+      + (bar ? '<div class="bar">' + bar + '</div>' : '');
   }
 
   const unit = q.unit ? ' ' + T(q.unit) : '';
@@ -2761,7 +2804,11 @@ function renderDash() {
       }
     } else if (p.id === 'mirasim') {
       const planned = list.filter((a) => { const q = state.quotas[a.id]; return q && !q.error && !q.empty; }).length;
-      rows = T('<span class="lbl">额度体系</span><span class="val dim">5h / 7d 滚动窗口</span>')
+      // 现行口径：个人额度按笔有效期（先用最早到期的），另有空间额度按成员分配
+      let miraRem = 0, miraKnown = 0;
+      for (const a of list) { const q = state.quotas[a.id]; if (!q || q.error || q.empty) continue; miraKnown++; miraRem += Number(q.remaining) || 0; }
+      rows = T('<span class="lbl">额度体系</span><span class="val dim">个人额度按笔到期</span>')
+        + T('<span class="lbl">可用额度</span><span class="val">') + (miraKnown ? fmtNum(miraRem) : '-') + '</span>'
         + T('<span class="lbl">有效套餐</span><span class="val">') + planned + ' / ' + list.length + '</span>';
     } else if (p.id === 'catpaw') {
       const withPlan = list.filter((a) => { const q = state.quotas[a.id]; return q && !q.error && q.plan; });
@@ -2956,7 +3003,8 @@ function renderStatus() {
       + catpawClientChip(s);
   } else if (state.view === 'mirasim') {
     n.style.display = '';
-    n.innerHTML = T('mirasim（原生 AI 编程开发环境）额度按「平台额度」（5h 滚动窗口、7d 全局上限与分模型上限）分配。Token 约 1 小时过期，读取额度时会自动用 refreshToken 静默续期并同步回客户端，无需手动处理。')
+    n.innerHTML = T('mirasim（原生 AI 编程开发环境）现行额度口径：额度来源分「本机账号 / 个人额度 / 空间额度」三种——个人额度按笔有效期（每笔到账起 6 个月内有效，加赠券多得的从开始使用起 30 天），先用最早到期的那笔；空间额度由空间所有者按成员分配。Token 约 1 小时过期，读取额度时会自动用 refreshToken 静默续期并同步回客户端，无需手动处理。')
+      + T('各智能体单独设定的额度来源读自本机 mirasim 客户端的记录（~/.mirasim/collab/person-agent-routes.json），账号卡片里会列出「单独设了额度来源」的那些；「本机账号」的数量与用量只在 mirasim 客户端界面里，没有对外查询接口，CreditDaddy 读不到，因此这里只统计个人额度与空间额度。')
       + T('切换账号需要至少两个已导入的账号（当前登录 + 目标账号）：先在「添加账号 → 本机导入」把各账号分别导入，切换时当前登录会自动保存、目标账号写入客户端，桌面版切完自动重启 mirasim。')
       + mirasimClientChip(s);
   } else if (state.view === 'zcode') {

@@ -24,40 +24,113 @@ test('mirasim 加密与解密互逆', () => {
   assert.equal(dec, plain);
 });
 
-test('normalizeMirasimLimits：正确解析 5h、7d 窗口及模型上限', () => {
-  const mockLimits = {
-    subject: 'usr_test123',
-    suspended: false,
-    windows: [
-      { name: '5h', used: 1000, budget: 10000, reset_at: 1790500000 },
-      { name: '7d', used: 50000, budget: 100000, reset_at: 1790700000 },
-      { name: '7d_claude', used: 25000, budget: 50000, reset_at: 1790700000 },
+// 现行「额度」口径（2026-11-25 对照 mirasim 设置 › 额度页实测）：
+// 主数据源是 relay /v1/credits/activity 的 balance.lots（按笔有效期、先用最早到期的），
+// 接口单位是「分」，UI ÷100；/v1/limits 的 5h/7d 平台额度窗口已不是现行发放方式。
+const REAL_ACTIVITY = {
+  period: { resetAt: null },
+  balance: {
+    remaining: 765.1752675,
+    lots: [
+      { id: '18931', credits: 500, remaining: 0, grantedAt: 1795450253066, expiresAt: 1803226253083, kind: 'payout', reward: { campaign: 'invite', kind: 'tier' } },
+      { id: '19319', credits: 1000, remaining: 764.1752675, grantedAt: 1795532586814, expiresAt: 1803308586833, kind: 'payout', reward: { campaign: 'invite', kind: 'tier' } },
+      { id: '4545', credits: 1, remaining: 1, grantedAt: 1792742443032, expiresAt: 1808495999000, kind: 'carry' },
     ],
-  };
-  const mockProfile = {
-    id: 'usr_test123',
-    name: '测试用户',
-    email: 'test@example.com',
-    plan: 'plus',
-    plan_exp: 1791500000,
-  };
+  },
+  items: [],
+};
+// 真机同批抓到的老接口响应：只剩一个 30d 池，reset_at 是 2126 年的占位值
+const REAL_LIMITS = {
+  subject: 'usr_test123', suspended: false, unmetered: false, degraded: false, paid: true,
+  windows: [{ name: '30d', used: 735.8247325, budget: 1501, reset_at: 4948563644 }],
+};
+const REAL_PROFILE = { id: 'usr_test123', name: '测试用户', email: 't@example.com', plan: 'go', plan_exp: 1808495999 };
 
-  const q = mc.normalizeMirasimLimits(mockLimits, mockProfile);
-  assert.equal(q.plan, 'PLUS');
-  assert.ok(q.planExpiresAt);
-  assert.equal(q.unit, '%');
-  assert.equal(q.parts.length, 3);
-  assert.equal(q.parts[0].name, '5小时窗口');
-  assert.equal(q.parts[0].percent, 10);
-  assert.equal(q.parts[0].remaining, 9000);
-  assert.equal(q.parts[1].name, '7天全局窗口');
-  assert.equal(q.parts[1].percent, 50);
-  assert.equal(q.parts[2].name, '7天 Claude 上限');
-  assert.equal(q.parts[2].percent, 50);
-  assert.equal(q.used, 50, '瓶颈短板原则：7d 剩余更少，已用取短板 50%');
-  assert.equal(q.remaining, 50);
+test('normalizeMirasimQuota：个人额度按笔 + 分→额度换算（与 mirasim 额度页逐位一致）', () => {
+  const q = mc.normalizeMirasimQuota({ activity: REAL_ACTIVITY, limits: REAL_LIMITS, profile: REAL_PROFILE });
+  assert.equal(q.unit, '额度');
+  assert.equal(q.plan, 'GO');
+  assert.equal(q.planExpiresAt, new Date(1808495999 * 1000).toISOString());
+  // 主数 7.65；总额取「还没用完的笔」之和（额度明细同口径，不是含已花完笔的 15.01）
+  assert.equal(q.remaining, 7.65);
+  assert.equal(q.total, 10.01);
+  assert.equal(q.used, 2.36);
+  assert.equal(q.remainingPercentage, 76.4);
+  assert.equal(q.partial, false);
+  assert.equal(q.empty, false);
   assert.equal(q.exceeded, false);
+  assert.equal(q.bottleneck, null);
+  // 逐笔：已花完的 5.00 笔仍在 lots 里（面板按「明细只列未用完」过滤），按到期先后排
+  assert.equal(q.lots.length, 3);
+  assert.deepEqual(q.lots.map((l) => l.name), ['邀请奖励', '邀请奖励', '原有余额']);
+  assert.deepEqual(q.lots.map((l) => l.remaining), [0, 7.64, 0.01]);
+  assert.deepEqual(q.lots.map((l) => l.total), [5, 10, 0.01]);
+  assert.equal(q.lots[1].expiresAt, new Date(1803308586833).toISOString());
+  // 最早一笔到期 = 第一笔还没用完的（2027-02-22），不是套餐到期
+  assert.equal(q.earliestExpiresAt, new Date(1803308586833).toISOString());
 });
+
+test('normalizeMirasimQuota：30d 池窗口的占位 reset_at 不再算成「N 天后重置」', () => {
+  const q = mc.normalizeMirasimQuota({ activity: REAL_ACTIVITY, limits: REAL_LIMITS, profile: REAL_PROFILE });
+  assert.equal(q.windows.length, 1);
+  assert.equal(q.windows[0].name, '30d');
+  assert.equal(q.windows[0].resetAt, null, '非 5h/7d 的窗口不给周期重置时间');
+  assert.equal(q.windows[0].expiresAt, null);
+  // 真窗口（5h/7d）仍保留重置时间
+  const w = mc.normalizeMirasimWindows({ windows: [{ name: '5h', used: 10, budget: 100, reset_at: 1790500000 }, { name: '7d_claude', used: 1, budget: 10, reset_at: 1790600000 }] });
+  assert.equal(w[0].name, '5小时窗口');
+  assert.equal(w[0].resetAt, new Date(1790500000 * 1000).toISOString());
+  assert.equal(w[1].name, '7天 Claude 上限');
+});
+
+test('normalizeMirasimQuota：空间额度按成员分配（me.remaining 为 null 表示不限，退空间余额）', () => {
+  const capped = mc.normalizeMirasimQuota({ activity: REAL_ACTIVITY, spaceCredit: { balance: 500000, me: { remaining: 123400, payer: 'space' } } });
+  assert.equal(capped.space.remaining, 1234);
+  assert.equal(capped.space.payer, 'space');
+  const uncapped = mc.normalizeMirasimQuota({ activity: REAL_ACTIVITY, spaceCredit: { balance: 300000, me: { remaining: null } } });
+  assert.equal(uncapped.space.remaining, 3000);
+  const none = mc.normalizeMirasimQuota({ activity: REAL_ACTIVITY });
+  assert.equal(none.space, null);
+});
+
+test('normalizeMirasimQuota：个人额度接口不可用时按老 30d 池降级，多窗口时不编余额', () => {
+  const degraded = mc.normalizeMirasimQuota({ limits: REAL_LIMITS, profile: REAL_PROFILE });
+  assert.equal(degraded.partial, true);
+  assert.equal(degraded.empty, false);
+  assert.equal(degraded.remaining, 7.65, '单池窗口 budget-used 与 balance.remaining 同源');
+  assert.equal(degraded.total, 15.01);
+  // 多个并行窗口（老 5h/7d 发放方式）没有「余额」可言
+  const multi = mc.normalizeMirasimQuota({ limits: { windows: [{ name: '5h', used: 10, budget: 100, reset_at: 1 }, { name: '7d', used: 50, budget: 100, reset_at: 2 }] } });
+  assert.equal(multi.partial, true);
+  assert.equal(multi.remaining, 0);
+  assert.equal(multi.windows.length, 2);
+  const nothing = mc.normalizeMirasimQuota({});
+  assert.equal(nothing.empty, true);
+});
+
+test('normalizeMirasimQuota：额度用尽与 suspended 熔断', () => {
+  const spent = { balance: { remaining: 0, lots: [{ id: '1', credits: 100, remaining: 0, grantedAt: 1, expiresAt: 1803226253083, kind: 'token_pack' }] }, items: [] };
+  const q = mc.normalizeMirasimQuota({ activity: spent, profile: { plan: 'go' } });
+  assert.equal(q.remaining, 0);
+  assert.equal(q.exceeded, true);
+  assert.deepEqual(q.bottleneck, { name: '个人额度' });
+  assert.equal(q.earliestExpiresAt, null, '没有可用笔时不给「最早一笔」');
+  // 个人额度见底但空间额度还有：不算用尽
+  const q2 = mc.normalizeMirasimQuota({ activity: spent, spaceCredit: { balance: 100000, me: { remaining: 100000 } } });
+  assert.equal(q2.exceeded, false);
+  // suspended 一律熔断
+  assert.equal(mc.normalizeMirasimQuota({ activity: REAL_ACTIVITY, limits: { suspended: true, windows: [] } }).exceeded, true);
+  // 末笔扣穿后服务端余额为负（真机 2026-11-26：balance.remaining = -2.27 分、各笔 remaining 归零）：
+  // 显示口径钳到 0，绝不把 -0.02 端上面板
+  const over = { balance: { remaining: -2.2665525, lots: [
+    { id: '1', credits: 1000, remaining: 0, grantedAt: 1, expiresAt: 1803308586833, kind: 'payout', reward: { campaign: 'invite' } },
+  ] }, items: [] };
+  const q3 = mc.normalizeMirasimQuota({ activity: over, limits: { windows: [{ name: '30d', used: 1503.27, budget: 1501, reset_at: 4948563644 }] } });
+  assert.equal(q3.remaining, 0, '负余额钳到 0');
+  assert.equal(q3.exceeded, true);
+  assert.ok(q3.lots.length === 1 && q3.lots[0].remaining === 0, '笔仍逐条给出（remaining 0），面板据此不退回老窗口行');
+});
+
 
 test('mirasim switchTo：保留其他配置，原子替换 auth', async () => {
   const p = ml.mirasimPaths();
@@ -134,14 +207,23 @@ test('fetchMirasimQuota：401 后自动刷新并重试，经 ctx.onRefresh 回�
       return new Response(JSON.stringify({ access_token: 'fresh-token', refresh_token: 'fresh-rt' }), { status: 200, headers: { 'content-type': 'application/json' } });
     }
     if (auth.endsWith('stale-token')) return new Response('unauthorized', { status: 401 });
-    return new Response(JSON.stringify({ subject: 'usr_x', windows: [{ name: '5h', used: 10, budget: 100, reset_at: 1790700000 }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    const body = String(url).includes('/v1/credits/activity')
+      ? REAL_ACTIVITY
+      : String(url).includes('/v1/limits')
+        ? { subject: 'usr_x', windows: [{ name: '30d', used: 1000, budget: 2000, reset_at: 4948563644 }] }
+        : String(url).includes('/auth/me')
+          ? REAL_PROFILE
+          : null;   // 空间额度等其它路径一律 404：本机没连空间
+    if (!body) return new Response('not found', { status: 404 });
+    return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
   };
   try {
     zcNet._setViaProxyForTests(() => { throw new Error('no proxy in test'); });
     const account = { token: 'stale-token', refreshToken: 'rt-1' };
     const refreshed = [];
     const quota = await mc.fetchMirasimQuota(account, { onRefresh: async (c) => refreshed.push(c) });
-    assert.equal(quota.parts.length, 1);
+    assert.equal(quota.remaining, 7.65, '现行口径主数取个人额度余额');
+    assert.equal(quota.partial, false);
     assert.equal(account.token, 'fresh-token', '内存中的 token 应已换新');
     assert.equal(account.refreshToken, 'fresh-rt', '轮换后的 refreshToken 应已保存');
     assert.equal(refreshed.length, 1, 'onRefresh 应收到新凭据');
@@ -149,6 +231,74 @@ test('fetchMirasimQuota：401 后自动刷新并重试，经 ctx.onRefresh 回�
     globalThis.fetch = realFetch;
     zcNet._setViaProxyForTests(null);
   }
+});
+
+test('fetchMirasimQuota：现行 credits/activity 读不到时不报错，按老窗口降级并标 partial', async () => {
+  const realFetch = globalThis.fetch;
+  const zcNet = await import('../src/zcodeClient.js');
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('/v1/credits/activity')) return new Response('rate limited', { status: 429 });
+    if (String(url).includes('/auth/me')) return new Response(JSON.stringify(REAL_PROFILE), { status: 200, headers: { 'content-type': 'application/json' } });
+    if (String(url).includes('/v1/limits')) return new Response(JSON.stringify(REAL_LIMITS), { status: 200, headers: { 'content-type': 'application/json' } });
+    return new Response('not found', { status: 404 });
+  };
+  try {
+    zcNet._setViaProxyForTests(() => { throw new Error('no proxy in test'); });
+    const quota = await mc.fetchMirasimQuota({ token: 'tk' });
+    assert.equal(quota.partial, true);
+    assert.equal(quota.remaining, 7.65, '老 30d 池 budget-used 与余额同源，可当降级余量');
+    assert.equal(quota.lots.length, 0);
+  } finally {
+    globalThis.fetch = realFetch;
+    zcNet._setViaProxyForTests(null);
+  }
+});
+
+test('currentSpaceNodeId：从客户端 setting.json 的 cloudAttachState 读空间 nodeId', () => {
+  const p = ml.mirasimPaths();
+  fs.mkdirSync(path.dirname(p.setting), { recursive: true });
+  fs.writeFileSync(p.setting, JSON.stringify({ auth: { userId: 'usr_a' }, cloudAttachState: { nodeId: 'pc-abc' } }, null, 2));
+  assert.equal(ml.currentSpaceNodeId(), 'pc-abc');
+  fs.writeFileSync(p.setting, JSON.stringify({ auth: { userId: 'usr_a' } }, null, 2));
+  assert.equal(ml.currentSpaceNodeId(), null, '未连接云端时返回 null');
+});
+
+test('agentCreditSources：读本机 collab/person-agent-routes.json 的各智能体额度来源', () => {
+  const p = ml.mirasimPaths();
+  fs.mkdirSync(path.dirname(p.personAgentRoutes), { recursive: true });
+  // 真机结构（宿主 collab/person-agent-routes.ts）：routes[uid][agent] = 'local' | 'cloud'
+  fs.writeFileSync(p.personAgentRoutes, JSON.stringify({
+    version: 2,
+    routes: {
+      usr_me: { antigravity: 'local', claude: 'local', pi: 'local', qwen: 'local', zcode: 'local' },
+      usr_other: { claude: 'cloud' },
+    },
+    pinned: {},
+  }));
+  const mine = ml.agentCreditSources('usr_me');
+  assert.equal(mine.length, 5, '应列出 5 个单独设了来源的智能体');
+  assert.deepEqual(mine.map((x) => x.id), ['antigravity', 'claude', 'pi', 'qwen', 'zcode'], '按 id 排序稳定');
+  assert.equal(mine.find((x) => x.id === 'claude').label, 'Claude Code', 'id 映射 mirasim 界面显示名');
+  assert.equal(mine[0].source, 'local');
+  // 别人的条目不算在自己头上
+  assert.equal(ml.agentCreditSources('usr_other').length, 1);
+  // 未知 id 保留原样（mirasim 后续新增智能体不至于显示成空）
+  fs.writeFileSync(p.personAgentRoutes, JSON.stringify({ version: 2, routes: { usr_me: { newagent: 'cloud' } } }));
+  assert.deepEqual(ml.agentCreditSources('usr_me'), [{ id: 'newagent', label: 'newagent', source: 'cloud' }]);
+  assert.deepEqual(ml.agentCreditSources('usr_none'), [], '该 uid 没有条目 = 全部跟随全局默认');
+  assert.deepEqual(ml.agentCreditSources(null), [], '无 uid 直接空');
+  fs.writeFileSync(p.personAgentRoutes, JSON.stringify({ version: 2, routes: { usr_me: { claude: 'bogus', codex: 'local' } } }));
+  assert.deepEqual(ml.agentCreditSources('usr_me'), [{ id: 'codex', label: 'Codex', source: 'local' }], '非法取值按宿主校验口径丢弃');
+  fs.rmSync(p.personAgentRoutes);
+  assert.deepEqual(ml.agentCreditSources('usr_me'), [], '文件缺失不抛');
+});
+
+test('normalizeMirasimQuota：透传 agentSources 供面板提示', () => {
+  const q = mc.normalizeMirasimQuota({ activity: REAL_ACTIVITY, limits: REAL_LIMITS, profile: REAL_PROFILE, agentSources: [{ id: 'claude', label: 'Claude Code', source: 'local' }] });
+  assert.equal(q.agentSources.length, 1);
+  assert.equal(q.agentSources[0].label, 'Claude Code');
+  const q2 = mc.normalizeMirasimQuota({ activity: REAL_ACTIVITY });
+  assert.deepEqual(q2.agentSources, [], '缺省为空数组，面板据此不渲染提示行');
 });
 
 test('新版桌面端 secret-key.enc（safeStorage v10）：无 secret.key 也能解出 master key', { skip: process.platform !== 'win32' }, async () => {

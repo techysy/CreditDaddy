@@ -237,7 +237,7 @@ const PRODUCTS = {
   },
   mirasim: {
     label: 'mirasim',
-    // 无 checkin：mirasim 额度按 5h/7d 滚动窗口分配，不设签到。
+    // 无 checkin：mirasim 现行额度是「个人额度按笔有效期 + 空间额度按成员分配」，无每日签到动作。
     // token 约 1 小时过期：quota 内部 401 时自动用 refreshToken 续期，
     // ctx.onRefresh（refreshContext）回写账号库后，这里再把新凭据同步回 setting.json（若该账号是客户端当前登录）。
     quota: async (account, ctx = {}) => {
