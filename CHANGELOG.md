@@ -6,6 +6,15 @@
 
 ## [Unreleased]
 
+- **新增 AutoClaw（智谱澳龙 / AutoGLM 桌面端）产品线**：按 10Router 的双线口径接入（协议单一事实来源 = `10router/open-sse/shared/autoclaw/`，未自造端点）。双 provider 归一到一个产品页：`autoclaw`（国际版，Z.AI 账号，账号面 `autoglm-api.autoglm.ai`）与 `autoclaw-cn`（国内版，+86 短信码账号，账号面 `autoglm-api.zhipuai.cn`）——两套独立账号体系、token 不跨域，归属按凭据 JWT 的 `source_id` 判定（`agent*` = 国内）。
+  - **本机导入（只读收割）**：解密 `%APPDATA%\autoclaw\auth.json` 的 Electron safeStorage 凭据（直接复用 `qoderApp.safeStorageCodec` 的 Local State + DPAPI + v10 AES-256-GCM 实现，未另写一份）。只读不写客户端文件。新增 `_setDetectForTests` / `_setCodecForTests` 注入钩子——装了 AutoClaw 的机器跑测试绝不碰真机目录（qwenwork 事故同款护栏）。
+  - **每日签到**：走任务面 `POST …/proxy/autoclaw-task-complete`（`task_id: daily_signin`，服务端幂等）。三态映射既有签到口径（checked-in + 积分 + 连签 / already / failed），成功回写 `balanceAfter`（钱包总额）走既有落库；签到业务日按北京时间 0 点翻日（与上游一致）。
+  - **额度**：纯积分账面，无总量无重置周期。主行是钱包 `total_balance`，非零分类钱包（奖励/每日/订阅/加油包/其他）作明细，task-list 可读时追加签到状态行。**读不到一律报错，绝不报 0**（10R 同口径）。
+  - **凭据纪律（本线最关键的一条）**：refresh token 是单次轮换制，本机 AutoClaw 客户端也在刷同一条链。取值顺序 = 账号库 access 未过期直接用 → 过期则**重读本机 auth.json** 对齐客户端的最新一对（零副作用、不烧 rt）→ 两边都过期才由 CD 代刷（如实提示「桌面端下次刷新会要求重新登录」）。**绝不写回客户端文件**。另有归属校验：客户端换登别的号后不会把 B 的凭据串到 A 的账号行。
+  - **不接 10Router 同步（本版刻意留空）**：10R 虽有同名原生渠道（`autoclaw` / `autoclaw-cn`），但 rt 三副本（桌面客户端 + CD + 10R）必然互相刷废，比 meoo 那次多一个 CD 管不到的副本；推 access-only 又因约 24h 寿命需新调度器。10R 侧已自行登录该线。渠道行如实标「暂不同步」，要不要接留给后续决定。
+  - **不做**：扫码/网页会话捕获、邀请码（10R 源码里本线无 invite/aff 实现，无可用 API 口径，未猜端点）、面板换号（`switchTo` 固定报错给指引——换号请在客户端登录后重新导入）、本机用量同步来源。
+  - 面板挂点全套：导航按钮 + cnt 计数器、VIEWS、PROD_ICONS、PRODUCTS/COMPONENTS、PROV 双线、CHECKIN_PRODUCTS、EMPTY_TIP、LOCAL_HINT、AM_CHANNELS、产品页头部「打开客户端」（含 desktop IPC `open-autoclaw-client`）；图标三处（导航内联 img / PROD_ICONS / prodIcons.json）与 `src/assets/providers/autoclaw.png` 逐字节一致。i18n 新增 52 条中文词条同步 en/ja/ko/zh-TW（门禁本次新增零漏网）。
+  - 回归：`test/autoclaw.test.js` 36 项（协议纯函数、签到三态、refresh 的 400002 退路与双 host 判定、额度形状与「读不到不报 0」、临时目录 + 注入 codec 的收割、归属校验、凭据编排三态、注册挂点全套）；全量 `npm test` 586 项通过。
 - **面板「读不到 ≠ 没有」体验修复（10Router 配置误以为被删）**：未设置面板访问密码时守护进程 fail-closed——非本机 socket 一律 403、Host 不在本机网卡表（本机 IP 变了还用旧地址开页面）也 403，此时面板所有 `/api/*` 全部失败；过去这些错误被静默吞掉，10Router 页直接渲染成「接入 10Router」引导页、仪表盘 10Router 卡整张消失、导航计数显示 `–`、「配置 10Router」弹窗三字段全空，用户误以为配置被删除（实际 `~/.creditdaddy/tenrouter.json` 完好）。现在：
   - 失败原因分类保留（`accessNote`：访问被拒 denied / 需要密码 key / 网络与服务端 other），`accessNoticeHtml` 统一渲染强提示——明说**数据没有被删除**、附接口原始报错，denied 场景给两条可操作出路（本机 `http://127.0.0.1:47860` 打开；或在「面板设置 → 通用 → 面板访问密码」设密码后点「重新读取」，不必刷新整页）。
   - 10Router 页整块提示（不再出引导页，也不停在额度加载态）、仪表盘卡保留并标「读不到」、导航计数改 `!`、「配置 10Router」与「用量同步」弹窗加读不到说明（含**此处保存会覆盖原配置**的告警）；账号列表 / 账号会话站点 / 面板设置的同类「读失败显示成空态」一并修复（产品页账号列表、账号会话页、免费额度页设置弹窗），并有顶部横幅汇总当前所有读不到的区块。
