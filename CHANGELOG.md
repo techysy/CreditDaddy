@@ -6,6 +6,7 @@
 
 ## [Unreleased]
 
+- **代理链路断连不再掀翻守护进程（issue #72，PR #73）**：`src/zcodeClient.js` 的 `fetchViaProxy()` 里两处「'error' 无人接管 → Node 按 Unhandled 'error' event 直接退出进程」的隐患补上监听——① 流式响应的 `PassThrough`（上游在 body 中途掐断时 `pass.destroy(err)` 抢在调用方读 body 之前发 'error'，1.8.3 线上连崩 3 次、最长停摆 19 小时，10Router 的 zcode/trae/minimax-free 通道全变 `ECONNREFUSED 127.0.0.1:47860`）；② CONNECT 隧道交给 `https.request` 之前的 `tlsSocket`（同一函数内同类窗口，报告者记的 2026-10-05 那次崩的是这里）。两处都只兜住进程级升级，错误仍照常抛给调用方（这次请求该失败还是失败），语义不变。回归：`test/zcode-proxy-stream.test.js` 用本机假代理确定性复现（写半截 body 后掐断 / CONNECT 后断链 / 隧道内 TLS 正路与自签证书负路）。感谢 @susheelg1197 投稿与报障。
 - **面板「读不到 ≠ 没有」体验修复（10Router 配置误以为被删）**：未设置面板访问密码时守护进程 fail-closed——非本机 socket 一律 403、Host 不在本机网卡表（本机 IP 变了还用旧地址开页面）也 403，此时面板所有 `/api/*` 全部失败；过去这些错误被静默吞掉，10Router 页直接渲染成「接入 10Router」引导页、仪表盘 10Router 卡整张消失、导航计数显示 `–`、「配置 10Router」弹窗三字段全空，用户误以为配置被删除（实际 `~/.creditdaddy/tenrouter.json` 完好）。现在：
   - 失败原因分类保留（`accessNote`：访问被拒 denied / 需要密码 key / 网络与服务端 other），`accessNoticeHtml` 统一渲染强提示——明说**数据没有被删除**、附接口原始报错，denied 场景给两条可操作出路（本机 `http://127.0.0.1:47860` 打开；或在「面板设置 → 通用 → 面板访问密码」设密码后点「重新读取」，不必刷新整页）。
   - 10Router 页整块提示（不再出引导页，也不停在额度加载态）、仪表盘卡保留并标「读不到」、导航计数改 `!`、「配置 10Router」与「用量同步」弹窗加读不到说明（含**此处保存会覆盖原配置**的告警）；账号列表 / 账号会话站点 / 面板设置的同类「读失败显示成空态」一并修复（产品页账号列表、账号会话页、免费额度页设置弹窗），并有顶部横幅汇总当前所有读不到的区块。
