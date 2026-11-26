@@ -68,7 +68,11 @@ document.documentElement = makeElement('html');
 document.head = makeElement('head');
 
 // ── 5. fetch mock：按 URL 前缀返回最小 JSON ──
+// denyOn：模拟 daemon 的 fail-closed 访问控制（未设面板访问密码时非本机来源一律 403），
+// 用来断言「读不到」不再被渲染成「没配过/没有」（见 panel.html accessNoticeHtml）。
 const fetchCalls = [];
+let denyOn = false;
+const DENY_MSG = '未设置面板访问密码时，面板账号接口仅允许本机访问——请在「设置 → 通用 → 面板访问密码」设置密码后再从局域网访问';
 const NOW = '2026-11-16T01:00:00.000Z';
 function jsonFor(url) {
   const u = String(url);
@@ -99,6 +103,14 @@ function jsonFor(url) {
 }
 async function fetchMock(url, init) {
   fetchCalls.push(String(url));
+  if (denyOn) {
+    return {
+      ok: false, status: 403,
+      headers: new Map(),
+      json: async () => ({ error: DENY_MSG }),
+      text: async () => JSON.stringify({ error: DENY_MSG }),
+    };
+  }
   const j = jsonFor(url);
   return {
     ok: true, status: 200,
@@ -244,6 +256,56 @@ const flush = () => new Promise((r) => setImmediate(() => setImmediate(() => set
   } catch (e) {
     asserts.push('mirasim 渲染断言: ' + e.message);
   }
+  // ── 第二轮：模拟 daemon fail-closed（未设面板访问密码时的非本机来源一律 403）──
+  // 「读不到」必须明确说出来，且**不得**再渲染成「接入 10Router」引导页/空态（用户投诉的根因）。
+  // 面板里 state / tr 是顶层 const（不挂在 globalThis 上），只能在上下文内操作
+  denyOn = true;
+  fetchCalls.length = 0;
+  const run = (code) => vm.runInContext(code, ctx, { filename: 'smoke-denied' });
+  try {
+    await run(`(async () => {
+      await loadTrConfig(); await loadAccounts(); await loadCookieSites(true); await loadSettings();
+      state.view = 'tenrouter'; render();
+    })()`);
+  } catch (e) { asserts.push('拒绝场景渲染抛错: ' + e.message); }
+  await flush(); await flush();
+  const trBody = (elements.get('tr-panel') || {})._innerHTML || '';
+  check(trBody.includes('读不到 10Router 配置'), '10Router 页未显示「读不到」提示');
+  check(trBody.includes('并没有被删除'), '提示未说明配置未被删除');
+  check(trBody.includes('http://127.0.0.1:47860'), '提示缺少本机访问出路');
+  check(trBody.includes('面板访问密码'), '提示缺少设置访问密码的出路');
+  check(!trBody.includes('接入 10Router'), '读不到时仍渲染成「接入 10Router」引导页');
+  check(!trBody.includes('正在读取 10Router 供应商额度'), '读不到时仍显示额度加载态');
+  const cntTr = (elements.get('cnt-tenrouter') || {}).textContent;
+  check(cntTr === '!', '导航计数未标为「读不到」：' + cntTr);
+  try { await run(`(async () => { state.view = 'dash'; render(); })()`); }
+  catch (e) { asserts.push('dash 拒绝场景抛错: ' + e.message); }
+  const prods = (elements.get('prods') || {})._innerHTML || '';
+  check(prods.includes('10Router'), '仪表盘 10Router 卡在读不到时仍消失');
+  check(prods.includes('读不到'), '仪表盘 10Router 卡未标注读不到');
+  const banner = (elements.get('access-note') || {})._innerHTML || '';
+  check(banner.includes('读不到：'), '顶部横幅未汇总读不到的区块：' + banner.slice(0, 80));
+  check(fetchCalls.includes('/api/tenrouter'), '拒绝场景未请求 /api/tenrouter');
+  // 「配置 10Router」弹窗：字段全空时必须有说明，否则看着就像配置被清空（用户截图那一处）
+  try { await run(`(async () => { openTrSettings(); openTrSync(); })()`); }
+  catch (e) { asserts.push('设置/同步弹窗抛错: ' + e.message); }
+  // 元素桩的 style 是恒返回 '' 的 Proxy，display 判不了，只断言文案
+  const loadNote = String((elements.get('tr-load-note') || {}).textContent || '');
+  check(loadNote.includes('读不到已保存的配置'), '「配置 10Router」弹窗未说明读不到：' + loadNote.slice(0, 80));
+  check(String((elements.get('tr-sync-status') || {}).textContent || '').includes('读不到已保存的同步设置'),
+    '用量同步弹窗未说明读不到');
+  // 账号会话页：首屏就读不到（无旧数据可留）时不能渲染成「暂无可捕获的供应商」
+  try { await run(`(async () => { state.cookieSites = []; state.view = 'free'; render(); })()`); }
+  catch (e) { asserts.push('free 页抛错: ' + e.message); }
+  check(String((elements.get('free-pool-body') || {})._innerHTML || '').includes('读不到账号会话站点'),
+    '账号会话页读不到时仍显示空态');
+  // 产品页：读不到账号时不能显示「还没有账号，点添加」（账号像被删了）
+  try { await run(`(async () => { state.view = 'qoder'; render(); })()`); }
+  catch (e) { asserts.push('产品页拒绝场景抛错: ' + e.message); }
+  const listHtml = String((elements.get('list') || {})._innerHTML || '');
+  check(listHtml.includes('读不到账号列表'), '产品页读不到账号时仍显示「还没有账号」空态');
+  check(!listHtml.includes('还没有 Qoder 账号'), '产品页读不到时仍渲染添加引导');
+  check(String((elements.get('s-count') || {}).textContent || '') === '!', '产品页账号统计未标读不到');
 
   const wiring = unhandled.filter((e) => /ReferenceError|TypeError|is not defined|Cannot read/.test(e));
   const toastEl = elements.get('toast');
@@ -257,6 +319,6 @@ const flush = () => new Promise((r) => setImmediate(() => setImmediate(() => set
     console.error('PANEL BOOT FAIL: ' + asserts.length + ' asserts, ' + wiring.length + ' wiring errors, ' + unhandled.length + ' unhandled');
     process.exit(1);
   }
-  console.log('PANEL BOOT OK: ' + fetchCalls.length + ' api calls, cookie-sites 渲染含统一到期口径, 无 wiring 异常');
+  console.log('PANEL BOOT OK: ' + fetchCalls.length + ' api calls, cookie-sites 统一到期口径, fail-closed 读不到提示到位, 无 wiring 异常');
   process.exit(0);
 })();

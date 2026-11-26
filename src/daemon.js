@@ -46,7 +46,7 @@ import crypto from 'node:crypto';
 import os from 'node:os';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { logger, getLogs, readArchiveJsonl } from './logger.js';
 import {
@@ -185,6 +185,45 @@ export function pickBindablePort(start, ranges = windowsExcludedTcpRanges()) {
     if (!ranges.some(([a, b]) => p >= a && p <= b)) return p;
   }
   return Number(start) || DEFAULT_PORT;
+}
+
+/**
+ * 解析 netstat -ano 输出，取出在该端口上 LISTENING 的 PID 集合（去重）。
+ * 行形如：`  TCP    0.0.0.0:47860    0.0.0.0:0    LISTENING    41316`
+ * 单独导出为纯函数，供测试钉死解析口径。
+ */
+export function parseListeningPids(text, port) {
+  const out = new Set();
+  for (const line of String(text || '').split(/\r?\n/)) {
+    const cols = line.trim().split(/\s+/);
+    if (cols.length < 5) continue;
+    const [proto, local, , state, pid] = cols;
+    if (!/^tcp/i.test(proto)) continue;
+    if (state.toUpperCase() !== 'LISTENING') continue;
+    const idx = local.lastIndexOf(':');
+    if (idx < 0 || Number(local.slice(idx + 1)) !== Number(port)) continue;
+    if (/^\d+$/.test(pid)) out.add(Number(pid));
+  }
+  return [...out];
+}
+
+/**
+ * 该端口上除本进程外还有哪些 PID 在听？（2026-11-26 结构防线，见 onListening 调用处注释）
+ *
+ * 必须异步：startDaemon 在桌面壳主进程里跑，同步 execFileSync 会冻住 Electron 消息泵
+ * （1.6.6 白屏事故就是 spawnSync 卡主进程，见 test/workbuddy-custom-path.test.js 头注）。
+ * 非 Windows / 查询失败 / 超时一律返回 []（退化为原有行为：EADDRINUSE +1 重试 + 版本自探）。
+ */
+export function foreignListenerPids(port, selfPid = process.pid) {
+  if (process.platform !== 'win32') return Promise.resolve([]);
+  return new Promise((done) => {
+    execFile('netstat.exe', ['-ano'], { encoding: 'utf8', windowsHide: true, timeout: 4000, maxBuffer: 8 * 1024 * 1024 },
+      (err, out) => {
+        if (err) return done([]);
+        try { done(parseListeningPids(out, port).filter((p) => p !== selfPid)); }
+        catch { done([]); }
+      });
+  });
 }
 
 // Qoder 当前登录缓存：面板 30s 一轮 status，DPAPI 解密结果没必要每轮重算
@@ -2922,7 +2961,14 @@ export async function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
   });
 
   return new Promise((resolve, reject) => {
-    const startPort = pickBindablePort(Number(port) || DEFAULT_PORT);
+    // port=0 的含义是「交给系统挑空闲端口」，必须原样传下去：`Number(0) || DEFAULT_PORT`
+    // 会把 0 折叠成 47860——测试家族（daemon-listen / cookiesites / announcements /
+    // qoder-current-token / quota-refresh / hardening / croli-retired）全部按
+    // startDaemon(0) 的口径要临时端口，于是它们实际都在抢正式安装版的端口。
+    // 11-25 那次「主程序变成测试环境」就是这么来的（见下方端口遮蔽自检注释）。
+    const requested = Number(port);
+    const ephemeral = requested === 0;
+    const startPort = ephemeral ? 0 : pickBindablePort(requested || DEFAULT_PORT);
     let attempts = 0;
     let triedFallback = false;
     const bind = (p) => {
@@ -2976,7 +3022,31 @@ export async function startDaemon(port = DEFAULT_PORT, host = '127.0.0.1') {
           req.setTimeout(2000, () => { req.destroy(); done(null); });
           req.end();
         });
-        selfProbe().then((servingVersion) => {
+        // 端口遮蔽自检（2026-11-26，11-25「主程序变成测试环境」事故的结构修复）：
+        // 上面那道版本自探在面板访问密码开启时会失明——/api/status 回 401、响应体没有 version
+        // 字段，探针拿到 null 就当「端口干净」。实测 Windows 上同端口 0.0.0.0 与 127.0.0.1
+        // 双向都能共存绑定（先占 0.0.0.0 再绑 127.0.0.1 也成功），回环流量归精确绑定方：
+        // 于是「正式安装版（真实数据目录，0.0.0.0）」与「测试实例（%TEMP% 临时目录，127.0.0.1）」
+        // 同端口双活，谁先绑精确口谁就接管用户的面板。daemon.json 单实例守护按数据目录找活实例，
+        // 两边目录不同 → 互看不见。这里直接用 netstat 数同一端口上的其他监听 PID——与鉴权无关，
+        // 不依赖对方应答，是唯一不瞎的判据。
+        Promise.all([selfProbe(), foreignListenerPids(bound)]).then(([servingVersion, foreignPids]) => {
+          if (foreignPids.length) {
+            server.close();
+            attempts += 1;
+            logger.error('DAEMON', '端口 {port} 上另有进程（pid {pids}）在监听——Windows 允许同端口通配/精确绑定共存，回环流量会被对方接管，面板与数据目录都可能张冠李戴；本机换试 {next}', { port: bound, pids: foreignPids.join(','), next: bound + 1 });
+            if (attempts < 100 && !triedFallback) {
+              setTimeout(() => bind(bound + 1), 30);
+            } else if (!triedFallback) {
+              triedFallback = true;
+              setTimeout(() => bind(0), 30);
+            } else {
+              // 已经退到系统随机端口还撞上来监听者：绝不再 bind(0) 循环（每次都要等
+              // netstat 4s，会挂死调用方），明确失败让人看见
+              reject(new Error(`无法为 CreditDaddy 找到不与其它实例共用的端口（最后试 ${bound}，其上另有 pid ${foreignPids.join(',')} 在监听）`));
+            }
+            return;
+          }
           if (servingVersion && servingVersion !== APP_VERSION) {
             server.close();
             attempts += 1;
