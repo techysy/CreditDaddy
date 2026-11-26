@@ -16,6 +16,13 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
+// 数据目录隔离必须在**任何 store 模块被 import 之前**设好——store.js 的 dataDir() 是
+// 惰性读环境变量的，但账号落库的用例会把记录写进 process.env.CREDITDADDY_HOME，
+// 不隔离就会污染用户真实账号库（本仓库最贵的事故类型）。
+process.env.CREDITDADDY_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'creditdaddy-ac-'));
+// 本机 AutoClaw 数据目录也要挡：detect/收割用例绝不能读真机 %APPDATA%\autoclaw
+process.env.AUTOCLAW_DATA_DIR = path.join(process.env.CREDITDADDY_HOME, 'no-autoclaw');
+
 import {
   AUTOCLAW_DAILY_SIGNIN_TASK,
   AUTOCLAW_GLOBAL_HOST,
@@ -44,7 +51,27 @@ import {
   checkinAutoclaw,
   resolveAutoclawAuth,
   autoclawLocalBelongsTo,
+  AUTOCLAW_INVITE_ACTIVITY,
+  AUTOCLAW_CN_PHONE_RE,
+  fetchAutoclawInviteStatus,
+  fetchAutoclawInviteActivities,
+  bindAutoclawInviteCode,
+  normalizeAutoclawInvite,
+  autoclawSecToIso,
+  autoclawSmsCodeValue,
+  cleanAutoclawCnPhone,
+  sendAutoclawCnSmsCode,
+  loginAutoclawCnBySms,
 } from '../src/autoclawClient.js';
+import {
+  autoclawCdDeviceId,
+  autoclawCdSmsDeviceId,
+  accountDeviceId,
+  sendAutoclawSms,
+  loginAutoclawSms,
+  isAutoclawCdOwned,
+  _setMachineGuidForTests,
+} from '../src/autoclawAuth.js';
 import {
   detectAutoclaw,
   decryptAutoclawAuth,
@@ -616,22 +643,51 @@ test('AutoClaw 挂点：签到业务日按北京时间 0 点翻日（与上游�
   assert.equal(dayKey(t, 'autoclaw'), dayKey(t, 'workbuddy'), '同为 0 点翻日，能与既有保留窗口对齐');
 });
 
-test('AutoClaw 挂点：不同步 10Router（rt 三副本互杀），映射表里刻意缺席', async () => {
+// ⚠ 这条曾断言「映射表里刻意缺席」——2026-11-26 用户拍定口径 (a) 后语义改了：
+// 映射表**有**这两行（10R 有同名原生渠道），但同步侧只放行 CD 短信登录的小号；
+// 本机收割号仍被硬挡（三副本互杀那条理由不变）。所以断言从「缺席」改成
+// 「在场 + 按来源拦截」，安全线的实质没变。
+test('AutoClaw 挂点：映射表在场，但本机收割号绝不进同步（三副本互杀安全线）', async () => {
   const { TENROUTER_PROVIDER_MAP, mapProviderId, syncAccountsTo10r } = await import('../src/tenrouterAccounts.js');
-  assert.equal(TENROUTER_PROVIDER_MAP.autoclaw, undefined,
-    'autoclaw 不该进映射表：本机客户端 + CD + 10R 三副本会互相刷废 rt');
-  assert.equal(TENROUTER_PROVIDER_MAP['autoclaw-cn'], undefined);
-  assert.equal(mapProviderId('autoclaw'), null);
-  assert.equal(mapProviderId('autoclaw-cn'), null);
+  const { canSyncAutoclawAccount } = await import('../src/autoclawClient.js');
+  assert.equal(TENROUTER_PROVIDER_MAP.autoclaw, 'autoclaw');
+  assert.equal(TENROUTER_PROVIDER_MAP['autoclaw-cn'], 'autoclaw-cn');
+  assert.equal(mapProviderId('autoclaw'), 'autoclaw');
 
-  // 行为断言：只有 autoclaw 账号时，同步如实报「没有可同步的账号」而不是静默成功
+  // 判据本身：本机收割（local-app）一律 false；CD 短信登录的号 true
+  assert.equal(canSyncAutoclawAccount({ provider: 'autoclaw-cn', source: 'local-app' }), false);
+  assert.equal(canSyncAutoclawAccount({ provider: 'autoclaw-cn', meta: {} }), false);
+  assert.equal(canSyncAutoclawAccount({ provider: 'autoclaw-cn', source: 'sms-login' }), true);
+  assert.equal(canSyncAutoclawAccount({ provider: 'autoclaw-cn', meta: { autoclawCdOwned: true } }), true);
+  assert.equal(canSyncAutoclawAccount({ provider: 'qoder', source: 'sms-login' }), false, '别的产品不受本判据影响');
+
+  // 行为断言（本机号）：即使映射在场，也必须被挡下来，且错误里点名原因
   await assert.rejects(
     () => syncAccountsTo10r({
       endpoint: 'http://127.0.0.1:1', key: 'sk-test',
-      accounts: [{ id: 'x1', provider: 'autoclaw-cn', token: 'tok', name: '用户3656' }],
+      accounts: [{ id: 'x1', provider: 'autoclaw-cn', token: 'tok', name: '用户3656', source: 'local-app', meta: {} }],
     }),
-    /没有可同步的账号/,
+    /没有可同步的账号.*AutoClaw 本机账号/,
   );
+});
+
+test('AutoClaw 小号重推：只认 CD 独占账号，rt 剥空、access 变了才推', async () => {
+  const { resyncAutoclawAccess, _resetAutoclawResyncForTests } = await import('../src/tenrouterAccounts.js');
+  _resetAutoclawResyncForTests();
+  const cfg = { endpoint: 'http://127.0.0.1:1', key: 'sk-test', accountSync: { enabled: true, providers: [] } };
+
+  // 只有本机号 → 无事可推（绝不把它塞进同步集合）
+  const localOnly = await resyncAutoclawAccess(cfg, [
+    { id: 'h1', provider: 'autoclaw-cn', token: 'tok-local', source: 'local-app', meta: {} },
+  ]);
+  assert.equal(localOnly.pushed, false);
+  assert.equal(localOnly.reason, 'no-cd-owned-account');
+
+  // 总开关关掉 → 直接短路（连判据都不走）
+  assert.equal(await resyncAutoclawAccess({ ...cfg, accountSync: { enabled: false, providers: [] } }, []), null);
+  // 白名单只勾了别的渠道 → 短路
+  assert.equal(await resyncAutoclawAccess({ ...cfg, accountSync: { enabled: true, providers: ['qoder'] } }, []), null);
+  _resetAutoclawResyncForTests();
 });
 
 test('AutoClaw 挂点：不做换号（store.canSwitch 不该给这条线开）', async () => {
@@ -678,13 +734,30 @@ test('AutoClaw 挂点：面板 VIEWS / PROV / CHECKIN_PRODUCTS / cnt 计数器�
   assert.ok(/'autoclaw'\]/.test(panel) || panel.includes("'croli', 'autoclaw']"), 'CHECKIN_PRODUCTS 缺 autoclaw');
   assert.ok(/EMPTY_TIP = \{[\s\S]*?autoclaw:/.test(panel), 'EMPTY_TIP 缺 autoclaw → 空态渲染 undefined');
   assert.ok(/LOCAL_HINT = \{[\s\S]*?autoclaw:/.test(panel), 'LOCAL_HINT 缺 autoclaw');
-  // 渠道同步表里**刻意不列** autoclaw（rt 三副本互杀，同 meoo 摘除口径）——
-  // 列一行两个勾都没有的卡片只是噪音，且容易让人以为「勾上就能同步」
+  // 渠道同步表：口径 (a) 后**要列** autoclaw 双线（10R 有同名原生渠道），但 pushable:false
+  //（额度卡由 10R 连接自身出卡，CD 再推纯属重复）。可同步性本身在同步侧按来源拦截，
+  // 不靠这张表——这张表只管「渠道卡片长什么样」。
   const amBlock = panel.match(/const AM_CHANNELS = \[[\s\S]*?\n\];/);
   assert.ok(amBlock, 'AM_CHANNELS 未找到');
-  assert.ok(!/provider: 'autoclaw/.test(amBlock[0]), 'AM_CHANNELS 不该列 autoclaw（本线不同步 10Router）');
+  assert.ok(/provider: 'autoclaw', label: 'AutoClaw 国际版', syncable: true, pushable: false/.test(amBlock[0]), 'AM_CHANNELS 该列 autoclaw（syncable+pushable:false）');
+  assert.ok(/provider: 'autoclaw-cn', label: 'AutoClaw 国内版', syncable: true, pushable: false/.test(amBlock[0]), 'AM_CHANNELS 该列 autoclaw-cn');
   assert.ok(/openAutoclawClient/.test(panel), '面板缺「打开客户端」按钮链路');
   assert.ok(/act-open/.test(panel) && /ac-actions/.test(panel), '产品页头部动作区未挂 autoclaw');
+  // 邀请码两个按钮 + 短信直登页签（本轮新增，漏挂 = 有后端没入口，croli/dumate 同款事故）
+  assert.ok(/data-act="invite"[^>]*填写好友邀请码/.test(panel), '账号卡缺「填写邀请码」按钮');
+  assert.ok(/data-act="my-invite"[^>]*我的邀请码（查看本账号的专属邀请码/.test(panel), '账号卡缺「我的邀请码」按钮');
+  assert.ok(/a\.product === 'autoclaw' \? autoclawInvite/.test(panel) && /a\.product === 'autoclaw' \? autoclawMyInvite/.test(panel), 'invite/my-invite 分发缺 autoclaw 分支');
+  assert.ok(/data-pane="ac-sms"/.test(panel) && /btn-ac-sms/.test(panel) && /btn-ac-login/.test(panel), '缺 AutoClaw 短信直登页签');
+  assert.ok(/'ac-sms': product === 'autoclaw'/.test(panel), 'openAdd 没按产品放开 ac-sms 页签');
+});
+
+test('AutoClaw 挂点：daemon 短信直登 + 邀请码路由都在', async () => {
+  const daemon = fs.readFileSync(path.join(ROOT, 'src/daemon.js'), 'utf8');
+  assert.ok(/\/api\/autoclaw-cn\/sms\/send/.test(daemon), '缺短信发码路由');
+  assert.ok(/\/api\/autoclaw-cn\/sms\/login/.test(daemon), '缺短信登录路由');
+  // 路由写在源码里是转义过的正则（`\/autoclaw\/invite$`），用 includes 比再套一层正则清楚
+  assert.ok(daemon.includes('autoclaw\\/my-invite-code'), '缺「我的邀请码」路由');
+  assert.ok(daemon.includes('autoclaw\\/invite'), '缺「填写邀请码」路由');
 });
 
 test('AutoClaw 挂点：桌面壳 IPC 与 preload 桥接都在', () => {
@@ -704,4 +777,191 @@ test('AutoClaw 挂点：可执行文件名与数据目录约定', () => {
   try { assert.equal(autoclawDataDir(), 'C:\\tmp\\autoclaw-test'); } finally {
     if (prev === undefined) delete process.env.AUTOCLAW_DATA_DIR; else process.env.AUTOCLAW_DATA_DIR = prev;
   }
+});
+
+// ── 邀请码（fission-v2）：端点反解自客户端 app.asar，10Router 全无实现 ──
+
+test('邀请码：status 打 cn 账号域，参数带 activity_id + business，头仍要签名那套', async () => {
+  const fetchImpl = mockFetch([['/fission-v2/status', okRes({ code: 0, data: { activity: {}, share: {}, bind: {}, stats: {} } })]]);
+  await fetchAutoclawInviteStatus('tok', { region: 'cn', deviceId: 'd'.repeat(64), fetchImpl });
+  const call = fetchImpl.calls[0];
+  assert.ok(call.url.startsWith(AUTOCLAW_CN_HOST), '应打 cn 账号域');
+  assert.ok(call.url.includes('activity_id=' + AUTOCLAW_INVITE_ACTIVITY));
+  assert.ok(call.url.includes('business=autoclaw'));
+  assert.equal(call.method, 'GET');
+  assert.equal(call.headers['User-Agent'], 'AutoClaw/2.1.0');
+  assert.equal(call.headers.Authorization, 'Bearer tok');
+});
+
+test('邀请码：bind 带 activity_id/invite_code/source_id/device_id，空码不打上游，业务失败抛人话', async () => {
+  const fetchImpl = mockFetch([['/fission-v2/bind', okRes({ code: 0, data: { success: true } })]]);
+  await bindAutoclawInviteCode('tok', '  CN5RTLJH  ', { region: 'cn', deviceId: 'e'.repeat(64), fetchImpl });
+  const body = fetchImpl.calls[0].body;
+  assert.equal(body.invite_code, 'CN5RTLJH', '两端空白应被裁掉');
+  assert.equal(body.activity_id, AUTOCLAW_INVITE_ACTIVITY);
+  assert.equal(body.business, 'autoclaw');
+  assert.equal(body.source_id, 'autoclaw');
+  assert.equal(body.device_id, 'e'.repeat(64));
+
+  await assert.rejects(
+    () => bindAutoclawInviteCode('tok', '   ', { region: 'cn', deviceId: 'e'.repeat(64), fetchImpl }),
+    /邀请码不能为空/,
+  );
+  assert.equal(fetchImpl.calls.length, 1, '空码不该打上游');
+
+  const bad = mockFetch([['/fission-v2/bind', okRes({ code: 400000, msg: '登录已失效' })]]);
+  await assert.rejects(
+    () => bindAutoclawInviteCode('tok', 'ABC', { region: 'cn', deviceId: 'e'.repeat(64), fetchImpl: bad }),
+    /登录已失效/,
+  );
+});
+
+test('邀请码：normalize 摊平真实 status 形状，缺字段一律 null（读不到 ≠ 是 0）', () => {
+  const real = {
+    activity: {
+      activity_id: 'autoclaw_fission', enabled: true, status: 'active',
+      starts_at: 1785235200, ends_at: 1797004800,
+      bind_inviter_reward_amount: 1000, bind_inviter_reward_limit: 15,
+      bind_inviter_reward_valid_days: 30, bind_invitee_reward_amount: 0,
+    },
+    share: { invite_code: 'CN5RTLJH', can_share: true, expires_at: 1882010209 },
+    bind: { status: 'unbound', can_bind: true },
+    stats: { invited_count: 0, rewarded_bind_count: 0, bind_reward_limit: 15, remaining_bind_reward_count: 15 },
+  };
+  const n = normalizeAutoclawInvite(real);
+  assert.equal(n.myCode, 'CN5RTLJH');
+  assert.equal(n.bindStatus, 'unbound');
+  assert.equal(n.canBind, true);
+  assert.equal(n.inviterReward, 1000);
+  assert.equal(n.rewardLimit, 15);
+  assert.equal(n.remainingRewards, 15);
+  assert.equal(n.rewardValidDays, 30);
+  assert.equal(n.inviteeReward, 0, '上游当前给被邀请方配 0，文案不能照抄 Loomy 的双方各 +5000');
+  assert.equal(n.activityEnabled, true);
+  assert.equal(n.activityEndsAt, new Date(1797004800 * 1000).toISOString());
+
+  const empty = normalizeAutoclawInvite(null);
+  assert.equal(empty.myCode, null);
+  assert.equal(empty.inviterReward, null);
+  assert.equal(empty.remainingRewards, null);
+  assert.equal(empty.activityEnabled, false);
+
+  assert.equal(autoclawSecToIso(0), null);
+  assert.equal(autoclawSecToIso('x'), null);
+  assert.equal(autoclawSecToIso(null), null);
+});
+
+test('邀请码：online-activity-info 只回活动数组，形状不对回空数组', async () => {
+  const fetchImpl = mockFetch([['/online-activity-info', okRes({ code: 0, data: { activities: [{ activity_id: 'autoclaw_fission' }] } })]]);
+  assert.equal((await fetchAutoclawInviteActivities('tok', { region: 'cn', fetchImpl })).length, 1);
+  const bad = mockFetch([['/online-activity-info', okRes({ code: 0, data: {} })]]);
+  assert.deepEqual(await fetchAutoclawInviteActivities('tok', { region: 'cn', fetchImpl: bad }), []);
+});
+
+// ── 国内版（+86）短信直登：CD 独占的小号 ──
+
+test('短信直登：code 按数字发、登录端点带尾斜杠、手机号去 +86', async () => {
+  assert.equal(autoclawSmsCodeValue('123456'), 123456, 'code 必须是数字（字符串上游 400001）');
+  assert.equal(autoclawSmsCodeValue(' 123456 '), 123456);
+  assert.equal(autoclawSmsCodeValue('12a'), '12a', '非纯数字原样交上游判错，不擅自改');
+  assert.equal(autoclawSmsCodeValue('0'), 0);
+
+  assert.equal(cleanAutoclawCnPhone('13112345678'), '13112345678');
+  assert.equal(cleanAutoclawCnPhone('+8613112345678'), '13112345678');
+  assert.throws(() => cleanAutoclawCnPhone('1311234567'), /手机号格式不正确/);
+  assert.throws(() => cleanAutoclawCnPhone('25112345678'), /手机号格式不正确/);
+  assert.ok(AUTOCLAW_CN_PHONE_RE.test('13112345678'));
+
+  const fetchImpl = mockFetch([
+    ['/agent-send-code', okRes({ code: 0, data: {} })],
+    ['/agent-login/', okRes({ code: 0, data: {
+      access_token: mkJwt({ ...CN_CLAIMS, user_id: 777 }),
+      refresh_token: mkJwt(CN_CLAIMS),
+      user_id: 777, user_name: '小号',
+    } })],
+  ]);
+  await sendAutoclawCnSmsCode('+8613112345678', { deviceId: 'f'.repeat(64), fetchImpl });
+  assert.ok(fetchImpl.calls[0].url.endsWith('/userapi/v1/agent-send-code'));
+  assert.equal(fetchImpl.calls[0].body.phone, '13112345678', '必须去掉 +86');
+
+  const r = await loginAutoclawCnBySms({ phone: '13112345678', code: '123456' }, { deviceId: 'f'.repeat(64), fetchImpl });
+  const loginCall = fetchImpl.calls[1];
+  assert.ok(loginCall.url.endsWith('/userapi/v1/agent-login/'), '尾斜杠是端点形状的一部分');
+  assert.strictEqual(loginCall.body.code, 123456, 'code 必须是 JSON 数字');
+  assert.equal(loginCall.body.device_id, 'f'.repeat(64));
+  assert.equal(r.userId, '777');
+  assert.equal(r.phone, '13112345678');
+});
+
+test('短信直登：device_id 按机器码 + 固定命名空间派生，同机稳定、异种子相异', () => {
+  _setMachineGuidForTests('11111111-2222-3333-4444-555555555555');
+  try {
+    const a = autoclawCdSmsDeviceId();
+    assert.equal(autoclawCdSmsDeviceId(), a, '发码与登录必须同一条 → 同机同命名空间要稳定');
+    assert.match(a, /^[0-9a-f]{64}$/);
+    assert.notEqual(autoclawCdDeviceId('acct-1'), autoclawCdDeviceId('acct-2'));
+    _setMachineGuidForTests('99999999-8888-7777-6666-555555555555');
+    assert.notEqual(autoclawCdSmsDeviceId(), a, '派生确实吃机器码（落库值才是权威）');
+  } finally { _setMachineGuidForTests(null); }
+});
+
+// ⚠ 安全线：本机收割号若被当成 CD 登录号合并改写，source 会变 sms-login → 它就"可同步"了，
+// 而桌面客户端正登录着同一个号 —— 三副本互杀会被我们自己的判据放行。
+test('短信直登：同一号已有本机收割账号时拒绝合并，原行一字不动', async () => {
+  const { saveAccounts, loadAccounts } = await import('../src/store.js');
+  await saveAccounts([{
+    id: 'harvested-1', provider: 'autoclaw-cn', token: 'old', uid: '888888', name: '用户8888',
+    refreshToken: 'old-rt', source: 'local-app', meta: { autoclawRegion: 'cn' },
+    createdAt: new Date().toISOString(),
+  }]);
+  const fetchImpl = mockFetch([['/agent-login/', okRes({ code: 0, data: {
+    access_token: mkJwt({ ...CN_CLAIMS, user_id: 888888 }),
+    refresh_token: mkJwt(CN_CLAIMS),
+    user_id: 888888,
+  } })]]);
+  await assert.rejects(
+    () => loginAutoclawSms({ phone: '13112345678', code: '123456' }, { fetchImpl }),
+    /这个号已经由本机 AutoClaw 客户端管理/,
+  );
+  const after = (await loadAccounts()).find((a) => a.uid === '888888');
+  assert.equal(after.source, 'local-app', '被拒后 source 不能被改写');
+  assert.equal(after.token, 'old', '被拒后凭据不能被覆盖');
+});
+
+test('短信直登：新号落库 sms-login + autoclawCdOwned，device_id 记的是登录实际用的那条', async () => {
+  const { saveAccounts, loadAccounts } = await import('../src/store.js');
+  const { canSyncAutoclawAccount } = await import('../src/autoclawClient.js');
+  await saveAccounts([]);
+  const fetchImpl = mockFetch([['/agent-login/', okRes({ code: 0, data: {
+    access_token: mkJwt({ ...CN_CLAIMS, user_id: 999001 }),
+    refresh_token: mkJwt(CN_CLAIMS),
+    user_id: 999001, user_name: 'CD 小号',
+  } })]]);
+  const r = await loginAutoclawSms({ phone: '13900001111', code: '654321' }, { fetchImpl });
+  assert.equal(r.duplicate, false);
+  assert.match(r.deviceId, /^[0-9a-f]{64}$/);
+  const row = (await loadAccounts()).find((a) => a.uid === '999001');
+  assert.equal(row.source, 'sms-login');
+  assert.equal(row.meta.autoclawCdOwned, true);
+  assert.equal(row.meta.autoclawDeviceId, r.deviceId, '落库 device_id 必须与 JWT 里那条一致');
+  assert.equal(row.meta.autoclawRegion, 'cn');
+  assert.ok(row.refreshToken, 'rt 留在 CD（同步侧剥空，10R 只拿 access）');
+  assert.equal(isAutoclawCdOwned(row), true);
+  assert.equal(canSyncAutoclawAccount(row), true);
+
+  // 同号再登录：沿用落库那条，不让上游看到「换设备」
+  const again = await loginAutoclawSms({ phone: '13900001111', code: '654321' }, { fetchImpl });
+  assert.equal(again.deviceId, r.deviceId);
+});
+
+test('accountDeviceId：只认 64 hex，脏值回 null 不猜', () => {
+  assert.equal(accountDeviceId({ meta: { autoclawDeviceId: 'a'.repeat(64) } }), 'a'.repeat(64));
+  assert.equal(accountDeviceId({ meta: { autoclawDeviceId: 'short' } }), null);
+  assert.equal(accountDeviceId({ meta: {} }), null);
+  assert.equal(accountDeviceId(null), null);
+});
+
+test('换号仍然不做：switchTo 固定报错（只读收割，绝不写回客户端）', async () => {
+  const { switchTo } = await import('../src/autoclawLocal.js');
+  await assert.rejects(() => switchTo(), /不支持从 CreditDaddy 换号/);
 });

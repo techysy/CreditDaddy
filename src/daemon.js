@@ -2287,6 +2287,65 @@ async function handleApi(req, res, url) {
     }
   }
 
+  // ── AutoClaw 国内版（+86）短信直登：CD 独占的小号（口径 (a)，见 docs/autoclaw-login-invite-sync-feasibility.md） ──
+  if (p === '/api/autoclaw-cn/sms/send' && method === 'POST') {
+    const body = await readBody(req).catch(() => ({}));
+    try {
+      const { sendAutoclawSms } = await import('./autoclawAuth.js');
+      const r = await sendAutoclawSms(body?.phone);
+      return json(res, 200, { success: true, phone: r.phone });
+    } catch (e) {
+      return json(res, 400, { error: e.message });
+    }
+  }
+  if (p === '/api/autoclaw-cn/sms/login' && method === 'POST') {
+    const body = await readBody(req).catch(() => ({}));
+    try {
+      const { loginAutoclawSms } = await import('./autoclawAuth.js');
+      const r = await loginAutoclawSms({ phone: body?.phone, code: body?.code });
+      return json(res, 200, { success: true, duplicate: r.duplicate, account: publicAccount(r.account) });
+    } catch (e) {
+      return json(res, 400, { error: e.message });
+    }
+  }
+
+  // ── AutoClaw 邀请（裂变）码：端点反解自客户端 app.asar，10Router 全无实现 ──
+  // 我的邀请码（读）。⚠ 上游 bind_inviter_reward_event="bind_and_query"：读 status 也参与
+  // 发奖结算，所以这条只在面板打开弹窗时打一次，绝不进额度轮询 / 状态轮询。
+  const acMyInviteMatch = p.match(/^\/api\/accounts\/([\w-]+)\/autoclaw\/my-invite-code$/);
+  if (acMyInviteMatch && method === 'GET') {
+    const account = (await loadAccounts()).find((a) => a.id === acMyInviteMatch[1] && String(a.provider).startsWith('autoclaw'));
+    if (!account) return json(res, 404, { error: 'AutoClaw 账号不存在' });
+    try {
+      const { resolveAutoclawAuth, fetchAutoclawInviteStatus, normalizeAutoclawInvite } = await import('./autoclawClient.js');
+      // 凭据回写走标准 refreshContext（autoclaw 不在它的写回分支里 = 绝不写客户端文件）
+      const auth = await resolveAutoclawAuth(account, refreshContext(account, (m) => logger.info('AUTOCLAW', m, {})));
+      const data = await fetchAutoclawInviteStatus(auth.accessToken, { region: auth.region, deviceId: auth.deviceId });
+      return json(res, 200, { ok: true, ...normalizeAutoclawInvite(data) });
+    } catch (e) {
+      return json(res, e.auth ? 401 : 502, { error: e.message });
+    }
+  }
+  // 填写邀请码（写，有副作用：每号仅一次，成功不可撤销）
+  const acInviteMatch = p.match(/^\/api\/accounts\/([\w-]+)\/autoclaw\/invite$/);
+  if (acInviteMatch && method === 'POST') {
+    const body = await readBody(req).catch(() => ({}));
+    const code = String(body?.code || '').trim();
+    if (!code) return json(res, 400, { error: '缺少邀请码' });
+    const account = (await loadAccounts()).find((a) => a.id === acInviteMatch[1] && String(a.provider).startsWith('autoclaw'));
+    if (!account) return json(res, 404, { error: 'AutoClaw 账号不存在' });
+    try {
+      const { resolveAutoclawAuth, bindAutoclawInviteCode } = await import('./autoclawClient.js');
+      const auth = await resolveAutoclawAuth(account, refreshContext(account, (m) => logger.info('AUTOCLAW', m, {})));
+      await bindAutoclawInviteCode(auth.accessToken, code, { region: auth.region, deviceId: auth.deviceId });
+      logger.info('AUTOCLAW', '{name} 邀请码已绑定', { name: account.name || account.uid });
+      return json(res, 200, { ok: true });
+    } catch (e) {
+      logger.warn('AUTOCLAW', '{name} 邀请码绑定失败:{err}', { name: account.name || account.uid, err: e.message });
+      return json(res, e.auth ? 401 : 400, { error: e.message });
+    }
+  }
+
   // ── 本机检测 / 凭据扫描 ──
   if (p === '/api/local/detect' && method === 'GET') {
     return json(res, 200, { apps: detectQoderApps(), qwenwork: detectQwenworkApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), trae: detectTrae(), minimax: detectMiniMax(), loomy: detectLoomy(), dumate: detectDumate(), croli: detectCroli(), quwork: detectQuwork(), autoclaw: detectAutoclaw(), doubao: detectDoubao(), legacy: detectInstalls() });

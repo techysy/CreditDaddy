@@ -7,7 +7,7 @@ import { loadAccounts, loadSettings, loadState, withAccounts, withState } from '
 import { productImpl } from './providers.js';
 import { productOf, PROVIDER_LABEL } from './constants.js';
 import { loadConfig as loadTenrouterConfig, startUsageSyncScheduler } from './tenrouter.js';
-import { startCroliResyncWatch } from './tenrouterAccounts.js';
+import { startCroliResyncWatch, startAutoclawResyncWatch } from './tenrouterAccounts.js';
 import { refreshContext } from './accounts.js';
 import { zcodeAutoClaim } from './zcodeAutoClaim.js';
 import { traePrimaryIds } from './traeClient.js';
@@ -494,6 +494,9 @@ export async function startScheduler() {
   startUsageSyncScheduler();
   startCroliResyncWatch(loadTenrouterConfig);
   startWebSessionWatch();
+  // AutoClaw 小号 access 自动重推（口径 (a)：rt 留 CD、10R 只拿 access，access 约 24h 过期
+  // 不重推就断供）。只读账号库、绝不打上游，所以不会替桌面客户端那条链做刷新。
+  startAutoclawResyncWatch(loadTenrouterConfig);
   warmZcodeAppVersion();
   // WorkBuddy 自定义安装路径发现（issue #46）：注册表 / 进程探测要起子进程，
   // 只能在这里异步预热一次；detectWorkbuddy 本身保持同步零子进程（1.6.6 白屏教训）。

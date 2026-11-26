@@ -653,7 +653,10 @@ test('accountSync 渠道版本迁移：老配置白名单快照自动并入新�
   assert.ok(c.accountSync.providers.includes('qwenwork') && c.accountSync.providers.includes('qwenwork-cn'), '新渠道应默认并入');
   assert.ok(c.accountSync.providers.includes('croli'), 'croli 同批并入（30min access 重推吃同一白名单）');
   assert.ok(c.accountSync.providers.includes('qoder') && c.accountSync.providers.includes('meoo'), '已有勾选原样保留（含已下线渠道，不越权清理）');
-  assert.equal(c.accountSync.providersVersion, 1, '写回当前版本，此后手动取消勾选不再被复活');
+  assert.equal(c.accountSync.providersVersion, 2, '写回当前版本，此后手动取消勾选不再被复活');
+  // AutoClaw 双线（2026-11-26 口径 (a)）同样并入：当初这两行是**整体摘除**（渠道卡都不列），
+  // 用户不可能手动取消过勾选，所以补进来不会复活用户明确关掉的渠道
+  assert.ok(c.accountSync.providers.includes('autoclaw') && c.accountSync.providers.includes('autoclaw-cn'), 'AutoClaw 双线应默认并入');
   // 空数组 = 未做过勾选的老配置（全部候选渠道），无需迁移也不写版本
   fs.writeFileSync(file, JSON.stringify({
     endpoint: 'http://nas:20127', key: 'sk-x',
@@ -665,10 +668,18 @@ test('accountSync 渠道版本迁移：老配置白名单快照自动并入新�
   // 已是当前版本的配置不再动（用户手动取消勾选的渠道不复活）
   fs.writeFileSync(file, JSON.stringify({
     endpoint: 'http://nas:20127', key: 'sk-x',
-    accountSync: { enabled: true, providers: ['qoder'], providersVersion: 1 },
+    accountSync: { enabled: true, providers: ['qoder'], providersVersion: 2 },
   }));
   const c3 = tr.loadConfig();
   assert.deepEqual(c3.accountSync.providers, ['qoder']);
+  // 停在版本 1 的老配置：只补 autoclaw 双线，不复活它自己关掉的 qwenwork
+  fs.writeFileSync(file, JSON.stringify({
+    endpoint: 'http://nas:20127', key: 'sk-x',
+    accountSync: { enabled: true, providers: ['qoder', 'qwenwork'], providersVersion: 1 },
+  }));
+  const c4 = tr.loadConfig();
+  assert.deepEqual(c4.accountSync.providers.sort(), ['autoclaw', 'autoclaw-cn', 'qoder', 'qwenwork'].sort());
+  assert.equal(c4.accountSync.providersVersion, 2);
 });
 
 test('accountSync 渠道开关：providers 白名单过滤账号、enabled=false 直接短路', async () => {

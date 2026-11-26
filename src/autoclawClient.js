@@ -60,7 +60,22 @@ export const AUTOCLAW_PATHS = {
   wallets: `/agent-assetmgr/api/v2/wallets?biz_app_id=${AUTOCLAW_PRODUCT}`,
   taskList: '/autoclaw-proxy/proxy/autoclaw-task-list',
   taskComplete: '/autoclaw-proxy/proxy/autoclaw-task-complete',
+  // 国内版（+86）短信两步直登：10R src/lib/oauth/providers/autoclaw-cn.js 同源。
+  // 尾斜杠是端点形状的一部分（少斜杠 → 400001/404）；code 必须发数字（见 autoclawSmsCodeValue）。
+  smsSend: '/userapi/v1/agent-send-code',
+  smsLogin: '/userapi/v1/agent-login/',
+  // 邀请（裂变）活动：反解 app.asar 主进程 getInviteInfo / useInviteCode 得到（非 10R 实现，
+  // 10R 全无 invite/fission 代码）。status 里既有自己的码也有绑定状态。
+  inviteStatus: '/agent-assetmgr/api/v1/fission-v2/status',
+  inviteActivity: '/agent-assetmgr/api/v1/fission-v2/online-activity-info',
+  inviteBind: '/agent-assetmgr/api/v1/fission-v2/bind',
 };
+
+/** 邀请活动 id / business（客户端硬编码，两端一致） */
+export const AUTOCLAW_INVITE_ACTIVITY = 'autoclaw_fission';
+export const AUTOCLAW_INVITE_BUSINESS = AUTOCLAW_PRODUCT;
+/** 国内手机号（11 位、不带 +86）：与 10R AUTOCLAW_CN_PHONE_RE 同一条规则 */
+export const AUTOCLAW_CN_PHONE_RE = /^1[3-9]\d{9}$/;
 
 export const AUTOCLAW_REFRESH_FALLBACK_CODE = 400002;
 export const AUTOCLAW_DAILY_SIGNIN_TASK = 'daily_signin';
@@ -532,8 +547,133 @@ export function normalizeAutoclawQuota(wallets, signin = null) {
   };
 }
 
-// ── 凭据编排（本机优先，见文件头纪律）──
+// ── 邀请（裂变）活动：反解客户端 app.asar 得到的三条真端点 ──
+//
+// 10Router 全无 invite/fission 实现（registry 里只有运营 notice 文案），这三条来自
+// AutoClaw 桌面客户端自身的主进程 API 层（getInviteInfo / getInviteOnlineActivityInfo /
+// useInviteCode → IPC invite-code:info / :use）。渲染进程的绑定形状：
+//   inviteCode.use({ activity_id: 'autoclaw_fission', business: 'autoclaw', invite_code })
+//   → res.code 为假值 = 成功（有值即失败，文案「邀请码使用失败」）
+// 鉴权与 wallets/task 同一套（Bearer access + 身份头 + X-Auth-Sign + source_id/device_id）。
+//
+// ⚠ 活动配置里 bind_inviter_reward_event = "bind_and_query"：字面义「绑定与查询都结算发奖」，
+// 所以读 status 不是纯只读——它可能改变账面。只在用户打开邀请码弹窗时读一次，
+// **绝不挂进额度轮询 / 状态轮询**。bind 本身有副作用且每号仅一次，未经用户同意不打。
 
+/** 邀请活动状态（自己的码 + 绑定状态 + 活动配置 + 统计） */
+export async function fetchAutoclawInviteStatus(accessToken, { region = 'cn', deviceId, fetchImpl = null } = {}) {
+  const q = `?activity_id=${encodeURIComponent(AUTOCLAW_INVITE_ACTIVITY)}&business=${encodeURIComponent(AUTOCLAW_INVITE_BUSINESS)}`;
+  return autoclawGet(autoclawRegionConfig(region).accountHost, AUTOCLAW_PATHS.inviteStatus + q, accessToken, { region, fetchImpl });
+}
+
+/** 在线活动列表（只有活动配置，不含个人码——要展示规则但不碰结算时用这条） */
+export async function fetchAutoclawInviteActivities(accessToken, { region = 'cn', fetchImpl = null } = {}) {
+  const q = `?business=${encodeURIComponent(AUTOCLAW_INVITE_BUSINESS)}`;
+  const data = await autoclawGet(autoclawRegionConfig(region).accountHost, AUTOCLAW_PATHS.inviteActivity + q, accessToken, { region, fetchImpl });
+  return Array.isArray(data?.activities) ? data.activities : [];
+}
+
+/**
+ * 绑定邀请码（POST fission-v2/bind）。⚠ 有副作用：每号仅一次资格，成功后不可撤销。
+ * 上游业务失败照旧走 envelope.code（HTTP 200 不代表成功），autoclawPost 已抛错。
+ */
+export async function bindAutoclawInviteCode(accessToken, code, { region = 'cn', deviceId, fetchImpl = null } = {}) {
+  const c = String(code ?? '').trim();
+  if (!c) throw new AutoclawApiError(t('邀请码不能为空'));
+  return autoclawPost(autoclawRegionConfig(region).accountHost, AUTOCLAW_PATHS.inviteBind,
+    { activity_id: AUTOCLAW_INVITE_ACTIVITY, business: AUTOCLAW_INVITE_BUSINESS, invite_code: c },
+    { region, accessToken, deviceId, fetchImpl });
+}
+
+/** 秒级时间戳 → ISO（非数值回 null，绝不回 NaN / Invalid Date） */
+export function autoclawSecToIso(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? new Date(n * 1000).toISOString() : null;
+}
+
+/**
+ * status 响应 → 面板所需形状。缺字段一律 null（不猜、不补 0）：
+ * 「读不到」与「真的是 0」在 UI 上必须是两件事（10Router 同款红线）。
+ */
+export function normalizeAutoclawInvite(data) {
+  const act = data?.activity || null;
+  const share = data?.share || null;
+  const bind = data?.bind || null;
+  const stats = data?.stats || null;
+  const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
+  return {
+    myCode: typeof share?.invite_code === 'string' && share.invite_code ? share.invite_code : null,
+    canShare: share?.can_share === true,
+    codeExpiresAt: autoclawSecToIso(share?.expires_at),
+    bindStatus: typeof bind?.status === 'string' ? bind.status : null,
+    canBind: bind?.can_bind === true,
+    // 邀请方奖励：单次额度 + 名额上限 + 剩余次数（实测 1000 × 15）
+    inviterReward: n(act?.bind_inviter_reward_amount),
+    rewardLimit: n(stats?.bind_reward_limit ?? act?.bind_inviter_reward_limit),
+    remainingRewards: n(stats?.remaining_bind_reward_count),
+    rewardedCount: n(stats?.rewarded_bind_count),
+    invitedCount: n(stats?.invited_count),
+    rewardValidDays: n(act?.bind_inviter_reward_valid_days),
+    // 被邀请方当前上游配 0 —— 文案必须照实说，不能照抄 Loomy 的「双方各 +5000」
+    inviteeReward: n(act?.bind_invitee_reward_amount),
+    activityEnabled: act?.enabled === true,
+    activityStatus: typeof act?.status === 'string' ? act.status : null,
+    activityStartsAt: autoclawSecToIso(act?.starts_at),
+    activityEndsAt: autoclawSecToIso(act?.ends_at),
+  };
+}
+
+// ── 国内版短信两步直登（+86）：端点与 10R autoclaw-cn.js 同源 ──
+
+/** 验证码必须按数字发（字符串 → 400001；上游把 code:0 当空值）——10R autoclawSmsCodeValue 同款 */
+export function autoclawSmsCodeValue(code) {
+  const s = String(code ?? '').trim();
+  return /^\d+$/.test(s) ? Number(s) : s;
+}
+
+/** 手机号清洗 + 校验（去 +86 前缀；不合法直接抛，绝不发出去） */
+export function cleanAutoclawCnPhone(phone) {
+  const p = String(phone ?? '').trim().replace(/^\+?86/, '');
+  if (!AUTOCLAW_CN_PHONE_RE.test(p)) throw new AutoclawApiError(t('手机号格式不正确（11 位，不带 +86）'));
+  return p;
+}
+
+/** 第一步：下发短信验证码（deviceId 必须由调用方给——这是 CD 自己派生的那份） */
+export async function sendAutoclawCnSmsCode(phone, { deviceId, fetchImpl = null } = {}) {
+  const p = cleanAutoclawCnPhone(phone);
+  await autoclawPost(AUTOCLAW_REGIONS.cn.accountHost, AUTOCLAW_PATHS.smsSend, { phone: p },
+    { region: 'cn', deviceId, fetchImpl });
+  return { sent: true, phone: p };
+}
+
+/** 第二步：验证码换 token 对（响应字段与 refresh 同形，走 autoclawTokenFields 归一） */
+export async function loginAutoclawCnBySms({ phone, code }, { deviceId, fetchImpl = null } = {}) {
+  const p = cleanAutoclawCnPhone(phone);
+  const c = String(code ?? '').trim();
+  if (!/^\d{4,8}$/.test(c)) throw new AutoclawApiError(t('验证码应为 4–8 位数字'));
+  const data = await autoclawPost(AUTOCLAW_REGIONS.cn.accountHost, AUTOCLAW_PATHS.smsLogin,
+    { phone: p, code: autoclawSmsCodeValue(c) }, { region: 'cn', deviceId, fetchImpl });
+  const fields = autoclawTokenFields(data);
+  if (!fields.userId) throw new AutoclawApiError(t('AutoClaw 登录响应不完整（缺 user_id）'), { data });
+  return { ...fields, phone: p };
+}
+
+/**
+ * 该 AutoClaw 账号是否「CD 独占刷新权」= 可安全同步给 10Router（口径 (a)）。
+ *
+ * 判据只有两个来源，都在 autoclawAuth.js 登录时写下：source='sms-login'（短信直登的号，
+ * 桌面客户端根本没登录它）或 meta.autoclawCdOwned。**本机收割来的号（source='local-app'）
+ * 一律返回 false** —— 那种号有第三个副本（桌面客户端每小时自己轮换 rt），推给 10R 就是
+ * 三副本互杀，用户会看到「桌面客户端突然要重新登录」。
+ * 放在协议层（不放 autoclawAuth.js）是刻意的：同步侧要 import 它，而 autoclawAuth 会
+ * 经 accounts.js → providers.js → 本文件绕回来，判据放哪都必须是无依赖的那一头。
+ */
+export function canSyncAutoclawAccount(account) {
+  if (!account || !String(account.provider).startsWith('autoclaw')) return false;
+  return account.source === 'sms-login' || account.meta?.autoclawCdOwned === true;
+}
+
+// ── 凭据编排（本机优先，见文件头纪律）──
 /**
  * 本机 auth.json 里这一对凭据是否就是「这个账号」的。
  *
