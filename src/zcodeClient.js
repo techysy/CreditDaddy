@@ -319,6 +319,13 @@ async function fetchViaProxy(url, { method = 'GET', headers = {}, body = null, t
   if (isHttps) {
     const socket = await connectTunnel(proxy, `${u.hostname}:443`);
     const tlsSocket = tls.connect({ socket, servername: u.hostname });
+    // issue #72 里同一函数的另一处同类隐患（报告者把 2026-10-05 那次崩溃归到这里）：
+    // tls.connect() 只给底层裸 socket 挂了监听，tlsSocket 自己要到交给 https.request 那一刻
+    // 才有监听者 —— 握手失败若落在这个交接窗口里就按 Unhandled 'error' event 掀翻守护进程。
+    // 挂一个常驻监听封住窗口：'error' 是广播语义，req 自己的错误路径（实测由 Node 转成
+    // 「Client network socket disconnected before secure TLS connection was established」）
+    // 照常走，请求该失败还是失败，只是不再升级成进程级异常。
+    tlsSocket.on('error', () => {});
     requestOpts = {
       hostname: u.hostname, port: 443, path: u.pathname + u.search, method,
       headers: { ...headers, Host: u.host }, timeout: timeoutMs,
