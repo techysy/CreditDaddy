@@ -83,6 +83,7 @@ import { runCheckinTick, getSchedulerInfo, dayKey, enableZcodeAutoClaimWindow, r
 const getSchedulerDailyPlan = () => zcodeDailyPlanInfo();
 import { detectQoderApps, readQoderAppAccounts, riskIdentityAvailable, riskIdentitySource, switchTo as qoderSwitchTo, qoderRunningCached, terminateQoder } from './qoderApp.js';
 import { detectQwenworkApps, readQwenworkAppAccounts, switchTo as qwenworkSwitchTo, qwenworkRunningCached, terminateQwenwork } from './qwenworkApp.js';
+import { detectQuwork, quworkLiveAccount, quworkCurrentUid } from './quworkLocal.js';
 import { umidInfo, installUmid } from './qoderUmid.js';
 import * as tenrouter from './tenrouter.js';
 import * as zcodeGateway from './zcodeGateway.js';
@@ -92,7 +93,7 @@ import { PROVIDER_LABEL, APP_VERSION, PROVIDERS, PROJECT_URL } from './constants
 import { getLocale, setLocale, normalizeLocale, loadDict, t as tr } from './i18n.js';
 import { getAnnouncements } from './announcements.js';
 
-const PRODUCT_IDS = ['qoder', 'qwenwork', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'loomy', 'dumate'];
+const PRODUCT_IDS = ['qoder', 'qwenwork', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'loomy', 'dumate', 'quwork'];
 
 /** 面板访问密码：面板「设置」写入的 settings.json.panelKey 优先（可设 / 可关）；
  *  未设置（或被面板关闭）时回退环境变量 CREDITDADDY_PASSWORD（fnOS / 命令行部署注入），
@@ -581,6 +582,29 @@ async function reprobeCookieAccount(site, a) {
   } catch (e) {
     return finish({ id: a.id, name: a.name, ok: false, error: e.message });
   }
+}
+
+/**
+ * QuWork 凭据出门前的整备：accessToken 过期（客户端里也过期）就先 /api/user/refresh
+ * 续期并回写账号库——邀请码两条路由都直接吃 account.token，不整备就会拿死 token 打 401。
+ * 续期失败静默放过：后续请求自己会报出真实错误（网关 405 / 凭据失效），不在这拦截。
+ */
+async function prepareQuworkAccount(account) {
+  const expMs = Date.parse(account.expiresAt || '');
+  if (!Number.isFinite(expMs) || expMs > Date.now()) return;
+  const { quworkRefreshAccess } = await import('./quworkClient.js');
+  const fresh = await quworkRefreshAccess(account.token);
+  if (!fresh) return;
+  await withAccounts((list) => {
+    const hit = list.find((a) => a.id === account.id);
+    if (!hit) return;
+    hit.token = fresh.accessToken;
+    hit.expiresAt = fresh.expiresAt;
+    hit.updatedAt = new Date().toISOString();
+  });
+  account.token = fresh.accessToken;
+  account.expiresAt = fresh.expiresAt;
+  logger.info('DAEMON', 'QuWork {name} accessToken 已续期', { name: account.name || account.id });
 }
 
 async function readBody(req) {
@@ -1102,6 +1126,53 @@ async function handleApi(req, res, url) {
     const r = await fetchDumateMyInviteCode(account.token);
     if (!r.ok) return json(res, r.auth === false ? 401 : 502, { error: r.error });
     return json(res, 200, { ok: true, code: r.code, type: r.type, activityId: r.activityId });
+  }
+  // QuWork 邀请码/兑换码填写：POST /api/user/activate（订单号/积分兑换码/邀请码同一端点，
+  // 10R quworkActivateCode 同款；device_identifier 用账号 meta 里固定的那份，缺失时 redeem 现造并回传落库）
+  const quworkInviteMatch = p.match(/^\/api\/accounts\/([\w-]+)\/quwork\/invite$/);
+  if (quworkInviteMatch && method === 'POST') {
+    const body = await readBody(req).catch(() => ({}));
+    const code = String(body?.code || '').trim();
+    if (!code) return json(res, 400, { error: '邀请码不能为空' });
+    const account = (await loadAccounts()).find((a) => a.id === quworkInviteMatch[1] && a.provider === 'quwork');
+    if (!account) return json(res, 404, { error: 'QuWork 账号不存在' });
+    try {
+      await prepareQuworkAccount(account);
+      const { redeemQuworkCode } = await import('./quworkClient.js');
+      const r = await redeemQuworkCode(account.token, code, { deviceId: account.meta?.quworkDeviceId });
+      if (!r.ok) {
+        logger.warn('DAEMON', 'QuWork {name} 码兑换失败:{err}', { name: account.name, err: r.error });
+        return json(res, r.authExpired ? 401 : 400, { error: r.error });
+      }
+      // 新造的设备标识回填账号库（10R patchPsd 同款），下次复用
+      if (r.deviceId && r.deviceId !== account.meta?.quworkDeviceId) {
+        await withAccounts((list) => {
+          const hit = list.find((a) => a.id === account.id);
+          if (hit) hit.meta = { ...(hit.meta || {}), quworkDeviceId: r.deviceId };
+        });
+      }
+      logger.info('DAEMON', 'QuWork {name} 码已兑换:{code}', { name: account.name, code });
+      return json(res, 200, { ok: true, message: r.message, result: r.result });
+    } catch (e) {
+      logger.warn('DAEMON', 'QuWork {name} 码兑换异常:{err}', { name: account.name, err: e.message });
+      return json(res, e.auth ? 401 : 400, { error: e.message });
+    }
+  }
+  // QuWork 我的邀请码：self.aff_code + /api/user/invite/summary（每位奖励/已邀人数）
+  const quworkMyInviteMatch = p.match(/^\/api\/accounts\/([\w-]+)\/quwork\/my-invite-code$/);
+  if (quworkMyInviteMatch && method === 'GET') {
+    const account = (await loadAccounts()).find((a) => a.id === quworkMyInviteMatch[1] && a.provider === 'quwork');
+    if (!account) return json(res, 404, { error: 'QuWork 账号不存在' });
+    try {
+      await prepareQuworkAccount(account);
+      const { fetchQuworkMyInviteCode } = await import('./quworkClient.js');
+      const r = await fetchQuworkMyInviteCode(account.token);
+      if (!r.ok) return json(res, r.auth === false ? 401 : 502, { error: r.error });
+      return json(res, 200, { ok: true, code: r.code, count: r.count, rewardPoints: r.rewardPoints, perInvitePoints: r.perInvitePoints, maxInvite: r.maxInvite });
+    } catch (e) {
+      logger.warn('DAEMON', 'QuWork {name} 邀请码查询失败:{err}', { name: account.name, err: e.message });
+      return json(res, e.auth ? 401 : 502, { error: e.message });
+    }
   }
   // 网络出口偏好（全局——Qoder/ZCode/cookie 探测等全部出口都走它）：默认「直连优先、代理兜底」，
   // 可切「代理优先、直连兜底」；代理地址可面板配置（存 zcode-net.json，0600；键名 zcode 前缀是历史遗留）
@@ -2172,7 +2243,7 @@ async function handleApi(req, res, url) {
 
   // ── 本机检测 / 凭据扫描 ──
   if (p === '/api/local/detect' && method === 'GET') {
-    return json(res, 200, { apps: detectQoderApps(), qwenwork: detectQwenworkApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), trae: detectTrae(), minimax: detectMiniMax(), loomy: detectLoomy(), dumate: detectDumate(), doubao: detectDoubao(), legacy: detectInstalls() });
+    return json(res, 200, { apps: detectQoderApps(), qwenwork: detectQwenworkApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), trae: detectTrae(), minimax: detectMiniMax(), loomy: detectLoomy(), dumate: detectDumate(), quwork: detectQuwork(), doubao: detectDoubao(), legacy: detectInstalls() });
   }
   if (p === '/api/local/scan' && method === 'POST') {
     const existing = await loadAccounts();
@@ -2285,6 +2356,12 @@ async function handleApi(req, res, url) {
       const dm = await dumateLiveAccount();
       if (dm) addRecord(dm, { source: 'DuMate 当前登录', current: true });
     } catch (e) { errors.push({ file: 'qianfan-desktop-app/auth.json', error: e.message }); }
+    // 8.6) QuWork 桌面端（人人租 QurWork）：读 %APPDATA%\qurwork-desktop\qurwork-desktop.sqlite
+    //      的 auth_session 明文快照（node:sqlite readOnly，客户端在跑也允许并发读；被锁走拷贝兜底）
+    try {
+      const qk = await quworkLiveAccount();
+      if (qk) addRecord(qk, { source: 'QuWork 当前登录', current: true });
+    } catch (e) { errors.push({ file: 'qurwork-desktop/qurwork-desktop.sqlite', error: e.message }); }
     // 8.7) 豆包桌面客户端：本地解密 User Data\Network\Cookies（DPAPI + AES-256-GCM + DuplicateHandle 热提取）
     try {
       const db = await doubaoLiveAccount();
@@ -2639,6 +2716,9 @@ async function handleApi(req, res, url) {
       loomyClient: (() => { const d = detectLoomy(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       dumateClient: (() => { const d = detectDumate(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       dumateCurrentUid: readDumateCredential()?.uid || null,
+      // QuWork 客户端态：installed/dbExists 来自 quworkLocal 只读探测，running 走 winProc 快照
+      quworkClient: (() => { const d = detectQuwork(); return { installed: d.installed, signedIn: d.signedIn, running: d.running }; })(),
+      quworkCurrentUid: await quworkCurrentUid(),
       doubaoClient: (() => { const d = detectDoubao(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       // 首次启动免费声明（反倒卖三件套）：面板按此决定开屏是否弹一次；确认后 PUT 落盘
       freeNoticeShown: (await loadSettings().catch(() => ({}))).freeNoticeShown === true,

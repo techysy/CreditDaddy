@@ -32,6 +32,14 @@ export const TENROUTER_PROVIDER_MAP = {
   loomy: 'loomy',
   dumate: 'dumate',                  // 10R #113：DuMate 百度搭子 web-cookie 渠道
   lingxi: 'lingxi',                  // 10R #127：WPS 灵犀 web 会话渠道（token=完整 WPS Cookie 罐，api-key 形态直推）
+  // quwork：10R 原生 quwork 渠道（registry authModes:['oauth']，apikey 通道 400，同 qwenwork 教训——
+  // 只走面板密码的 transfer 通道）。CD 的 token=账号 accessToken（30 天，本机实测），
+  // QuWork 无独立 refresh token：/api/user/refresh 用旧 access 换新——10R 存储结构把该
+  // 「可续期材料」放 refreshToken 栏（refreshQuworkToken Bearer 旧 token），导出时见 buildExportPayload 特判。
+  // ⚠ 非轮换实锤（2026-11-26 真机）：refresh 后旧 access 仍有效到自身 exp——CD/10R 双副本各自
+  //   刷新不互杀，无需进 ROTATING_RT_SYNC_PROVIDERS（与 meoo/qwenwork 的一次性 rt 本质不同）。
+  // 推理 llmToken 永不进 10R（10R 侧自管 sk- 或走账号 token 刷新链）。
+  quwork: 'quwork',
   // ⚠ meoo 不再同步（test.12 实测）——rotating refresh token 双副本死锁，机制沉淀：
   //   这类 provider 的 rt 是**单次使用制**：任一侧拿 rt 换新 access，服务端立即作废
   //   旧 rt。rt 是一次性票据不是密钥，无法「复制」——同步过去后 CD 与 10R 各持一份

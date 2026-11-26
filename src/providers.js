@@ -26,6 +26,7 @@ import { checkinMeoo, fetchMeooQuota } from './meooClient.js';
 import { checkinDumate, fetchDumateQuota } from './dumateClient.js';
 import { fetchLoomyQuota, verifyLoomyAccount } from './loomyClient.js';
 import { fetchUserinfo as fetchQwenworkUserinfo, fetchQuotaUsage as fetchQwenworkQuota } from './qwenworkClient.js';
+import { checkinQuwork, fetchQuworkQuota, verifyQuworkAccount } from './quworkClient.js';
 /** 从 userinfo 响应中挑一个可读的显示名 */
 export function displayNameFrom(ui) {
   const pick = [ui?.nickname, ui?.name, ui?.username, ui?.email]
@@ -337,6 +338,18 @@ const PRODUCTS = {
     label: '讯飞 Loomy',
     quota: (account) => fetchLoomyQuota(account),
     verify: (account) => verifyLoomyAccount(account),
+  },
+  quwork: {
+    label: 'QuWork',
+    // QuWork（人人租 QurWork 桌面端同账号体系，quwork.cn）：凭据线=本机导入（明文
+    // SQLite auth_session 收割，客户端是单会话表、CD 只读不写回，不做切换）。
+    // 每日签到领积分（status 门控，10R quworkClaimDailyReward 同款纪律：never blind-fire）；
+    // 额度 = points_entitlement.total_points 积分余额；邀请码获取/填写走 /api/user/activate。
+    // accessToken 过期由 checkin 内部 /api/user/refresh 续期并经 ctx.onRefresh 回写。
+    // 无浏览器登录线：短信登录需阿里云滑块验证码，CD 不做（10R 也只在原生 modal 里做）。
+    checkin: (account, ctx) => checkinQuwork(account, ctx),
+    quota: (account) => fetchQuworkQuota(account),
+    verify: (account) => verifyQuworkAccount(account),
   },
   // 码道 CodeArts（issue #40）已于 2026-10-30 撤下：华为云控制台会话受闲置超时 +
   // WAF 指印绑定，本机无法续期，实测当日内即失效，无法支撑每日定时签到。详见

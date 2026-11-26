@@ -39,6 +39,8 @@ contextBridge.exposeInMainWorld('creditdaddy', {
   openLoomyClient: () => ipcRenderer.invoke('open-loomy-client'),
   /** 打开本机 DuMate 百度搭子客户端 @returns {Promise<{ok: boolean, error?: string}>} */
   openDuMateClient: () => ipcRenderer.invoke('open-dumate-client'),
+  /** 打开本机 QuWork（人人租 QurWork）客户端 @returns {Promise<{ok: boolean, error?: string}>} */
+  openQuworkClient: () => ipcRenderer.invoke('open-quwork-client'),
   /** 打开本机 WorkBuddy 客户端（flavor: 'cn' 国内版 WorkBuddy / 'intl' 国际版 WorkBuddyAI）@returns {Promise<{ok: boolean, error?: string}>} */
   openWorkbuddyClient: (flavor) => ipcRenderer.invoke('open-workbuddy-client', String(flavor || 'cn')),
   /** 打开本机 CodeBuddy IDE（flavor: 'cn' 国内版 CodeBuddy CN / 'intl' 国际版 CodeBuddy）@returns {Promise<{ok: boolean, error?: string}>} */
