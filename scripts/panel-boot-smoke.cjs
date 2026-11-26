@@ -90,7 +90,9 @@ function jsonFor(url) {
           lingxiPacks: { packs: [{ balance: 1800, expireAt: '2026-12-10T00:00:00.000Z' }], at: NOW }, capturedAt: NOW }] }],
     };
   }
-  if (u.includes('/api/accounts')) return { accounts: [] };
+  // mirasim 现行额度口径（真机 2026-11-25 抓的响应结构）：断言渲染用，见下方 MIRA_BASE
+  if (/\/api\/accounts\/[^/]+\/quota/.test(u)) return { quota: MIRA_QUOTA };
+  if (u.includes('/api/accounts')) return { accounts: [{ id: 'm1', provider: 'mirasim', product: 'mirasim', name: 'ShiYanG Yu', uid: 'usr_1f3b', token: '', meta: {}, hasRefreshToken: true }] };
   if (u.includes('/api/usage/quotas')) return { quotas: { connections: [] }, totals: {} };
   if (u.includes('/api/logs')) return { logs: [] };
   return {};
@@ -107,6 +109,27 @@ async function fetchMock(url, init) {
 }
 
 // ── 6. 沙箱 ──
+// mirasim 现行「额度」口径的响应结构（真机 2026-11-25 抓样），断言段会替换其内容
+let MIRA_QUOTA = {
+  unit: '额度', total: 10.01, used: 2.36, remaining: 7.65, remainingPercentage: 76.4, percent: 23.6,
+  plan: 'GO', planExpiresAt: '2027-04-23T15:59:59.000Z', earliestExpiresAt: '2027-02-22T15:03:06.833Z',
+  lots: [
+    { name: '邀请奖励', total: 5, remaining: 0, expiresAt: '2027-02-21T16:10:53.083Z', recurring: false },
+    { name: '邀请奖励', total: 10, remaining: 7.64, expiresAt: '2027-02-22T15:03:06.833Z', recurring: false },
+    { name: '原有余额', total: 0.01, remaining: 0.01, expiresAt: '2027-04-23T15:59:59.000Z', recurring: false },
+  ],
+  space: { remaining: 0, balance: 0, payer: 'personal' },
+  agentSources: [
+    { id: 'antigravity', label: 'Antigravity', source: 'local' },
+    { id: 'claude', label: 'Claude Code', source: 'local' },
+    { id: 'pi', label: 'Pi', source: 'local' },
+    { id: 'qwen', label: 'Qwen Code', source: 'local' },
+    { id: 'zcode', label: 'ZCode CLI', source: 'local' },
+  ],
+  windows: [{ name: '30d', rawName: '30d', total: 1501, used: 735.82, remaining: 765.18, percent: 49, remainingPercentage: 51, unit: '', resetAt: null, expiresAt: null, recurring: true }],
+  bottleneck: null, empty: false, exceeded: false, partial: false,
+};
+const MIRA_BASE = MIRA_QUOTA;
 const errors = [];
 const unhandled = [];
 const sandbox = {
@@ -169,6 +192,58 @@ const flush = () => new Promise((r) => setImmediate(() => setImmediate(() => set
   const csBody = (elements.get('free-pool-body') || {})._innerHTML || '';
   check(csBody.includes('最早 2026-11-19 到期'), 'meoo 行未渲染最早到期');
   check(csBody.includes('至 2026-12-10 到期'), 'lingxi 行未渲染最早到期');
+
+  // mirasim 现行「额度」口径渲染断言（走真实加载链：/api/accounts → loadQuotas → renderProd）：
+  // 逐笔剩余额与绝对到期日 + 「最早一笔 … 到期」，且绝不能再出现「N 天后重置」——
+  // 老 /v1/limits 的 30d 窗口 reset_at 是 2126 年占位值，按周期倒计时渲染会算出「36492 天后重置」
+  const MIRA_HTML = () => (elements.get('list') || {})._innerHTML || '';
+  // 顶层 const/let 不挂在 sandbox 对象上，只能按词法环境求值，故用 runInContext 读写 state
+  const evalIn = (expr) => vm.runInContext(expr, ctx, { filename: 'smoke-assert' });
+  const step = async (q) => {
+    MIRA_QUOTA = q;
+    evalIn('state.quotas = {}');
+    await ctx.loadQuotas();
+    await flush(); await flush();
+  };
+  try {
+    evalIn("state.view = 'mirasim'; true");
+    await step({ ...MIRA_BASE });
+    const html = MIRA_HTML();
+    check(html.includes('7.65'), 'mirasim 主数未渲染个人额度余额 7.65');
+    check(html.includes('剩 7.64 / 10'), 'mirasim 未渲染逐笔剩余额');
+    check(html.includes('2027-02-22 到期'), 'mirasim 未渲染逐笔到期日');
+    check(html.includes('最早一笔 2027-02-22 到期'), 'mirasim 未渲染「最早一笔 … 到期」');
+    check(html.includes('空间额度 余 0'), 'mirasim 未渲染空间额度');
+    check(!/天后重置/.test(html), 'mirasim 又出现「N 天后重置」（占位 reset_at 泄漏）');
+    check(!/\b30d\b/.test(html), 'mirasim 仍在展示老 30d 窗口行');
+    // 各智能体单独设了来源（读自本机 person-agent-routes.json）：列名前 3 个 + 「等 5 个」
+    check(html.includes('Antigravity、Claude Code、Pi 等 5 个 单独设了额度来源'), 'mirasim 未渲染「单独设了额度来源」提示');
+
+    // 降级：个人额度接口读不到 → 显示「—」，不编一个 0 出来
+    await step({ ...MIRA_BASE, partial: true, total: 0, remaining: 0, used: 0, lots: [], earliestExpiresAt: null });
+    const degraded = MIRA_HTML();
+    check(degraded.includes('<b>—</b>'), 'mirasim 降级态未显示「—」');
+    check(!degraded.includes('7.65'), 'mirasim 降级态仍带旧余额');
+
+    // 用尽态
+    await step({ ...MIRA_BASE, remaining: 0, used: 10.01, remainingPercentage: 0, exceeded: true, bottleneck: { name: '个人额度' }, lots: [], earliestExpiresAt: null });
+    check(MIRA_HTML().includes('个人额度已用尽'), 'mirasim 用尽态文案缺失');
+
+    // 真机 2026-11-26 态：笔全部扣穿（lots 有、remaining 全 0），老 30d 窗口仍在响应里
+    // ——不得退回渲染窗口行，也不得出现负数余额
+    await step({
+      ...MIRA_BASE, total: 10, used: 10, remaining: 0, remainingPercentage: 0, exceeded: true,
+      bottleneck: { name: '个人额度' }, earliestExpiresAt: null, partial: false,
+      lots: MIRA_BASE.lots.map((l) => ({ ...l, remaining: 0 })),
+    });
+    const spentAll = MIRA_HTML();
+    check(spentAll.includes('个人额度已用尽'), 'mirasim 笔全部用尽未显示用尽态');
+    check(!/\b30d\b/.test(spentAll), 'mirasim 笔全部用尽时退回老 30d 窗口行（截图里的旧口径）');
+    // 只看渲染成文本的负数（>-0.02）；SVG path 的 d="…-2.64…" 是图标数据，不算
+    check(!/>\s*-\s*\d/.test(spentAll), 'mirasim 渲染出负数余额');
+  } catch (e) {
+    asserts.push('mirasim 渲染断言: ' + e.message);
+  }
 
   const wiring = unhandled.filter((e) => /ReferenceError|TypeError|is not defined|Cannot read/.test(e));
   const toastEl = elements.get('toast');

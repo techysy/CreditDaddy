@@ -51,6 +51,7 @@ export function mirasimPaths() {
     secretKeyEnc: path.join(desktop, 'secret-key.enc'),
     localState: path.join(desktop, 'Local State'),
     insights: path.join(h, 'insights'),
+    personAgentRoutes: path.join(h, 'collab', 'person-agent-routes.json'),
   };
 }
 
@@ -317,6 +318,42 @@ export function currentMirasimUid() {
   const p = mirasimPaths();
   const s = readJson(p.setting);
   return s?.auth?.userId || null;
+}
+
+/**
+ * 本机 mirasim 客户端所连空间（云端主机）的 nodeId —— 现行「空间额度」口径的查询入口
+ * （GET relay /v2/machines/:nodeId/credit）。客户端登录后写在 setting.json 的
+ * cloudAttachState.nodeId；未连接云端 / 老版本客户端没有该字段时返回 null。
+ */
+export function currentSpaceNodeId() {
+  const s = readJson(mirasimPaths().setting);
+  const nodeId = s?.cloudAttachState?.nodeId;
+  return typeof nodeId === 'string' && nodeId ? nodeId : null;
+}
+
+/** 智能体 id → mirasim 界面显示名（与客户端「设置 › 额度」同一张表，取自安装版宿主） */
+export const MIRASIM_AGENT_LABELS = {
+  claude: 'Claude Code', 'claude-science': 'Claude Science', codex: 'Codex',
+  antigravity: 'Antigravity', kimi: 'Kimi Code', gemini: 'Gemini CLI', qwen: 'Qwen Code',
+  grok: 'Grok Build', opencode: 'OpenCode', zcode: 'ZCode CLI', pi: 'Pi', dsh: 'DSH',
+};
+
+/**
+ * 各智能体单独设定的额度来源 —— mirasim 客户端「设置 › 额度」里那句「Antigravity、Claude Code
+ * 等 5 个单独设了来源，不跟这里走」用的就是这份数据：宿主按人存在
+ * ~/.mirasim/collab/person-agent-routes.json 的 routes[uid]，取值只有 'local'（用本机账号）
+ * 与 'cloud'（用 Mirasim 额度），与宿主自己的校验口径一致。没有对外 HTTP 接口，只能读本机文件；
+ * 文件缺失 / 该 uid 没有条目时返回空数组（= 全部跟随全局默认）。
+ */
+export function agentCreditSources(uid) {
+  if (!uid) return [];
+  const data = readJson(mirasimPaths().personAgentRoutes);
+  const routes = data?.routes?.[uid];
+  if (!routes || typeof routes !== 'object' || Array.isArray(routes)) return [];
+  return Object.entries(routes)
+    .filter(([, v]) => v === 'local' || v === 'cloud')
+    .map(([id, v]) => ({ id, label: MIRASIM_AGENT_LABELS[id] || id, source: v }))
+    .sort((a, b) => a.id.localeCompare(b.id));
 }
 
 /**
