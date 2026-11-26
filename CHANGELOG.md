@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+- **代理链路断连不再掀翻守护进程（issue #72 · 社区报告，fnOS fpk 1.8.3）**：开了「代理优先」时，上游把 TLS 连接掐断会让整个 daemon 退出——47860 停止监听、面板打不开，10Router 侧 zcode/trae/minimax-free 通道全变 `ECONNREFUSED`，且 fpk 无自动拉起，报告者三次停摆（9 / 6 / 19 小时）全靠手动重启。根因是 `fetchViaProxy()` 里两处**没有 'error' 监听者**的对象：① 裸 `PassThrough`——`pass.destroy(err)` 的 error 事件在下一 tick 发出，而调用方要到开始读 body 才挂上监听，上游在此之前掐断（长流式 + 代理优先最易命中）就按 `Unhandled 'error' event` 直接 throw；② `tlsSocket` 交给 `https.request` 之前同样无人接管握手失败（2026-10-05 那次崩的是它）。修复：
+  - `pass` 挂兜底 `'error'` 监听——事件有主即不再升级成进程级异常，而 pass 已进入 errored 状态，**body 读取照常 reject 同一个错误**，调用方语义零变化（单条请求失败，不是整进程陪葬）。
+  - `tlsSocket` 改为 **await 握手完成**，失败按普通请求错误抛给调用方（`fetchJsonRace` 照常回退另一条路）；顺带补上此前完全没人管的**握手段超时/取消**——request 尚未创建，两段式限时、墙钟与外部 abort 都够不到它，黑洞代理能把整条调用链吊死。
+  - `connectTunnel()` resolve 出的裸 socket 兜 `'error'`：CONNECT 成功到 TLS 接管之间有个 `await` 让出微任务的空窗，代理此时断链同样掀翻进程。
+  - 回归：新增 `test/zcode-proxy-stream.test.js`——跑**真实** `fetchViaProxy`（不经 `_setViaProxyForTests` mock），本机假代理确定性复现、脱网可跑；未修复代码上判 `uncaughtException`，修复后四项全过（含隧道 + TLS 握手成功的正路对照）。此前代理流式路径零测试覆盖，正是它带病存活的原因。
+  - 核查过但不在本次改动内：`minimaxGateway` 的 `upstream.body.pipe(res)` 分支不可达（`Response.body` 是 Web `ReadableStream`，无 `.pipe`，实际走 `getReader()` + catch），不构成崩溃面；zcode/trae 网关同走 `getReader()` 路径，安全。
 - **面板「读不到 ≠ 没有」体验修复（10Router 配置误以为被删）**：未设置面板访问密码时守护进程 fail-closed——非本机 socket 一律 403、Host 不在本机网卡表（本机 IP 变了还用旧地址开页面）也 403，此时面板所有 `/api/*` 全部失败；过去这些错误被静默吞掉，10Router 页直接渲染成「接入 10Router」引导页、仪表盘 10Router 卡整张消失、导航计数显示 `–`、「配置 10Router」弹窗三字段全空，用户误以为配置被删除（实际 `~/.creditdaddy/tenrouter.json` 完好）。现在：
   - 失败原因分类保留（`accessNote`：访问被拒 denied / 需要密码 key / 网络与服务端 other），`accessNoticeHtml` 统一渲染强提示——明说**数据没有被删除**、附接口原始报错，denied 场景给两条可操作出路（本机 `http://127.0.0.1:47860` 打开；或在「面板设置 → 通用 → 面板访问密码」设密码后点「重新读取」，不必刷新整页）。
   - 10Router 页整块提示（不再出引导页，也不停在额度加载态）、仪表盘卡保留并标「读不到」、导航计数改 `!`、「配置 10Router」与「用量同步」弹窗加读不到说明（含**此处保存会覆盖原配置**的告警）；账号列表 / 账号会话站点 / 面板设置的同类「读失败显示成空态」一并修复（产品页账号列表、账号会话页、免费额度页设置弹窗），并有顶部横幅汇总当前所有读不到的区块。
