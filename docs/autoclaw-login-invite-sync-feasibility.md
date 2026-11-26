@@ -4,6 +4,7 @@
 > 结论先行：**三件事都能做，但不是同一个口径**。登录只做国内版短信直登（国际版 OAuth 不做）；
 > 邀请码有真 API（不止静态池）；同步只在「CD 自己登的小号」这一条线上做，本机号仍不同步。
 > 本轮全部结论都做过只读实测，实测方法与证据位置见文末附录。
+> **2026-11-26 用户已拍定口径 (a) 与「bind 用可弃小号验」，C1/C2/C3 已实现，落地状态见 §6。**
 
 ---
 
@@ -338,20 +339,45 @@ AutoClaw 小号同口径：CD 自己刷出新 access 后立刻重推，10R 侧�
 
 ---
 
-## 6. 落地顺序与工作量
+## 6. 落地状态（2026-11-26 用户拍定口径 (a) 后已实现）
 
-| 步 | 内容 | 规模 | 依赖 |
-|---|---|---|---|
-| **B（已落）** | 顶部文案精简 + `m-ac-note` 说明弹窗 + 四语词条 | `panel.html` 3 处 + 4 份 i18n 各 +9 词条 | 无，本轮已提交 |
-| C1 | 邀请码：`autoclawClient.js` 加 3 个端点函数 + daemon 2 条路由 + 面板 2 个按钮 + `AUTOCLAW_INVITE_POOL` | 中（协议已实锤，纯搬运） | **需用户给池子里的码**；首次 bind 需点头 |
-| C2 | 国内版短信直登：`autoclawAuth.js` + daemon 2 条路由 + `openAdd` 放开 sms 页签 + device_id 派生落库 | 中 | 需真手机号做一次端到端验证 |
-| C3 | 同步：映射表 + 剥 rt 集合 + 按 source 过滤 + 30 分钟重推 + 渠道行恢复 | 中（照 croli 抄） | **依赖 C2**（没有 CD 登录号就没有可推的账号） |
-| C4 | 国际版 OAuth | 大 | **建议不做**（§2.4） |
+| 步 | 内容 | 状态 |
+|---|---|---|
+| **B** | 顶部文案精简 + `m-ac-note` 说明弹窗 + 四语词条 | **已落**（提交 90656510） |
+| C1 | 邀请码：`autoclawClient.js` 三条端点函数 + daemon 2 条路由 + 面板 2 个按钮 + `AUTOCLAW_INVITE_POOL` | **已落**（代码完成，bind 未真打，见下） |
+| C2 | 国内版短信直登：`autoclawAuth.js` + daemon 2 条路由 + `ac-sms` 页签 + device_id 派生落库 | **已落**（代码完成，待真手机号端到端验一次） |
+| C3 | 同步：映射表 + 剥 rt 集合 + 按 source 过滤 + 30 分钟重推 + 渠道行恢复 + 渠道版本迁移 v2 | **已落** |
+| C4 | 国际版 OAuth | **不做**（§2.4） |
 
-测试口径：`npm test`（`node --test`）。C1/C2 各补一组纯函数 + 注入 `fetchImpl` 的用例，
-并挂进 `test/autoclaw.test.js` 已有的「注册挂点全套」清单——那是 dumate/croli 两次漏注册事故
-定下来的门禁（`VIEWS` 白名单、`cnt-` 计数、`PROD_ICONS`、`PRODUCTS`、`COMPONENTS`、`PROV` 双处等）。
-C3 要补的关键用例是**「本机收割来源的账号绝不进同步集合」**——这条是安全线，不是覆盖率。
+**实现要点（改动落点）**：
+
+- 协议层 `src/autoclawClient.js`：`fetchAutoclawInviteStatus` / `fetchAutoclawInviteActivities` /
+  `bindAutoclawInviteCode` / `normalizeAutoclawInvite` / `autoclawSecToIso` /
+  `sendAutoclawCnSmsCode` / `loginAutoclawCnBySms` / `autoclawSmsCodeValue` /
+  `cleanAutoclawCnPhone` / **`canSyncAutoclawAccount`**（同步准入判据，刻意放协议层避免循环依赖）。
+- 登录层 `src/autoclawAuth.js`（新增）：`autoclawCdDeviceId` / `autoclawCdSmsDeviceId` /
+  `sendAutoclawSms` / `loginAutoclawSms` / `isAutoclawCdOwned` / `accountDeviceId`。
+  **「本机收割号同 uid」会被硬拒**（不改写原行）——否则 accounts 的 uid 查重会把本机号
+  原位改写成 `source='sms-login'`，于是它变成"可同步"，而客户端正登录着同一个号。
+- 同步层 `src/tenrouterAccounts.js`：映射表两行 + `ROTATING_RT_SYNC_PROVIDERS` 加两项 +
+  分组循环里按 `canSyncAutoclawAccount` 拦截并计入 summary + `resyncAutoclawAccess` /
+  `startAutoclawResyncWatch`（30 分钟，只读账号库绝不打上游）。
+- `src/checkin.js`：`startScheduler()` 里挂 `startAutoclawResyncWatch`。
+- `src/tenrouter.js`：`ACCOUNT_SYNC_CURRENT_VERSION` 1 → 2，加入 autoclaw 双线迁移。
+- `src/panel.html`：账号卡两个邀请按钮 + 两个弹窗函数 + `data-pane="ac-sms"` 短信直登页签
+  + `openAdd` 放开该页签 + `AM_CHANNELS` 恢复两行（`pushable:false`）。
+
+**测试**：`npm test` 598 项全绿；`test/autoclaw.test.js` 48 项（新增 12 项，含**安全线用例**
+「本机收割号绝不进同步集合」「同 uid 本机号拒绝合并且原行不动」）。
+`node scripts/check-i18n.js` 缺口回到基线 13 条（全是 Croli 线遗留，与本改动无关）。
+
+**还等用户的**：
+
+1. **bind 首次真打**（口径：用可弃小号验）——代码已就绪，`POST /fission-v2/bind` 从未对真上游打过。
+2. **推荐池的码**：`AUTOCLAW_INVITE_POOL` 故意留空（AutoClaw 码是 8 位带 `CN` 前缀，
+   与 Loomy 的 6 位形态不同）。空池时弹窗不显示推荐行，只走用户粘贴 + 「我的邀请码」真数据。
+3. **短信直登端到端**：需要真手机号跑一次「发码 → 登录 → 落库 → 签到 → 同步」全链路。
+   本轮只用**非法/空号**验证了端点可达与错误透传（`19900000001` 未真收到短信）。
 
 不动的东西（约束）：`desktop/dist` 产物、`npm run dist`、本机 `%APPDATA%\autoclaw` 只读、
 不再打本机号的当日签到（已领过，`bind_and_query` 那条另说，见 §3.1 第 4 点）。

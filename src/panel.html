@@ -843,6 +843,7 @@
       <button class="tab" data-tab="qr" data-i18n="扫码登录">扫码登录</button>
       <button class="tab" data-tab="web" data-i18n="网页版">网页版</button>
       <button class="tab" data-tab="sms" data-i18n="手机登录" id="tab-sms">手机登录</button>
+      <button class="tab" data-tab="ac-sms" data-i18n="AutoClaw 手机登录" id="tab-ac-sms">AutoClaw 手机登录</button>
       <button class="tab" data-tab="device" data-i18n="浏览器登录">浏览器登录</button>
       <button class="tab" data-tab="token" data-i18n="粘贴 Token">粘贴 Token</button>
     </div>
@@ -888,6 +889,25 @@
       </div>
       <div class="modal-actions" id="loomy-login-actions" style="display:none">
         <button class="btn primary" id="btn-loomy-login">登录并导入</button>
+      </div>
+    </div>
+
+    <!-- AutoClaw 国内版（+86）短信直登：CD 独占的小号（口径 (a)）——不碰本机客户端那条链 -->
+    <div class="pane" data-pane="ac-sms">
+      <div class="hint" style="margin-bottom:10px">AutoClaw 国内版手机号直登：CD 自己登录并持有凭据，**不依赖本机 AutoClaw 客户端**。适合给 CD 一个独立小号（每日签到 + 可同步 10Router）。同一个号若已在客户端登录，请改用「本机导入」——两边都持有刷新令牌会互相作废。</div>
+      <div class="field">
+        <label>手机号</label>
+        <div style="display:flex;gap:8px">
+          <input class="input" id="ac-phone" placeholder="请输入 11 位手机号" maxlength="11">
+          <button class="btn" id="btn-ac-sms" style="white-space:nowrap;width:120px">获取验证码</button>
+        </div>
+      </div>
+      <div class="field" id="ac-code-field" style="display:none">
+        <label>短信验证码</label>
+        <input class="input" id="ac-code" placeholder="请输入短信验证码" maxlength="8">
+      </div>
+      <div class="modal-actions" id="ac-login-actions" style="display:none">
+        <button class="btn primary" id="btn-ac-login">登录并导入</button>
       </div>
     </div>
 
@@ -2355,6 +2375,10 @@ function cardHtml(a) {
     + (a.product === 'dumate' ? T('<button class="icon-btn" data-act="my-invite" title="我的邀请码（查看本账号的专属邀请码，复制分享）">') + I.invite + '</button>' : '')
     + (a.product === 'croli' ? T('<button class="icon-btn" data-act="invite" title="填写 Croli 邀请码">') + I.gift + '</button>' : '')
     + (a.product === 'croli' ? T('<button class="icon-btn" data-act="my-invite" title="查看 Croli 邀请码">') + I.invite + '</button>' : '')
+    // AutoClaw 邀请码：端点反解自客户端 app.asar（fission-v2），10R 全无实现。
+    // 上游「每号仅一次」+ 邀请方 1000 积分（限 15 人、30 天有效），被邀请方当前配 0。
+    + (a.product === 'autoclaw' ? T('<button class="icon-btn" data-act="invite" title="填写好友邀请码（每号仅一次；绑定后邀请方得 1000 积分，上限 15 人、30 天内有效）">') + I.gift + '</button>' : '')
+    + (a.product === 'autoclaw' ? T('<button class="icon-btn" data-act="my-invite" title="我的邀请码（查看本账号的专属邀请码与剩余名额，复制分享）">') + I.invite + '</button>' : '')
     + (canCheckin && a.provider !== 'workbuddy-intl' ? '<button class="icon-btn' + (state.busy[a.id] ? ' busy' : '') + '" data-act="checkin" title="' + T('立即领取') + '">' + (state.busy[a.id] ? I.refresh : I.play) + '</button>' : '')
     + (a.qoderWebDead ? '<button class="icon-btn" data-act="webrenew" title="' + T('账号会话已失效——打开登录窗口重新授权，关闭窗口时自动补 cookie（API token 不受影响）') + '">' + I.swap + '</button>' : '')
     + (a.canSwitch && !isCurrent && st.cls !== 'fail' ? (a.codebuddyIdeFlavor ? '<button class="icon-btn" data-act="switch" title="' + esc(T('切换 CodeBuddy IDE 到此账号')) + '">' + I.swap + '</button>' : T('<button class="icon-btn" data-act="switch" title="切换 ') + (CLIENT_LABEL[a.product] ? T(CLIENT_LABEL[a.product]) : prodLabel(a.product)) + T(' 客户端到此账号">') + I.swap + '</button>') : '')
@@ -3959,10 +3983,12 @@ const AM_CHANNELS = [
   // lingxi 同口径：10R #127 起原生 lingxi 渠道（webCookie executor 出卡）+ PR #66 连接同步，
   // CD 的 lingxi-<hash> 灵点卡停推（quotaPushDisabledProviders 恒排除，三条推送路径都认）
   { provider: 'lingxi', label: 'WPS 灵犀', syncable: true, pushable: false },
-  // ⚠ autoclaw / autoclaw-cn 渠道行整体不列（同 meoo 摘除口径）：10R 虽有同名原生渠道，
-  // 但 rt 是单次轮换、而 CD 之外还有本机 AutoClaw 桌面客户端也在刷同一条链——三副本必互杀
-  // （详见 tenrouterAccounts.js 映射表注释）。10R 侧已自行登录该线，CD 只做本机管理 + 签到。
-  // 列一行「两个勾都没有」的卡片纯属噪音，故按惯例摘除；将来要接 access-only 定时重推再补行。
+  // AutoClaw / AutoClaw CN：10R 有同名原生渠道（autoclaw / autoclaw-cn），连接可同步——
+  // 但**只有 CD 短信登录的小号**推得出去（本机收割号由 canSyncAutoclawAccount 在同步侧
+  // 硬挡：桌面客户端也在刷同一条 rt，推过去就是第三个副本，三副本互杀必然发生）。
+  // 额度卡不推：10R 的 autoclaw 连接自身出卡（services/usage/autoclaw.js），CD 再推纯属重复。
+  { provider: 'autoclaw', label: 'AutoClaw 国际版', syncable: true, pushable: false },
+  { provider: 'autoclaw-cn', label: 'AutoClaw 国内版', syncable: true, pushable: false },
 ];
 
 /** 10Router 配置「可用」判定：读不到时的提示要说「读不到」，不能写成「请先保存设置」——
@@ -5059,6 +5085,98 @@ async function croliMyInvite(id) {
   } catch (e) { list.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; }
 }
 
+// AutoClaw 邀请码候选池（口径照 LOOMY_INVITE_POOL：维护者放共享码进来，弹窗随机推荐一个，
+// 消耗均摊；输入框保持空 + placeholder 示例，预填太生硬）。
+// 首版**故意留空**：AutoClaw 的码形态是 8 位带 CN 前缀（如 CN5RTLJH），维护者拿到共享码
+// 再往这里加；空池时弹窗不显示推荐行，只走用户自己粘贴 + 「我的邀请码」的真数据。
+const AUTOCLAW_INVITE_POOL = [];
+
+/**
+ * AutoClaw 填写好友邀请码：POST fission-v2/bind（端点反解自客户端 app.asar）。
+ * ⚠ 有副作用且不可撤销：上游「每号仅一次」；绑定后**邀请方**得 1000 积分（限 15 人、
+ * 30 天内有效），被邀请方当前配 0 —— 文案照实写，不照抄 Loomy 的「双方各 +5000」。
+ */
+async function autoclawInvite(id) {
+  const a = state.accounts.find((x) => x.id === id);
+  if (!a) return;
+  const suggested = AUTOCLAW_INVITE_POOL.length
+    ? AUTOCLAW_INVITE_POOL[Math.floor(Math.random() * AUTOCLAW_INVITE_POOL.length)] : null;
+  const opts = {
+    message: suggested
+      ? T('推荐使用邀请码 {code}（复制到下方即可）。绑定后邀请方得 1000 积分（上限 15 人、30 天内有效），每个账号只能被邀请一次，绑定后不可撤销。', { code: suggested })
+      : T('绑定后邀请方得 1000 积分（上限 15 人、30 天内有效），每个账号只能被邀请一次，绑定后不可撤销。'),
+    placeholder: suggested ? T('输入邀请码，如 {code}', { code: suggested }) : T('输入 8 位邀请码'),
+    okText: T('绑定'),
+  };
+  const code = await uiPrompt(T('为 {name} 填写邀请码', { name: maskName(a.name || id) }), '', opts);
+  const clean = String(code || '').trim();
+  if (!clean) return;
+  try {
+    await api('/api/accounts/' + encodeURIComponent(id) + '/autoclaw/invite', { json: { code: clean } });
+    toast(T('邀请码已绑定:{code}', { code: clean }), true);
+    loadQuotas([id], { live: true }).then(render);   // 绑定可能带来积分变化，立刻刷卡片
+  } catch (e) { toast(e.message, false); }
+}
+
+/**
+ * AutoClaw 我的邀请码：GET fission-v2/status（自己的码 + 剩余名额 + 活动窗口）。
+ * ⚠ 上游 bind_inviter_reward_event="bind_and_query"：读 status 也参与发奖结算，
+ * 所以这条**只在用户打开本弹窗时打一次**，绝不挂进 30s 状态轮询 / 额度轮。
+ */
+async function autoclawMyInvite(id) {
+  const a = state.accounts.find((x) => x.id === id);
+  if (!a) return;
+  const listEl = $('my-invite-list');
+  const hintEl = $('my-invite-hint');
+  const footEl = $('my-invite-foot');
+  listEl.innerHTML = '<div class="empty" style="padding:18px">…</div>';
+  hintEl.textContent = T('正在查询 {name} 的邀请码…', { name: maskName(a.name || id) });
+  footEl.textContent = T('好友用你的邀请码注册并登录后，你得 1000 积分（名额有限、积分 30 天内有效）；每个账号只能被邀请一次。');
+  openModal('m-my-invite');
+  let r;
+  try {
+    r = await api('/api/accounts/' + encodeURIComponent(id) + '/autoclaw/my-invite-code');
+  } catch (e) {
+    listEl.innerHTML = '';
+    hintEl.textContent = e.message;
+    return;
+  }
+  const rows = [];
+  if (r.activityEnabled === false || (r.activityStatus && r.activityStatus !== 'active')) {
+    hintEl.textContent = T('邀请活动当前不在生效期（状态 {status}）', { status: r.activityStatus || 'unknown' });
+    listEl.innerHTML = '<div class="empty" style="padding:18px">' + T('活动已结束或未开启') + '</div>';
+    return;
+  }
+  if (r.myCode) {
+    const shareText = T('用我的 AutoClaw 邀请码 {code} 注册，一起领积分：https://autoglm.zhipuai.cn', { code: r.myCode });
+    const quota = (r.remainingRewards != null && r.rewardLimit)
+      ? T('剩余名额 {n} / {limit}', { n: r.remainingRewards, limit: r.rewardLimit })
+      : '';
+    rows.push('<div style="display:flex;align-items:center;gap:8px;border:1px solid var(--border-subtle);border-radius:10px;padding:8px 10px">'
+      + '<span style="font-weight:700;font-size:15px;letter-spacing:1px;flex:0 0 auto;font-variant-numeric:tabular-nums">' + esc(r.myCode) + '</span>'
+      + '<span style="flex:1;min-width:0;font-size:12px;color:var(--text-3)">' + esc(quota) + '</span>'
+      + '<button class="btn" style="padding:4px 10px;font-size:12px" data-ac-copy="code">' + T('复制邀请码') + '</button>'
+      + '<button class="btn" style="padding:4px 10px;font-size:12px" data-ac-copy="share">' + T('复制分享文案') + '</button>'
+      + '</div>');
+    hintEl.textContent = T('{name} 的专属邀请码', { name: maskName(a.name || id) })
+      + (r.bindStatus ? T(' · 本账号绑定状态：{s}', { s: r.bindStatus === 'bound' ? T('已绑定') : r.bindStatus === 'unbound' ? T('未绑定') : r.bindStatus }) : '');
+    listEl.innerHTML = rows.join('');
+    listEl.querySelectorAll('[data-ac-copy]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const text = btn.dataset.acCopy === 'share' ? shareText : r.myCode;
+        try { await navigator.clipboard.writeText(text); toast(btn.dataset.acCopy === 'share' ? T('分享文案已复制') : T('邀请码已复制'), true); }
+        catch { toast(T('复制失败，请手动复制'), false); }
+      });
+    });
+  } else {
+    hintEl.textContent = T('{name} 还没有可分享的邀请码', { name: maskName(a.name || id) });
+    listEl.innerHTML = '<div class="empty" style="padding:18px">' + T('该账号暂无邀请码（新注册账号需先在客户端完成一次登录）') + '</div>';
+  }
+  if (r.activityEndsAt) {
+    footEl.textContent += T(' 活动截止：{d}', { d: fmtTime(r.activityEndsAt).slice(0, 10) });
+  }
+}
+
 // ── DuMate 扫码登录（纯 HTTP 二维码线，协议同 10R）：start → 2s 轮询 status → authorized 由守护进程入库 ──
 let dmQrGen = 0;
 
@@ -5158,11 +5276,17 @@ async function onCardClick(e) {
   if (act === 'quota') { loadQuotas([id], { live: true }).then(render); return; }
   if (act === 'invite') {
     const a = state.accounts.find((x) => x.id === id);
-    return a && a.product === 'croli' ? croliInvite(id) : a && a.product === 'dumate' ? dumateInvite(id) : loomyInvite(id);
+    return a && a.product === 'croli' ? croliInvite(id)
+      : a && a.product === 'dumate' ? dumateInvite(id)
+      : a && a.product === 'autoclaw' ? autoclawInvite(id)
+      : loomyInvite(id);
   }
   if (act === 'my-invite') {
     const a = state.accounts.find((x) => x.id === id);
-    return a && a.product === 'croli' ? croliMyInvite(id) : a && a.product === 'dumate' ? dumateMyInvite(id) : loomyMyInvite(id);
+    return a && a.product === 'croli' ? croliMyInvite(id)
+      : a && a.product === 'dumate' ? dumateMyInvite(id)
+      : a && a.product === 'autoclaw' ? autoclawMyInvite(id)
+      : loomyMyInvite(id);
   }
   if (act === 'claim') return openClaim(id);
   if (act === 'switch') {
@@ -6125,11 +6249,14 @@ function openAdd(product) {
     qr: product === 'dumate',   // DuMate 扫码登录（纯 HTTP 二维码线，同 10R）
     web: product === 'dumate',  // DuMate 网页版登录（无痕窗捕获，入口自账号会话页迁入）
     // trae：OAuth 授权码 + PKCE 浏览器登录已闭环（FLOWS.trae，国内站），入口与设备码线同窗
-    // AutoClaw 只有「本机导入」一条线：无浏览器授权（国际版 OAuth 要过阿里云滑块 + 打不开的
-    // localhost 回环页，面板做不了）、无扫码、token 也不宜手贴（还缺 device_id 与 refresh 对）
+    // AutoClaw 本机导入之外，另有「AutoClaw 手机登录」（国内版 +86 短信直登，CD 独占小号）：
+    // 国际版仍无浏览器授权（要过阿里云滑块 + 打不开的 localhost:18432 回环页，且与桌面端抢口），
+    // token 也不宜手贴（还缺 device_id 与 refresh 对，手贴会造出刷不动的行）
     device: product !== 'mirasim' && product !== 'catpaw' && product !== 'loomy' && product !== 'dumate' && product !== 'autoclaw',
     token: product !== 'zcode' && product !== 'mirasim' && product !== 'catpaw' && product !== 'trae' && product !== 'dumate' && product !== 'croli' && product !== 'autoclaw',
+    // 「手机登录」页签是 Loomy 的；AutoClaw 用自己的那个（同一个页签位放两套线会串参数）
     sms: isLoomy || !product,
+    'ac-sms': product === 'autoclaw',
   };
   document.querySelectorAll('#m-add .tab').forEach((t) => { t.style.display = tabShown[t.dataset.tab] ? '' : 'none'; });
   $('local-hint').textContent = T(LOCAL_HINT[state.addProduct]);
@@ -6378,6 +6505,70 @@ $('btn-loomy-login').addEventListener('click', async () => {
     if (loomyTimer) { clearInterval(loomyTimer); loomyTimer = null; }
     $('btn-loomy-sms').disabled = false;
     $('btn-loomy-sms').textContent = T('获取验证码');
+    await loadAccounts();
+    render();
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = T('登录并导入');
+    toast(e.message, false);
+  }
+});
+
+// ── AutoClaw 国内版（+86）短信直登：CD 独占小号（口径 (a)）──
+// 与 Loomy 那条完全独立（不同页签、不同 id、不同路由）：两套线的手机号规则不同、
+// 会话有效期不同，共用一套状态会串。
+let acCountdown = 0;
+let acTimer = null;
+
+$('btn-ac-sms')?.addEventListener('click', async () => {
+  const phone = $('ac-phone').value.trim();
+  if (!/^1[3-9]\d{9}$/.test(phone)) return toast(T('请输入正确的 11 位手机号'), false);
+  const btn = $('btn-ac-sms');
+  btn.disabled = true;
+  btn.textContent = T('发送中…');
+  try {
+    await api('/api/autoclaw-cn/sms/send', { json: { phone }, timeoutMs: 45_000 });
+    toast(T('验证码已发送至手机，请查收短信'));
+    $('ac-code-field').style.display = '';
+    $('ac-login-actions').style.display = '';
+    acCountdown = 60;
+    btn.textContent = '60s';
+    if (acTimer) clearInterval(acTimer);
+    acTimer = setInterval(() => {
+      acCountdown--;
+      if (acCountdown <= 0) {
+        clearInterval(acTimer); acTimer = null;
+        btn.disabled = false;
+        btn.textContent = T('重新获取');
+      } else btn.textContent = `${acCountdown}s`;
+    }, 1000);
+  } catch (e) {
+    // 上游限流（630203「操作太频繁」）等原文回显，别只说「发送失败」——
+    // 用户分不清是手机号错了还是发太快了
+    btn.disabled = false;
+    btn.textContent = T('获取验证码');
+    toast(e.message, false);
+  }
+});
+
+$('btn-ac-login')?.addEventListener('click', async () => {
+  const phone = $('ac-phone').value.trim();
+  const code = $('ac-code').value.trim();
+  if (!phone || !code) return toast(T('请输入手机号与短信验证码'), false);
+  const btn = $('btn-ac-login');
+  btn.disabled = true;
+  btn.textContent = T('登录中…');
+  try {
+    const r = await api('/api/autoclaw-cn/sms/login', { json: { phone, code }, timeoutMs: 45_000 });
+    toast(r.duplicate ? T('账号已存在，登录凭据已更新') : T('AutoClaw 账号登录成功！已存入账号库'), true);
+    closeModal('m-add');
+    $('ac-phone').value = '';
+    $('ac-code').value = '';
+    $('ac-code-field').style.display = 'none';
+    $('ac-login-actions').style.display = 'none';
+    if (acTimer) { clearInterval(acTimer); acTimer = null; }
+    $('btn-ac-sms').disabled = false;
+    $('btn-ac-sms').textContent = T('获取验证码');
     await loadAccounts();
     render();
   } catch (e) {

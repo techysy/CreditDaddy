@@ -15,6 +15,8 @@
 import crypto from 'node:crypto';
 import { buildExportPayload, sealTransfer } from './transfer.js';
 import { logger } from './logger.js';
+import { canSyncAutoclawAccount } from './autoclawClient.js';
+import { loadAccounts } from './store.js';
 
 /** CreditDaddy provider → 10Router 连接类型。留空 / 缺失 = 该产品暂不同步。 */
 export const TENROUTER_PROVIDER_MAP = {
@@ -37,18 +39,22 @@ export const TENROUTER_PROVIDER_MAP = {
   //   旧 rt。rt 是一次性票据不是密钥，无法「复制」——同步过去后 CD 与 10R 各持一份
   //   快照，谁先刷新谁的另一侧就恒 invalid_grant，且无从恢复（只剩重新授权）。
   //   10R 的 meoo 连接改由 10R 侧自行管理（扫码 / 控制面 Key）。
-  // ⚠ autoclaw / autoclaw-cn（智谱澳龙）**不入映射表——本条已定稿，不是待办**
-  //   （2026-11-26 用户在三个选项里明确选「保持不同步」）：
-  //   rt 单次轮换（10R shared/autoclaw/client.js 注释与 registry notice 一致），但这里比
-  //   meoo 多一个 CD 管不到的第三方副本 —— **本机 AutoClaw 桌面客户端**也在刷同一条链。
-  //   三副本（客户端 / CD / 10R）互杀是必然，不是偶发。CD 侧的对策是「用前重读本机
-  //   auth.json、只在两边都过期时代刷」（autoclawClient.js 文件头），能保住客户端与 CD
-  //   两条；再把 rt 推给 10R 就等于亲手制造第三个。
-  //   推 access-only 同样被否：access 约 24h 过期，10R 侧没有 rt 就断供，除非 CD 像 croli
-  //   那样做定时重推（croli 80c63841）——那需要新的调度器，且仍挡不住桌面端刷新使
-  //   CD 手里的 access 提前失效。10R 侧已自行登录该线，各管各的即可。
-  //   → 将来若要接，唯一可接受的形态是 access-only + 定时重推，且要先解决「桌面端一刷新
-  //     就断供」；届时同步改 panel.html AM_CHANNELS（那里同样刻意不列本线渠道行）。
+  // ⚠ autoclaw / autoclaw-cn（智谱澳龙）**只同步 CD 独占的小号**（2026-11-26 口径 (a)，
+  //   docs/autoclaw-login-invite-sync-feasibility.md）：
+  //   rt 单次轮换（10R shared/autoclaw/client.js 注释与 registry notice 一致），而本机收割
+  //   来的号有**三个**副本抢同一条链（桌面客户端 / CD / 10R）——三副本互杀是必然不是偶发，
+  //   所以 2026-11-26 用户先拍的「保持不同步」对本机号**至今成立**，那一半不改。
+  //   能同步的只有短信直登（source='sms-login' / meta.autoclawCdOwned）出来的号：那种号
+  //   桌面客户端根本没登录，CD 是唯一持有者，rt 留在 CD、10R 只拿 access，就退化成 croli
+  //   同款两副本问题——解法照搬：剥 rt 只推 access（ROTATING_RT_SYNC_PROVIDERS）
+  //   + access 自动重推（本文件末尾 startAutoclawResyncWatch；access 约 24h 过期，
+  //   没有重推 10R 侧必然断供）。
+  //   判据在 syncAccountsTo10r 的分组循环里（canSyncAutoclawAccount）：漏一条就会把本机号
+  //   推出去，所以 test/autoclaw.test.js 有专门用例守这条线。
+  //   额度卡不推：10R 的 autoclaw 连接自身出卡（services/usage/autoclaw.js），CD 再推纯属
+  //   重复——AM_CHANNELS 标 pushable:false，保存时恒记排除。
+  autoclaw: 'autoclaw',
+  'autoclaw-cn': 'autoclaw-cn',
   // zcode → glm：等 zcode 反代就绪后补一行（同步流程已就绪，无需改代码）
 };
 
@@ -62,7 +68,7 @@ export const mapProviderId = (provider) => TENROUTER_PROVIDER_MAP[provider] || n
 // 千问办公同口径：ory_rt_ 单次轮换（官方客户端每小时换新），CD/10R 两副本必互杀——
 // 同步只推 accessToken（约 7 天有效），RT 留在客户端本机；客户端运行时 CD 的 status
 // 轮询会把最新 token 同步回账号库，下次手动同步即续上 10R 侧
-const ROTATING_RT_SYNC_PROVIDERS = new Set(['qwenwork', 'qwenwork-cn']);
+const ROTATING_RT_SYNC_PROVIDERS = new Set(['qwenwork', 'qwenwork-cn', 'autoclaw', 'autoclaw-cn']);
 
 const TIMEOUT_MS = 60_000;
 
@@ -195,6 +201,7 @@ export async function syncAccountsTo10r({ endpoint, key, adminPassword, accounts
   const groups = new Map();
   const unmapped = new Map();
   const traeIntl = [];
+  const acLocalSkipped = [];
   for (const a of accounts || []) {
     if (!a || !a.token) continue;
     // #56：国内线（provider trae）里混进国际账号（旧 meta.isIntl 标记）不往 trae-cn 推——
@@ -208,6 +215,13 @@ export async function syncAccountsTo10r({ endpoint, key, adminPassword, accounts
       if (a.provider) unmapped.set(a.provider, (unmapped.get(a.provider) || 0) + 1);
       continue;
     }
+    // AutoClaw 安全线：**只有 CD 独占的小号可同步**。本机收割来的号（桌面客户端也在刷同一条
+    // rt）一旦推给 10R 就是第三个副本，三副本互杀必然发生——而且用户看到的是「桌面客户端
+    // 突然要重新登录」，根因极难查。判据集中在 canSyncAutoclawAccount，不在这里复制逻辑。
+    if (String(a.provider).startsWith('autoclaw') && !canSyncAutoclawAccount(a)) {
+      acLocalSkipped.push(connName(a));
+      continue;
+    }
     if (!groups.has(target)) groups.set(target, []);
     groups.get(target).push(a);
   }
@@ -218,7 +232,12 @@ export async function syncAccountsTo10r({ endpoint, key, adminPassword, accounts
       groups.set(target, list.map((a) => ({ ...a, refreshToken: null })));
     }
   }
-  if (!groups.size) throw new Error('没有可同步的账号（qoder / 千问办公 / WorkBuddy / MiniMax / Loomy / Trae / DuMate / 灵犀系列）；zcode 待反代就绪后支持');
+  if (!groups.size) {
+    // 只有 AutoClaw 本机号被跳过时报「没有可同步的账号」会误导（用户明明有账号）——
+    // 把真实原因带进错误里，别让人以为账号丢了。
+    throw new Error('没有可同步的账号（qoder / 千问办公 / WorkBuddy / MiniMax / Loomy / Trae / DuMate / 灵犀系列 / AutoClaw 小号）；zcode 待反代就绪后支持'
+      + (acLocalSkipped.length ? `；本轮跳过了 AutoClaw 本机账号 ${acLocalSkipped.length} 个（${acLocalSkipped.join('、')}）——桌面客户端也在刷同一条链，同步会三副本互杀，只有 CD 短信登录的小号可同步` : ''));
+  }
 
   let channel = 'apikey';
   let cookie = null;
@@ -245,6 +264,7 @@ export async function syncAccountsTo10r({ endpoint, key, adminPassword, accounts
   if (sum('failed')) parts.push(`失败 ${sum('failed')}`);
   if (unmapped.size) parts.push('跳过 ' + [...unmapped].map(([p, n]) => `${p} ×${n}`).join('、'));
   if (traeIntl.length) parts.push(`跳过 Trae 国际版 ×${traeIntl.length}（CreditDaddy 的 Trae 线仅支持国内站）`);
+  if (acLocalSkipped.length) parts.push(`跳过 AutoClaw 本机账号 ×${acLocalSkipped.length}（${acLocalSkipped.join('、')}，桌面客户端也在刷同一条链，同步会三副本互杀——只有 CD 短信登录的小号可同步）`);
   // issue #44：Qoder 账号会话决定 10Router 端「套餐内 Credits」能不能显示。
   // OAuth 通道：10Router 导入时已逐账号探测，失效清单原样带回（deadNames）；
   // 两条通道都要点名本地就没有会话的账号（apikey 通道 webSessions 恒为
@@ -268,4 +288,90 @@ export async function syncAccountsTo10r({ endpoint, key, adminPassword, accounts
     + (parts.join('，') || '无变化')
     + (failed.length ? `；${failed.map((r) => r.provider + '：' + (r.error || r.status)).join('；')}` : '');
   return { channel, results, summary };
+}
+
+/* ───────────── AutoClaw 小号 access 自动重推 ─────────────
+ *
+ * 口径 (a) 的另一半：CD 短信登录的号，rt 只有 CD 一个持有者，同步给 10R 时剥掉 rt
+ * 只推 access（ROTATING_RT_SYNC_PROVIDERS）。而 access 约 24h 过期（实测 JWT iat→exp
+ * 正好一天），10R 手里没有 rt 就必然断供——所以 CD 每轮比对「账号库里现在的 access」
+ * 与「上次推过去的那条」，变了就重推（syncAccountsTo10r 按 uid 原位更新，幂等）。
+ *
+ * 与 croli 重推的区别：croli 的源头是官方客户端 sidecar（要现读 auth.json 拿最新快照），
+ * 这里的源头就是账号库本身——CD 自己刷新（签到 / 额度轮走 resolveAutoclawAuth 的
+ * 'refreshed' 分支）后已经把新对写回库了，所以这里只读库、绝不打上游，
+ * 也就绝不会替桌面客户端那条链做刷新。
+ *
+ * 基准值存内存：重启丢一次记录 → 首轮多推一遍，10R 原位更新同 token，无害。
+ * 无论成败都记录尝试值——避免 10R 不可达时每个周期对同一目标反复轰。
+ */
+
+const AC_RESYNC_INTERVAL_MS = 30 * 60_000;
+const lastAcPushedToken = new Map();   // account.id → 上次推过的 access
+let acResyncTimerHandle = null;
+let acResyncRunning = false;
+
+/**
+ * 单轮 AutoClaw 小号 access 重推检查。
+ * @param {object} tenrouterConfig 10Router 配置（loadConfig() 的值）
+ * @param {Array} [accounts] 测试注入的账号全集（生产走 loadAccounts()）
+ * @returns {Promise<{pushed:boolean,reason:string,summary?:string,error?:string}|null>}
+ *   null = 未配置 / 总开关关闭 / 白名单不含 autoclaw（无事发生不记录）。
+ */
+export async function resyncAutoclawAccess(tenrouterConfig, accounts = null) {
+  const c = tenrouterConfig;
+  if (!c?.endpoint || (!c.key && !c.adminPassword)) return null;
+  if (c.accountSync?.enabled === false) return null;
+  const allow = Array.isArray(c.accountSync?.providers) ? c.accountSync.providers : [];
+  if (allow.length && !allow.some((p) => String(p).startsWith('autoclaw'))) return null;
+
+  const list = accounts || await loadAccounts();
+  // 两道闸都在：判据（CD 独占）+ 用户勾选（白名单非空时须含本 provider）
+  const targets = (list || []).filter((a) => canSyncAutoclawAccount(a) && a.token
+    && (!allow.length || allow.includes(a.provider)));
+  if (!targets.length) return { pushed: false, reason: 'no-cd-owned-account' };
+
+  const stale = targets.filter((a) => lastAcPushedToken.get(a.id) !== a.token);
+  if (!stale.length) return { pushed: false, reason: 'token-unchanged' };
+
+  const attempted = stale.map((a) => [a.id, a.token]);
+  try {
+    const r = await syncAccountsTo10r({
+      endpoint: c.endpoint, key: c.key, adminPassword: c.adminPassword, accounts: stale,
+    });
+    logger.info('TENROUTER_SYNC', 'AutoClaw 小号 access 已重推:{summary}', { summary: r.summary });
+    for (const [id, tok] of attempted) lastAcPushedToken.set(id, tok);
+    return { pushed: true, reason: 'ok', summary: r.summary };
+  } catch (e) {
+    logger.warn('TENROUTER_SYNC', 'AutoClaw access 重推失败（下轮 token 再变时重试）:{err}', { err: e?.message || e });
+    for (const [id, tok] of attempted) lastAcPushedToken.set(id, tok);
+    return { pushed: false, reason: 'push-failed', error: e?.message || String(e) };
+  }
+}
+
+/** AutoClaw access 重推轮询（30 分钟一轮）。@param {() => object} getConfig 10Router 配置读取器 */
+export function startAutoclawResyncWatch(getConfig) {
+  if (acResyncTimerHandle) return;
+  const tick = async () => {
+    if (acResyncRunning) return;
+    acResyncRunning = true;
+    try {
+      await resyncAutoclawAccess(getConfig?.());
+    } catch (e) {
+      logger.warn('TENROUTER_SYNC', 'AutoClaw 重推轮异常:{err}', { err: e?.message || e });
+    } finally {
+      acResyncRunning = false;
+    }
+  };
+  acResyncTimerHandle = setInterval(tick, AC_RESYNC_INTERVAL_MS);
+  acResyncTimerHandle.unref?.();
+  setTimeout(tick, 90_000).unref?.();   // 启动后先跑一轮，补重启丢掉的基准记录
+  logger.info('TENROUTER_SYNC', 'AutoClaw 小号 access 自动重推已启动（每 30 分钟比对一次）');
+}
+
+/** 测试钩子：清掉重推基准与定时器（用例之间必须复位，否则互相看见） */
+export function _resetAutoclawResyncForTests() {
+  lastAcPushedToken.clear();
+  if (acResyncTimerHandle) { clearInterval(acResyncTimerHandle); acResyncTimerHandle = null; }
+  acResyncRunning = false;
 }
