@@ -495,8 +495,11 @@ export function normalizeAutoclawQuota(wallets, signin = null) {
   for (const w of Array.isArray(wallets?.wallets) ? wallets.wallets : []) {
     const balance = num(w?.balance);
     if (!(balance > 0)) continue;
+    // 已知类型走自家标签表（可翻译）；上游 display_name 只作未知类型的兜底——
+    // 直接拿它当名字会让英文界面夹着中文「奖励积分」
+    const known = WALLET_LABELS[w?.public_wallet_type];
     parts.push({
-      name: t(String(w?.display_name || WALLET_LABELS[w?.public_wallet_type] || '积分')),
+      name: known ? t(known) : t(String(w?.display_name || '积分')),
       total: balance,
       used: 0,
       remaining: balance,
@@ -596,8 +599,8 @@ export async function resolveAutoclawAuth(account, ctx = {}) {
     // 出参统一 accessToken（onRefresh 走 store 的 token 口径，两者别混用）
     return { accessToken: creds.token, refreshToken: creds.refreshToken, expiresAt, region, deviceId, from: 'local' };
   }
-  // 3) CD 代刷
-  const order = [localRefresh, acctRefresh].filter(Boolean);
+  // 3) CD 代刷：两条 rt 谁新试谁，去重（本机与账号库常是同一对，重复打只是白烧一次请求）
+  const order = [...new Set([localRefresh, acctRefresh].filter(Boolean))];
   if (order.length === 2 && (jwtClaim(order[0], 'iat') || 0) < (jwtClaim(order[1], 'iat') || 0)) order.reverse();
   if (!order.length) throw autoclawAuthError(t('AutoClaw 没有可用的登录凭据：请在客户端登录后重新「本机导入」'));
   if (!deviceId) throw autoclawAuthError(t('AutoClaw 缺少设备身份（device_id），无法刷新凭据：请在客户端登录后重新「本机导入」'));
@@ -658,6 +661,10 @@ export async function checkinAutoclaw(account, ctx = {}) {
 }
 
 /** 添加账号时的身份补全（本机导入 / 手工贴 token 都走这里） */
+/**
+ * 添加账号时的身份补全。accounts.addAccount 只取 name / uid / email 三项，
+ * region 与掩码手机号一并回传供调用方（与将来的手工贴 token 线）使用。
+ */
 export async function verifyAutoclawAccount(account) {
   const auth = await resolveAutoclawAuth(account, {});
   const p = await fetchAutoclawProfile(auth.accessToken, { region: auth.region, deviceId: auth.deviceId });

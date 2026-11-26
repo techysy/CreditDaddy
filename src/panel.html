@@ -2107,9 +2107,24 @@ function expiryCell(a) {
     const q = state.quotas[a.id];
     if (q && q.authDead === true) {
       return {
-        label: T('续期失败 · 请重新授权'),
+        // AutoClaw 不推 10R、也没有「浏览器登录」这条线——指引要能真走得通
+        label: a.product === 'autoclaw' ? T('续期失败 · 请重新导入') : T('续期失败 · 请重新授权'),
         warn: true,
-        title: T('refreshToken 已被上游轮换作废（客户端退出登录也会作废）——请重新「本机导入」或走「浏览器登录」授权'),
+        title: a.product === 'autoclaw'
+          ? T('refreshToken 已被上游轮换作废——请在 AutoClaw 客户端重新登录，再到「添加账号 → 本机导入」导入一次')
+          : T('refreshToken 已被上游轮换作废（客户端退出登录也会作废）——请重新「本机导入」或走「浏览器登录」授权'),
+        isAuto: true,
+      };
+    }
+    if (a.product === 'autoclaw') {
+      // 本线的续期不是「纯后台无感」：优先借用本机客户端的最新一对，两边都过期才由
+      // CD 代刷——代刷之后桌面端下次刷新会要求重新登录，这里如实说明
+      return {
+        label: T('凭据有效 · 随本机客户端续期'),
+        warn: false,
+        title: a.expiresAt
+          ? T('本次登录凭据有效期至 ') + fmtTime(a.expiresAt) + T('（过期时优先采用 AutoClaw 客户端的最新登录；客户端未运行且凭据已过期时由 CreditDaddy 代刷，代刷后桌面端下次需重新登录）')
+          : T('过期时优先采用 AutoClaw 客户端的最新登录'),
         isAuto: true,
       };
     }

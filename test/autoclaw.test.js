@@ -282,7 +282,8 @@ const WALLETS = {
       { public_wallet_type: 'reward', balance: 20000 },
       { public_wallet_type: 'daily', balance: 150 },
       { public_wallet_type: 'fuel_pack', balance: 0 },   // 零余额不列
-      { public_wallet_type: 'other', display_name: '活动积分', balance: 12 },
+      { public_wallet_type: 'other', balance: 12 },      // 已知类型走标签表「其他积分」
+      { public_wallet_type: 'promotion', display_name: '活动积分', balance: 5 },   // 未知类型回落 display_name
     ],
   },
 };
@@ -308,7 +309,7 @@ test('AutoClaw 额度：钱包总额作主行，非零分类作明细', async ()
   const names = q.parts.map((p) => p.name);
   assert.ok(names.includes('奖励积分'));
   assert.ok(names.includes('每日积分'));
-  assert.ok(names.includes('活动积分'), '自定义 display_name 优先');
+  assert.ok(names.includes('活动积分'), '未知类型的 display_name 兜底生效');
   assert.ok(!names.includes('加油包积分'), '零余额钱包不列');
   assert.ok(names.includes('每日签到'));
 });
