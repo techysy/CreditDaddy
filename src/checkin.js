@@ -37,7 +37,8 @@ const ZCODE_FIRST_DELAY_MS = 2 * 60 * 1000;
 // 签到日 = 对应时点起的日历日：dayKey(now, provider) = (now + (8 - 刷新小时)h) 的 UTC 日期
 const DAY_REFRESH_HOUR_UTC8 = { qoder: 10, 'qoder-cn': 10 };
 // 领取日志的积分单位：默认 Credits（Qoder/WorkBuddy 系），账号会话线各自带单位
-const CHECKIN_UNIT = { lingxi: '灵点', doubao: '额度', meoo: '秒悟积分', dumate: '积分', quwork: '积分', croli: '积分' };
+// （按 provider 取值，双线要各登记一次）
+const CHECKIN_UNIT = { lingxi: '灵点', doubao: '额度', meoo: '秒悟积分', dumate: '积分', quwork: '积分', croli: '积分', autoclaw: '积分', 'autoclaw-cn': '积分' };
 
 let timerHandle = null;
 let zcodeTimerHandle = null;

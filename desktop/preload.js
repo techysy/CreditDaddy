@@ -42,6 +42,8 @@ contextBridge.exposeInMainWorld('creditdaddy', {
   openCroliClient: () => ipcRenderer.invoke('open-croli-client'),
   /** 打开本机 QuWork（人人租 QurWork）客户端 @returns {Promise<{ok: boolean, error?: string}>} */
   openQuworkClient: () => ipcRenderer.invoke('open-quwork-client'),
+  /** 打开本机 AutoClaw（智谱澳龙）客户端 @returns {Promise<{ok: boolean, error?: string}>} */
+  openAutoclawClient: () => ipcRenderer.invoke('open-autoclaw-client'),
   /** 打开本机 WorkBuddy 客户端（flavor: 'cn' 国内版 WorkBuddy / 'intl' 国际版 WorkBuddyAI）@returns {Promise<{ok: boolean, error?: string}>} */
   openWorkbuddyClient: (flavor) => ipcRenderer.invoke('open-workbuddy-client', String(flavor || 'cn')),
   /** 打开本机 CodeBuddy IDE（flavor: 'cn' 国内版 CodeBuddy CN / 'intl' 国际版 CodeBuddy）@returns {Promise<{ok: boolean, error?: string}>} */

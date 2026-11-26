@@ -2034,6 +2034,28 @@ function registerAuthWindowIpc() {
       return { ok: false, error: Tt('未找到 QuWork 客户端可执行文件') };
     } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
   });
+  // AutoClaw（智谱澳龙 / AutoGLM）客户端拉起：默认装到 %LOCALAPPDATA%\Programs\AutoClaw 或
+  // C:\Program Files\AutoClaw（本机实测 1.20.0 落在后者），两条候选都试。
+  ipcMain.handle('open-autoclaw-client', async () => {
+    try {
+      const os = require('node:os');
+      const fs = require('node:fs');
+      const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+      const cands = [
+        path.join(local, 'Programs', 'AutoClaw', 'AutoClaw.exe'),
+        'C:\\Program Files\\AutoClaw\\AutoClaw.exe',
+        'C:\\Program Files (x86)\\AutoClaw\\AutoClaw.exe',
+      ];
+      for (const cand of cands) {
+        if (process.platform === 'win32' && fs.existsSync(cand)) {
+          const err = await shell.openPath(cand);
+          if (!err) return { ok: true };
+          return { ok: false, error: err };
+        }
+      }
+      return { ok: false, error: Tt('未找到 AutoClaw 客户端可执行文件') };
+    } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
+  });
   // WorkBuddy 切号后自动拉起：国内（WorkBuddy）/ 国际（WorkBuddyAI）是两个独立客户端，只拉目标档位
   ipcMain.handle('open-workbuddy-client', async (_e, flavor) => {
     try {

@@ -80,7 +80,7 @@ function jsonFor(url) {
     return { accounts: [{ id: 'a1', provider: 'meoo', product: 'meoo', name: 'Meoo (#187)', uid: '379626', token: '', meta: {} }],
       cookieSites: [], settings: {}, quotas: {}, todayByProduct: {}, scheduler: { zcode: { lastTick: null } },
       version: 'smoke', zcodeClient: null, workbuddyCurrentUid: null, catpawCurrentUid: null,
-      qoderClient: null, traeClient: null, loomyClient: null, dumateClient: null, minimaxClient: null,
+      qoderClient: null, traeClient: null, loomyClient: null, dumateClient: null, autoclawClient: null, minimaxClient: null,
       zcodeCurrentUid: null, traeCurrentUid: null };
   }
   if (u.includes('/api/cookie-sites')) {

@@ -72,6 +72,7 @@ import { liveToAccount as minimaxLiveAccount, detectMiniMax, detectMiniMaxBuildL
 import { liveToAccount as loomyLiveAccount, hardSwitchLoomy, currentLoomyUid, detectLoomy } from './loomyLocal.js';
 import { liveToAccount as dumateLiveAccount, detectDumate, readDumateCredential, hardSwitchDumate } from './dumateLocal.js';
 import { liveToAccount as croliLiveAccount, detectCroli, readCroliCredential, hardSwitchCroli, croliSubOf as croliUidOf } from './croliLocal.js';
+import { liveToAccount as autoclawLiveAccount, detectAutoclaw, currentAutoclawUid } from './autoclawLocal.js';
 import { liveToAccount as doubaoLiveAccount, detectDoubao, extractDoubaoUid, readDoubaoDeviceInfo } from './doubaoLocal.js';
 import * as minimaxGateway from './minimaxGateway.js';
 import * as traeGateway from './traeGateway.js';
@@ -94,7 +95,7 @@ import { PROVIDER_LABEL, APP_VERSION, PROVIDERS, PROJECT_URL } from './constants
 import { getLocale, setLocale, normalizeLocale, loadDict, t as tr } from './i18n.js';
 import { getAnnouncements } from './announcements.js';
 
-const PRODUCT_IDS = ['qoder', 'qwenwork', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'loomy', 'dumate', 'croli', 'quwork'];
+const PRODUCT_IDS = ['qoder', 'qwenwork', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'loomy', 'dumate', 'croli', 'quwork', 'autoclaw'];
 
 /** 面板访问密码：面板「设置」写入的 settings.json.panelKey 优先（可设 / 可关）；
  *  未设置（或被面板关闭）时回退环境变量 CREDITDADDY_PASSWORD（fnOS / 命令行部署注入），
@@ -2288,7 +2289,7 @@ async function handleApi(req, res, url) {
 
   // ── 本机检测 / 凭据扫描 ──
   if (p === '/api/local/detect' && method === 'GET') {
-    return json(res, 200, { apps: detectQoderApps(), qwenwork: detectQwenworkApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), trae: detectTrae(), minimax: detectMiniMax(), loomy: detectLoomy(), dumate: detectDumate(), croli: detectCroli(), quwork: detectQuwork(), doubao: detectDoubao(), legacy: detectInstalls() });
+    return json(res, 200, { apps: detectQoderApps(), qwenwork: detectQwenworkApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), trae: detectTrae(), minimax: detectMiniMax(), loomy: detectLoomy(), dumate: detectDumate(), croli: detectCroli(), quwork: detectQuwork(), autoclaw: detectAutoclaw(), doubao: detectDoubao(), legacy: detectInstalls() });
   }
   if (p === '/api/local/scan' && method === 'POST') {
     const existing = await loadAccounts();
@@ -2412,6 +2413,14 @@ async function handleApi(req, res, url) {
       const qk = await quworkLiveAccount();
       if (qk) addRecord(qk, { source: 'QuWork 当前登录', current: true });
     } catch (e) { errors.push({ file: 'qurwork-desktop/qurwork-desktop.sqlite', error: e.message }); }
+    // 8.66) AutoClaw（智谱澳龙）桌面客户端：本地解密 %APPDATA%\autoclaw\auth.json
+    //      （Electron safeStorage：Local State + DPAPI + v10 AES-256-GCM，复用 qoderApp 的 codec）。
+    //      归属线由 JWT 的 source_id 决定（agent* = 国内短信号），liveToAccount 已按实际线返回 provider，
+    //      所以面板选「AutoClaw」也能把国内号导进正确的线。只读，不写客户端文件。
+    try {
+      const ac = await autoclawLiveAccount();
+      if (ac) addRecord(ac, { source: 'AutoClaw 当前登录', current: true });
+    } catch (e) { errors.push({ file: 'autoclaw/auth.json', error: e.message }); }
     // 8.7) 豆包桌面客户端：本地解密 User Data\Network\Cookies（DPAPI + AES-256-GCM + DuplicateHandle 热提取）
     try {
       const db = await doubaoLiveAccount();
@@ -2716,6 +2725,7 @@ async function handleApi(req, res, url) {
         meoo: dayKey(Date.now(), 'meoo'),       // Meoo 首登积分线：同为 0 点翻日
         dumate: dayKey(Date.now(), 'dumate'),   // DuMate 每日登录赠送积分：0 点翻日
         croli: dayKey(Date.now(), 'croli'),
+        autoclaw: dayKey(Date.now(), 'autoclaw'),   // AutoClaw 每日签到：上游按北京时间 0 点换日（10R autoclawCheckin 同口径）
         zcode: dayKey(Date.now(), 'zcode'),     // ZCode 活动领取：单日活动 0 点刷新——徽标按日界而非 26h 窗口（2026-11-20 用户实测「还有前一天的领取记录」）
       },
       scheduler: await getSchedulerInfo(),
@@ -2772,6 +2782,9 @@ async function handleApi(req, res, url) {
       quworkCurrentUid: await quworkCurrentUid(),
       croliClient: (() => { const d = detectCroli(); return { installed: d.installed, signedIn: d.signedIn, running: d.running, expired: d.expired }; })(),
       croliCurrentUid: (() => { const c = readCroliCredential(); return c ? croliUidOf(c.accessToken) : null; })(),
+      // AutoClaw：一个客户端只登一个号（国际/国内由 JWT source_id 决定归属），所以单套字段
+      autoclawClient: (() => { const d = detectAutoclaw(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
+      autoclawCurrentUid: currentAutoclawUid(),
       doubaoClient: (() => { const d = detectDoubao(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       // 首次启动免费声明（反倒卖三件套）：面板按此决定开屏是否弹一次；确认后 PUT 落盘
       freeNoticeShown: (await loadSettings().catch(() => ({}))).freeNoticeShown === true,

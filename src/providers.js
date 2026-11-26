@@ -27,6 +27,7 @@ import { checkinDumate, fetchDumateQuota } from './dumateClient.js';
 import { checkinCroli, fetchCroliQuota, verifyCroliAccount } from './croliClient.js';
 import { readCroliCredential, croliSubOf } from './croliLocal.js';
 import { refreshCroliToken } from './croliAuth.js';
+import { checkinAutoclaw, fetchAutoclawQuotaForAccount, verifyAutoclawAccount } from './autoclawClient.js';
 import { fetchLoomyQuota, verifyLoomyAccount } from './loomyClient.js';
 import { fetchUserinfo as fetchQwenworkUserinfo, fetchQuotaUsage as fetchQwenworkQuota } from './qwenworkClient.js';
 import { checkinQuwork, fetchQuworkQuota, verifyQuworkAccount } from './quworkClient.js';
@@ -402,6 +403,17 @@ const PRODUCTS = {
     checkin: (account, ctx) => checkinQuwork(account, ctx),
     quota: (account) => fetchQuworkQuota(account),
     verify: (account) => verifyQuworkAccount(account),
+  },
+  // AutoClaw（智谱澳龙 / AutoGLM 桌面端）：国际版 autoclaw（Z.AI OAuth）+ 国内版 autoclaw-cn
+  // （+86 短信码）两套独立账号体系，一个产品页。凭据 = 账号 JWT（access 约 24h）+ 轮换 rt。
+  // 签到 = task-complete 领取每日签到积分（服务端幂等）；额度 = 纯积分账面（无总量无重置窗，
+  // 读不到就报错，绝不报 0）。刷新纪律见 autoclawClient.js 文件头：本机快照优先、CD 只兜底代刷。
+  // 整条线只读收割本机 auth.json，不做换号（switchTo 固定报错给指引）。
+  autoclaw: {
+    label: 'AutoClaw',
+    checkin: (account, ctx) => checkinAutoclaw(account, ctx),
+    quota: (account, ctx) => fetchAutoclawQuotaForAccount(account, ctx),
+    verify: (account) => verifyAutoclawAccount(account),
   },
   // 码道 CodeArts（issue #40）已于 2026-10-30 撤下：华为云控制台会话受闲置超时 +
   // WAF 指印绑定，本机无法续期，实测当日内即失效，无法支撑每日定时签到。详见
