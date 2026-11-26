@@ -344,6 +344,10 @@ async function fetchViaProxy(url, { method = 'GET', headers = {}, body = null, t
       // 流式转发：经代理的响应（含网关 SSE 补全）逐块到达，而不是整包收完才 resolve——
       // 此前代理优先模式下客户端在整个生成期间一个字节都收不到，首 token 超时必然误报
       const pass = new PassThrough();
+      // 必须挂一个 'error' 监听：上游中途掐断时 pass.destroy(err) 会发 'error'，
+      // 调用方若还没开始读 body，就没有监听者，Node 会按 Unhandled 'error' event
+      // 直接把整个守护进程带走（#72）。读 body 的一方仍会从迭代里拿到这个错误。
+      pass.on('error', () => {});
       res.pipe(pass);
       res.on('error', (e) => pass.destroy(e));
       // close 在正常收尾与异常中断时都会触发；complete=false = 没收完就被掐
