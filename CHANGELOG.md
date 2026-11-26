@@ -11,7 +11,7 @@
   - **每日签到**：走任务面 `POST …/proxy/autoclaw-task-complete`（`task_id: daily_signin`，服务端幂等）。三态映射既有签到口径（checked-in + 积分 + 连签 / already / failed），成功回写 `balanceAfter`（钱包总额）走既有落库；签到业务日按北京时间 0 点翻日（与上游一致）。
   - **额度**：纯积分账面，无总量无重置周期。主行是钱包 `total_balance`，非零分类钱包（奖励/每日/订阅/加油包/其他）作明细，task-list 可读时追加签到状态行。**读不到一律报错，绝不报 0**（10R 同口径）。
   - **凭据纪律（本线最关键的一条）**：refresh token 是单次轮换制，本机 AutoClaw 客户端也在刷同一条链。取值顺序 = 账号库 access 未过期直接用 → 过期则**重读本机 auth.json** 对齐客户端的最新一对（零副作用、不烧 rt）→ 两边都过期才由 CD 代刷（如实提示「桌面端下次刷新会要求重新登录」）。**绝不写回客户端文件**。另有归属校验：客户端换登别的号后不会把 B 的凭据串到 A 的账号行。
-  - **不接 10Router 同步（本版刻意留空）**：10R 虽有同名原生渠道（`autoclaw` / `autoclaw-cn`），但 rt 三副本（桌面客户端 + CD + 10R）必然互相刷废，比 meoo 那次多一个 CD 管不到的副本；推 access-only 又因约 24h 寿命需新调度器。10R 侧已自行登录该线。渠道行如实标「暂不同步」，要不要接留给后续决定。
+  - **不接 10Router 同步（口径已定稿，2026-11-26 用户在「保持不同步 / 推 access-only / 推完整 rt 对」三选项中拍定第一项）**：10R 虽有同名原生渠道（`autoclaw` / `autoclaw-cn`），但 rt 三副本（桌面客户端 + CD + 10R）必然互相刷废，比 meoo 那次多一个 CD 管不到的副本；推 access-only 又因约 24h 寿命需新调度器，且挡不住桌面端刷新使 CD 手里的 access 提前失效。10R 侧已自行登录该线，两边各管各的。映射表与渠道同步表（`AM_CHANNELS`）都不列本线（同 meoo 摘除口径，不留两个死勾的空行）。
   - **不做**：扫码/网页会话捕获、邀请码（10R 源码里本线无 invite/aff 实现，无可用 API 口径，未猜端点）、面板换号（`switchTo` 固定报错给指引——换号请在客户端登录后重新导入）、本机用量同步来源。
   - 面板挂点全套：导航按钮 + cnt 计数器、VIEWS、PROD_ICONS、PRODUCTS/COMPONENTS、PROV 双线、CHECKIN_PRODUCTS、EMPTY_TIP、LOCAL_HINT、AM_CHANNELS、产品页头部「打开客户端」（含 desktop IPC `open-autoclaw-client`）；图标三处（导航内联 img / PROD_ICONS / prodIcons.json）与 `src/assets/providers/autoclaw.png` 逐字节一致。i18n 新增 52 条中文词条同步 en/ja/ko/zh-TW（门禁本次新增零漏网）。
   - 回归：`test/autoclaw.test.js` 36 项（协议纯函数、签到三态、refresh 的 400002 退路与双 host 判定、额度形状与「读不到不报 0」、临时目录 + 注入 codec 的收割、归属校验、凭据编排三态、注册挂点全套）；全量 `npm test` 586 项通过。

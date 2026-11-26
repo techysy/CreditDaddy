@@ -37,16 +37,18 @@ export const TENROUTER_PROVIDER_MAP = {
   //   旧 rt。rt 是一次性票据不是密钥，无法「复制」——同步过去后 CD 与 10R 各持一份
   //   快照，谁先刷新谁的另一侧就恒 invalid_grant，且无从恢复（只剩重新授权）。
   //   10R 的 meoo 连接改由 10R 侧自行管理（扫码 / 控制面 Key）。
-  // ⚠ autoclaw / autoclaw-cn（智谱澳龙）本轮同样**不入映射表**（2026-11-26 定稿待用户拍）：
+  // ⚠ autoclaw / autoclaw-cn（智谱澳龙）**不入映射表——本条已定稿，不是待办**
+  //   （2026-11-26 用户在三个选项里明确选「保持不同步」）：
   //   rt 单次轮换（10R shared/autoclaw/client.js 注释与 registry notice 一致），但这里比
   //   meoo 多一个 CD 管不到的第三方副本 —— **本机 AutoClaw 桌面客户端**也在刷同一条链。
   //   三副本（客户端 / CD / 10R）互杀是必然，不是偶发。CD 侧的对策是「用前重读本机
   //   auth.json、只在两边都过期时代刷」（autoclawClient.js 文件头），能保住客户端与 CD
   //   两条；再把 rt 推给 10R 就等于亲手制造第三个。
-  //   推 access-only 也不行：access 约 24h 过期，10R 侧没有 rt 就断供，除非 CD 像 croli
+  //   推 access-only 同样被否：access 约 24h 过期，10R 侧没有 rt 就断供，除非 CD 像 croli
   //   那样做定时重推（croli 80c63841）——那需要新的调度器，且仍挡不住桌面端刷新使
-  //   CD 手里的 access 提前失效。10R 侧现已自行登录该线（用户 2026-11-26 确认），
-  //   所以默认不同步；要不要接、接哪种，见 CHANGELOG 与面板说明，由用户拍。
+  //   CD 手里的 access 提前失效。10R 侧已自行登录该线，各管各的即可。
+  //   → 将来若要接，唯一可接受的形态是 access-only + 定时重推，且要先解决「桌面端一刷新
+  //     就断供」；届时同步改 panel.html AM_CHANNELS（那里同样刻意不列本线渠道行）。
   // zcode → glm：等 zcode 反代就绪后补一行（同步流程已就绪，无需改代码）
 };
 
