@@ -52,7 +52,7 @@ export const WEB_USAGE_PATH = '/api/v2/me/usages/big_model_credits';
 export const JOB_TOKEN_EXCHANGE_PATH = '/api/v1/jobToken/exchange';
 
 // 账号的 provider = 产品 + 区域。新增产品时在此登记，并在 providers.js 挂上对应实现。
-export const PROVIDERS = ['qoder', 'qoder-cn', 'qwenwork', 'qwenwork-cn', 'workbuddy', 'workbuddy-intl', 'zcode', 'mirasim', 'catpaw', 'trae', 'trae-intl', 'minimax', 'minimax-global', 'tokenharbor', 'xiaomi-mimo', 'river', 'modelscope', 'longcat', 'doubao', 'loomy', 'lingxi', 'meoo', 'dumate', 'crowllm'];
+export const PROVIDERS = ['qoder', 'qoder-cn', 'qwenwork', 'qwenwork-cn', 'workbuddy', 'workbuddy-intl', 'zcode', 'mirasim', 'catpaw', 'trae', 'trae-intl', 'minimax', 'minimax-global', 'tokenharbor', 'xiaomi-mimo', 'river', 'modelscope', 'longcat', 'doubao', 'loomy', 'lingxi', 'meoo', 'dumate', 'crowllm', 'autoclaw', 'autoclaw-cn'];
 export const PROVIDER_LABEL = {
   qoder: 'Qoder 国际版',
   'qoder-cn': 'Qoder 国内版',
@@ -78,6 +78,8 @@ export const PROVIDER_LABEL = {
   meoo: 'Meoo 秒悟',
   dumate: 'DuMate',
   crowllm: 'CrowLLM',
+  autoclaw: 'AutoClaw 国际版',
+  'autoclaw-cn': 'AutoClaw 国内版',
 };
 /** provider → 产品线（qoder / qwenwork / workbuddy / zcode / mirasim / catpaw / trae / minimax / tokenharbor / xiaomi-mimo / river） */
 export const productOf = (provider) => {
@@ -102,6 +104,8 @@ export const productOf = (provider) => {
   // 已下架产品保留映射：老账号库可能存留 croli 记录，避免落入兜底 'qoder'
   if (p === 'croli') return 'croli';
   if (p === 'crowllm') return 'crowllm';
+  // AutoClaw 双线（国际版 OAuth / 国内版短信号）共用一个产品页
+  if (p.startsWith('autoclaw')) return 'autoclaw';
   return 'qoder';
 };
 /** provider 是否国内版 */
