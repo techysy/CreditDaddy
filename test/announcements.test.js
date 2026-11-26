@@ -41,7 +41,7 @@ test('announcements.json：数据结构与首期公告字段完备', async () =>
   const allText = raw.items.map((x) => `${x.title} ${x.body}`).join('\n');
   assert.match(allText, /GitHub Releases/, '应包含 GitHub Releases 官方渠道声明');
   assert.match(allText, /豆包.*个人|飞书企业/, '应包含豆包仅限个人账号/飞书企业号不支持说明');
-  assert.match(allText, /Croli.*下架|移除/, '应包含 Croli 产品线已下架说明');
+  assert.doesNotMatch(allText, /Croli.*下架|移除/, '恢复 Croli 后不能继续展示下架公告');
 });
 
 test('announcements 服务：候选源顺序正确（GitHub raw → fastly → cdn → Gitee）', () => {

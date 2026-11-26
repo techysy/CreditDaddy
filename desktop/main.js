@@ -2003,6 +2003,16 @@ function registerAuthWindowIpc() {
       return { ok: false, error: Tt('未找到 DuMate 客户端可执行文件') };
     } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
   });
+  ipcMain.handle('open-croli-client', async () => {
+    try {
+      const local = process.env.LOCALAPPDATA || path.join(require('node:os').homedir(), 'AppData', 'Local');
+      const exe = [process.env.CROLI_CLIENT_PATH, path.join(local, 'Programs', 'Croli', 'Croli.exe'),
+        'C:\\Program Files\\Croli\\Croli.exe', 'C:\\Program Files (x86)\\Croli\\Croli.exe'].find((p) => p && fs.existsSync(p));
+      if (!exe) return { ok: false, error: Tt('未找到 Croli 客户端可执行文件') };
+      const err = await shell.openPath(exe);
+      return err ? { ok: false, error: err } : { ok: true };
+    } catch (err) { return { ok: false, error: String(err?.message || err) }; }
+  });
   // QuWork（人人租 QurWork）客户端拉起：安装目录 %LOCALAPPDATA%\Programs\QuWork（2026-11-26 真机实测）
   ipcMain.handle('open-quwork-client', async () => {
     try {
