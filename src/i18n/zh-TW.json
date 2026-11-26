@@ -277,9 +277,7 @@
   "<div class=\"stat\"><span>查询失败</span><strong>": "<div class=\"stat\"><span>查詢失敗</span><strong>",
   "<div class=\"stat\"><span>额度告急</span><strong>": "<div class=\"stat\"><span>額度告急</span><strong>",
   "<div class=\"tr-packs-head\">积分包 <b>": "<div class=\"tr-packs-head\">積分包 <b>",
-  "<div class=\"z-row\"><span class=\"z-label\">凭据刷新</span><span class=\"z-text\">刷新凭据是单次轮换制：CD 优先用客户端当前登录的那一对，两边都过期才代刷——代刷之后客户端下次刷新会要求重新登录。因此本线不同步 10Router（避免客户端、CD、10R 三副本互相刷废），请在 10R 侧单独登录该账号。</span></div>": "<div class=\"z-row\"><span class=\"z-label\">憑據刷新</span><span class=\"z-text\">刷新憑據是單次輪換制：CD 優先用客戶端當前登錄的那一對，兩邊都過期才代刷——代刷之後客戶端下次刷新會要求重新登錄。因此本線不同步 10Router（避免客戶端、CD、10R 三副本互相刷廢），請在 10R 側單獨登錄該賬號。</span></div>",
   "<div class=\"z-row\"><span class=\"z-label\">客户端</span><span class=\"z-text\">本机未安装 WorkBuddy 客户端：Token 导入、额度读取与每日领取不受影响；但「切换账号」需要本机客户端（切换是写入客户端凭据由其应用）。请先安装并登录客户端，再「本机导入」。</span></div>": "<div class=\"z-row\"><span class=\"z-label\">客戶端</span><span class=\"z-text\">本機未安裝 WorkBuddy 客戶端：Token 導入、額度讀取與每日領取不受影響；但「切換賬號」需要本機客戶端（切換是寫入客戶端憑據由其應用）。請先安裝並登錄客戶端，再「本機導入」。</span></div>",
-  "<div class=\"z-row\"><span class=\"z-label\">本机凭据</span><span class=\"z-text\">由本机 AutoClaw（智谱澳龙）客户端本地解密导入（safeStorage 凭据不出本机）。每日自动签到领积分；额度是积分账面（没有总量与重置周期）。国际版与国内版是两套独立账号体系，按凭据自动归线。</span></div>": "<div class=\"z-row\"><span class=\"z-label\">本機憑據</span><span class=\"z-text\">由本機 AutoClaw（智譜澳龍）客戶端本地解密導入（safeStorage 憑據不出本機）。每日自動簽到領積分；額度是積分賬面（沒有總量與重置週期）。國際版與國內版是兩套獨立賬號體系，按憑據自動歸線。</span></div>",
   "<div class=\"z-row\"><span class=\"z-label\">本机凭据</span><span class=\"z-text\">由本机 DuMate 百度搭子客户端本地解密导入（会话 Cookie 不出本机）；每日自动领取登录赠送积分，支持邀请码兑换，可一键同步 10Router。</span></div>": "<div class=\"z-row\"><span class=\"z-label\">本機憑據</span><span class=\"z-text\">由本機 DuMate 百度搭子用戶端本地解密匯入（會話 Cookie 不出本機）；每日自動領取登入贈送積分，支援邀請碼兌換，可一鍵同步 10Router。</span></div>",
   "<div class=\"z-row\"><span class=\"z-label\">本机凭据</span><span class=\"z-text\">由本机 Loomy 客户端读取导入，约 14 天有效；支持多账号切换，可一键同步 10Router。</span></div>": "<div class=\"z-row\"><span class=\"z-label\">本機憑據</span><span class=\"z-text\">由本機 Loomy 客戶端讀取導入，約 14 天有效；支援多帳號切換，可一鍵同步 10Router。</span></div>",
   "<div class=\"z-row\"><span class=\"z-label\">每日签到</span><span class=\"z-text\">每日签到领 800~2000 积分 + 400 连签加成。支持自动检测本机 MiniMax Code 凭据与 Bearer Token 导入，自带标准 Anthropic 本地网关。</span></div>": "<div class=\"z-row\"><span class=\"z-label\">每日簽到</span><span class=\"z-text\">每日簽到領 800~2000 積分 + 400 連籤加成。支持自動檢測本機 MiniMax Code 憑據與 Bearer Token 導入，自帶標準 Anthropic 本地網關。</span></div>",
@@ -2590,5 +2588,14 @@
   "；每日定时计划 ": "；每日定時計劃 ",
   "；礼物图标 = 手动临时领。</span></div>": "；禮物圖標 = 手動臨時領。</span></div>",
   "；绑定改动重启后生效": "；綁定改動重啟後生效",
-  "；要现在领，点右上角「自动领取」→「立即开跑」": "；要現在領，點右上角「自動領取」→「立即開跑」"
+  "；要现在领，点右上角「自动领取」→「立即开跑」": "；要現在領，點右上角「自動領取」→「立即開跑」",
+  "AutoClaw 说明": "AutoClaw 說明",
+  "本机凭据": "本機憑據",
+  "凭据刷新": "憑據刷新",
+  "换号": "換號",
+  "说明": "說明",
+  "<div class=\"z-row\"><span class=\"z-label\">本机凭据</span><span class=\"z-text\">由本机 AutoClaw 客户端解密导入，每日自动签到领积分；额度是积分账面。国际版与国内版按凭据自动归线。</span></div>": "<div class=\"z-row\"><span class=\"z-label\">本機憑據</span><span class=\"z-text\">由本機 AutoClaw 客戶端解密導入，每日自動簽到領積分；額度是積分賬面。國際版與國內版按憑據自動歸線。</span></div>",
+  "由本机 AutoClaw（智谱澳龙）客户端本地解密导入（safeStorage 凭据不出本机）。每日自动签到领积分；额度是积分账面（没有总量与重置周期）。国际版与国内版是两套独立账号体系，按凭据自动归线。": "由本機 AutoClaw（智譜澳龍）客戶端本地解密導入（safeStorage 憑據不出本機）。每日自動簽到領積分；額度是積分賬面（沒有總量與重置週期）。國際版與國內版是兩套獨立賬號體系，按憑據自動歸線。",
+  "刷新凭据是单次轮换制：CD 优先用客户端当前登录的那一对，两边都过期才代刷——代刷之后客户端下次刷新会要求重新登录。因此本线不同步 10Router（避免客户端、CD、10R 三副本互相刷废），请在 10R 侧单独登录该账号。": "刷新憑據是單次輪換制：CD 優先用客戶端當前登錄的那一對，兩邊都過期才代刷——代刷之後客戶端下次刷新會要求重新登錄。因此本線不同步 10Router（避免客戶端、CD、10R 三副本互相刷廢），請在 10R 側單獨登錄該賬號。",
+  "不支持从 CreditDaddy 写回客户端（只读收割）：请在 AutoClaw 客户端登录目标账号，再点「添加账号 → 本机导入」，面板会自动识别客户端当前登录的账号并打上「客户端当前」徽章。": "不支援從 CreditDaddy 寫回客戶端（只讀收割）：請在 AutoClaw 客戶端登錄目標賬號，再點「添加賬號 → 本機導入」，面板會自動識別客戶端當前登錄的賬號並打上「客戶端當前」徽章。"
 }

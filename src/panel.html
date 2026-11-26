@@ -1179,6 +1179,19 @@
   </div>
 </div>
 
+<!-- AutoClaw 产品说明（顶部信息条只留一行摘要，全文放这里：2026-11-26 用户要求精简） -->
+<div class="mask" id="m-ac-note">
+  <div class="modal" style="width:520px">
+    <div class="modal-title"><span data-i18n="AutoClaw 说明">AutoClaw 说明</span><button class="close" data-close>✕</button></div>
+    <div class="hint" style="line-height:1.75;display:flex;flex-direction:column;gap:10px">
+      <div><b data-i18n="本机凭据">本机凭据</b><br><span data-i18n="由本机 AutoClaw（智谱澳龙）客户端本地解密导入（safeStorage 凭据不出本机）。每日自动签到领积分；额度是积分账面（没有总量与重置周期）。国际版与国内版是两套独立账号体系，按凭据自动归线。">由本机 AutoClaw（智谱澳龙）客户端本地解密导入（safeStorage 凭据不出本机）。每日自动签到领积分；额度是积分账面（没有总量与重置周期）。国际版与国内版是两套独立账号体系，按凭据自动归线。</span></div>
+      <div><b data-i18n="凭据刷新">凭据刷新</b><br><span data-i18n="刷新凭据是单次轮换制：CD 优先用客户端当前登录的那一对，两边都过期才代刷——代刷之后客户端下次刷新会要求重新登录。因此本线不同步 10Router（避免客户端、CD、10R 三副本互相刷废），请在 10R 侧单独登录该账号。">刷新凭据是单次轮换制：CD 优先用客户端当前登录的那一对，两边都过期才代刷——代刷之后客户端下次刷新会要求重新登录。因此本线不同步 10Router（避免客户端、CD、10R 三副本互相刷废），请在 10R 侧单独登录该账号。</span></div>
+      <div><b data-i18n="换号">换号</b><br><span data-i18n="不支持从 CreditDaddy 写回客户端（只读收割）：请在 AutoClaw 客户端登录目标账号，再点「添加账号 → 本机导入」，面板会自动识别客户端当前登录的账号并打上「客户端当前」徽章。">不支持从 CreditDaddy 写回客户端（只读收割）：请在 AutoClaw 客户端登录目标账号，再点「添加账号 → 本机导入」，面板会自动识别客户端当前登录的账号并打上「客户端当前」徽章。</span></div>
+    </div>
+    <div class="modal-actions"><button class="btn primary" data-close data-i18n="我知道了">我知道了</button></div>
+  </div>
+</div>
+
 <!-- Loomy / DuMate 我的邀请码 -->
 <div class="mask" id="m-my-invite">
   <div class="modal sm" style="width:480px">
@@ -2954,10 +2967,11 @@ function renderStatus() {
   const n = $('notice');
   n.classList.toggle('info', state.view === 'zcode' || state.view === 'mirasim' || state.view === 'catpaw' || state.view === 'trae' || state.view === 'minimax' || state.view === 'loomy' || state.view === 'dumate' || state.view === 'autoclaw' || (state.view === 'workbuddy' && s.workbuddyClient && s.workbuddyClient.installed === false) || (hasIntl && Boolean(s.riskIdentity)));
   if (state.view === 'autoclaw') {
-    // 客户端安装/运行状态由头部「打开客户端」按钮的状态灯覆盖，信息条只讲凭据线与口径
+    // 客户端安装/运行状态由头部「打开客户端」按钮的状态灯覆盖，信息条只讲凭据线与口径。
+    // 2026-11-26 用户反馈两段长文案太啰嗦 → 顶部只留一行摘要，全文收进「说明」弹窗。
     n.style.display = '';
-    n.innerHTML = T('<div class="z-row"><span class="z-label">本机凭据</span><span class="z-text">由本机 AutoClaw（智谱澳龙）客户端本地解密导入（safeStorage 凭据不出本机）。每日自动签到领积分；额度是积分账面（没有总量与重置周期）。国际版与国内版是两套独立账号体系，按凭据自动归线。</span></div>')
-      + T('<div class="z-row"><span class="z-label">凭据刷新</span><span class="z-text">刷新凭据是单次轮换制：CD 优先用客户端当前登录的那一对，两边都过期才代刷——代刷之后客户端下次刷新会要求重新登录。因此本线不同步 10Router（避免客户端、CD、10R 三副本互相刷废），请在 10R 侧单独登录该账号。</span></div>');
+    n.innerHTML = T('<div class="z-row"><span class="z-label">本机凭据</span><span class="z-text">由本机 AutoClaw 客户端解密导入，每日自动签到领积分；额度是积分账面。国际版与国内版按凭据自动归线。</span></div>')
+      + ' <button class="btn" data-note="autoclaw" style="margin-left:6px">' + T('说明') + '</button>';
   } else if (state.view === 'loomy') {
     n.style.display = '';
     n.innerHTML = T('<div class="z-row"><span class="z-label">本机凭据</span><span class="z-text">由本机 Loomy 客户端读取导入，约 14 天有效；支持多账号切换，可一键同步 10Router。</span></div>')
@@ -6067,6 +6081,12 @@ $('znet-ok').addEventListener('click', async () => {
 document.querySelectorAll('.mask, .setpop').forEach((m) => {
   m.addEventListener('mousedown', (e) => { if (e.target === m) closeModal(m.id); });
   m.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => closeModal(m.id)));
+});
+// 产品说明弹窗入口：信息条是动态重渲染的，用委托监听（不在渲染时绑定，避免重复挂）
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest && e.target.closest('[data-note]');
+  if (!btn) return;
+  if (btn.dataset.note === 'autoclaw') openModal('m-ac-note');
 });
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;

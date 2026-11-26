@@ -277,9 +277,7 @@
   "<div class=\"stat\"><span>查询失败</span><strong>": "<div class=\"stat\"><span>조회 실패</span><strong>",
   "<div class=\"stat\"><span>额度告急</span><strong>": "<div class=\"stat\"><span>할당량 부족</span><strong>",
   "<div class=\"tr-packs-head\">积分包 <b>": "<div class=\"tr-packs-head\">크레딧 팩 <b>",
-  "<div class=\"z-row\"><span class=\"z-label\">凭据刷新</span><span class=\"z-text\">刷新凭据是单次轮换制：CD 优先用客户端当前登录的那一对，两边都过期才代刷——代刷之后客户端下次刷新会要求重新登录。因此本线不同步 10Router（避免客户端、CD、10R 三副本互相刷废），请在 10R 侧单独登录该账号。</span></div>": "<div class=\"z-row\"><span class=\"z-label\">자격증명 갱신</span><span class=\"z-text\">갱신 토큰은 단일 사용 회전 방식입니다. CreditDaddy는 먼저 클라이언트가 현재 로그인한 한 쌍을 사용하고, 둘 다 만료된 경우에만 대신 갱신합니다 — 대신 갱신한 뒤에는 클라이언트가 다음 갱신 시 재로그인을 요구합니다. 따라서 이 라인은 10Router와 동기화하지 않습니다(클라이언트·CreditDaddy·10R 세 사본이 서로를 무효화함). 10Router 쪽에서 해당 계정으로 별도로 로그인하세요.</span></div>",
   "<div class=\"z-row\"><span class=\"z-label\">客户端</span><span class=\"z-text\">本机未安装 WorkBuddy 客户端：Token 导入、额度读取与每日领取不受影响；但「切换账号」需要本机客户端（切换是写入客户端凭据由其应用）。请先安装并登录客户端，再「本机导入」。</span></div>": "<div class=\"z-row\"><span class=\"z-label\">클라이언트</span><span class=\"z-text\">이 컴퓨터에 WorkBuddy 클라이언트가 설치되어 있지 않습니다: 토큰 가져오기·잔액 조회·매일 수령은 영향 없지만, 계정 전환에는 로컬 클라이언트가 필요합니다(전환은 클라이언트 자격 증명에 기록하며 클라이언트가 적용). 먼저 클라이언트를 설치하고 로그인한 뒤 로컬 가져오기를 이용하세요.</span></div>",
-  "<div class=\"z-row\"><span class=\"z-label\">本机凭据</span><span class=\"z-text\">由本机 AutoClaw（智谱澳龙）客户端本地解密导入（safeStorage 凭据不出本机）。每日自动签到领积分；额度是积分账面（没有总量与重置周期）。国际版与国内版是两套独立账号体系，按凭据自动归线。</span></div>": "<div class=\"z-row\"><span class=\"z-label\">로컬 자격증명</span><span class=\"z-text\">이 기기의 AutoClaw(智谱澳龙) 클라이언트를 로컬 복호화하여 가져옵니다(safeStorage 자격증명은 기기를 벗어나지 않음). 매일 체크인은 자동 수령. 한도는 포인트 잔액 표시(총량·초기화 주기 없음). 국제판과 국내판은 별개 계정 체계이며 자격증명으로 자동 판별합니다.</span></div>",
   "<div class=\"z-row\"><span class=\"z-label\">本机凭据</span><span class=\"z-text\">由本机 DuMate 百度搭子客户端本地解密导入（会话 Cookie 不出本机）；每日自动领取登录赠送积分，支持邀请码兑换，可一键同步 10Router。</span></div>": "<div class=\"z-row\"><span class=\"z-label\">로컬 자격 증명</span><span class=\"z-text\">로컬 DuMate 클라이언트를 로컬에서 복호화하여 가져오기(세션 Cookie는 본機를 벗어나지 않음). 매일 로그인 보너스 자동 수령, 초대 코드 교환 지원, 10Router 원클릭 동기화.</span></div>",
   "<div class=\"z-row\"><span class=\"z-label\">本机凭据</span><span class=\"z-text\">由本机 Loomy 客户端读取导入，约 14 天有效；支持多账号切换，可一键同步 10Router。</span></div>": "<div class=\"z-row\"><span class=\"z-label\">로컬 자격증명</span><span class=\"z-text\">로컬 Loomy 클라이언트에서 가져오며, 유효기간 약 14일. 다중 계정 전환과 10Router 원클릭 동기화를 지원합니다.</span></div>",
   "<div class=\"z-row\"><span class=\"z-label\">每日签到</span><span class=\"z-text\">每日签到领 800~2000 积分 + 400 连签加成。支持自动检测本机 MiniMax Code 凭据与 Bearer Token 导入，自带标准 Anthropic 本地网关。</span></div>": "<div class=\"z-row\"><span class=\"z-label\">일일 출석</span><span class=\"z-text\">일일 출석 시 800~2000 포인트 + 연속 출석 보너스 400. 로컬 MiniMax Code 자격 증명을 자동 감지하고 Bearer Token 가져오기를 지원하며, 표준 Anthropic 로컬 게이트웨이를 포함합니다.</span></div>",
@@ -2590,5 +2588,14 @@
   "；每日定时计划 ": "; 매일 스케줄 ",
   "；礼物图标 = 手动临时领。</span></div>": "; 선물 아이콘 = 수동 일회성 수령.</span></div>",
   "；绑定改动重启后生效": "; 바인딩 변경은 재시작 후 적용",
-  "；要现在领，点右上角「自动领取」→「立即开跑」": "; 지금 받으려면 오른쪽 위「자동 수령」→「지금 실행」"
+  "；要现在领，点右上角「自动领取」→「立即开跑」": "; 지금 받으려면 오른쪽 위「자동 수령」→「지금 실행」",
+  "AutoClaw 说明": "AutoClaw 안내",
+  "本机凭据": "로컬 자격증명",
+  "凭据刷新": "자격증명 갱신",
+  "换号": "계정 전환",
+  "说明": "설명",
+  "<div class=\"z-row\"><span class=\"z-label\">本机凭据</span><span class=\"z-text\">由本机 AutoClaw 客户端解密导入，每日自动签到领积分；额度是积分账面。国际版与国内版按凭据自动归线。</span></div>": "<div class=\"z-row\"><span class=\"z-label\">로컬 자격증명</span><span class=\"z-text\">이 기기의 AutoClaw 클라이언트를 로컬 복호화하여 가져오며 매일 자동 체크인합니다. 한도는 포인트 잔액입니다. 국제판과 국내판은 자격증명으로 자동 판별합니다.</span></div>",
+  "由本机 AutoClaw（智谱澳龙）客户端本地解密导入（safeStorage 凭据不出本机）。每日自动签到领积分；额度是积分账面（没有总量与重置周期）。国际版与国内版是两套独立账号体系，按凭据自动归线。": "이 기기의 AutoClaw(智谱澳龙) 클라이언트를 로컬 복호화하여 가져옵니다(safeStorage 자격증명은 기기를 벗어나지 않음). 매일 체크인은 자동 수령. 한도는 포인트 잔액 표시(총량·초기화 주기 없음). 국제판과 국내판은 별개 계정 체계이며 자격증명으로 자동 판별합니다.",
+  "刷新凭据是单次轮换制：CD 优先用客户端当前登录的那一对，两边都过期才代刷——代刷之后客户端下次刷新会要求重新登录。因此本线不同步 10Router（避免客户端、CD、10R 三副本互相刷废），请在 10R 侧单独登录该账号。": "갱신 토큰은 단일 사용 회전 방식입니다. CreditDaddy는 먼저 클라이언트가 현재 로그인한 한 쌍을 사용하고, 둘 다 만료된 경우에만 대신 갱신합니다 — 대신 갱신한 뒤에는 클라이언트가 다음 갱신 시 재로그인을 요구합니다. 따라서 이 라인은 10Router와 동기화하지 않습니다(클라이언트·CreditDaddy·10R 세 사본이 서로를 무효화함). 10Router 쪽에서 해당 계정으로 별도로 로그인하세요.",
+  "不支持从 CreditDaddy 写回客户端（只读收割）：请在 AutoClaw 客户端登录目标账号，再点「添加账号 → 本机导入」，面板会自动识别客户端当前登录的账号并打上「客户端当前」徽章。": "CreditDaddy에서 클라이언트로 다시 쓰지 않습니다(읽기 전용 수집). AutoClaw 클라이언트에서 대상 계정에 로그인한 뒤 \"계정 추가 → 이 PC에서 가져오기\"를 누르면, 패널이 클라이언트의 현재 로그인 계정을 인식해 \"클라이언트 현재\" 배지를 붙입니다."
 }
