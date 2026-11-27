@@ -6,6 +6,14 @@
 
 ## [Unreleased]
 
+- **千问办公（QwenWork）双线接入 10Router 用量同步**（用户提案「千问办公可以支持下」：此前这条双线只有账号同步与额度卡，用量在 10Router 里零留痕）：
+  - **账本实锤**：`~/.qwenwork/.harness/flash-cli/qwenwork/qwenwork.db` 与 `~/.qwenworkcn/…/qwenwork.db` 各一份逐轮账本（表 `session`，会话级累计），形状与 OpenCode 的 `session` 逐列同构，故照 `collectOpencode` 同口径实现（读前复制含 `-wal/-shm` 的快照，绝不碰客户端正在写的原文件）。已探明的死路不再重复：`host-agent-responses.db` / `agent.db` / `host-content.db` 全 0 行，`projects/*/*.jsonl` 无 `message.usage`，`logs/runs/*/*.log` 是引擎日志。
+  - **单来源 + provider 前缀区分双线**（来源 id `qwenwork`，面板一个勾选框管两条线）：行写 `qwenwork-<providerID>` / `qwenwork-cn-<providerID>`，与 CD 的 provider id `qwenwork` / `qwenwork-cn` 同一口径；`meta.qwenworkLine` 落 `intl` / `cn`，`endpoint` 写 `qwenwork://intl|cn`。之所以必须带归属：两条线的模型池重叠（实测都有 `minimax-m3.1-flash`），不带前缀在 10Router 里就分不开是谁家的量。归属判定按**目录段精确匹配**——`.qwenwork` 是 `.qwenworkcn` 的前缀，靠前缀判会把国际版的量误算进国内版（`qwenworkApp.js` 注册表归属同款坑，已加反向断言钉住）。
+  - **与 opencode 的两处口径差异**：① `cost` 有源值照记、不归零（国际版是按量计费，实测 `qwen3.8-flash` 记到 0.00688707）；② 同样吃 1 小时结算窗——会话还在进行时 token 累计会改行签名，10Router 的去重拦不住，同一会话会被记两行。
+  - **不做静默为空**：账本读不了 / 没有 `session` 表 / 关键字段不符时按库计数进同步摘要（「跳过 N 个千问办公账本…」），单个坏文件不把双线整源打挂——吸取 ZCode 死表静默为空近一个月无人察觉的教训。
+  - **老配置自动并入**：`SOURCES_VERSION` 4→5，历史 `sources` 快照会并入 `qwenwork`（妙手因快照被静默关掉的同款事故），用户手动关掉的来源依旧不复活。
+  - **回归与真机核验**：新增 4 个用例（行定型含双线前缀与 cost、双线目录发现含 `QWENWORK_DB` 显式覆盖、结算窗与坏库提示、目录段归属的前缀反向断言），全部走临时目录注入，**测试绝不读用户真实库**。真机只读核验（复制快照后读，原文件零写入）：双线两份库均被发现，3 行定型行正常出账（`qwenwork-alibaba` / `qwenwork-openai-compatible` / `qwenwork-cn-openai-compatible`，cost 0.00688707 保留），2 个进行中会话按结算窗正确扣住。
+
 ## [1.8.5] (2026-11-27)
 
 本版主题:**四线合一正式版——新增 QuWork 产品线 + Croli 产品线恢复 + AutoClaw（智谱澳龙 / AutoGLM）全量接入 + mirasim 额度改现行按笔到期口径；豆包每日签到风控拦截（710010702）走本机客户端自动化突破，签到徽章补进行中态并修掉「未领取」与「已签到」矛盾，点击后界面「闪动」的整页重绘风暴一并修掉；代理链路断连三处进程级守卫收尾（issue #72）；测试实例不再抢用户面板（端口遮蔽修复）；面板「读不到 ≠ 没有」体验修复；公告随包兜底与暂存门禁收口**.

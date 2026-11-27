@@ -3647,7 +3647,8 @@ function trSetupHtml() {
   return T('<div class="setup"><h3>接入 10Router</h3>')
     + T('<div class="hint">填 10Router 的地址和一个<b>虚拟 key</b>（10Router 仪表盘 → API Keys 创建的 sk-…），就能在这里：</div>')
     + T('<div class="hint" style="margin:6px 0 12px">· 查看 10Router 里其他供应商（Claude / Codex / Kiro / GLM …）的额度卡片（需要 10Router 1.2.1+）<br>')
-    + T('· 把本机 ZCode / OpenCode / mirasim / 小米 MiMo / 10Router 的用量同步进 10Router 的用量统计（同 10router-sync 插件，自动每小时一次）<br>')
+    + T('· 把本机 ZCode / OpenCode / mirasim / 小米 MiMo / 千问办公 / 10Router 的用量同步进 10Router 的用量统计（同 10router-sync 插件，自动每小时一次）<br>')
+    + T('· 「千问办公」= 本机 QwenWork 双线各一份逐轮账本（国际版 ~/.qwenwork、国内版 ~/.qwenworkcn），行上按 qwenwork- / qwenwork-cn- 前缀区分归属，进行中的会话等停下来再入账<br>')
     + T('· 「10Router 本机」= 本机 10Router 实例自己记的账（如 zcode-free 经它中转的行）同步到聚合端；地址指向本机时自动跳过，避免自己导自己</div>')
     + '<button class="btn primary" data-tr="settings">' + I.plus + T('配置 10Router</button></div>');
 }
@@ -4708,7 +4709,7 @@ function openTrSync() {
   if (st && !tr.config) st.textContent = T('当前读不到已保存的同步设置（见 10Router 页提示）；下面显示的是默认值，保存会覆盖原设置。');
   $('tr-auto').checked = c.configured ? c.sync.enabled : true;
   $('tr-sources').innerHTML = (c.sources || []).map((x) => '<label class="check"><input type="checkbox" data-src="' + x.id + '"'
-    + ((c.configured ? c.sync.sources.includes(x.id) : true) ? ' checked' : '') + (x.supported ? '' : ' disabled') + '> ' + esc(x.label)
+    + ((c.configured ? c.sync.sources.includes(x.id) : true) ? ' checked' : '') + (x.supported ? '' : ' disabled') + '> ' + esc(T(x.label))
     + '<span class="dim">' + (x.found ? '' : T('（本机未检测到）')) + (x.supported ? '' : T('（需要 Node 22.5+）')) + '</span></label>').join('');
   const ls = c.lastSync;
   if (tr.config) $('tr-sync-status').textContent = ls ? T('上次同步 ') + fmtTime(ls.at).slice(5) + T('：') + ls.summary : T('还没有同步过');

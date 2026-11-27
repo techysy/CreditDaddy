@@ -4,6 +4,16 @@
 
 ---
 
+## [Unreleased]
+
+- **QwenWork(2개 라인을) 10Router 사용량 동기화에 연결**(사용자 제안 "QwenWork도 지원해 주세요"——기존에는 이 라인이 계정 동기화와 額度 카드만 있어 10Router에 사용량이 전혀 남지 않았다):
+  - **장부 실측 확정**: `~/.qwenwork/.harness/flash-cli/qwenwork/qwenwork.db` 와 `~/.qwenworkcn/…/qwenwork.db`(라인별 1 부, 테이블 `session` 은 세션 단위 누적). 모양이 OpenCode 의 `session` 과 열 단위로 동일하므로 `collectOpencode` 와 같은 기준으로 구현하고, 읽기 전에 `-wal/-shm` 포함 스냅샷을 복제해 원본 파일에는 손대지 않는다. 이미 막힌 길은 다시 탐지하지 않는다: `host-agent-responses.db` / `agent.db` / `host-content.db` 는 모두 0 행, `projects/*/*.jsonl` 에 `message.usage` 없음, `logs/runs/*/*.log` 는 엔진 로그.
+  - **단일 출처 + provider 접두사로 라인 귀속**(출처 id 는 `qwenwork`, 패널 체크박스 한 항목이 두 라인을 관리): 행은 `qwenwork-<providerID>` / `qwenwork-cn-<providerID>`, CD 의 provider id `qwenwork` / `qwenwork-cn` 과 같은 기준. `meta.qwenworkLine` 은 `intl` / `cn`, `endpoint` 는 `qwenwork://intl|cn`. 귀속이 필수인 이유: 두 라인의 모델 풀이 겹친다(실측으로 양쪽 모두 `minimax-m3.1-flash`), 접두사가 없으면 10Router 에서 어느 라인의 양인지 구분 못 한다. 판정은 **경로 구분자 완전 일치**——`.qwenwork` 는 `.qwenworkcn` 의 앞부분이므로 접두사 일치로 판하면 국제판량이 국내판에 잘못 집계된다(`qwenworkApp.js` 레지스트리 귀속과 같은 함정, 역방향 단정으로 고정).
+  - **opencode 와 의도적으로 다른 두 점**: ① `cost` 는 원본 값이 있으면 그대로 기록(0 으로 묶지 않음, 국제판은 종량 과금, 실측 `qwen3.8-flash` 가 0.00688707), ② 동일하게 1 시간 확정 창 적용——세션 진행 중에는 token 누적 행 서명이 바뀌어 10Router 의 중복 제거가 막지 못해 같은 세션이 두 행이 된다.
+  - **조용히 비어 있는 상태로 두지 않음**: 장부를 못 읽거나 / `session` 테이블 없음 / 주요 열 불일치는 파일 단위로 세어 동기화 요약에 표시("N 개의 QwenWork 장부 건너뜀…"),손상된 파일 하나가 두 라인 전체 출처를 실패로 만들지 않는다——ZCode 죽은 테이블이 한 달 동안 조용히 비어 있었으므로 교훈.
+  - **기존 설정에도 자동 반영**: `SOURCES_VERSION` 4→5. 저장된 `sources` 스냅샷에 `qwenwork` 가 병합됨(CatPaw 가 스냅샷으로 조용히 꺼진 사고와 같은 기준), 사용자가직접 끈 출처는 되살아나지 않는다.
+  - **회귀와 실기 검증**: 신규 4 개 케이스(행 성형의 두 라인 접두사와 cost, 경로 발견의 `QWENWORK_DB` 명시 덮어쓰기 포함, 확정 창과 손상된 파일 알림, 구분자 귀속의 접두사 일치 역방향 단정). 모두 주입한 임시 디렉터리로 실행하며 **테스트는 사용자 실장부를 절대 읽지 않는다**. 실기 읽기 전용 검증(스냅샷 복제 후 읽음, 원본 쓰기 없음): 두 라인의 DB 를 모두 발견, 확정된 3 행을 정상 출력(`qwenwork-alibaba` / `qwenwork-openai-compatible` / `qwenwork-cn-openai-compatible`, cost 0.00688707 보존), 진행 중 2 세션은 확정 창으로 의도대로 보류.
+
 ## [1.8.5] (2026-11-27)
 
 테마:**4개 라인 통합 정식 버전——QuWork 제품 라인 신규 + Croli 복구 + AutoClaw(즈푸/AutoGLM) 전면 연결 + mirasim 할당을现行的 '건별 만료' 기준으로 전환. 더우바오 매일 체크인风控 차단(710010702)을 본머신 클라이언트 자동화로 돌파하고, 체크인 배지에 진행 중 상태를 추가해 '미수령'과 '체크인 완료' 모순을 수정하며, 클릭 후 화면이 '깜빡이는' 전면 다시 그리기 폭풍까지 함께 해결. 프록시 끊김 프로세스 단위 가드 완료(issue #72) / 테스트 인스턴스가 사용자 패널을 가로채지 않음(포트 은폐 수정) / 패널 '읽을 수 없음 ≠ 없음' 경험 수정 / 공지 동봉 폴백과 스테이징 게이트 마감**.

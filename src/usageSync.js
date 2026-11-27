@@ -7,9 +7,12 @@
  *   opencode  ~/.local/share/opencode/opencode.db 的 session
  *   mirasim   ~/.mirasim/insights/usage-YYYY-MM.ndjson（跳过经 10Router 中转的调用）
  *   mimo      ~/.local/share/mimocode/mimocode.db 的 message（assistant 轮次）
+ *   qwenwork  千问办公双线各一份逐轮账本 ~/.qwenwork{,cn}/.harness/flash-cli/qwenwork/qwenwork.db
+ *             的 session（会话级累计，与 opencode 同构，故同吃 SETTLE_MS 结算窗）
  *   catpaw    妙手云端用量（catx 网关 /v1/usage/token/daily，按天 token 总量；
  *             无输入/输出拆分，整包记 prompt_tokens；当天桶隔天再入账）
- * 行结构与插件一致（provider 前缀 zcode- / opencode- / mirasim- / mimo-，cost 记 0 或源值），
+ * 行结构与插件一致（provider 前缀 zcode- / opencode- / mirasim- / mimo- / qwenwork- / qwenwork-cn-，
+ * cost 记 0 或源值），
  * 10Router 按行内容签名去重——签名 = (时间戳, provider, model, connectionId, apiKeyHash,
  * 输入 token, 输出 token)，行内容一模一样才会被认作重复；行内容还在变（会话进行中、
  * 按天聚合桶增长）就会被当成新行。所以客户端要保证发出去的行已经定型：
@@ -28,8 +31,8 @@ import path from 'node:path';
 import { loadAccounts } from './store.js';
 import { fetchCatpawTokenDaily } from './catpawClient.js';
 
-export const SOURCES = ['zcode', 'opencode', 'mirasim', 'mimo', 'catpaw', '10r', 'croli'];
-export const SOURCE_LABEL = { zcode: 'ZCode', opencode: 'OpenCode', mirasim: 'mirasim', mimo: '小米 MiMo', catpaw: '妙手', '10r': '10Router 本机', croli: 'Croli IDE' };
+export const SOURCES = ['zcode', 'opencode', 'mirasim', 'mimo', 'catpaw', '10r', 'croli', 'qwenwork'];
+export const SOURCE_LABEL = { zcode: 'ZCode', opencode: 'OpenCode', mirasim: 'mirasim', mimo: '小米 MiMo', catpaw: '妙手', '10r': '10Router 本机', croli: 'Croli IDE', qwenwork: '千问办公' };
 const OVERLAP_MS = 2 * 86400e3;
 /** 结算窗：时间戳在此窗口内的行可能还在被来源更新（token 累计、时间字段回填），暂不发送 */
 const SETTLE_MS = 60 * 60 * 1000;
@@ -78,6 +81,12 @@ export function sourcePaths(home = os.homedir(), env = process.env, platform = p
     routerDb.push(path.join(home, '.9router', 'db', 'data.sqlite'));
   }
   const exist = (list) => list.filter((p) => { try { return fs.statSync(p).isFile(); } catch { return false; } });
+  // 千问办公双线各一份逐轮账本（flash-cli 引擎的 qwenwork.db，表 session 会话级累计）：
+  // 国内版 ~/.qwenworkcn、国际版 ~/.qwenwork，目录名就是双线归属的唯一依据（见 qwenworkLine）。
+  // QWENWORK_DB 可显式指向另一个库（同 CROLI_DB / TENROUTER_DB 口径）
+  const qwenwork = [];
+  if (env.QWENWORK_DB) qwenwork.push(env.QWENWORK_DB);
+  for (const dir of ['.qwenwork', '.qwenworkcn']) qwenwork.push(path.join(home, dir, '.harness', 'flash-cli', 'qwenwork', 'qwenwork.db'));
   // Croli IDE 的逐轮账本（token_usage_turn）：provider 只指向 ds.croli.net（不经 10R），
   // 加 croli 来源没有重复记账风险。CROLI_DB 可显式指向另一个库
   const croliDb = [];
@@ -89,7 +98,7 @@ export function sourcePaths(home = os.homedir(), env = process.env, platform = p
   try {
     mirasim = fs.readdirSync(insights).filter((f) => /^usage-\d{4}-\d{2}\.ndjson$/.test(f)).sort().map((f) => path.join(insights, f));
   } catch {}
-  return { zcode: exist(zcode), opencode: exist(opencode), mirasim, mimo: exist(mimo), '10r': exist(routerDb), croli: exist(croliDb) };
+  return { zcode: exist(zcode), opencode: exist(opencode), mirasim, mimo: exist(mimo), '10r': exist(routerDb), croli: exist(croliDb), qwenwork: exist(qwenwork) };
 }
 
 /** 本机检测到哪些来源 */
@@ -193,6 +202,45 @@ export function convertOpencodeSession(s) {
     tokens,
     meta: {
       source: 'opencode', opencodeSessionId: s.id || null, title: s.title || null, agent: s.agent || null,
+      reasoning_tokens: s.tokens_reasoning || 0, cache_write_tokens: s.tokens_cache_write || 0,
+    },
+  };
+}
+
+/**
+ * 千问办公账本行（qwenwork.db 的 session，flash-cli 引擎会话级累计）→ 导入行。
+ * 表形状与 opencode 的 session 逐列同构，行结构照同一口径：model 是 JSON 串（取 id / providerID），
+ * cost 有源值就照记（国际版按量计费，实测 qwen3.8-flash 0.00688707；国内版多为 0）。
+ * @param {'intl'|'cn'} line 双线归属：'intl' = ~/.qwenwork（QwenWork 国际版）、'cn' = ~/.qwenworkcn（国内版）
+ */
+export function convertQwenworkSession(s, line = 'intl') {
+  const ms = Number(s.time_created);
+  if (!Number.isFinite(ms) || ms <= 0) return null;   // 缺时间戳不能用 Date.now() 兜底：每次同步都是一条“新行”
+  let modelId = 'unknown', providerID = 'qwenwork';
+  if (s.model) {
+    try {
+      const m = typeof s.model === 'string' ? JSON.parse(s.model) : s.model;
+      modelId = m.id || 'unknown';
+      providerID = m.providerID || 'qwenwork';
+    } catch { modelId = String(s.model); }
+  }
+  const tokens = { prompt_tokens: s.tokens_input || 0, completion_tokens: s.tokens_output || 0 };
+  if (s.tokens_cache_read) tokens.cache_read_input_tokens = s.tokens_cache_read;
+  // provider 前缀带双线归属（与 CD 的 provider id qwenwork / qwenwork-cn 同口径）：
+  // 两条线的模型池会重叠（实测都有 minimax-m3.1-flash），不带前缀在 10Router 里就分不开是谁家的量
+  const prefix = line === 'cn' ? 'qwenwork-cn-' : 'qwenwork-';
+  return {
+    timestamp: new Date(ms).toISOString(),
+    provider: prefix + providerID,
+    model: modelId,
+    connectionId: null, apiKey: null,
+    endpoint: 'qwenwork://' + (line === 'cn' ? 'cn' : 'intl'),
+    cost: s.cost || 0,
+    status: 'ok',
+    tokens,
+    meta: {
+      source: 'qwenwork', qwenworkSessionId: s.id || null, qwenworkLine: line,
+      title: s.title || null, agent: s.agent || null,
       reasoning_tokens: s.tokens_reasoning || 0, cache_write_tokens: s.tokens_cache_write || 0,
     },
   };
@@ -490,6 +538,61 @@ function collectOpencode(files, now = Date.now()) {
   return { entries: out, notes: (active ? [`暂不同步 ${active} 个进行中的会话（1 小时内仍有更新，结束后再同步，避免同一会话记两行）`] : []).concat(skippedNoTs ? [`跳过 ${skippedNoTs} 行缺时间戳的会话`] : []) };
 }
 
+/** 千问办公账本要读的列（表形状与 opencode 的 session 同构；按库实际列取交集，字段漂移不至于整源报错） */
+const QWENWORK_COLS = ['id', 'title', 'model', 'agent', 'cost', 'tokens_input', 'tokens_output', 'tokens_reasoning', 'tokens_cache_read', 'tokens_cache_write', 'time_created', 'time_updated'];
+
+/**
+ * 账本路径属于哪条线：按目录段精确匹配——'.qwenwork' 是 '.qwenworkcn' 的前缀，
+ * 用 startsWith / includes(整串) 会把国际版目录误判进国内版（同 qwenworkApp.js 的注册表归属坑）。
+ * QWENWORK_DB 指向别处的副本时无从判归属，按国际版记（只是归属标注保守，量与模型不受影响）。
+ */
+export function qwenworkLineOfPath(p) {
+  const segs = String(p || '').split(/[\\/]+/);
+  if (segs.includes('.qwenworkcn')) return 'cn';
+  return 'intl';
+}
+
+/**
+ * 千问办公双线账本（qwenwork.db 的 session，会话级累计）：与 OpenCode 同款风险——
+ * 会话还在继续时 token 会变 → 行签名变 → 10Router 去重拦不住，同一会话记两行。
+ * 故同样吃 SETTLE_MS 结算窗，1 小时内仍有更新的会话先不发，等它停下来。
+ * 已知继承口径（同 opencode，非本次新引入）：行时间戳取 time_created，跨结算窗定型的
+ * 迟到行靠 selectSince 的 2 天重叠窗兜回——单个会话连续开满 2 天以上才可能掉出水位窗。
+ */
+function collectQwenwork(files, now = Date.now()) {
+  const out = [];
+  let active = 0, skippedNoTs = 0, unreadable = 0;
+  for (const f of files) {
+    const line = qwenworkLineOfPath(f);
+    // 库被占用/不是合法 SQLite（正在切换账号、写坏、云盘占位文件）：只跳过这一份并提示，
+    // 不让一个坏文件把双线整源打成同步失败
+    try {
+      withSnapshot(f, (db) => {
+        let cols;
+        try {
+          cols = new Set(db.prepare('PRAGMA table_info(session)').all().map((c) => c.name));
+        } catch { cols = new Set(); }
+        // 没有 session 表或缺时间/token 列：这库不是预期形状（客户端换版了？），整库跳过并提示，
+        // 不做静默为空——空来源看起来像没出问题，只会让人干等（zcode 死表同款教训）
+        if (!cols.has('time_created') || !cols.has('time_updated') || !cols.has('tokens_input')) { unreadable++; return; }
+        const want = QWENWORK_COLS.filter((c) => cols.has(c));
+        for (const r of db.prepare(`SELECT ${want.join(', ')} FROM session ORDER BY time_created ASC`).all()) {
+          if (!Number.isFinite(r.time_updated) || now - r.time_updated < SETTLE_MS) { active++; continue; }
+          const e = convertQwenworkSession(r, line);
+          if (!e) { skippedNoTs++; continue; }
+          out.push(e);
+        }
+      });
+    } catch { unreadable++; }
+  }
+  return {
+    entries: out,
+    notes: (unreadable ? [`跳过 ${unreadable} 个千问办公账本（读不了，或没有 session 表 / 字段不符——客户端版本可能变了）`] : [])
+      .concat(active ? [`暂不同步 ${active} 个进行中的会话（1 小时内仍有更新，结束后再同步，避免同一会话记两行）`] : [])
+      .concat(skippedNoTs ? [`跳过 ${skippedNoTs} 行缺时间戳的会话`] : []),
+  };
+}
+
 /** Croli 逐轮账本：turn_key 唯一 + occurred_at 落库即定型（Codex 引擎逐轮写死，无回填），
  *  不设 SETTLE 窗，与 zcode 同口径；重叠窗的迟到行由 10R 端签名去重兜底。 */
 function collectCroli(files) {
@@ -618,7 +721,8 @@ export async function collectSource(id, { endpoint, paths = sourcePaths(), catpa
       : id === 'mimo' ? collectMimo(files)
         : id === '10r' ? collectRouter(files, endpoint)
           : id === 'croli' ? collectCroli(files)
-            : collectMirasim(files, endpoint);
+            : id === 'qwenwork' ? collectQwenwork(files)
+              : collectMirasim(files, endpoint);
   return { ...r, files: files.length };
 }
 

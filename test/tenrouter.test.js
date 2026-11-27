@@ -553,7 +553,7 @@ test('配置版本迁移：旧来源快照自动并入新增来源，显式保�
     // 旧版保存的来源快照：用户手动关掉了 opencode / mimo
     fs.writeFileSync(f, JSON.stringify({ ...orig, sync: { enabled: false, sources: ['zcode', 'mirasim'] } }));
     let c = tr.loadConfig();
-    assert.deepEqual([...c.sync.sources].sort(), ['10r', 'croli', 'mirasim', 'zcode']);   // 新增来源默认并入（v4 起 croli），手动关掉的不复活
+    assert.deepEqual([...c.sync.sources].sort(), ['10r', 'croli', 'mirasim', 'qwenwork', 'zcode']);   // 新增来源默认并入（v4 croli / v5 qwenwork），手动关掉的不复活
     await tr.updateConfig({ sources: ['mirasim'] });
     c = tr.loadConfig();
     assert.deepEqual(c.sync.sources, ['mirasim']);   // 显式保存过勾选结果后不再自动并入
@@ -627,9 +627,10 @@ test('来源版本迁移：v2 配置自动并入 10r，不复活已禁用的旧�
   }));
   const c = tr.loadConfig();
   assert.ok(c.sync.sources.includes('10r') && c.sync.sources.includes('croli'), '新来源应默认并入');
+  assert.ok(c.sync.sources.includes('qwenwork'), 'v5 新增的千问办公来源也应自动并入（老配置不点名它就会被静默挡掉，妙手教训）');
   assert.ok(c.sync.sources.includes('zcode') && c.sync.sources.includes('mimo'), '已有勾选保留');
   assert.ok(!c.sync.sources.includes('catpaw'), '用户没勾的旧来源不复活');
-  assert.equal(c.sync.sourcesVersion, 4);
+  assert.equal(c.sync.sourcesVersion, 5);
 });
 
 test('quotaPush 配置：开关与频率保存、默认开启、最小频率 15 分钟', async () => {
@@ -887,6 +888,133 @@ test('croli 来源：sourcePaths 发现 croli.db（CROLI_DB 显式覆盖）', ()
   const p2 = us.sourcePaths(os.homedir(), { APPDATA: fakeAppData }, 'win32');
   assert.ok(p2.croli.some((f) => f.endsWith(path.join('Croli', 'croli.db'))), '默认路径含 %APPDATA%/Croli/croli.db');
   fs.rmSync(fakeAppData, { recursive: true, force: true });
+});
+
+// ── 千问办公双线账本（qwenwork） ──
+
+test('千问办公来源：convertQwenworkSession 行定型（双线前缀、cost 照记源值、model JSON 解析）', () => {
+  // 样本取自用户本机真实行的形状（测试只用内联数据，绝不读真实库）
+  const e = us.convertQwenworkSession({
+    id: 'ses_dfbe0e284ffeGFKHh8sSQUCxSP', title: '会话 A', agent: 'qwenwork',
+    model: '{"id":"flash","providerID":"openai-compatible","variant":"low"}', cost: 0,
+    tokens_input: 11175, tokens_output: 208, tokens_reasoning: 114, tokens_cache_read: 76800, tokens_cache_write: 0,
+    time_created: 1795365477755, time_updated: 1795365507693,
+  }, 'intl');
+  assert.equal(e.provider, 'qwenwork-openai-compatible', '国际版前缀 qwenwork-');
+  assert.equal(e.model, 'flash');
+  assert.equal(e.endpoint, 'qwenwork://intl');
+  assert.equal(e.timestamp, new Date(1795365477755).toISOString(), '时间戳取 time_created（会话级累计）');
+  assert.equal(e.cost, 0);
+  assert.deepEqual(e.tokens, { prompt_tokens: 11175, completion_tokens: 208, cache_read_input_tokens: 76800 });
+  assert.equal(e.meta.source, 'qwenwork');
+  assert.equal(e.meta.qwenworkLine, 'intl');
+  assert.equal(e.meta.qwenworkSessionId, 'ses_dfbe0e284ffeGFKHh8sSQUCxSP');
+  assert.equal(e.meta.reasoning_tokens, 114);
+  assert.equal(e.meta.cache_write_tokens, 0);
+
+  // 国内版同一模型也必须分开记（两条线的模型池重叠，不带归属就分不开是谁家的量）
+  const cn = us.convertQwenworkSession({
+    id: 'ses_de4660824ffe5vUH5I22J1JaQF', model: '{"id":"minimax-m3.1-flash","providerID":"anthropic","variant":"none"}',
+    tokens_input: 37166, tokens_output: 194, tokens_cache_read: 3840,
+    time_created: 1795759405019, time_updated: 1795759409404,
+  }, 'cn');
+  assert.equal(cn.provider, 'qwenwork-cn-anthropic');
+  assert.equal(cn.endpoint, 'qwenwork://cn');
+  assert.equal(cn.meta.qwenworkLine, 'cn');
+
+  // cost 与 opencode 不同：国际版按量计费有源值，必须照记不归零
+  const paid = us.convertQwenworkSession({
+    id: 'ses_dff1ab5ebffe5EcW7NKPZPcZAd', model: '{"id":"qwen3.8-flash","providerID":"alibaba","variant":"low"}', cost: 0.00688707,
+    tokens_input: 79773, tokens_output: 620, time_created: 1795311356436, time_updated: 1795315012526,
+  }, 'intl');
+  assert.equal(paid.cost, 0.00688707);
+
+  // 缺时间戳不能用 Date.now() 兜底（每次同步都会变成新行）
+  assert.equal(us.convertQwenworkSession({ id: 's', tokens_input: 1, tokens_output: 1 }), null);
+  // model 不是 JSON / 缺 providerID 时退回品牌默认，不能整行丢
+  const weird = us.convertQwenworkSession({ id: 's2', model: 'plain-text-model', tokens_input: 1, tokens_output: 1, time_created: 1795311356436 }, 'intl');
+  assert.equal(weird.provider, 'qwenwork-qwenwork');
+  assert.equal(weird.model, 'plain-text-model');
+});
+
+test('千问办公双线归属：按目录段精确匹配（.qwenwork 是 .qwenworkcn 的前缀，不能靠前缀判）', () => {
+  assert.equal(us.qwenworkLineOfPath(path.join('/users/x', '.qwenworkcn', '.harness', 'flash-cli', 'qwenwork', 'qwenwork.db')), 'cn');
+  assert.equal(us.qwenworkLineOfPath(path.join('/users/x', '.qwenwork', '.harness', 'flash-cli', 'qwenwork', 'qwenwork.db')), 'intl');
+  assert.equal(us.qwenworkLineOfPath('C:\\Users\\x\\.qwenworkcn\\.harness\\flash-cli\\qwenwork\\qwenwork.db'), 'cn', 'Windows 反斜杠同样按段匹配');
+  // 段不能命中目录名的一部分：只有整段等于 .qwenworkcn 才算国内版
+  assert.equal(us.qwenworkLineOfPath(path.join('/backup', '.qwenworkcn-backup-2026', 'qwenwork.db')), 'intl');
+  assert.equal(us.qwenworkLineOfPath('/tmp/whatever.db'), 'intl', '显式 QWENWORK_DB 副本无从判归属时按国际版记（保守标注，不影响量与模型）');
+});
+
+test('千问办公来源：双线目录都能发现、QWENWORK_DB 显式覆盖、缺库不误报（需要 node:sqlite）', { skip: !hasSqlite && 'node:sqlite 不可用（Node < 22.5）' }, () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qww-paths-'));
+  try {
+    const mk = (line) => {
+      const p = path.join(dir, line, '.harness', 'flash-cli', 'qwenwork', 'qwenwork.db');
+      fs.mkdirSync(path.dirname(p), { recursive: true });
+      fs.writeFileSync(p, 'x');
+      return p;
+    };
+    const intl = mk('.qwenwork');
+    const cn = mk('.qwenworkcn');
+    const p = us.sourcePaths(dir, {}, 'win32');
+    assert.deepEqual(p.qwenwork, [intl, cn], '双线库都发现，且国际版在前');
+    // 显式覆盖排在前面，仍能按目录段判归属（放在 .qwenworkcn 下就是国内版）
+    const explicit = path.join(dir, 'copy.db');
+    fs.writeFileSync(explicit, 'x');
+    assert.deepEqual(us.sourcePaths(dir, { QWENWORK_DB: explicit }, 'win32').qwenwork, [explicit, intl, cn]);
+    assert.equal(us.qwenworkLineOfPath(cn), 'cn');
+    // 家目录没有千问办公 → 空数组（detectSources 据此显示「本机未检测到」）
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'qww-none-'));
+    try { assert.deepEqual(us.sourcePaths(empty, { QWENWORK_DB: '' }, 'win32').qwenwork, []); } finally { fs.rmSync(empty, { recursive: true, force: true }); }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('千问办公来源：1 小时内仍在更新的会话暂不同步；坏库只跳这一份并提示（需要 node:sqlite）', { skip: !hasSqlite && 'node:sqlite 不可用（Node < 22.5）' }, async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qww-test-'));
+  try {
+    const now = Date.now();
+    const mkDb = (rel, build) => {
+      const p = path.join(dir, rel);
+      fs.mkdirSync(path.dirname(p), { recursive: true });
+      const db = new DatabaseSync(p);
+      build(db);
+      db.close();
+      return p;
+    };
+    const sess = (db) => {
+      db.exec('CREATE TABLE session (id TEXT, title TEXT, model TEXT, agent TEXT, cost REAL, tokens_input INTEGER, tokens_output INTEGER, tokens_reasoning INTEGER, tokens_cache_read INTEGER, tokens_cache_write INTEGER, time_created INTEGER, time_updated INTEGER)');
+      return db.prepare('INSERT INTO session VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
+    };
+    const intlDb = mkDb(path.join('.qwenwork', '.harness', 'flash-cli', 'qwenwork', 'qwenwork.db'), (db) => {
+      const ins = sess(db);
+      ins.run('s-intl-done', '已结束', '{"id":"flash","providerID":"openai-compatible"}', 'qwenwork', 0.01, 10, 5, 0, 0, 0, now - 5 * 3600e3, now - 3 * 3600e3);
+      ins.run('s-intl-live', '进行中', '{"id":"flash","providerID":"openai-compatible"}', 'qwenwork', 0, 99, 9, 0, 0, 0, now - 2 * 3600e3, now - 60e3);
+    });
+    const cnDb = mkDb(path.join('.qwenworkcn', '.harness', 'flash-cli', 'qwenwork', 'qwenwork.db'), (db) => {
+      sess(db).run('s-cn-done', '国内版', '{"id":"minimax-m3.1-flash","providerID":"anthropic"}', 'qwenwork', 0, 100, 20, 0, 0, 0, now - 4 * 3600e3, now - 2 * 3600e3);
+    });
+    const r = await us.collectSource('qwenwork', { paths: { qwenwork: [intlDb, cnDb] } });
+    assert.deepEqual(r.entries.map((e) => e.meta.qwenworkSessionId).sort(), ['s-cn-done', 's-intl-done']);
+    assert.equal(r.files, 2);
+    assert.equal(r.entries.find((e) => e.meta.qwenworkSessionId === 's-cn-done').meta.qwenworkLine, 'cn', '双线归属按目录段落到每行');
+    assert.equal(r.entries.find((e) => e.meta.qwenworkSessionId === 's-intl-done').meta.qwenworkLine, 'intl');
+    assert.equal(r.entries.find((e) => e.meta.qwenworkSessionId === 's-cn-done').provider, 'qwenwork-cn-anthropic');
+    assert.match(r.notes.join(' '), /暂不同步 1 个进行中的会话/, '进行中的会话先不发（同会话两行是 10R 去重拦不住的）');
+
+    // 没有 session 表的库（客户端换版/不是预期形状）：只跳这一份并明说，不整源报错、不静默为空
+    const bogus = mkDb('bogus.db', (db) => db.exec('CREATE TABLE unrelated (x INTEGER)'));
+    const r2 = await us.collectSource('qwenwork', { paths: { qwenwork: [intlDb, bogus] } });
+    assert.equal(r2.entries.length, 1, '坏库不影响另一份照常出账');
+    assert.match(r2.notes.join(' '), /跳过 1 个千问办公账本/, '读不了的账本必须提示（否则来源静默为空，看着像没出问题）');
+    // 根本不是 SQLite 的文件也不能把整源打挂
+    const junk = path.join(dir, 'junk.db');
+    fs.writeFileSync(junk, 'not a database at all');
+    const r3 = await us.collectSource('qwenwork', { paths: { qwenwork: [junk] } });
+    assert.equal(r3.entries.length, 0);
+    assert.match(r3.notes.join(' '), /跳过 1 个千问办公账本/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('zcode 来源：死表检测——最后记录超 7 天时 notes 提示（ZCode 0.16.9 静默失效）', async () => {
