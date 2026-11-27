@@ -369,6 +369,15 @@ test('账号同步映射表：qoder / WorkBuddy 系列映射，zcode 等留待�
   assert.equal(ta.mapProviderId('catpaw'), null);
 });
 
+test('账号同步映射表：croli / quwork 各产品线一条（6b279d5d 合并曾静默丢掉 quwork 行）', () => {
+  // QuWork 走面板密码的 transfer 通道建连接（10R 原生 quwork 渠道，authModes:['oauth']），
+  // 映射行缺失时 syncAccountsTo10r 会静默跳过整条产品线——与 croli 当年被白名单挡掉同类，
+  // 所以这两条必须显式钉住（映射表是 provider→10R 连接类型的唯一事实来源）。
+  assert.equal(ta.mapProviderId('croli'), 'croli');
+  assert.equal(ta.mapProviderId('quwork'), 'quwork');
+  assert.equal(ta.mapProviderId('quwork-cn'), null, 'QuWork 单线，无 -cn 变体');
+});
+
 test('账号同步：trae → trae-cn（#56），国际版账号明说跳过不误推国内站', async () => {
   const m = mockFetch(() => ({ status: 201, body: { connection: { id: 'x' } } }));
   try {
