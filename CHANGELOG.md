@@ -6,6 +6,14 @@
 
 ## [Unreleased]
 
+## [1.8.5-test.1] (2026-11-27)
+
+- **突破豆包桌面端每日签到风控拦截（code 710010702）**：
+  - **根因确认**：豆包服务端对每日首签实施了严格的原生客户端签名与行为环境校验（涉及 `bdticket.dll` TicketGuard、`metasecml.dll` 及 `bdms` 反作弊遥测），纯第三方 HTTP 模拟请求无论携带多少 Headers/Cookies/设备指纹均会被风控识别并返回 `code: 710010702`；
+  - **突破方案**：实现基于本地 Chromium 调试协议（CDP）的真实上下文自动化签到通道（`checkinDoubaoViaLocalClient`）。在本地桌面端环境下模拟用户交互，通过官方客户端自身的原生安全栈完成首签，经真机实测成功获得 +200 体验额度并推进连续签到；
+  - **自动兜底与优雅降级**：`checkinDoubao` 遇到 710010702 时自动探测本机豆包桌面客户端并启用自动化签到；若客户端正在前台运行，提供贴心的人性化引导文案（避免强制杀死用户正在使用的客户端界面）；
+  - **发布与测试保障**：补齐多场景单测覆盖，通过全量 `npm test`（649/649 pass）、四国语言 `check-i18n` 零漏网及 `panel-boot-smoke` 启动冒烟测试。
+
 ## [1.8.5] (2026-11-27)
 
 本版主题:**四线合一正式版——新增 QuWork 产品线 + Croli 产品线恢复 + AutoClaw（智谱澳龙 / AutoGLM）全量接入 + mirasim 额度改现行按笔到期口径；代理链路断连三处进程级守卫收尾（issue #72）；测试实例不再抢用户面板（端口遮蔽修复）；面板「读不到 ≠ 没有」体验修复；公告随包兜底与暂存门禁收口**.
@@ -70,10 +78,12 @@ Theme: **Four-line consolidated release — new QuWork product line + Croli line
 - **自证与验收**：全量 `npm test` **647 项全绿**（较 1.8.3 基线 502 项新增 145 项，含 quwork 16 / autoclaw 48 / croli 7 / stage-bundle 5 / daemon-port-shadow 5 / zcode-proxy-stream 5 等）；`scripts/panel-boot-smoke.cjs` 两轮通过（正常态 + fail-closed 全 403 态）；test.31 / test.32 测试包已在用户本机真机验收（四线合一、52 账号齐全、croli + AutoClaw 双 access 重推 watch 正常、官方橙爪图标三处一致）。
 
 
-## [1.8.4] (2026-11-24)
+## [1.8.4] (2026-11-24) · 未正式发布，内容并入 1.8.5
 
 本版主题:**反倒卖免费声明三件套（首次启动开屏声明 + 关于分区构建来源 + README 免费横幅）+ 账号会话更名与豆包导入体验优化 + 千问办公产品线收尾**.
 Theme: **Anti-resale free-software notice trio (first-launch splash notice + About-section build provenance + README free banner) + account-session rename and Doubao import polish + QwenWork line wrap-up**.
+
+> **发布状态 / 版本号说明**：**不存在可下载的 1.8.4 正式版**——1.8.4 从未打 tag、从未建 GitHub Release、从未 publish 到 npm（npm 上 1.8.x 最新只到 1.8.3）。该号段在本地被 `1.8.4-test.N` 系列测试包长期占用（N 最高到 33），2026-11-24 另有一份名为 `CreditDaddy-Win-Setup-1.8.4.exe` 的本机构建物，但只私发过、未进任何官方渠道。本节所列内容实际是通过 `1.8.4-test.N` 测试包分发验证的，并在 **1.8.5 一并归档正式发版**；在 1.8.5 上线之前，官方渠道上最新的可下载版本仍是 **v1.8.3**。1.8.4 号段此后不再作为正式版启用（2026-11-27 用户拍板按 1.6.5 先例在此说明）。
 
 - **反倒卖免费声明三件套**：闲鱼出现原封搬运官方安装包改名倒卖（5.11 元），本版让买家一眼看到官方免费声明、去退款并举报——
   - **首次启动开屏声明（只弹一次）**：`settings.freeNoticeShown` 落盘控制，「使用前必读」弹窗三段文案（永久免费开源 AGPL-3.0 / 唯一官方渠道 GitHub Releases / 付费购买即倒卖可退款举报）；`/api/status` 下发 `freeNoticeShown`、`PUT /api/settings` 落盘，四语词条（en/ja/ko/zh-TW）随包。
