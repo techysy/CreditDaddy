@@ -367,6 +367,7 @@
   "AutoClaw 请求缺少 device_id（无法确定设备身份），请重新在本机导入账号": "AutoClaw 請求缺少 device_id（無法確定設備身份），請重新在本機導入賬號",
   "AutoClaw 账号面请求失败：{err}": "AutoClaw 賬號面請求失敗：{err}",
   "AutoClaw 账号面返回非 JSON（HTTP {status}）：{snip}": "AutoClaw 賬號面返回非 JSON（HTTP {status}）：{snip}",
+  "AutoClaw 账号面被重定向但目标不可用（HTTP {status} → {loc}）": "AutoClaw 賬號面被重定向但目標不可用（HTTP {status} → {loc}）",
   "AutoClaw 身份验证失败（响应里没有用户 id）": "AutoClaw 身份驗證失敗（響應裡沒有用戶 id）",
   "CodeBuddy IDE": "CodeBuddy IDE",
   "CodeBuddy IDE 凭据读取目前只支持 Windows / macOS": "CodeBuddy IDE 憑證讀取目前僅支援 Windows / macOS",

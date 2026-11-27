@@ -28,6 +28,7 @@ import {
   AUTOCLAW_GLOBAL_HOST,
   AUTOCLAW_CN_HOST,
   AUTOCLAW_PATHS,
+  autoclawPost,
   autoclawRegionOfToken,
   autoclawRegionFor,
   autoclawHostOrder,
@@ -860,7 +861,7 @@ test('邀请码：online-activity-info 只回活动数组，形状不对回空�
 
 // ── 国内版（+86）短信直登：CD 独占的小号 ──
 
-test('短信直登：code 按数字发、登录端点带尾斜杠、手机号去 +86', async () => {
+test('短信直登：code 按数字发、登录端点无尾斜杠（307 口径）、手机号去 +86', async () => {
   assert.equal(autoclawSmsCodeValue('123456'), 123456, 'code 必须是数字（字符串上游 400001）');
   assert.equal(autoclawSmsCodeValue(' 123456 '), 123456);
   assert.equal(autoclawSmsCodeValue('12a'), '12a', '非纯数字原样交上游判错，不擅自改');
@@ -874,7 +875,7 @@ test('短信直登：code 按数字发、登录端点带尾斜杠、手机号去
 
   const fetchImpl = mockFetch([
     ['/agent-send-code', okRes({ code: 0, data: {} })],
-    ['/agent-login/', okRes({ code: 0, data: {
+    ['/agent-login', okRes({ code: 0, data: {
       access_token: mkJwt({ ...CN_CLAIMS, user_id: 777 }),
       refresh_token: mkJwt(CN_CLAIMS),
       user_id: 777, user_name: '小号',
@@ -886,11 +887,72 @@ test('短信直登：code 按数字发、登录端点带尾斜杠、手机号去
 
   const r = await loginAutoclawCnBySms({ phone: '13112345678', code: '123456' }, { deviceId: 'f'.repeat(64), fetchImpl });
   const loginCall = fetchImpl.calls[1];
-  assert.ok(loginCall.url.endsWith('/userapi/v1/agent-login/'), '尾斜杠是端点形状的一部分');
+  // 端点形状 2026-11-27 上游改口径（实测）：带尾斜杠现在回 **307 → Location 无斜杠**，
+  // 无斜杠直接 200 + 业务 JSON（早期「少斜杠 404」的记录已过期）。CD 的 fetchJsonRace
+  // 默认 redirect:'manual'，撞上不跟随就报「账号面返回非 JSON（HTTP 307）」——
+  // 短信直登点「登录并导入」必挂（用户实测）。常量改用无斜杠形态，
+  // autoclawPost / autoclawGet 另有 fetchPreservingRedirect 做 307/308 原样重放兜底。
+  assert.ok(loginCall.url.endsWith('/userapi/v1/agent-login'), '登录端点必须是无尾斜杠形态');
+  assert.ok(!/agent-login\/$/.test(loginCall.url), '绝不能再带尾斜杠（会吃 307）');
   assert.strictEqual(loginCall.body.code, 123456, 'code 必须是 JSON 数字');
   assert.equal(loginCall.body.device_id, 'f'.repeat(64));
   assert.equal(r.userId, '777');
   assert.equal(r.phone, '13112345678');
+});
+
+// 上游万一再把斜杠口径改回去、或别的端点也开始跳转时的兜底：307/308 必须**同方法同 body**
+// 换 URL 重发一次，而不是把「307 + 空 body」报成「账号面返回非 JSON（HTTP 307）」——
+// 那正是 2026-11-27 用户点「登录并导入」看到的红条。
+test('307/308 原样重放：同方法同 body 跟一次 Location，不再报「非 JSON（HTTP 307）」', async () => {
+  const HOST = 'https://autoglm-api.zhipuai.cn';
+  const body = JSON.stringify({ phone: '13112345678', code: 123456, source_id: 'x', device_id: 'y' });
+  const seen = [];
+  const redirectFetch = async (url, init = {}) => {
+    seen.push({ url: String(url), method: init.method, body: init.body });
+    if (String(url) === `${HOST}/a`) {
+      return {
+        status: 307, ok: false,
+        headers: { get: (k) => (String(k).toLowerCase() === 'location' ? '/b' : null) },
+        text: async () => '',
+      };
+    }
+    return okRes({ code: 0, data: { user_id: 777 } });
+  };
+  const r = await autoclawPost(HOST, '/a', { phone: '13112345678', code: 123456 },
+    { region: 'cn', deviceId: 'y', fetchImpl: redirectFetch });
+  assert.equal(r.user_id, 777, '跳转后拿到业务 JSON 即成功');
+  assert.equal(seen.length, 2, '应重放一次');
+  assert.equal(seen[1].url, `${HOST}/b`, '相对 Location 按原 URL 解析');
+  assert.equal(seen[1].method, 'POST', '307 必须保持方法');
+  assert.equal(seen[1].body, seen[0].body, '307 必须原样带 body（含 device_id/source_id）');
+
+  // 跨域 Location 不跟（上游被劫持/配置错时宁可不重放凭据）
+  const crossHost = async (url, init = {}) => ({
+    status: 307, ok: false,
+    headers: { get: () => 'https://evil.example/b' },
+    text: async () => '',
+  });
+  await assert.rejects(
+    () => autoclawPost(HOST, '/a', { phone: '1' }, { region: 'cn', deviceId: 'y', fetchImpl: crossHost }),
+    /被重定向但目标不可用/,
+    '跨域跳转必须明说而不是静默丢凭据',
+  );
+
+  // 自指 Location 不得成环：只跟一次，第二次仍是 307 就报错收口
+  let loops = 0;
+  const selfLoop = async (url) => {
+    loops++;
+    return {
+      status: 307, ok: false,
+      headers: { get: () => '/a' },
+      text: async () => '',
+    };
+  };
+  await assert.rejects(
+    () => autoclawPost(HOST, '/a', { phone: '1' }, { region: 'cn', deviceId: 'y', fetchImpl: selfLoop }),
+    /被重定向但目标不可用/,
+  );
+  assert.ok(loops <= 3, `跳转不得成环（实际请求 ${loops} 次）`);
 });
 
 test('短信直登：device_id 按机器码 + 固定命名空间派生，同机稳定、异种子相异', () => {
@@ -914,7 +976,7 @@ test('短信直登：同一号已有本机收割账号时拒绝合并，原行�
     refreshToken: 'old-rt', source: 'local-app', meta: { autoclawRegion: 'cn' },
     createdAt: new Date().toISOString(),
   }]);
-  const fetchImpl = mockFetch([['/agent-login/', okRes({ code: 0, data: {
+  const fetchImpl = mockFetch([['/agent-login', okRes({ code: 0, data: {
     access_token: mkJwt({ ...CN_CLAIMS, user_id: 888888 }),
     refresh_token: mkJwt(CN_CLAIMS),
     user_id: 888888,
@@ -932,7 +994,7 @@ test('短信直登：新号落库 sms-login + autoclawCdOwned，device_id 记的
   const { saveAccounts, loadAccounts } = await import('../src/store.js');
   const { canSyncAutoclawAccount } = await import('../src/autoclawClient.js');
   await saveAccounts([]);
-  const fetchImpl = mockFetch([['/agent-login/', okRes({ code: 0, data: {
+  const fetchImpl = mockFetch([['/agent-login', okRes({ code: 0, data: {
     access_token: mkJwt({ ...CN_CLAIMS, user_id: 999001 }),
     refresh_token: mkJwt(CN_CLAIMS),
     user_id: 999001, user_name: 'CD 小号',

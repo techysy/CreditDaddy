@@ -61,9 +61,13 @@ export const AUTOCLAW_PATHS = {
   taskList: '/autoclaw-proxy/proxy/autoclaw-task-list',
   taskComplete: '/autoclaw-proxy/proxy/autoclaw-task-complete',
   // 国内版（+86）短信两步直登：10R src/lib/oauth/providers/autoclaw-cn.js 同源。
-  // 尾斜杠是端点形状的一部分（少斜杠 → 400001/404）；code 必须发数字（见 autoclawSmsCodeValue）。
+  // ⚠ 端点形状 2026-11-27 上游已改口径（实测）：`agent-login/`（带尾斜杠）现在回
+  //   **HTTP 307 → Location: /userapi/v1/agent-login**，不带斜杠直接 200 + 业务 JSON。
+  //   早期「少斜杠 404」的记录已过期——这里改用**无斜杠**形态，autoclawPost 另加一层
+  //   307/308 原样重放兜底（见下），上游再改回去也不会静默失效。
+  //   code 必须发数字（字符串 → 400001，见 autoclawSmsCodeValue）。
   smsSend: '/userapi/v1/agent-send-code',
-  smsLogin: '/userapi/v1/agent-login/',
+  smsLogin: '/userapi/v1/agent-login',
   // 邀请（裂变）活动：反解 app.asar 主进程 getInviteInfo / useInviteCode 得到（非 10R 实现，
   // 10R 全无 invite/fission 代码）。status 里既有自己的码也有绑定状态。
   inviteStatus: '/agent-assetmgr/api/v1/fission-v2/status',
@@ -266,6 +270,43 @@ const defaultFetch = (url, init) => fetchJsonRace(url, {
 });
 
 /**
+ * 307/308 原样重放（2026-11-27 上游改口径逼出来的兜底）。
+ *
+ * 背景：CD 的 fetchJsonRace 默认 `redirect:'manual'`（这是有意的——follow 会把 301/302
+ * 的 POST 转成 GET 并丢掉 body，307 还会把大 body 重放一次），所以上游一旦返回
+ * 307 Temporary Redirect，我们拿到的就是「307 + 空 body」，落进「账号面返回非 JSON」
+ * 分支，用户看到的是「AutoClaw 账号面返回非 JSON（HTTP 307）」——短信直登点「登录并
+ * 导入」必挂（2026-11-27 用户实测）。
+ * 实测上游现状：`POST /userapi/v1/agent-login/` → 307 Location: `/userapi/v1/agent-login`，
+ * 不带斜杠直接 200 + 业务 JSON（两者最终响应一致）。端点常量已改成无斜杠形态，这里再
+ * 兜一层：上游哪天把斜杠口径改回去、或别的端点也开始跳转，都能按 307/308 的规范
+ * 「同方法同 body 换 URL 重发」，而不是静默报非 JSON。
+ * 只跟一次（防 Location 自指成环），且只接受同源 http(s) 目标。
+ */
+export async function fetchPreservingRedirect(doFetch, url, init, depth = 1) {
+  const res = await doFetch(url, init);
+  const text = await res.text();
+  const status = Number(res.status);
+  if ((status === 307 || status === 308) && depth > 0) {
+    const loc = typeof res.headers?.get === 'function'
+      ? res.headers.get('location')
+      : (res.headers?.location || res.headers?.Location || '');
+    let nextUrl = null;
+    try { nextUrl = new URL(loc, url).toString(); } catch { nextUrl = null; }
+    // 只跟随同源跳转：跨域 Location 可能是上游被劫持/配置错，宁可不跟
+    const sameOrigin = nextUrl && (() => { try { return new URL(nextUrl).origin === new URL(url).origin; } catch { return false; } })();
+    if (nextUrl && sameOrigin && nextUrl !== url) {
+      return fetchPreservingRedirect(doFetch, nextUrl, init, depth - 1);
+    }
+    throw new AutoclawApiError(
+      t('AutoClaw 账号面被重定向但目标不可用（HTTP {status} → {loc}）', { status, loc: loc || '—' }),
+      { status, redirect: nextUrl || null },
+    );
+  }
+  return { res, text };
+}
+
+/**
  * 账号面 POST：body 里合并 source_id + device_id。
  * 成功（envelope.code === 0）返回 data，否则抛 AutoclawApiError —— HTTP 200 不代表成功。
  */
@@ -280,12 +321,11 @@ export async function autoclawPost(host, path, payload, {
   const body = { ...(payload || {}), source_id: AUTOCLAW_SOURCE_ID, device_id: deviceId };
   let res, text = '';
   try {
-    res = await doFetch(`${host}${path}`, {
+    ({ res, text } = await fetchPreservingRedirect(doFetch, `${host}${path}`, {
       method: 'POST',
       headers: autoclawBizHeaders(region, accessToken),
       body: JSON.stringify(body),
-    });
-    text = await res.text();
+    }));
   } catch (e) {
     throw new AutoclawApiError(t('AutoClaw 账号面请求失败：{err}', { err: e?.message || e }));
   }
@@ -317,8 +357,7 @@ async function autoclawGet(host, path, accessToken, { region = 'intl', fetchImpl
   const doFetch = fetchImpl || defaultFetch;
   let res, text = '';
   try {
-    res = await doFetch(`${host}${path}`, { method: 'GET', headers: autoclawBizHeaders(region, accessToken) });
-    text = await res.text();
+    ({ res, text } = await fetchPreservingRedirect(doFetch, `${host}${path}`, { method: 'GET', headers: autoclawBizHeaders(region, accessToken) }));
   } catch (e) {
     throw new AutoclawApiError(t('AutoClaw 账号面请求失败：{err}', { err: e?.message || e }));
   }

@@ -367,6 +367,7 @@
   "AutoClaw 请求缺少 device_id（无法确定设备身份），请重新在本机导入账号": "The AutoClaw request has no device_id (device identity unknown) — re-import the account from this machine",
   "AutoClaw 账号面请求失败：{err}": "AutoClaw account-plane request failed: {err}",
   "AutoClaw 账号面返回非 JSON（HTTP {status}）：{snip}": "AutoClaw account plane returned non-JSON (HTTP {status}): {snip}",
+  "AutoClaw 账号面被重定向但目标不可用（HTTP {status} → {loc}）": "AutoClaw account plane redirected but the target is unusable (HTTP {status} → {loc})",
   "AutoClaw 身份验证失败（响应里没有用户 id）": "AutoClaw identity verification failed (no user id in the response)",
   "CodeBuddy IDE": "CodeBuddy IDE",
   "CodeBuddy IDE 凭据读取目前只支持 Windows / macOS": "Reading CodeBuddy IDE credentials is currently supported on Windows / macOS only",
