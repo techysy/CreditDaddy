@@ -58,7 +58,9 @@ function refreshExisting(existing, incoming) {
     if (existing.lastResult?.status === 'failed') { existing.lastResult = null; changed = true; }
     if (existing.verifyError) { delete existing.verifyError; changed = true; }
   } else {
-    if (!existing.refreshToken) set('refreshToken', incoming.refreshToken);
+    // Croli sidecar 可能只轮换 refresh token；同一 access token 也要保存最新单次票据。
+    if (existing.provider === 'croli' && incoming.refreshToken) set('refreshToken', incoming.refreshToken);
+    else if (!existing.refreshToken) set('refreshToken', incoming.refreshToken);
     if (!existing.expiresAt) set('expiresAt', incoming.expiresAt);
   }
   if (!existing.uid) set('uid', incoming.uid);

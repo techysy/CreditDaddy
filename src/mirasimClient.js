@@ -1,9 +1,18 @@
 /**
- * mirasim API 客户端 — 用户资料、套餐、5h/7d 滚动窗口配额查询。
+ * mirasim API 客户端 — 用户资料、套餐、现行「额度」口径查询。
  *
- *   GET https://auth.mirasim.ai/auth/me      用户资料（name, email, plan, plan_exp, id）
- *   GET https://relay.mirasim.ai/v1/limits   滚动窗口（5h, 7d, 7d_claude 等）
+ *   GET https://auth.mirasim.ai/auth/me            用户资料（name, email, plan, plan_exp, id）
+ *   GET https://relay.mirasim.ai/v1/credits/activity   现行额度口径：个人额度余额 + 按笔（lots）到期
+ *   GET https://relay.mirasim.ai/v2/machines/:nodeId/credit  空间额度（余额 / 本人可用）
+ *   GET https://relay.mirasim.ai/v1/limits         老「平台额度」滚动窗口（5h/7d…），现仅作熔断信号
  *       注：relay.mirasim.ai 对大陆直连限制区域（429），需走统一出口 fetchJsonRace 代理
+ *
+ * 口径变更（2026-11-25 实测对照 mirasim 设置 › 额度页）：
+ *   mirasim 已不再按「5h 滚动窗口 / 7d 全局上限 / 分模型上限」发放额度，现行是
+ *   「额度来源三分（本机账号 / 个人额度 / 空间额度）+ 个人额度按笔有效期、先用最早到期的」。
+ *   /v1/limits 那个 `30d` 窗口其实就是个人额度池的累计视图（used + 各笔剩余之和 = 全部笔额度），
+ *   它的 `reset_at` 是 2126 年的占位值——按「周期重置倒计时」渲染会算出「36492 天后重置」。
+ *   接口的 credits/remaining 是「分」单位（UI ÷100 显示：765.175 → 7.65）。
  */
 
 import { fetchJsonRace } from './zcodeClient.js';
@@ -13,6 +22,23 @@ import { withRefreshDedupe } from './refreshGuard.js';
 const AUTH_ME_URL = 'https://auth.mirasim.ai/auth/me';
 const RELAY_LIMITS_URL = 'https://relay.mirasim.ai/v1/limits';
 const AUTH_REFRESH_URL = 'https://auth.mirasim.ai/auth/refresh';
+const CREDITS_ACTIVITY_URL = 'https://relay.mirasim.ai/v1/credits/activity?limit=50';
+const spaceCreditUrl = (nodeId) => `https://relay.mirasim.ai/v2/machines/${encodeURIComponent(nodeId)}/credit`;
+
+/** 接口额度单位是「分」，UI 显示 ÷100（保留两位） */
+const toCredits = (v) => Math.round(Number(v) || 0) / 100;
+const round2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
+
+/** 每笔额度的种类 → 人话名（对齐 mirasim 渲染层 kind 词典） */
+const LOT_KIND_LABELS = {
+  carry: '原有余额',
+  token_pack: 'Token 包',
+  code: '兑换码',
+  ops: '额度调整',
+  payout: '展示项提回',
+};
+/** 邀请活动发的额度单独点名（reward.campaign=invite） */
+const lotLabel = (lot) => (lot?.reward?.campaign === 'invite' ? '邀请奖励' : (LOT_KIND_LABELS[lot?.kind] || '额度'));
 
 export async function fetchMirasimProfile(token) {
   const res = await fetchJsonRace(AUTH_ME_URL, {
@@ -99,8 +125,86 @@ async function withToken(account, fn, ctx) {
   return r;
 }
 
-/** 统一配额结构（对齐 Qoder/WorkBuddy/ZCode） */
-export function normalizeMirasimLimits(limits, profile = null) {
+/** 统一配额结构（现行「额度」口径：个人额度按笔 + 空间额度；老窗口仅作降级与熔断信号） */
+export function normalizeMirasimQuota({ activity = null, limits = null, profile = null, spaceCredit = null, agentSources = [] } = {}) {
+  const epochToIso = (sec) => (Number.isFinite(sec) && sec > 0 ? new Date(sec * 1000).toISOString() : null);
+  const lots = (Array.isArray(activity?.balance?.lots) ? activity.balance.lots : [])
+    .map((l) => ({
+      name: lotLabel(l),
+      total: toCredits(l.credits),
+      remaining: toCredits(l.remaining),
+      grantedAt: Number.isFinite(l.grantedAt) ? new Date(l.grantedAt).toISOString() : null,
+      expiresAt: Number.isFinite(l.expiresAt) ? new Date(l.expiresAt).toISOString() : null,
+      recurring: false,
+    }))
+    // 消费顺序 = 到期顺序（先用最早到期的），面板逐笔展示时按此次序
+    .sort((a, b) => String(a.expiresAt || '9999').localeCompare(String(b.expiresAt || '9999'))
+      || String(a.grantedAt || '9999').localeCompare(String(b.grantedAt || '9999')));
+
+  const personalRemaining = toCredits(activity?.balance?.remaining);
+  // mirasim 额度页的「额度明细」只列还没用完的笔（花完的进「额度变动」历史），
+  // 百分比也按这些笔的总额算：7.65 / 10.01 → 76.4%。老 /v1/limits 的 budget 把
+  // 已花完的笔也算进去（15.01 → 51%），那不是现行页的口径。
+  const alive = lots.filter((l) => l.remaining > 0);
+  const aliveTotal = round2(alive.reduce((s, l) => s + l.total, 0));
+  const personalTotal = round2(lots.reduce((s, l) => s + l.total, 0));
+  const pctBase = aliveTotal > 0 ? aliveTotal : personalTotal;
+  const remainingPercentage = pctBase > 0
+    ? Math.max(0, Math.min(100, Math.round((personalRemaining / pctBase) * 1000) / 10))
+    : (personalRemaining > 0 ? 100 : 0);
+
+  const spaceAvailable = spaceCredit && typeof spaceCredit === 'object';
+  const space = spaceAvailable ? {
+    // me.remaining 为 null 表示「不限」（所有者未设上限），按空间余额本身展示
+    remaining: Number.isFinite(spaceCredit.me?.remaining) ? toCredits(spaceCredit.me.remaining) : toCredits(spaceCredit.balance),
+    balance: toCredits(spaceCredit.balance),
+    payer: spaceCredit.me?.payer || spaceCredit.mode || null,
+  } : null;
+
+  const gotActivity = activity != null;
+  const exhausted = gotActivity && personalRemaining <= 0 && !(space && space.remaining > 0);
+
+  // 降级：个人额度接口读不到（区域限流 / 上游变更）时，现行 /v1/limits 只剩一个额度池窗口，
+  // 它的 budget-used 与 balance.remaining 同源（实测 1501-735.82 = 765.175 = 7.65），
+  // 可以当作余额用；多个窗口（老的 5h/7d 并行窗口）就没有「余额」可言，只留窗口行。
+  const legacyWindows = normalizeMirasimWindows(limits);
+  const degraded = !gotActivity && legacyWindows.length === 1 && legacyWindows[0].total > 0;
+  const headTotal = gotActivity ? pctBase : (degraded ? round2(legacyWindows[0].total / 100) : 0);
+  // 余额可为负（末笔扣穿后服务端记负数余量，实测 -2.27 分）：显示口径钳到 0，
+  // 用尽状态另由 exhausted 表达——面板与仪表盘汇总都不该出现「-0.02」这种数字。
+  const headRemaining = Math.max(0, gotActivity ? personalRemaining : (degraded ? round2(legacyWindows[0].remaining / 100) : 0));
+  const headPct = headTotal > 0
+    ? Math.max(0, Math.min(100, Math.round((headRemaining / headTotal) * 1000) / 10))
+    : (headRemaining > 0 ? 100 : remainingPercentage);
+
+  return {
+    unit: '额度',
+    // total/used 用「还没用完的笔」口径，与 mirasim 额度明细逐笔的 7.64/10.00 一致
+    total: headTotal,
+    used: Math.max(0, round2(headTotal - headRemaining)),
+    remaining: headRemaining,
+    remainingPercentage: headPct,
+    percent: Math.max(0, Math.min(100, 100 - headPct)),
+    plan: profile?.plan ? String(profile.plan).toUpperCase() : (limits?.paid ? 'PRO' : 'FREE'),
+    planExpiresAt: epochToIso(profile?.plan_exp),
+    // 按笔到期：先用最早到期的那笔（截图口径「最早一笔 2027年2月22日 到期」）
+    earliestExpiresAt: alive[0]?.expiresAt || null,
+    lots,
+    space,
+    windows: legacyWindows,
+    // 各智能体单独设定的额度来源（本机 mirasim 客户端记录，按 uid 索引）：
+    // 有条目就意味着这些智能体不跟这里的个人/空间额度走，面板据此提示
+    agentSources: Array.isArray(agentSources) ? agentSources : [],
+    bottleneck: exhausted ? { name: '个人额度' } : null,
+    // 什么都没读到才算「无额度」；新接口失败但老窗口还在时走面板的百分比降级，不要提前打空态
+    empty: !gotActivity && !degraded && !(space && space.remaining > 0),
+    exceeded: exhausted || limits?.suspended === true,
+    // 个人额度接口不可用（区域限流 / 上游变更）：面板据此显示「—」而不是编出来的 0
+    partial: !gotActivity,
+  };
+}
+/** 老「平台额度」滚动窗口解析（5h/7d/分模型上限）——现行口径不再展示，仅留作降级兜底 */
+export function normalizeMirasimWindows(limits) {
   const windows = Array.isArray(limits?.windows) ? limits.windows : [];
   const epochToIso = (sec) => (Number.isFinite(sec) && sec > 0 ? new Date(sec * 1000).toISOString() : null);
 
@@ -113,54 +217,28 @@ export function normalizeMirasimLimits(limits, profile = null) {
     '7d_fable': '7天 Fable 上限',
   };
 
-  const parts = windows.map((w) => {
+  return windows.map((w) => {
     const budget = Number(w.budget) || 0;
     const used = Number(w.used) || 0;
     const remaining = Math.max(0, budget - used);
     const usedPct = budget > 0 ? Math.min(100, Math.round((used / budget) * 1000) / 10) : 0;
-    const remPct = Math.max(0, Math.round((100 - usedPct) * 10) / 10);
 
     return {
       name: WINDOW_LABELS[w.name] || w.name,
+      rawName: w.name,
       total: budget,
       used,
       remaining,
       percent: usedPct,
-      remainingPercentage: remPct,
+      remainingPercentage: Math.max(0, Math.round((100 - usedPct) * 10) / 10),
       unit: '',
-      resetAt: epochToIso(w.reset_at),
-      expiresAt: epochToIso(w.reset_at),
+      // 上游 30d 窗口的 reset_at 是 2126 年的占位值（额度按笔到期、没有周期重置），
+      // 只认 5h/7d 这类真窗口，其余一律不给「N 天后重置」
+      resetAt: /^(5h|7d|7d_.+)$/.test(String(w.name)) ? epochToIso(w.reset_at) : null,
+      expiresAt: /^(5h|7d|7d_.+)$/.test(String(w.name)) ? epochToIso(w.reset_at) : null,
       recurring: true,
     };
   });
-
-  // 瓶颈短板原则：5h 窗口与 7d 全局窗口是“与”的关系（任何一个见底，请求就发不出去）
-  // 逻辑上：周额度没了，5 小时即使是 100% 也没有意义！所以主额度必须反映实际可用状态
-  const w5h = parts.find((p) => p.name.includes('5小时'));
-  const w7d = parts.find((p) => p.name.includes('7天全局'));
-  const bottleneck = w7d && w7d.remainingPercentage <= 0 ? w7d
-    : w5h && w5h.remainingPercentage <= 0 ? w5h
-    : w7d && w5h ? (w7d.remainingPercentage < w5h.remainingPercentage ? w7d : w5h)
-    : parts[0] || null;
-
-  const rem = bottleneck ? bottleneck.remainingPercentage : 0;
-  const isExhausted = bottleneck ? bottleneck.remainingPercentage <= 0 : false;
-
-  return {
-    total: 100,
-    used: 100 - rem,
-    remaining: rem,
-    unit: '%',
-    plan: profile?.plan ? String(profile.plan).toUpperCase() : (limits?.paid ? 'PRO' : 'FREE'),
-    planExpiresAt: epochToIso(profile?.plan_exp),
-    bottleneckLabel: isExhausted ? (bottleneck?.name || '额度') + '已用尽' : null,
-    // 结构化瓶颈（面板按词典分别 T() 窗口名与「已用尽」，替代拼串 bottleneckLabel——
-    // 上游新增窗口名（如 '30d'）无词典映射时拼串会出「30d已用尽」混语）
-    bottleneck: isExhausted && bottleneck ? { name: bottleneck.name } : null,
-    parts,
-    empty: parts.length === 0,
-    exceeded: limits?.suspended === true || isExhausted,
-  };
 }
 
 /** 查询 mirasim 完整配额；401 时自动用 refreshToken 续期一次并重试（ctx.onRefresh 回写凭据） */
@@ -168,6 +246,10 @@ export async function fetchMirasimQuota(account, ctx = {}) {
   if (!account.token) throw new Error('账号缺少 token');
 
   const getProfile = (token) => fetchJsonRace(AUTH_ME_URL, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    timeoutMs: FETCH_TIMEOUT_MS,
+  });
+  const getActivity = (token) => fetchJsonRace(CREDITS_ACTIVITY_URL, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     timeoutMs: FETCH_TIMEOUT_MS,
   });
@@ -181,31 +263,65 @@ export async function fetchMirasimQuota(account, ctx = {}) {
     const pres = await withToken(account, getProfile, ctx);
     if (pres.ok) profile = await pres.json();
   } catch (e) {
-    // 刷新也失败 / 网络错误：没有 refreshToken 或 refreshToken 失效时如实抛出，其余继续试 limits
+    // 刷新也失败 / 网络错误：没有 refreshToken 或 refreshToken 失效时如实抛出，其余继续试额度
+    if (e.authInvalid) throw e;
+  }
+
+  // 现行口径主数据源：个人额度（按笔）。失败不阻断——退回老窗口结构并在面板标注来源缺失。
+  let activity = null;
+  try {
+    const ares = await withToken(account, getActivity, ctx);
+    if (ares.ok) activity = await ares.json();
+  } catch (e) {
     if (e.authInvalid) throw e;
   }
 
   const res = await withToken(account, getLimits, ctx).catch((e) => {
     if (e.authInvalid) throw e;
+    if (activity) return null;   // 老接口挂了但新口径拿到了：不再当作查询失败
     throw new Error(`查询额度失败：${e.message}`);
   });
 
-  if (!res.ok) {
+  if (!res && !activity) throw new Error('查询额度失败');
+  if (res && !res.ok && !activity) {
     if (res.status === 401) { const e = new Error('mirasim 登录凭据已过期，请在 mirasim 客户端重新登录后重新导入'); e.auth = true; throw e; }
     if (res.status === 429) {
       // 区域受限时返回 profile 里的基础套餐信息，不完全阻断
       return {
-        total: 100, used: 0, remaining: 100, unit: '%',
+        unit: '额度', total: 0, used: 0, remaining: 0, remainingPercentage: 0,
         plan: profile?.plan || 'Plus',
         planExpiresAt: profile?.plan_exp ? new Date(profile.plan_exp * 1000).toISOString() : null,
-        parts: [],
-        empty: false,
-        warning: '云端限流或直连网络受限（配置代理后可查询实时 5h/7d 窗口）',
+        lots: [], space: null, windows: [], parts: [], agentSources: [], empty: false, partial: true,
+        warning: '云端限流或直连网络受限（配置代理后可查询实时额度）',
       };
     }
     throw new Error(`查询额度失败: HTTP ${res.status}`);
   }
 
-  const limits = await res.json();
-  return normalizeMirasimLimits(limits, profile);
+  const limits = res && res.ok ? await res.json().catch(() => null) : null;
+
+  // 空间额度：只有本机 mirasim 客户端连着空间时才查（nodeId 取自客户端 setting.json）。
+  // 查不到/无权限都按「未知」处理，不影响个人额度展示。
+  let spaceCredit = null;
+  try {
+    const { currentSpaceNodeId } = await import('./mirasimLocal.js');
+    const nodeId = currentSpaceNodeId();
+    if (nodeId) {
+      const sres = await withToken(account, (token) => fetchJsonRace(spaceCreditUrl(nodeId), {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        timeoutMs: FETCH_TIMEOUT_MS,
+      }), ctx).catch(() => null);
+      if (sres && sres.ok) spaceCredit = await sres.json().catch(() => null);
+    }
+  } catch {}
+
+  // 各智能体单独设定的额度来源：mirasim 客户端按人存在本机 collab/person-agent-routes.json，
+  // 没有对外查询接口，只能读本机文件（按账号 uid 取，读不到就当没有）。
+  let agentSources = [];
+  try {
+    const { agentCreditSources } = await import('./mirasimLocal.js');
+    agentSources = agentCreditSources(account.uid);
+  } catch {}
+
+  return normalizeMirasimQuota({ activity, limits, profile, spaceCredit, agentSources });
 }

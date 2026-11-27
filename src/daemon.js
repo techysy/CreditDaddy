@@ -54,7 +54,7 @@ import {
   zcodeFlavor, loadState, withAccounts, publicAccount, dataDir, loadSettings, saveSettings, withSettings, normalizeAccountInput,
 } from './store.js';
 import { addAccount, importAccounts, refreshContext } from './accounts.js';
-import { productImpl } from './providers.js';
+import { productImpl, prepareCroliAccount } from './providers.js';
 import { readWorkbuddySessions, writeWorkbuddySession, workbuddyAuthDir, currentWorkbuddyUids, detectWorkbuddy, warmWorkbuddyClientPath } from './workbuddyLocal.js';
 import { inspectToken } from './workbuddyClient.js';
 import {
@@ -71,6 +71,7 @@ import { liveToAccount as traeLiveAccount, detectTrae, switchTo as traeSwitchTo,
 import { liveToAccount as minimaxLiveAccount, detectMiniMax, detectMiniMaxBuildLang, currentMiniMaxUid, currentMiniMaxToken, currentMiniMaxRecordKey } from './minimaxLocal.js';
 import { liveToAccount as loomyLiveAccount, hardSwitchLoomy, currentLoomyUid, detectLoomy } from './loomyLocal.js';
 import { liveToAccount as dumateLiveAccount, detectDumate, readDumateCredential, hardSwitchDumate } from './dumateLocal.js';
+import { liveToAccount as croliLiveAccount, detectCroli, readCroliCredential, hardSwitchCroli, croliSubOf as croliUidOf } from './croliLocal.js';
 import { liveToAccount as autoclawLiveAccount, detectAutoclaw, currentAutoclawUid } from './autoclawLocal.js';
 import { liveToAccount as doubaoLiveAccount, detectDoubao, extractDoubaoUid, readDoubaoDeviceInfo } from './doubaoLocal.js';
 import * as minimaxGateway from './minimaxGateway.js';
@@ -84,6 +85,7 @@ import { runCheckinTick, getSchedulerInfo, dayKey, enableZcodeAutoClaimWindow, r
 const getSchedulerDailyPlan = () => zcodeDailyPlanInfo();
 import { detectQoderApps, readQoderAppAccounts, riskIdentityAvailable, riskIdentitySource, switchTo as qoderSwitchTo, qoderRunningCached, terminateQoder } from './qoderApp.js';
 import { detectQwenworkApps, readQwenworkAppAccounts, switchTo as qwenworkSwitchTo, qwenworkRunningCached, terminateQwenwork } from './qwenworkApp.js';
+import { detectQuwork, quworkLiveAccount, quworkCurrentUid } from './quworkLocal.js';
 import { umidInfo, installUmid } from './qoderUmid.js';
 import * as tenrouter from './tenrouter.js';
 import * as zcodeGateway from './zcodeGateway.js';
@@ -93,7 +95,7 @@ import { PROVIDER_LABEL, APP_VERSION, PROVIDERS, PROJECT_URL } from './constants
 import { getLocale, setLocale, normalizeLocale, loadDict, t as tr } from './i18n.js';
 import { getAnnouncements } from './announcements.js';
 
-const PRODUCT_IDS = ['qoder', 'qwenwork', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'loomy', 'dumate', 'autoclaw'];
+const PRODUCT_IDS = ['qoder', 'qwenwork', 'workbuddy', 'zcode', 'mirasim', 'catpaw', 'trae', 'minimax', 'loomy', 'dumate', 'croli', 'quwork', 'autoclaw'];
 
 /** 面板访问密码：面板「设置」写入的 settings.json.panelKey 优先（可设 / 可关）；
  *  未设置（或被面板关闭）时回退环境变量 CREDITDADDY_PASSWORD（fnOS / 命令行部署注入），
@@ -582,6 +584,29 @@ async function reprobeCookieAccount(site, a) {
   } catch (e) {
     return finish({ id: a.id, name: a.name, ok: false, error: e.message });
   }
+}
+
+/**
+ * QuWork 凭据出门前的整备：accessToken 过期（客户端里也过期）就先 /api/user/refresh
+ * 续期并回写账号库——邀请码两条路由都直接吃 account.token，不整备就会拿死 token 打 401。
+ * 续期失败静默放过：后续请求自己会报出真实错误（网关 405 / 凭据失效），不在这拦截。
+ */
+async function prepareQuworkAccount(account) {
+  const expMs = Date.parse(account.expiresAt || '');
+  if (!Number.isFinite(expMs) || expMs > Date.now()) return;
+  const { quworkRefreshAccess } = await import('./quworkClient.js');
+  const fresh = await quworkRefreshAccess(account.token);
+  if (!fresh) return;
+  await withAccounts((list) => {
+    const hit = list.find((a) => a.id === account.id);
+    if (!hit) return;
+    hit.token = fresh.accessToken;
+    hit.expiresAt = fresh.expiresAt;
+    hit.updatedAt = new Date().toISOString();
+  });
+  account.token = fresh.accessToken;
+  account.expiresAt = fresh.expiresAt;
+  logger.info('DAEMON', 'QuWork {name} accessToken 已续期', { name: account.name || account.id });
 }
 
 async function readBody(req) {
@@ -1104,6 +1129,79 @@ async function handleApi(req, res, url) {
     if (!r.ok) return json(res, r.auth === false ? 401 : 502, { error: r.error });
     return json(res, 200, { ok: true, code: r.code, type: r.type, activityId: r.activityId });
   }
+  // QuWork 邀请码/兑换码填写：POST /api/user/activate（订单号/积分兑换码/邀请码同一端点，
+  // 10R quworkActivateCode 同款；device_identifier 用账号 meta 里固定的那份，缺失时 redeem 现造并回传落库）
+  const quworkInviteMatch = p.match(/^\/api\/accounts\/([\w-]+)\/quwork\/invite$/);
+  if (quworkInviteMatch && method === 'POST') {
+    const body = await readBody(req).catch(() => ({}));
+    const code = String(body?.code || '').trim();
+    if (!code) return json(res, 400, { error: '邀请码不能为空' });
+    const account = (await loadAccounts()).find((a) => a.id === quworkInviteMatch[1] && a.provider === 'quwork');
+    if (!account) return json(res, 404, { error: 'QuWork 账号不存在' });
+    try {
+      await prepareQuworkAccount(account);
+      const { redeemQuworkCode } = await import('./quworkClient.js');
+      const r = await redeemQuworkCode(account.token, code, { deviceId: account.meta?.quworkDeviceId });
+      if (!r.ok) {
+        logger.warn('DAEMON', 'QuWork {name} 码兑换失败:{err}', { name: account.name, err: r.error });
+        return json(res, r.authExpired ? 401 : 400, { error: r.error });
+      }
+      // 新造的设备标识回填账号库（10R patchPsd 同款），下次复用
+      if (r.deviceId && r.deviceId !== account.meta?.quworkDeviceId) {
+        await withAccounts((list) => {
+          const hit = list.find((a) => a.id === account.id);
+          if (hit) hit.meta = { ...(hit.meta || {}), quworkDeviceId: r.deviceId };
+        });
+      }
+      logger.info('DAEMON', 'QuWork {name} 码已兑换:{code}', { name: account.name, code });
+      return json(res, 200, { ok: true, message: r.message, result: r.result });
+    } catch (e) {
+      logger.warn('DAEMON', 'QuWork {name} 码兑换异常:{err}', { name: account.name, err: e.message });
+      return json(res, e.auth ? 401 : 400, { error: e.message });
+    }
+  }
+  // QuWork 我的邀请码：self.aff_code + /api/user/invite/summary（每位奖励/已邀人数）
+  const quworkMyInviteMatch = p.match(/^\/api\/accounts\/([\w-]+)\/quwork\/my-invite-code$/);
+  if (quworkMyInviteMatch && method === 'GET') {
+    const account = (await loadAccounts()).find((a) => a.id === quworkMyInviteMatch[1] && a.provider === 'quwork');
+    if (!account) return json(res, 404, { error: 'QuWork 账号不存在' });
+    try {
+      await prepareQuworkAccount(account);
+      const { fetchQuworkMyInviteCode } = await import('./quworkClient.js');
+      const r = await fetchQuworkMyInviteCode(account.token);
+      if (!r.ok) return json(res, r.auth === false ? 401 : 502, { error: r.error });
+      return json(res, 200, { ok: true, code: r.code, count: r.count, rewardPoints: r.rewardPoints, perInvitePoints: r.perInvitePoints, maxInvite: r.maxInvite });
+    } catch (e) {
+      logger.warn('DAEMON', 'QuWork {name} 邀请码查询失败:{err}', { name: account.name, err: e.message });
+      return json(res, e.auth ? 401 : 502, { error: e.message });
+    }
+  }
+  // Croli 邀请码填写/获取（恢复线，与 QuWork 同款两条路由）
+  const croliInviteMatch = p.match(/^\/api\/accounts\/([\w-]+)\/croli\/invite$/);
+  if (croliInviteMatch && method === 'POST') {
+    const body = await readBody(req).catch(() => ({}));
+    const code = String(body?.code || '').trim();
+    if (!code) return json(res, 400, { error: '邀请码不能为空' });
+    const account = (await loadAccounts()).find((a) => a.id === croliInviteMatch[1] && a.provider === 'croli');
+    if (!account) return json(res, 404, { error: 'Croli 账号不存在' });
+    try { await prepareCroliAccount(account, refreshContext(account)); }
+    catch (e) { return json(res, 401, { error: e.message }); }
+    const { redeemCroliInviteCode } = await import('./croliClient.js');
+    const r = await redeemCroliInviteCode(account.token, code);
+    if (!r.ok) return json(res, r.authExpired ? 401 : 400, { error: r.error });
+    return json(res, 200, { ok: true, message: r.message, result: r.result });
+  }
+  const croliMyInviteMatch = p.match(/^\/api\/accounts\/([\w-]+)\/croli\/my-invite-code$/);
+  if (croliMyInviteMatch && method === 'GET') {
+    const account = (await loadAccounts()).find((a) => a.id === croliMyInviteMatch[1] && a.provider === 'croli');
+    if (!account) return json(res, 404, { error: 'Croli 账号不存在' });
+    try { await prepareCroliAccount(account, refreshContext(account)); }
+    catch (e) { return json(res, 401, { error: e.message }); }
+    const { fetchCroliMyInviteCode } = await import('./croliClient.js');
+    const r = await fetchCroliMyInviteCode(account.token);
+    if (!r.ok) return json(res, r.auth === false ? 401 : 502, { error: r.error });
+    return json(res, 200, { ok: true, code: r.code, inviterRewardCredits: r.inviterRewardCredits, inviteeRewardCredits: r.inviteeRewardCredits });
+  }
   // 网络出口偏好（全局——Qoder/ZCode/cookie 探测等全部出口都走它）：默认「直连优先、代理兜底」，
   // 可切「代理优先、直连兜底」；代理地址可面板配置（存 zcode-net.json，0600；键名 zcode 前缀是历史遗留）
   // 自动领取开启时附带 1 小时时限（autoClaimUntil），到期调度器自动关闭并停止轮询
@@ -1339,6 +1437,24 @@ async function handleApi(req, res, url) {
       } catch (e) {
         logger.warn('DAEMON', 'DuMate 切换到 {name} 失败:{err}', { name: target.name || target.id, err: e.message });
         return json(res, e.dumateNotInstalled ? 409 : 400, { error: e.message, code: e.dumateNotInstalled ? 'DUMATE_NOT_INSTALLED' : undefined });
+      }
+    }
+    if (target.provider === 'croli') {
+      try {
+        // 保存客户端刚轮换的最新 refresh token；失败时禁止覆盖本机凭据。
+        const live = await croliLiveAccount();
+        if (!live?.token || !live.refreshToken) throw new Error('无法保存 Croli 当前登录，请先在客户端重新登录并导入');
+        await addAccount(live, { trusted: true });
+        if (live.uid && live.uid === (target.uid || croliUidOf(target.token))) {
+          return json(res, 200, { ok: true, switched: false, alreadyActive: true, closedClient: false, verified: true });
+        }
+        await prepareCroliAccount(target, refreshContext(target));
+        const r = await hardSwitchCroli(target);
+        logger.info('DAEMON', r.alreadyActive ? 'Croli 当前已是 {name}' : 'Croli 已切换到 {name}', { name: target.name || target.id });
+        return json(res, 200, { ok: true, ...r });
+      } catch (e) {
+        logger.warn('DAEMON', 'Croli 切换到 {name} 失败:{err}', { name: target.name || target.id, err: e.message });
+        return json(res, e.croliNotInstalled ? 409 : 400, { error: e.message, code: e.croliNotInstalled ? 'CROLI_NOT_INSTALLED' : undefined });
       }
     }
     if (target.provider === 'qoder' || target.provider === 'qoder-cn') {
@@ -2232,7 +2348,7 @@ async function handleApi(req, res, url) {
 
   // ── 本机检测 / 凭据扫描 ──
   if (p === '/api/local/detect' && method === 'GET') {
-    return json(res, 200, { apps: detectQoderApps(), qwenwork: detectQwenworkApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), trae: detectTrae(), minimax: detectMiniMax(), loomy: detectLoomy(), dumate: detectDumate(), autoclaw: detectAutoclaw(), doubao: detectDoubao(), legacy: detectInstalls() });
+    return json(res, 200, { apps: detectQoderApps(), qwenwork: detectQwenworkApps(), workbuddyDir: workbuddyAuthDir(), zcode: detectZcode(), mirasim: detectMirasim(), catpaw: detectCatpaw(), trae: detectTrae(), minimax: detectMiniMax(), loomy: detectLoomy(), dumate: detectDumate(), croli: detectCroli(), quwork: detectQuwork(), autoclaw: detectAutoclaw(), doubao: detectDoubao(), legacy: detectInstalls() });
   }
   if (p === '/api/local/scan' && method === 'POST') {
     const existing = await loadAccounts();
@@ -2345,7 +2461,18 @@ async function handleApi(req, res, url) {
       const dm = await dumateLiveAccount();
       if (dm) addRecord(dm, { source: 'DuMate 当前登录', current: true });
     } catch (e) { errors.push({ file: 'qianfan-desktop-app/auth.json', error: e.message }); }
-    // 8.6) AutoClaw（智谱澳龙）桌面客户端：本地解密 %APPDATA%\autoclaw\auth.json
+    // 8.6) Croli 桌面端：读 %APPDATA%\Croli\auth.json（明文，客户端在跑也可读）
+    try {
+      const cl = await croliLiveAccount();
+      if (cl) addRecord(cl, { source: 'Croli 当前登录', current: true });
+    } catch (e) { errors.push({ file: 'Croli/auth.json', error: e.message }); }
+    // 8.65) QuWork 桌面端：读 %APPDATA%\qurwork-desktop\qurwork-desktop.sqlite
+    //      的 auth_session 明文快照（node:sqlite readOnly，客户端在跑也允许并发读；被锁走拷贝兜底）
+    try {
+      const qk = await quworkLiveAccount();
+      if (qk) addRecord(qk, { source: 'QuWork 当前登录', current: true });
+    } catch (e) { errors.push({ file: 'qurwork-desktop/qurwork-desktop.sqlite', error: e.message }); }
+    // 8.66) AutoClaw（智谱澳龙）桌面客户端：本地解密 %APPDATA%\autoclaw\auth.json
     //      （Electron safeStorage：Local State + DPAPI + v10 AES-256-GCM，复用 qoderApp 的 codec）。
     //      归属线由 JWT 的 source_id 决定（agent* = 国内短信号），liveToAccount 已按实际线返回 provider，
     //      所以面板选「AutoClaw」也能把国内号导进正确的线。只读，不写客户端文件。
@@ -2656,6 +2783,7 @@ async function handleApi(req, res, url) {
         lingxi: dayKey(Date.now(), 'lingxi'),   // 网页会话签到线（#53）：0 点翻日，徽标/isDone 的日界比对用
         meoo: dayKey(Date.now(), 'meoo'),       // Meoo 首登积分线：同为 0 点翻日
         dumate: dayKey(Date.now(), 'dumate'),   // DuMate 每日登录赠送积分：0 点翻日
+        croli: dayKey(Date.now(), 'croli'),
         autoclaw: dayKey(Date.now(), 'autoclaw'),   // AutoClaw 每日签到：上游按北京时间 0 点换日（10R autoclawCheckin 同口径）
         zcode: dayKey(Date.now(), 'zcode'),     // ZCode 活动领取：单日活动 0 点刷新——徽标按日界而非 26h 窗口（2026-11-20 用户实测「还有前一天的领取记录」）
       },
@@ -2708,6 +2836,11 @@ async function handleApi(req, res, url) {
       loomyClient: (() => { const d = detectLoomy(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       dumateClient: (() => { const d = detectDumate(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       dumateCurrentUid: readDumateCredential()?.uid || null,
+      // QuWork 客户端态：installed/dbExists 来自 quworkLocal 只读探测，running 走 winProc 快照
+      quworkClient: (() => { const d = detectQuwork(); return { installed: d.installed, signedIn: d.signedIn, running: d.running }; })(),
+      quworkCurrentUid: await quworkCurrentUid(),
+      croliClient: (() => { const d = detectCroli(); return { installed: d.installed, signedIn: d.signedIn, running: d.running, expired: d.expired }; })(),
+      croliCurrentUid: (() => { const c = readCroliCredential(); return c ? croliUidOf(c.accessToken) : null; })(),
       // AutoClaw：一个客户端只登一个号（国际/国内由 JWT source_id 决定归属），所以单套字段
       autoclawClient: (() => { const d = detectAutoclaw(); return { installed: d.clientInstalled, signedIn: d.signedIn, running: d.running }; })(),
       autoclawCurrentUid: currentAutoclawUid(),

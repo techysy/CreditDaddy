@@ -132,6 +132,11 @@ export function buildExportPayload(accounts, { provider, product } = {}) {
       // authType:'cookie' 的行把凭据落到 apiKey（webCookie executor 读取的字段），
       // 连接行的 authType 也与 10R 本地捕获创建的连接一致（#128 的 cookie 徽章口径）。
       ...(a.provider === 'lingxi' || a.provider === 'dumate' ? { authType: 'cookie' } : {}),
+      // QuWork：10R 的 quwork 刷新器把「可续期材料」读 conn.refreshToken（GET /api/user/refresh，
+      // Bearer 旧 access token——QuWork 没有独立 rt，旧 access 本身就是刷新凭据）。CD 行
+      // refreshToken 恒 null，导出时把 accessToken 复制进 refreshToken 栏，10R 端 token 过期
+      // 才能自续；两栏同值不增加泄漏面（本来就是同一个字符串）。
+      ...(a.provider === 'quwork' && a.token ? { refreshToken: a.token } : {}),
       providerSpecificData: {
         authMethod: a.token.startsWith('pt-') ? 'pat' : 'device',
         userId: a.uid || null,

@@ -24,9 +24,13 @@ import { extractDoubaoUid } from './doubaoLocal.js';
 import { checkinLingxi, fetchLingxiQuota } from './lingxiClient.js';
 import { checkinMeoo, fetchMeooQuota } from './meooClient.js';
 import { checkinDumate, fetchDumateQuota } from './dumateClient.js';
+import { checkinCroli, fetchCroliQuota, verifyCroliAccount } from './croliClient.js';
+import { readCroliCredential, croliSubOf } from './croliLocal.js';
+import { refreshCroliToken } from './croliAuth.js';
 import { checkinAutoclaw, fetchAutoclawQuotaForAccount, verifyAutoclawAccount } from './autoclawClient.js';
 import { fetchLoomyQuota, verifyLoomyAccount } from './loomyClient.js';
 import { fetchUserinfo as fetchQwenworkUserinfo, fetchQuotaUsage as fetchQwenworkQuota } from './qwenworkClient.js';
+import { checkinQuwork, fetchQuworkQuota, verifyQuworkAccount } from './quworkClient.js';
 /** 从 userinfo 响应中挑一个可读的显示名 */
 export function displayNameFrom(ui) {
   const pick = [ui?.nickname, ui?.name, ui?.username, ui?.email]
@@ -153,6 +157,44 @@ async function clearQoderWebSession(account, ctx = {}) {
   ctx.onWebSessionExpired?.();
 }
 
+// 客户端 sidecar 会轮换 Clerk 凭据；仅对当前同 uid 的账号读取最新快照。
+// 其它账号保留各自的旧快照，绝不拿当前登录的凭据覆盖它们。
+const croliRenewals = new Map();
+async function currentCroliAccount(account, ctx) {
+  const live = readCroliCredential();
+  const uid = account.uid || croliSubOf(account.token);
+  if (live && uid && croliSubOf(live.accessToken) === uid) {
+    if (live.expired) throw new Error('Croli 客户端凭据已过期，等待客户端自动续期或在客户端重新登录');
+    if (live.accessToken !== account.token || live.refreshToken !== account.refreshToken) {
+      const creds = { token: live.accessToken, refreshToken: live.refreshToken,
+        expiresAt: live.expiresAt ? new Date(live.expiresAt).toISOString() : account.expiresAt };
+      if (ctx?.onRefresh) await ctx.onRefresh(creds);
+      else Object.assign(account, creds);
+    }
+    return account;
+  }
+  if (account.refreshToken && Number.isFinite(Date.parse(account.expiresAt))
+    && Date.parse(account.expiresAt) < Date.now() + 5 * 60_000) {
+    let renewal = croliRenewals.get(uid);
+    if (!renewal) {
+      renewal = (async () => {
+        const tok = await refreshCroliToken(account.refreshToken, { fetchImpl: ctx?.refreshFetchImpl });
+        if (!tok.refresh_token || croliSubOf(tok.access_token) !== uid) throw new Error('Croli 续期返回的账号身份不匹配，请重新授权');
+        return { token: tok.access_token, refreshToken: tok.refresh_token,
+          expiresAt: new Date(Date.now() + Number(tok.expires_in) * 1000).toISOString() };
+      })();
+      croliRenewals.set(uid, renewal);
+      renewal.finally(() => { if (croliRenewals.get(uid) === renewal) croliRenewals.delete(uid); }).catch(() => {});
+    }
+    const creds = await renewal;
+    if (ctx?.onRefresh) await ctx.onRefresh(creds);
+    else Object.assign(account, creds);
+  }
+  return account;
+}
+
+export const prepareCroliAccount = currentCroliAccount;
+
 const PRODUCTS = {
   qoder: {
     label: 'Qoder',
@@ -196,7 +238,7 @@ const PRODUCTS = {
   },
   mirasim: {
     label: 'mirasim',
-    // 无 checkin：mirasim 额度按 5h/7d 滚动窗口分配，不设签到。
+    // 无 checkin：mirasim 现行额度是「个人额度按笔有效期 + 空间额度按成员分配」，无每日签到动作。
     // token 约 1 小时过期：quota 内部 401 时自动用 refreshToken 续期，
     // ctx.onRefresh（refreshContext）回写账号库后，这里再把新凭据同步回 setting.json（若该账号是客户端当前登录）。
     quota: async (account, ctx = {}) => {
@@ -338,6 +380,29 @@ const PRODUCTS = {
     label: '讯飞 Loomy',
     quota: (account) => fetchLoomyQuota(account),
     verify: (account) => verifyLoomyAccount(account),
+  },
+  croli: {
+    label: 'Croli',
+    checkin: async (account, ctx) => checkinCroli(await currentCroliAccount(account, ctx), ctx),
+    quota: async (account, ctx) => fetchCroliQuota(await currentCroliAccount(account, ctx), ctx),
+    verify: async (account) => {
+      const v = await verifyCroliAccount(account);
+      if (!v.auth) { const e = new Error(v.error || 'Croli 凭据已失效，请重新本机导入或浏览器登录'); e.auth = true; throw e; }
+      if (!v.ok) throw new Error(v.error || 'Croli 身份验证失败');
+      return { name: v.name || null, uid: v.uid ? String(v.uid) : null };
+    },
+  },
+  quwork: {
+    label: 'QuWork',
+    // QuWork（人人租 QurWork 桌面端同账号体系，quwork.cn）：凭据线=本机导入（明文
+    // SQLite auth_session 收割，客户端是单会话表、CD 只读不写回，不做切换）。
+    // 每日签到领积分（status 门控，10R quworkClaimDailyReward 同款纪律：never blind-fire）；
+    // 额度 = points_entitlement.total_points 积分余额；邀请码获取/填写走 /api/user/activate。
+    // accessToken 过期由 checkin 内部 /api/user/refresh 续期并经 ctx.onRefresh 回写。
+    // 无浏览器登录线：短信登录需阿里云滑块验证码，CD 不做（10R 也只在原生 modal 里做）。
+    checkin: (account, ctx) => checkinQuwork(account, ctx),
+    quota: (account) => fetchQuworkQuota(account),
+    verify: (account) => verifyQuworkAccount(account),
   },
   // AutoClaw（智谱澳龙 / AutoGLM 桌面端）：国际版 autoclaw（Z.AI OAuth）+ 国内版 autoclaw-cn
   // （+86 短信码）两套独立账号体系，一个产品页。凭据 = 账号 JWT（access 约 24h）+ 轮换 rt。

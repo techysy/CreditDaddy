@@ -7,7 +7,7 @@ import { loadAccounts, loadSettings, loadState, withAccounts, withState } from '
 import { productImpl } from './providers.js';
 import { productOf, PROVIDER_LABEL } from './constants.js';
 import { loadConfig as loadTenrouterConfig, startUsageSyncScheduler } from './tenrouter.js';
-import { startAutoclawResyncWatch } from './tenrouterAccounts.js';
+import { startCroliResyncWatch, startAutoclawResyncWatch } from './tenrouterAccounts.js';
 import { refreshContext } from './accounts.js';
 import { zcodeAutoClaim } from './zcodeAutoClaim.js';
 import { traePrimaryIds } from './traeClient.js';
@@ -38,7 +38,7 @@ const ZCODE_FIRST_DELAY_MS = 2 * 60 * 1000;
 const DAY_REFRESH_HOUR_UTC8 = { qoder: 10, 'qoder-cn': 10 };
 // 领取日志的积分单位：默认 Credits（Qoder/WorkBuddy 系），账号会话线各自带单位
 // （按 provider 取值，双线要各登记一次）
-const CHECKIN_UNIT = { lingxi: '灵点', doubao: '额度', meoo: '秒悟积分', dumate: '积分', autoclaw: '积分', 'autoclaw-cn': '积分' };
+const CHECKIN_UNIT = { lingxi: '灵点', doubao: '额度', meoo: '秒悟积分', dumate: '积分', quwork: '积分', croli: '积分', autoclaw: '积分', 'autoclaw-cn': '积分' };
 
 let timerHandle = null;
 let zcodeTimerHandle = null;
@@ -492,6 +492,7 @@ async function scheduleTick() {
 export async function startScheduler() {
   if (timerHandle) return;
   startUsageSyncScheduler();
+  startCroliResyncWatch(loadTenrouterConfig);
   startWebSessionWatch();
   // AutoClaw 小号 access 自动重推（口径 (a)：rt 留 CD、10R 只拿 access，access 约 24h 过期
   // 不重推就断供）。只读账号库、绝不打上游，所以不会替桌面客户端那条链做刷新。

@@ -2003,6 +2003,37 @@ function registerAuthWindowIpc() {
       return { ok: false, error: Tt('未找到 DuMate 客户端可执行文件') };
     } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
   });
+  ipcMain.handle('open-croli-client', async () => {
+    try {
+      const local = process.env.LOCALAPPDATA || path.join(require('node:os').homedir(), 'AppData', 'Local');
+      const exe = [process.env.CROLI_CLIENT_PATH, path.join(local, 'Programs', 'Croli', 'Croli.exe'),
+        'C:\\Program Files\\Croli\\Croli.exe', 'C:\\Program Files (x86)\\Croli\\Croli.exe'].find((p) => p && fs.existsSync(p));
+      if (!exe) return { ok: false, error: Tt('未找到 Croli 客户端可执行文件') };
+      const err = await shell.openPath(exe);
+      return err ? { ok: false, error: err } : { ok: true };
+    } catch (err) { return { ok: false, error: String(err?.message || err) }; }
+  });
+  // QuWork（人人租 QurWork）客户端拉起：安装目录 %LOCALAPPDATA%\Programs\QuWork（2026-11-26 真机实测）
+  ipcMain.handle('open-quwork-client', async () => {
+    try {
+      const os = require('node:os');
+      const fs = require('node:fs');
+      const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+      const cands = [
+        path.join(local, 'Programs', 'QuWork', 'QuWork.exe'),
+        'C:\\Program Files\\QuWork\\QuWork.exe',
+        'C:\\Program Files (x86)\\QuWork\\QuWork.exe',
+      ];
+      for (const cand of cands) {
+        if (process.platform === 'win32' && fs.existsSync(cand)) {
+          const err = await shell.openPath(cand);
+          if (!err) return { ok: true };
+          return { ok: false, error: err };
+        }
+      }
+      return { ok: false, error: Tt('未找到 QuWork 客户端可执行文件') };
+    } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
+  });
   // AutoClaw（智谱澳龙 / AutoGLM）客户端拉起：默认装到 %LOCALAPPDATA%\Programs\AutoClaw 或
   // C:\Program Files\AutoClaw（本机实测 1.20.0 落在后者），两条候选都试。
   ipcMain.handle('open-autoclaw-client', async () => {

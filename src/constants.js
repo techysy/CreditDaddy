@@ -30,6 +30,15 @@ export const QWENWORK_DEVICE_TOKEN_POLL_PATH = '/api/v1/deviceToken/poll';
 // 刷新端点存在但 CD 不调：refresh_token 单次轮换（ory_rt_），官方客户端独占刷新，
 // CD 若抢刷必与客户端互杀（meoo test.12 同款事故）。
 
+// ── QuWork（quwork.cn，人人租 QurWork 桌面端同账号体系，单线无国际/国内分）──
+// 协议整段照搬 10router open-sse/providers/registry/quwork.js + shared/quwork/client.js
+// （源自开源 quwork-auth@0.1.0，MIT；10R 已实测上线）。CD 只做收割/签到/邀请码，
+// 不做短信登录与网关转发，故只保留账号网关常量与公共头。
+export const QUWORK_AUTH_API = 'https://llm.rrzu.com';
+// 推理网关（llm.quwork.cn/v1）CD 不消费——llmToken 只随收割入库备查。
+export const QUWORK_CLIENT_VERSION = '1.7.5';   // /api/user/activate 拒绝 < 1.6.5
+export const QUWORK_HEADERS = { 'X-QurWork-Env': 'prod', 'X-QurWork-Version': QUWORK_CLIENT_VERSION };
+
 // 网页端（账号设置 → 用量明细）同源 API：逐资源包明细只在这里提供，且只认浏览器登录后的会话 Cookie。
 export const WEB_BASE = 'https://qoder.com';
 export const CN_WEB_BASE = 'https://qoder.cn';
@@ -52,7 +61,7 @@ export const WEB_USAGE_PATH = '/api/v2/me/usages/big_model_credits';
 export const JOB_TOKEN_EXCHANGE_PATH = '/api/v1/jobToken/exchange';
 
 // 账号的 provider = 产品 + 区域。新增产品时在此登记，并在 providers.js 挂上对应实现。
-export const PROVIDERS = ['qoder', 'qoder-cn', 'qwenwork', 'qwenwork-cn', 'workbuddy', 'workbuddy-intl', 'zcode', 'mirasim', 'catpaw', 'trae', 'trae-intl', 'minimax', 'minimax-global', 'tokenharbor', 'xiaomi-mimo', 'river', 'modelscope', 'longcat', 'doubao', 'loomy', 'lingxi', 'meoo', 'dumate', 'crowllm', 'autoclaw', 'autoclaw-cn'];
+export const PROVIDERS = ['qoder', 'qoder-cn', 'qwenwork', 'qwenwork-cn', 'workbuddy', 'workbuddy-intl', 'zcode', 'mirasim', 'catpaw', 'trae', 'trae-intl', 'minimax', 'minimax-global', 'tokenharbor', 'xiaomi-mimo', 'river', 'modelscope', 'longcat', 'doubao', 'loomy', 'lingxi', 'meoo', 'dumate', 'croli', 'crowllm', 'quwork', 'autoclaw', 'autoclaw-cn'];
 export const PROVIDER_LABEL = {
   qoder: 'Qoder 国际版',
   'qoder-cn': 'Qoder 国内版',
@@ -77,7 +86,9 @@ export const PROVIDER_LABEL = {
   lingxi: 'WPS 灵犀',
   meoo: 'Meoo 秒悟',
   dumate: 'DuMate',
+  croli: 'Croli',
   crowllm: 'CrowLLM',
+  quwork: 'QuWork',
   autoclaw: 'AutoClaw 国际版',
   'autoclaw-cn': 'AutoClaw 国内版',
 };
@@ -101,9 +112,9 @@ export const productOf = (provider) => {
   if (p === 'lingxi') return 'lingxi';
   if (p === 'meoo') return 'meoo';
   if (p === 'dumate') return 'dumate';
-  // 已下架产品保留映射：老账号库可能存留 croli 记录，避免落入兜底 'qoder'
   if (p === 'croli') return 'croli';
   if (p === 'crowllm') return 'crowllm';
+  if (p === 'quwork') return 'quwork';
   // AutoClaw 双线（国际版 OAuth / 国内版短信号）共用一个产品页
   if (p.startsWith('autoclaw')) return 'autoclaw';
   return 'qoder';
