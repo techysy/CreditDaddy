@@ -166,7 +166,7 @@ export async function fetchDoubaoStatus(cookie, uid = '', device = null) {
  * 注意：item/reward/claim/ 在 daily_signin 场景会持续返回 biz_error.code 3「领取结果确认中」。
  * 服务端幂等：重复领取返回 code 0 + idempotent:true——归 already 不算错误。
  */
-export async function checkinDoubao(account) {
+export async function checkinDoubao(account, options = {}) {
   const base = { accountId: account.id, account: account.name || account.id, provider: 'doubao' };
   const cookie = account.meta?.cookieSiteSession?.cookie || account.token || account.cookie;
   if (!cookie) return { ...base, status: 'failed', message: '缺少豆包会话 cookie（请重新登录捕获）' };
@@ -208,6 +208,25 @@ export async function checkinDoubao(account) {
     throw e;
   }
   if (code === RISK_BLOCKED_CODE) {
+    if (options?.localFallback !== false && process.platform === 'win32') {
+      try {
+        const { checkinDoubaoViaLocalClient, detectDoubao } = await import('./doubaoLocal.js');
+        const det = detectDoubao();
+        if (det.clientInstalled) {
+          const localRes = await checkinDoubaoViaLocalClient(options);
+          if (localRes?.status === 'checked-in' || localRes?.status === 'already') {
+            return { ...base, ...localRes };
+          }
+          if (localRes?.reason === 'running_without_cdp') {
+            return {
+              ...base,
+              status: 'failed',
+              message: '豆包风控拦截（code 710010702）：客户端正在运行，请在豆包窗口中点击「立即签到」；或退出客户端后由 CreditDaddy 自动调起完成签到',
+            };
+          }
+        }
+      } catch {}
+    }
     return { ...base, status: 'failed', message: '豆包风控拦截（code 710010702），请打开豆包客户端完成今日签到' };
   }
   if (code !== 0) return { ...base, status: 'failed', message: `${body.msg || body.message || '签到失败'}（code ${code}）` };

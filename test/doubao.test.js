@@ -349,7 +349,7 @@ test('checkinDoubao：服务端返回 710010702 / checked_in=false → failed �
     return mkRes({ data: null, code: 710010702, msg: '系统错误', message: 'system error' });
   });
   try {
-    const r1 = await dc.checkinDoubao({ id: 'db1', name: '豆包A', provider: 'doubao', token: 'sid=X' });
+    const r1 = await dc.checkinDoubao({ id: 'db1', name: '豆包A', provider: 'doubao', token: 'sid=X' }, { localFallback: false });
     assert.equal(r1.status, 'failed');
     assert.match(r1.message, /710010702/);
   } finally { restore(); }
@@ -363,4 +363,46 @@ test('checkinDoubao：服务端返回 710010702 / checked_in=false → failed �
     assert.equal(r2.status, 'failed');
     assert.match(r2.message, /未确认签到完成/);
   } finally { restore(); }
+});
+
+test('checkinDoubao：服务端返回 710010702 时自动通过本机客户端自动化突破签到', async () => {
+  const { _setCdpForTests } = await import('../src/doubaoLocal.js');
+  let restore = stubFetch(async (url) => {
+    if (url.includes('/detail/')) return mkRes(DETAIL_UNSIGNED);
+    return mkRes({ data: null, code: 710010702, msg: '系统错误', message: 'system error' });
+  });
+  _setCdpForTests(async () => ({
+    status: 'checked-in',
+    claimedAmount: 200,
+    message: '通过豆包客户端完成签到，+200 额度',
+  }));
+  try {
+    const r = await dc.checkinDoubao({ id: 'db1', name: '豆包A', provider: 'doubao', token: 'sid=X' });
+    assert.equal(r.status, 'checked-in');
+    assert.equal(r.claimedAmount, 200);
+    assert.match(r.message, /通过豆包客户端完成签到/);
+  } finally {
+    restore();
+    _setCdpForTests(null);
+  }
+});
+
+test('checkinDoubao：服务端返回 710010702 且客户端正运行时提示友好的手动/退出指引', async () => {
+  const { _setCdpForTests } = await import('../src/doubaoLocal.js');
+  let restore = stubFetch(async (url) => {
+    if (url.includes('/detail/')) return mkRes(DETAIL_UNSIGNED);
+    return mkRes({ data: null, code: 710010702, msg: '系统错误', message: 'system error' });
+  });
+  _setCdpForTests(async () => ({
+    status: 'unsupported',
+    reason: 'running_without_cdp',
+  }));
+  try {
+    const r = await dc.checkinDoubao({ id: 'db1', name: '豆包A', provider: 'doubao', token: 'sid=X' });
+    assert.equal(r.status, 'failed');
+    assert.match(r.message, /客户端正在运行/);
+  } finally {
+    restore();
+    _setCdpForTests(null);
+  }
 });

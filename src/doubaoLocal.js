@@ -20,6 +20,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import http from 'node:http';
+import net from 'node:net';
 import { execFileSync } from 'node:child_process';
 import { procRunningCached } from './winProc.js';
 
@@ -138,9 +140,11 @@ export function doubaoRunningCached() {
 // ── 测试钩子 ──
 let masterKeyOverride = null;
 let codecOverride = null;
+let cdpOverride = null;
 
 export function _setMasterKeyForTests(key) { masterKeyOverride = key; }
 export function _setCodecForTests(codec) { codecOverride = codec; }
+export function _setCdpForTests(fn) { cdpOverride = fn; }
 
 /** 缓存解出的 master key，避免重复 DPAPI 调用开销 */
 let cachedMasterKey = null;
@@ -442,4 +446,311 @@ export async function liveToAccount() {
       },
     },
   };
+}
+
+function httpGetJson(urlStr, timeoutMs = 3000) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(urlStr);
+    const req = http.get(parsed, { timeout: timeoutMs }, (res) => {
+      let data = '';
+      res.on('data', (c) => { data += c; });
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+      });
+    });
+    req.on('timeout', () => { req.destroy(new Error('timeout')); });
+    req.on('error', reject);
+  });
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function connectCdpWs(urlStr, timeoutMs = 30000) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(urlStr);
+    const key = crypto.randomBytes(16).toString('base64');
+    const socket = net.createConnection(
+      { host: parsed.hostname, port: parseInt(parsed.port || '80', 10) },
+      () => {
+        socket.write([
+          `GET ${parsed.pathname}${parsed.search || ''} HTTP/1.1`,
+          `Host: ${parsed.host}`,
+          'Upgrade: websocket',
+          'Connection: Upgrade',
+          `Sec-WebSocket-Key: ${key}`,
+          'Sec-WebSocket-Version: 13',
+          '', '',
+        ].join('\r\n'));
+      }
+    );
+
+    let handshakeDone = false;
+    let buf = Buffer.alloc(0);
+    let msgId = 1;
+    const pending = new Map();
+
+    const timer = setTimeout(() => {
+      socket.destroy(new Error('CDP connect timeout'));
+    }, timeoutMs);
+
+    function sendFrame(text) {
+      const payload = Buffer.from(text, 'utf8');
+      const mask = crypto.randomBytes(4);
+      let header;
+      if (payload.length < 126) {
+        header = Buffer.alloc(6);
+        header[0] = 0x81;
+        header[1] = 0x80 | payload.length;
+        mask.copy(header, 2);
+      } else if (payload.length < 65536) {
+        header = Buffer.alloc(8);
+        header[0] = 0x81;
+        header[1] = 0x80 | 126;
+        header.writeUInt16BE(payload.length, 2);
+        mask.copy(header, 4);
+      } else {
+        header = Buffer.alloc(14);
+        header[0] = 0x81;
+        header[1] = 0x80 | 127;
+        header.writeBigUInt64BE(BigInt(payload.length), 2);
+        mask.copy(header, 10);
+      }
+      const masked = Buffer.alloc(payload.length);
+      for (let i = 0; i < payload.length; i++) masked[i] = payload[i] ^ mask[i % 4];
+      socket.write(Buffer.concat([header, masked]));
+    }
+
+    socket.on('data', (data) => {
+      buf = Buffer.concat([buf, data]);
+      if (!handshakeDone) {
+        const he = buf.indexOf('\r\n\r\n');
+        if (he >= 0) {
+          if (!buf.subarray(0, he).toString('utf8').includes('101')) {
+            clearTimeout(timer);
+            socket.destroy(new Error('WebSocket handshake failed'));
+            reject(new Error('WebSocket handshake failed'));
+            return;
+          }
+          handshakeDone = true;
+          buf = buf.subarray(he + 4);
+          clearTimeout(timer);
+          resolve({
+            send(method, params = {}) {
+              return new Promise((res, rej) => {
+                const id = msgId++;
+                pending.set(id, { resolve: res, reject: rej });
+                sendFrame(JSON.stringify({ id, method, params }));
+                setTimeout(() => {
+                  if (pending.has(id)) {
+                    pending.delete(id);
+                    rej(new Error(`CDP method ${method} timed out`));
+                  }
+                }, 20000);
+              });
+            },
+            close() { socket.destroy(); },
+          });
+        }
+        return;
+      }
+
+      while (buf.length >= 2) {
+        const opcode = buf[0] & 0x0f;
+        let payloadLen = buf[1] & 0x7f;
+        let offset = 2;
+        if (payloadLen === 126) {
+          if (buf.length < 4) break;
+          payloadLen = buf.readUInt16BE(2);
+          offset = 4;
+        } else if (payloadLen === 127) {
+          if (buf.length < 10) break;
+          payloadLen = Number(buf.readBigUInt64BE(2));
+          offset = 10;
+        }
+        if (buf.length < offset + payloadLen) break;
+        const payload = buf.subarray(offset, offset + payloadLen);
+        buf = buf.subarray(offset + payloadLen);
+
+        if (opcode === 1) {
+          try {
+            const msg = JSON.parse(payload.toString('utf8'));
+            if (msg.id && pending.has(msg.id)) {
+              const p = pending.get(msg.id);
+              pending.delete(msg.id);
+              if (msg.error) p.reject(new Error(msg.error.message));
+              else p.resolve(msg.result);
+            }
+          } catch {}
+        }
+      }
+    });
+
+    socket.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+    socket.on('close', () => {
+      clearTimeout(timer);
+      for (const [, p] of pending) p.reject(new Error('CDP socket closed'));
+      pending.clear();
+    });
+  });
+}
+
+/**
+ * 通过本机豆包桌面客户端（CDP 调试协议）执行 UI 自动化签到。
+ * 用于突破 710010702 风控拦截：通过客户端内置的真实反作弊与原生签名环境完成签到。
+ */
+export async function checkinDoubaoViaLocalClient(options = {}) {
+  if (cdpOverride) return cdpOverride(options);
+
+  if (process.platform !== 'win32') return { status: 'unsupported', reason: 'platform_not_supported' };
+  const clientPath = candidateClientPath();
+  if (!clientPath || !fs.existsSync(clientPath)) return { status: 'unsupported', reason: 'client_not_installed' };
+
+  const port = options.port || 19222;
+  const userData = doubaoDataDir();
+  const allowRestart = Boolean(options.allowRestart);
+  const timeoutMs = options.timeoutMs || 30_000;
+
+  // 1. 检查 CDP 端口是否已就绪
+  let cdpReady = false;
+  try {
+    const v = await httpGetJson(`http://127.0.0.1:${port}/json/version`, 1500);
+    if (v?.Browser) cdpReady = true;
+  } catch {}
+
+  let startedByUs = false;
+  if (!cdpReady) {
+    const running = doubaoRunningCached();
+    if (running && !allowRestart) {
+      return { status: 'unsupported', reason: 'running_without_cdp' };
+    }
+    if (running && allowRestart) {
+      try { execFileSync('taskkill', ['/F', '/IM', 'Doubao.exe', '/T'], { stdio: 'ignore', timeout: 5000 }); } catch {}
+      await sleep(2000);
+    }
+    const { spawn } = await import('node:child_process');
+    const child = spawn(clientPath, [
+      `--remote-debugging-port=${port}`,
+      `--user-data-dir=${userData}`,
+    ], { detached: true, stdio: 'ignore' });
+    child.unref();
+    startedByUs = true;
+
+    // 轮询等待 CDP 端口就绪（至多 15 秒）
+    const deadline = Date.now() + 15_000;
+    while (Date.now() < deadline) {
+      await sleep(1000);
+      try {
+        const v = await httpGetJson(`http://127.0.0.1:${port}/json/version`, 1500);
+        if (v?.Browser) { cdpReady = true; break; }
+      } catch {}
+    }
+    if (!cdpReady) {
+      return { status: 'failed', message: '豆包 CDP 调试模式启动超时' };
+    }
+  }
+
+  // 等待页面加载（至多 12 秒）
+  let chatTarget = null;
+  const pageDeadline = Date.now() + 12_000;
+  while (Date.now() < pageDeadline) {
+    try {
+      const targets = await httpGetJson(`http://127.0.0.1:${port}/json`, 2000);
+      if (Array.isArray(targets)) {
+        chatTarget = targets.find((t) => t.type === 'page' && t.url?.includes('doubao-chat/chat'))
+          || targets.find((t) => t.type === 'page' && t.title?.includes('豆包'));
+        if (chatTarget?.webSocketDebuggerUrl) break;
+      }
+    } catch {}
+    await sleep(1000);
+  }
+
+  if (!chatTarget?.webSocketDebuggerUrl) {
+    return { status: 'failed', message: '未找到豆包聊天页面' };
+  }
+
+  let cdp;
+  try {
+    cdp = await connectCdpWs(chatTarget.webSocketDebuggerUrl, timeoutMs);
+  } catch (err) {
+    return { status: 'failed', message: `CDP 连接失败: ${err.message}` };
+  }
+
+  try {
+    await sleep(2500);
+
+    const clickExpr = `
+      (() => {
+        const all = [...document.querySelectorAll('*')];
+        const signed = all.find((el) => {
+          const t = el.textContent?.trim();
+          return t && (t === '\\u4eca\\u65e5\\u5df2\\u7b7e\\u5230' || t === '\\u5df2\\u7b7e\\u5230' || t.includes('\\u660e\\u65e5\\u7b7e\\u5230'));
+        });
+        if (signed) return { already: true };
+
+        let btn = all.find((el) => {
+          const t = el.textContent?.trim();
+          return t === '\\u7acb\\u5373\\u7b7e\\u5230' || (t?.includes('\\u7acb\\u5373\\u7b7e\\u5230') && t.length < 20);
+        });
+        if (!btn) return { found: false };
+
+        const rect = btn.getBoundingClientRect();
+        return {
+          found: true,
+          rect: { x: rect.x, y: rect.y, w: rect.width, h: rect.height },
+          text: btn.textContent?.trim()?.slice(0, 30),
+        };
+      })()
+    `;
+
+    const findRes = await cdp.send('Runtime.evaluate', { expression: clickExpr, returnByValue: true });
+    const val = findRes?.result?.value;
+    if (val?.already) {
+      return { status: 'already', message: '今天已签到' };
+    }
+    if (!val?.found || !val.rect) {
+      return { status: 'failed', message: '未在豆包窗口中找到「立即签到」按钮' };
+    }
+
+    const cx = val.rect.x + val.rect.w / 2;
+    const cy = val.rect.y + val.rect.h / 2;
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: cx, y: cy });
+    await sleep(100);
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: cx, y: cy, button: 'left', clickCount: 1 });
+    await sleep(50);
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: cx, y: cy, button: 'left', clickCount: 1 });
+
+    await sleep(4000);
+
+    const verifyExpr = `
+      (() => {
+        const text = document.body?.innerText || '';
+        return {
+          success: text.includes('\\u5df2\\u7b7e\\u5230') || text.includes('\\u660e\\u65e5\\u7b7e\\u5230') || text.includes('\\u7b7e\\u5230\\u6210\\u529f') || !text.includes('\\u7acb\\u5373\\u7b7e\\u5230'),
+          error: text.includes('\\u98ce\\u63a7') || text.includes('\\u7cfb\\u7edf\\u9519\\u8bef'),
+        };
+      })()
+    `;
+    const verifyRes = await cdp.send('Runtime.evaluate', { expression: verifyExpr, returnByValue: true });
+    const vVal = verifyRes?.result?.value;
+
+    if (vVal?.success) {
+      return { status: 'checked-in', claimedAmount: 200, message: '通过豆包客户端完成签到，+200 额度' };
+    }
+    return { status: 'failed', message: '豆包客户端未确认签到结果' };
+  } finally {
+    try { cdp.close(); } catch {}
+    if (startedByUs) {
+      try {
+        execFileSync('taskkill', ['/F', '/IM', 'Doubao.exe', '/T'], { stdio: 'ignore', timeout: 5000 });
+        await sleep(2000);
+        const { spawn } = await import('node:child_process');
+        spawn(clientPath, [], { detached: true, stdio: 'ignore' }).unref();
+      } catch {}
+    }
+  }
 }

@@ -305,7 +305,7 @@ const PRODUCTS = {
     // 网页会话捕获线（issue #32）：凭据是 doubao.com 会话 cookie（meta.cookieSiteSession.cookie）。
     // 每日签到 +200 额度（服务端幂等）；「额度」= 活动累计获得点数（progress.total_amount），
     // 与其他产品线的套餐/积分口径不同，面板以独立产品页呈现。
-    checkin: (account) => checkinDoubao(account),
+    checkin: (account, ctx = {}) => checkinDoubao(account, ctx),
     quota: async (account) => {
       const cookie = account.meta?.cookieSiteSession?.cookie || account.token || account.cookie;
       const uid = extractDoubaoUid(cookie) || account.uid || '';
