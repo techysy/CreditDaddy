@@ -29,15 +29,6 @@
       "bodyEn": "Doubao's check-in campaign is limited to personal accounts — Feishu enterprise accounts are not eligible. If risk control triggers (710010702), click \"Open Doubao\" in the panel to complete check-in in the desktop app."
     },
     {
-      "id": "2026-11-25-croli-retired",
-      "date": "2026-11-25",
-      "level": "info",
-      "title": "Croli 产品线已下架，历史账号数据保留只读兼容",
-      "body": "自 v1.8.4-test.21 起已移除 Croli 渠道的新增、签到及 10Router 同步入口；旧账号库中留存的 Croli 记录仍可安全加载与清理，不会导致报错。",
-      "titleEn": "Croli provider retired; legacy account records remain safely readable",
-      "bodyEn": "Croli support (adding, check-in, and 10Router sync) has been removed since v1.8.4-test.21. Existing Croli entries in your local store remain safely readable for cleanup without errors."
-    },
-    {
       "id": "2026-11-25-tenrouter-integration",
       "date": "2026-11-25",
       "level": "feature",
