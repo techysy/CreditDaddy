@@ -47,7 +47,7 @@ const SOURCES_VERSION = 4;   // 4: 新增 Croli IDE 逐轮账本来源（croli�
 // qwenwork 双线上线次日 0 连接（额度卡不受影响，走 quotaPushDisabledProviders，所以
 // 「只有额度卡」）。表只进不退：savedVersion 低于行版本时并入缺失渠道，同时写回
 // providersVersion——用户此后手动取消勾选的渠道不再被复活。
-const ACCOUNT_SYNC_CURRENT_VERSION = 2;
+const ACCOUNT_SYNC_CURRENT_VERSION = 3;
 const ACCOUNT_SYNC_MIGRATIONS = [
   // 1: qwenwork 双线接入 10R 连接同步（2026-11-22）；croli 同批开放——10R #156 原生
   //    croli 渠道（Clerk OAuth），CD 的 30min access 自动重推也吃这份白名单，
@@ -57,6 +57,10 @@ const ACCOUNT_SYNC_MIGRATIONS = [
   // 本机收割号在同步侧硬挡（canSyncAutoclawAccount）。老配置里本就没有这两行（当初整体摘除，
   // 用户不可能手动取消过勾选），所以补进来不会复活用户明确关掉的渠道。
   { version: 2, providers: ['autoclaw', 'autoclaw-cn'] },
+  // 3: QuWork 接入连接同步（2026-11-27 定版，1.8.5 正式版）。同步账号走的是这份白名单，
+  // 老配置的非空勾选快照会把新渠道静默滤掉（qwenwork 0 连接同款）。当初 QuWork 渠道卡
+  // 未向用户开放过勾选，所以补进来不会复活用户明确关掉的渠道。
+  { version: 3, providers: ['quwork'] },
 ];
 
 export function loadConfig() {
