@@ -6,18 +6,27 @@
 
 ## [Unreleased]
 
-## [1.8.5-test.1] (2026-11-27)
-
-- **突破豆包桌面端每日签到风控拦截（code 710010702）**：
-  - **根因确认**：豆包服务端对每日首签实施了严格的原生客户端签名与行为环境校验（涉及 `bdticket.dll` TicketGuard、`metasecml.dll` 及 `bdms` 反作弊遥测），纯第三方 HTTP 模拟请求无论携带多少 Headers/Cookies/设备指纹均会被风控识别并返回 `code: 710010702`；
-  - **突破方案**：实现基于本地 Chromium 调试协议（CDP）的真实上下文自动化签到通道（`checkinDoubaoViaLocalClient`）。在本地桌面端环境下模拟用户交互，通过官方客户端自身的原生安全栈完成首签，经真机实测成功获得 +200 体验额度并推进连续签到；
-  - **自动兜底与优雅降级**：`checkinDoubao` 遇到 710010702 时自动探测本机豆包桌面客户端并启用自动化签到；若客户端正在前台运行，提供贴心的人性化引导文案（避免强制杀死用户正在使用的客户端界面）；
-  - **发布与测试保障**：补齐多场景单测覆盖，通过全量 `npm test`（649/649 pass）、四国语言 `check-i18n` 零漏网及 `panel-boot-smoke` 启动冒烟测试。
-
 ## [1.8.5] (2026-11-27)
 
-本版主题:**四线合一正式版——新增 QuWork 产品线 + Croli 产品线恢复 + AutoClaw（智谱澳龙 / AutoGLM）全量接入 + mirasim 额度改现行按笔到期口径；代理链路断连三处进程级守卫收尾（issue #72）；测试实例不再抢用户面板（端口遮蔽修复）；面板「读不到 ≠ 没有」体验修复；公告随包兜底与暂存门禁收口**.
-Theme: **Four-line consolidated release — new QuWork product line + Croli line restored + AutoClaw (Zhipu / AutoGLM) fully onboarded + mirasim quota moved to the current per-credit expiry model; proxy-disconnect process guards completed (issue #72); test instances no longer hijack the user's panel (port-shadow fix); "unreadable ≠ missing" panel experience fix; bundled announcements fallback and staging gate closed out**.
+本版主题:**四线合一正式版——新增 QuWork 产品线 + Croli 产品线恢复 + AutoClaw（智谱澳龙 / AutoGLM）全量接入 + mirasim 额度改现行按笔到期口径；豆包每日签到风控拦截（710010702）走本机客户端自动化突破，签到徽章补进行中态并修掉「未领取」与「已签到」矛盾，点击后界面「闪动」的整页重绘风暴一并修掉；代理链路断连三处进程级守卫收尾（issue #72）；测试实例不再抢用户面板（端口遮蔽修复）；面板「读不到 ≠ 没有」体验修复；公告随包兜底与暂存门禁收口**.
+Theme: **Four-line consolidated release — new QuWork product line + Croli line restored + AutoClaw (Zhipu / AutoGLM) fully onboarded + mirasim quota moved to the current per-credit expiry model; the Doubao daily check-in risk-control block (710010702) broken through by automating the local client, and the check-in badge given an in-progress state plus a fix for the "not claimed" vs "checked in" contradiction, with the whole-page re-render storm behind the post-click "flickering" eliminated; proxy-disconnect process guards completed (issue #72); test instances no longer hijack the user's panel (port-shadow fix); "unreadable ≠ missing" panel experience fix; bundled announcements fallback and staging gate closed out**.
+
+- **突破豆包桌面端每日签到风控拦截（code 710010702）**：
+  - **根因**：豆包服务端对每日首签做了原生客户端签名与行为环境校验（`bdticket.dll` TicketGuard、`metasecml.dll` 与 `bdms` 反作弊遥测），纯 HTTP 模拟请求无论带多少 Headers / Cookies / 设备指纹都会被判风控返回 `code: 710010702`——不是凭据过期，重登也解不开。
+  - **做法（`checkinDoubaoViaLocalClient`，新增于 `src/doubaoLocal.js`）**：改走本机 Chromium 调试协议（CDP）在**真实客户端上下文**里点按钮——先探调试端口（默认 `127.0.0.1:19222`）是否已就绪，未就绪则用 `--remote-debugging-port` + 既有 `--user-data-dir` 拉起豆包、轮询至多 15 秒等它起来；随后 `Runtime.evaluate` 定位「立即签到」按钮坐标，`Input.dispatchMouseEvent` 依次发 mouseMoved / mousePressed / mouseReleased 真点一次，再用 `Runtime.evaluate` 复核结果。签名与安全栈全部由官方客户端自己完成，CD 不伪造任何设备身份。
+  - **优雅降级（关键取舍）**：`checkinDoubao` 命中 710010702 才探测本机客户端并走自动化；客户端正在前台运行时（此时加不上调试端口）**默认绝不强杀用户正在用的窗口**，只返回可操作指引——在豆包窗口点「立即签到」，或退出客户端后交给 CD 自动调起；确需代劳时须显式传 `allowRestart:true` 才会关客户端重启。自动化失败按阶段如实报错（CDP 调试模式启动超时 / 未找到豆包聊天页面 / 未找到「立即签到」按钮 / 客户端未确认签到结果），成功回执走既有的 `+200 额度` 落库口径。非 Windows 平台与显式 `localFallback:false` 一律不走这条路。
+  - **i18n 与回归**：四词典各 +6 条（引导与四种失败态文案）；`test/doubao.test.js` 新增两用例（710010702 → 自动化突破成功回写、客户端在跑 → 返回手动/退出指引而不杀进程），CDP 通道以注入桩 `_setCdpForTests` 隔离，测试绝不拉起真客户端。
+- **点击后界面「闪动」修复（额度批次不再逐账号重绘整页）**（用户实测：经常点按钮 / 卡片 / 组件之后界面就开始闪）。根因不在状态回写，在**重绘范围**：`loadQuotas` 的 worker 每拉完**一个**账号的额度就调一次 `render()`，而 `render` 是整块 `innerHTML` 重建——实测 52 个账号的一轮刷新 = **52 次全页 render / 156 次 innerHTML 重建（约 560ms）**。卡片上的 `.card` / `.icon-btn` / `.seg` 都带 `transition`，元素每次被销毁重建，动画就从头播一遍，连起来看正是「闪动」。
+  - **为什么是「点一下」触发、且「经常」**：点击类动作后面跟着 `loadAccounts()`，而 `loadAccounts` 尾部就调 `loadQuotas()`；此外每 2 分钟的额度定时轮、以及从托盘 / 后台切回时的 `visibilitychange` 补刷也各走同一条路——所以不点也会闪，点了必然闪。
+  - **改法**：worker 循环内不再重绘，整批 `Promise.all` 收束后统一 `render()` **一次**；被新一轮取代的旧批次不抢着重绘（避免交错渲染）。批次中途不画是可接受的——账号行本就有「读取积分中…」占位，数百毫秒后一次到位。实测同一轮降到 **1 次 render / 3 次重建（约 240ms）**。
+  - **顺带核对过没有自激回路**：`render` / `renderProd` / `renderDash` / `cardHtml` 内均不调 `loadQuotas` / `loadAccounts` / `refreshAccountList`，不存在「重绘 → 触发刷新 → 又重绘」的循环；面板也没有 ResizeObserver / MutationObserver。单账号动作后残留的 `.then(render)` 与批次自带的那一次只是多画一遍，不构成风暴，未动。
+  - **与下一条签到徽章问题是两回事**：加载态是状态回写问题，闪动是重绘范围问题，分别实锤、分别修——别把两个结论混成一个。
+  - 回归：`scripts/panel-boot-smoke.cjs` 新增「一轮 `loadQuotas` 的重绘次数 ≤ 2」断言（包一层计数钉死），在未修复代码上实测必红（30 个账号 → 报 30 次），修复后为 1 次——不是空转断言。实测同一轮 innerHTML 整块重建从 156 次降到 3 次。
+- **账号会话签到徽章修复：进行中显性 loading，「未领取」不再与「已签到」矛盾**（用户实测：日志已打出「豆包 就地重探通过（累计 2200 点，签到已签）」，账号行徽章仍挂「未领取」，看着像签到根本不生效）。两条根因分别钉死：
+  - **重探读到上游已签必须落进账号状态**：`reprobeCookieAccount` 的豆包分支原先只把 `checked_in_today` 写进日志，账号行 `lastResult` 恒 null、`qoderDailyDone` 也不记，面板 `statusOf` 只能落到兜底「未领取」。现在上游说已签就落 `lastResult={status:'already', amount=上游 reward, streakDays=连续天数}` + 补 `lastCheckin`，并按签到轮同一口径把该账号的业务日写进 `todayDone`。**只在已签时写**——未签不得反填 `failed`，否则一次重探就把真实失败结果冲掉了（回归用例专门钉这条）。
+  - **`/api/status` 的 `todayByProduct` 补齐 doubao / quwork**：面板徽章按 `todayDone[id] === todayByProduct[product]` 比对，缺该键时回退 `state.today`（Qoder 的 **10 点**翻日界），而签到轮落库按各 provider 的 **0 点**界——于是每天 0–10 点两处必然错开，即便上游已签、结果也落库了，徽章照样翻不成「今日已领」。这是「文案冲突且不生效」的第二半，与 ① 相互独立。
+  - **进行中态显性化**：`statusOf` 在 `state.busy[id]` 期间直接返回「签到中…」（按钮同时转圈），点了 ▶ 到结果返回之前不再挂着静态「未领取」——豆包走本机客户端自动化通道要好几秒，只让按钮动、徽章不动，用户看不出系统在工作，只能干等一条转瞬即逝的 toast。
+  - 回归：`test/doubao.test.js` 新增端到端用例（同进程起 daemon + 桩 fetch，绝不真打上游）——重探后账号行落 `already`、`todayDone` 补记、`/api/status` 的 doubao 日界与落库同源、未签时保留原结果；`scripts/panel-boot-smoke.cjs` 新增徽章四态断言（未领取 / 签到中… / 今日已领 / 昨日记录不得挂着已领）。两条用例都在未修复代码上验过必红（`doubao` 19/1、smoke 1 assert），不是空转断言。
 
 - **新增 QuWork 产品线（quwork.cn，人人租 QurWork 桌面端同账号体系）**：协议整段源自 10Router `open-sse/shared/quwork`（quwork-auth@0.1.0 MIT，10R 已实测上线），本机真机交叉验证。单线产品线，无国际/国内之分——
   - **本机收割（只读）**：直读 `%APPDATA%\qurwork-desktop\qurwork-desktop.sqlite` 的 `auth_session` 明文快照（accessToken JWT 30 天 + llmToken sk- + 用户资料），`node:sqlite` 只读直读；客户端运行中锁库时走整库拷贝兜底；账号名（手机号）脱敏显示；设备标识按 uid 确定性派生。`QUWORK_DATA_DIR` 与测试注入钩子隔离真机库（qwenwork 事故同款纪律）。
@@ -74,8 +83,8 @@ Theme: **Four-line consolidated release — new QuWork product line + Croli line
   - **面板细节**：WorkBuddy 页头单排化（该页比其他产品页多一组渠道过滤，总宽超出上限把动作按钮挤下第二排——收紧页头间距体系、统计标签精简、导入/导出收成图标按钮）；豆包账号行去掉重复播放按钮（卡片右上角已有「打开豆包」，账号行只留签到/重探/删除，与其他站点一致）；Google 会话槽收进工作区菜单弹窗；公告弹窗改始终单列、宽度 720 → 480px 适配小窗口（字号同步收一档）；右上角图标按钮顺序改为 公告 → 捐赠 → 主题 → 面板设置（聚合菜单保持最右）。
   - **仪表盘**：账号会话卡统计多站点签到进度。
   - **CI**：`node:sqlite` 相关测试按运行时可用性门控（老 Node 无该内置模块时跳过而非失败）。
-- **i18n**：本版累计新增 en/ja/ko/zh-TW 词条——QuWork +54、AutoClaw +93、mirasim 额度口径与 fail-closed 提示 +25、Croli 线遗留 32 条（13 条词典外中文串 + 19 条随线补齐）全部四语同步；`node scripts/check-i18n.js` **零漏网**（四语 key 集一致 + 词典外中文扫描双门禁）。
-- **自证与验收**：全量 `npm test` **647 项全绿**（较 1.8.3 基线 502 项新增 145 项，含 quwork 16 / autoclaw 48 / croli 7 / stage-bundle 5 / daemon-port-shadow 5 / zcode-proxy-stream 5 等）；`scripts/panel-boot-smoke.cjs` 两轮通过（正常态 + fail-closed 全 403 态）；test.31 / test.32 测试包已在用户本机真机验收（四线合一、52 账号齐全、croli + AutoClaw 双 access 重推 watch 正常、官方橙爪图标三处一致）。
+- **i18n**：本版累计新增 en/ja/ko/zh-TW 词条——QuWork +54、AutoClaw +93、mirasim 额度口径与 fail-closed 提示 +25、豆包 CDP 签到通道 +6、豆包签到徽章修复 +2（「签到中…」与「今天已签到（就地重探读自上游）」）、Croli 线遗留 32 条（13 条词典外中文串 + 19 条随线补齐）全部四语同步（同键同位置插入，四文件行号保持对齐）；`node scripts/check-i18n.js` **零漏网**（四语 key 集一致 + 词典外中文扫描双门禁）。
+- **自证与验收**：全量 `npm test` **650 项全绿**（较 1.8.3 基线 502 项新增 148 项，含 quwork 16 / autoclaw 48 / doubao 20 / croli 7 / stage-bundle 5 / daemon-port-shadow 5 / zcode-proxy-stream 5 等）；`scripts/panel-boot-smoke.cjs` 通过（正常态 + fail-closed 全 403 态 + 签到徽章四态 + 额度批次重绘次数）；本轮新增的三处断言（豆包徽章、签到加载态、重绘次数）都在未修复代码上实测必红，确认不是空转断言。test.31 / test.32 测试包已在用户本机真机验收（四线合一、52 账号齐全、croli + AutoClaw 双 access 重推 watch 正常、官方橙爪图标三处一致）。
 
 
 ## [1.8.4] (2026-11-24) · 未正式发布，内容并入 1.8.5
