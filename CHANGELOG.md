@@ -16,6 +16,10 @@ Theme: **Four-line consolidated release — new QuWork product line + Croli line
   - **做法（`checkinDoubaoViaLocalClient`，新增于 `src/doubaoLocal.js`）**：改走本机 Chromium 调试协议（CDP）在**真实客户端上下文**里点按钮——先探调试端口（默认 `127.0.0.1:19222`）是否已就绪，未就绪则用 `--remote-debugging-port` + 既有 `--user-data-dir` 拉起豆包、轮询至多 15 秒等它起来；随后 `Runtime.evaluate` 定位「立即签到」按钮坐标，`Input.dispatchMouseEvent` 依次发 mouseMoved / mousePressed / mouseReleased 真点一次，再用 `Runtime.evaluate` 复核结果。签名与安全栈全部由官方客户端自己完成，CD 不伪造任何设备身份。
   - **优雅降级（关键取舍）**：`checkinDoubao` 命中 710010702 才探测本机客户端并走自动化；客户端正在前台运行时（此时加不上调试端口）**默认绝不强杀用户正在用的窗口**，只返回可操作指引——在豆包窗口点「立即签到」，或退出客户端后交给 CD 自动调起；确需代劳时须显式传 `allowRestart:true` 才会关客户端重启。自动化失败按阶段如实报错（CDP 调试模式启动超时 / 未找到豆包聊天页面 / 未找到「立即签到」按钮 / 客户端未确认签到结果），成功回执走既有的 `+200 额度` 落库口径。非 Windows 平台与显式 `localFallback:false` 一律不走这条路。
   - **i18n 与回归**：四词典各 +6 条（引导与四种失败态文案）；`test/doubao.test.js` 新增两用例（710010702 → 自动化突破成功回写、客户端在跑 → 返回手动/退出指引而不杀进程），CDP 通道以注入桩 `_setCdpForTests` 隔离，测试绝不拉起真客户端。
+- **AutoClaw 短信直登不再吃 HTTP 307（登录端点改无尾斜杠 + 307/308 原样重放兜底）**（用户实测：「手机登录」填好手机号与验证码点「登录并导入」，红条报「AutoClaw 账号面返回非 JSON（HTTP 307）」，短信小号这条路整个走不通）：上游改了端点口径（2026-11-27 实测，用空 body 探测，不发短信、不碰任何真号）——`POST /userapi/v1/agent-login/`（带尾斜杠）现在回 **307 + Location: /userapi/v1/agent-login**，不带斜杠直接 200 + 业务 JSON，两者最终响应一致。而 CD 的 `fetchJsonRace` 默认 `redirect:'manual'`（这是有意的：follow 会把 301/302 的 POST 转成 GET 丢掉 body，307 还会把大 body 重放一次），于是「307 + 空 body」直接落进「返回非 JSON」分支。早期记的「少斜杠 404」已过期——现在正好反过来。
+  - 端点常量 `AUTOCLAW_PATHS.smsLogin` 改用无尾斜杠形态。全表逐个探过（`refresh` / `agent-login` / `agent-send-code` 无斜杠都是 200），只有这一条带斜杠、没有别的斜杠陷阱。
+  - 新增 `fetchPreservingRedirect`，`autoclawPost` 与 `autoclawGet` 都走它：遇 307/308 按规范**同方法同 body** 换 URL 重发，只跟一次（防 Location 自指成环），且只接受**同源**目标——跨域 Location 多半是被劫持或配置错，宁可不重放凭据也要明说「被重定向但目标不可用」，绝不静默把凭据发出去。上游哪天把斜杠口径改回去、或别的端点也开始跳转，都不会再静默失效。
+  - 回归：端点形状用例改为断言无尾斜杠并加「绝不能再带尾斜杠」反向断言；新增重放用例（断言重放一次、相对 Location 按原 URL 解析、方法保持 POST、body 逐字节不变含 `device_id`/`source_id`，另钉跨域不跟、自指不成环）。两条在未修复代码上实测必红。i18n 四词典各 +1 条。autoclaw 49/49、全量 651/651、check-i18n 零漏网。
 - **点击后界面「闪动」修复（额度批次不再逐账号重绘整页）**（用户实测：经常点按钮 / 卡片 / 组件之后界面就开始闪）。根因不在状态回写，在**重绘范围**：`loadQuotas` 的 worker 每拉完**一个**账号的额度就调一次 `render()`，而 `render` 是整块 `innerHTML` 重建——实测 52 个账号的一轮刷新 = **52 次全页 render / 156 次 innerHTML 重建（约 560ms）**。卡片上的 `.card` / `.icon-btn` / `.seg` 都带 `transition`，元素每次被销毁重建，动画就从头播一遍，连起来看正是「闪动」。
   - **为什么是「点一下」触发、且「经常」**：点击类动作后面跟着 `loadAccounts()`，而 `loadAccounts` 尾部就调 `loadQuotas()`；此外每 2 分钟的额度定时轮、以及从托盘 / 后台切回时的 `visibilitychange` 补刷也各走同一条路——所以不点也会闪，点了必然闪。
   - **改法**：worker 循环内不再重绘，整批 `Promise.all` 收束后统一 `render()` **一次**；被新一轮取代的旧批次不抢着重绘（避免交错渲染）。批次中途不画是可接受的——账号行本就有「读取积分中…」占位，数百毫秒后一次到位。实测同一轮降到 **1 次 render / 3 次重建（约 240ms）**。
@@ -84,7 +88,7 @@ Theme: **Four-line consolidated release — new QuWork product line + Croli line
   - **仪表盘**：账号会话卡统计多站点签到进度。
   - **CI**：`node:sqlite` 相关测试按运行时可用性门控（老 Node 无该内置模块时跳过而非失败）。
 - **i18n**：本版累计新增 en/ja/ko/zh-TW 词条——QuWork +54、AutoClaw +93、mirasim 额度口径与 fail-closed 提示 +25、豆包 CDP 签到通道 +6、豆包签到徽章修复 +2（「签到中…」与「今天已签到（就地重探读自上游）」）、Croli 线遗留 32 条（13 条词典外中文串 + 19 条随线补齐）全部四语同步（同键同位置插入，四文件行号保持对齐）；`node scripts/check-i18n.js` **零漏网**（四语 key 集一致 + 词典外中文扫描双门禁）。
-- **自证与验收**：全量 `npm test` **650 项全绿**（较 1.8.3 基线 502 项新增 148 项，含 quwork 16 / autoclaw 48 / doubao 20 / croli 7 / stage-bundle 5 / daemon-port-shadow 5 / zcode-proxy-stream 5 等）；`scripts/panel-boot-smoke.cjs` 通过（正常态 + fail-closed 全 403 态 + 签到徽章四态 + 额度批次重绘次数）；本轮新增的三处断言（豆包徽章、签到加载态、重绘次数）都在未修复代码上实测必红，确认不是空转断言。test.31 / test.32 测试包已在用户本机真机验收（四线合一、52 账号齐全、croli + AutoClaw 双 access 重推 watch 正常、官方橙爪图标三处一致）。
+- **自证与验收**：全量 `npm test` **651 项全绿**（较 1.8.3 基线 502 项新增 149 项，含 quwork 16 / autoclaw 48 / doubao 20 / croli 7 / stage-bundle 5 / daemon-port-shadow 5 / zcode-proxy-stream 5 等）；`scripts/panel-boot-smoke.cjs` 通过（正常态 + fail-closed 全 403 态 + 签到徽章四态 + 额度批次重绘次数）；本轮新增的三处断言（豆包徽章、签到加载态、重绘次数）都在未修复代码上实测必红，确认不是空转断言。test.31 / test.32 测试包已在用户本机真机验收（四线合一、52 账号齐全、croli + AutoClaw 双 access 重推 watch 正常、官方橙爪图标三处一致）。
 
 
 ## [1.8.4] (2026-11-24) · 未正式发布，内容并入 1.8.5
