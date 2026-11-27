@@ -1,7 +1,7 @@
 appname               = creditdaddy
-version = 1.8.4
+version = 1.8.5
 display_name          = CreditDaddy
-desc                    = Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae / MiniMax / ModelScope / 豆包 Doubao / 讯飞 Loomy / DuMate 百度搭子 / WPS 灵犀 / Meoo 秒悟 / CrowLLM 多账号本地管理 + 每日积分自动签到 + 10Router 集成与网页会话捕获（面板端口 47860）
+desc                    = Qoder / WorkBuddy / ZCode / mirasim / 妙手 / Trae / MiniMax / ModelScope / 豆包 Doubao / 讯飞 Loomy / DuMate 百度搭子 / QwenWork 千问办公 / Croli / QuWork / AutoClaw 智谱澳龙 / WPS 灵犀 / Meoo 秒悟 / CrowLLM 多账号本地管理 + 每日积分自动签到 + 10Router 集成与账号会话捕获（面板端口 47860）
 platform              = x86
 source                = thirdparty
 maintainer            = techysy
