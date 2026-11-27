@@ -21,7 +21,7 @@ ERRORS=0
 WARNINGS=0
 
 # ── 1. 版本号三处一致 ──────────────────────────────────────
-echo -e "${YELLOW}[1/15] 🔢 版本号一致性检查${NC}"
+echo -e "${YELLOW}[1/16] 🔢 版本号一致性检查${NC}"
 PKG=$(node -p "require('./package.json').version")
 DESKTOP=$(node -p "require('./desktop/package.json').version")
 MANIFEST=$(grep -E '^version[[:space:]]*=' fnos-packaging/manifest | sed -E 's/.*=[[:space:]]*//' | tr -d '\r')
@@ -36,9 +36,19 @@ if [ "$PKG" != "$DESKTOP" ]; then
   ERRORS=$((ERRORS + 1))
 fi
 
+# 测试预发布版（-test.N）只出本机安装包，不产 fpk，manifest 按惯例停在正式版号
+case "$PKG" in
+  *-test.*) IS_PRERELEASE=1 ;;
+  *) IS_PRERELEASE=0 ;;
+esac
+
 if [ "$PKG" != "$MANIFEST" ]; then
-  echo -e "  ${RED}✗ fnos-packaging/manifest ($MANIFEST) ≠ package.json ($PKG)${NC}"
-  ERRORS=$((ERRORS + 1))
+  if [ "$IS_PRERELEASE" = "1" ]; then
+    echo -e "  ${BLUE}ℹ fnos-packaging/manifest ($MANIFEST) 为正式版号（测试版 $PKG 不产 fpk，属正常）${NC}"
+  else
+    echo -e "  ${RED}✗ fnos-packaging/manifest ($MANIFEST) ≠ package.json ($PKG)${NC}"
+    ERRORS=$((ERRORS + 1))
+  fi
 fi
 
 if [ $ERRORS -eq 0 ]; then
@@ -48,7 +58,7 @@ VERSION="$PKG"
 echo ""
 
 # ── 2. 语法检查 ────────────────────────────────────────────
-echo -e "${YELLOW}[2/15] 🗂️ JS 语法检查${NC}"
+echo -e "${YELLOW}[2/16] 🗂️ JS 语法检查${NC}"
 SYNTAX_FAIL=0
 for f in bin/*.js src/*.js desktop/main.js desktop/preload.js desktop/preload-container.js desktop/passwordStore.js; do
   [ -f "$f" ] || continue
@@ -64,7 +74,7 @@ fi
 echo ""
 
 # ── 3. 单元测试 ────────────────────────────────────────────
-echo -e "${YELLOW}[3/15] 🧪 单元测试${NC}"
+echo -e "${YELLOW}[3/16] 🧪 单元测试${NC}"
 if npm test > /tmp/test-output.txt 2>&1; then
   PASSED=$(grep -oE 'pass [0-9]+' /tmp/test-output.txt | grep -oE '[0-9]+' | head -1 || echo "0")
   FAILED=$(grep -oE 'fail [0-9]+' /tmp/test-output.txt | grep -oE '[0-9]+' | head -1 || echo "0")
@@ -77,10 +87,14 @@ fi
 echo ""
 
 # ── 4. CHANGELOG 检查 ──────────────────────────────────────
-echo -e "${YELLOW}[4/15] 📋 CHANGELOG 包含本版本条目${NC}"
+echo -e "${YELLOW}[4/16] 📋 CHANGELOG 包含本版本条目${NC}"
 if grep -qE "^## \[${VERSION}\]" CHANGELOG.md; then
   echo -e "  ${GREEN}✓ CHANGELOG.md 已包含 [${VERSION}] 条目${NC}"
   CHANGELOG_HAS_VERSION=1
+elif [ "$IS_PRERELEASE" = "1" ]; then
+  # 测试预发布版改动记在正式版的 [Unreleased] 里，发版时一并归档，不单独建条目
+  echo -e "  ${BLUE}ℹ CHANGELOG.md 无 [${VERSION}] 条目（测试版改动随正式版归档，属正常）${NC}"
+  CHANGELOG_HAS_VERSION=0
 else
   echo -e "  ${RED}✗ CHANGELOG.md 中没有找到 [${VERSION}] 版本条目${NC}"
   echo -e "     请把 [Unreleased] 内容归档到 [${VERSION}]（附发版日期）"
@@ -96,7 +110,7 @@ fi
 echo ""
 
 # ── 5. Unreleased 段落检查 ─────────────────────────────────
-echo -e "${YELLOW}[5/15] 📋 [Unreleased] 段落无遗留内容${NC}"
+echo -e "${YELLOW}[5/16] 📋 [Unreleased] 段落无遗留内容${NC}"
 CONTENT=$(awk '/^## \[Unreleased\]/{found=1; next} found && /^## \[/{exit} found{print}' CHANGELOG.md | grep -v '^[[:space:]]*$' | grep -v '^---' | grep -v '^###' || true)
 if [ -n "$CONTENT" ]; then
   if [ "$ALREADY_RELEASED" = "1" ]; then
@@ -113,7 +127,7 @@ fi
 echo ""
 
 # ── 6. Git tag 状态 ────────────────────────────────────────
-echo -e "${YELLOW}[6/15] 🏷️ Tag 状态检查${NC}"
+echo -e "${YELLOW}[6/16] 🏷️ Tag 状态检查${NC}"
 if [ "$ALREADY_RELEASED" = "1" ]; then
   SHORT=$(git rev-parse --short "v${VERSION}")
   if [ "$CHANGELOG_HAS_VERSION" = "1" ]; then
@@ -130,7 +144,7 @@ fi
 echo ""
 
 # ── 7. 敏感文件检查 ────────────────────────────────────────
-echo -e "${YELLOW}[7/15] 🔒 无敏感文件泄露${NC}"
+echo -e "${YELLOW}[7/16] 🔒 无敏感文件泄露${NC}"
 SENSITIVE=$(git ls-files | grep -iE '(\.env$|\.env\.|\.pem$|\.key$|\.p12$|\.pfx$|secret|credential|\.sqlite$|\.db$)' | grep -v node_modules/ || true)
 if [ -n "$SENSITIVE" ]; then
   echo -e "  ${RED}✗ 可能的敏感文件被 git 跟踪：${NC}"
@@ -142,7 +156,7 @@ fi
 echo ""
 
 # ── 8. 源码中无遗留调试代码 ────────────────────────────────
-echo -e "${YELLOW}[8/15] 🧹 无遗留调试代码${NC}"
+echo -e "${YELLOW}[8/16] 🧹 无遗留调试代码${NC}"
 DEBUG_HITS=$(grep -rnE '^\s*(debugger|console\.(log|debug|dir|trace))\b' src/ bin/ --include='*.js' \
   | grep -v 'logger\.js' \
   | grep -v '\.test\.js' \
@@ -165,7 +179,7 @@ fi
 echo ""
 
 # ── 9. npm 包内容检查 ──────────────────────────────────────
-echo -e "${YELLOW}[9/15] 📦 npm pack 干跑检查${NC}"
+echo -e "${YELLOW}[9/16] 📦 npm pack 干跑检查${NC}"
 PACK_OUTPUT=$(npm pack --dry-run 2>&1 || true)
 # panel.html 是 Web 面板本体，必须打进包；其余二进制/大文件类型不该出现在 npm 包里
 BIG_FILES=$(echo "$PACK_OUTPUT" | grep -E '\.(png|jpg|svg|ico|fpk|dmg|exe)' | grep -v 'README' || true)
@@ -179,7 +193,7 @@ fi
 echo ""
 
 # ── 10. Desktop 打包文件完整性 ────────────────────────────
-echo -e "${YELLOW}[10/15] 🖥️ Desktop 打包文件清单检查${NC}"
+echo -e "${YELLOW}[10/16] 🖥️ Desktop 打包文件清单检查${NC}"
 DESKTOP_FAIL=0
 for f in desktop/main.js desktop/preload.js desktop/preload-container.js desktop/passwordStore.js desktop/package.json desktop/icon.ico desktop/icon.png; do
   if [ ! -f "$f" ]; then
@@ -193,8 +207,22 @@ if [ $DESKTOP_FAIL -eq 0 ]; then
 fi
 echo ""
 
-# ── 11. fnOS manifest 完整性 ──────────────────────────────
-echo -e "${YELLOW}[11/15] 📋 fnOS manifest 必填字段检查${NC}"
+# ── 11. 公告随包兜底（源 + 暂存目录 + 打包产物） ───────────
+# 1.8.4-test.25 事故：本地暂存命令漏拷 announcements.json，安装包内无兜底公告，
+# 在线源又未 push 全 404 → 面板「暂无公告」。此门禁让同类遗漏在发版前必定暴露。
+echo -e "${YELLOW}[11/16] 📢 公告随包兜底检查${NC}"
+ANN_FAIL=0
+ANN_OUT=$(node scripts/stage-bundle.js gate 2>&1) || ANN_FAIL=1
+if [ $ANN_FAIL -eq 0 ]; then
+  echo "$ANN_OUT" | sed 's/^/  /'
+else
+  echo "$ANN_OUT" | sed 's/^/  /'
+  ERRORS=$((ERRORS + 1))
+fi
+echo ""
+
+# ── 12. fnOS manifest 完整性 ──────────────────────────────
+echo -e "${YELLOW}[12/16] 📋 fnOS manifest 必填字段检查${NC}"
 MANIFEST_FAIL=0
 for key in appname version display_name desc platform source maintainer service_port install_dep_apps; do
   if ! grep -qE "^${key}[[:space:]]*=" fnos-packaging/manifest; then
@@ -208,8 +236,8 @@ if [ $MANIFEST_FAIL -eq 0 ]; then
 fi
 echo ""
 
-# ── 12. TODO/FIXME/HACK 统计 ──────────────────────────────
-echo -e "${YELLOW}[12/15] 📝 TODO/FIXME/HACK 统计${NC}"
+# ── 13. TODO/FIXME/HACK 统计 ──────────────────────────────
+echo -e "${YELLOW}[13/16] 📝 TODO/FIXME/HACK 统计${NC}"
 TODO_HITS=$( { grep -rnE '\b(TODO|FIXME|HACK|XXX)\b' src/ bin/ desktop/main.js --include='*.js' || true; } )
 if [ -n "$TODO_HITS" ]; then
   TODO_COUNT=$(echo "$TODO_HITS" | wc -l)
@@ -221,8 +249,8 @@ else
 fi
 echo ""
 
-# ── 13. 运行时关键文件存在性 ──────────────────────────────
-echo -e "${YELLOW}[13/15] 🌐 运行时关键文件检查${NC}"
+# ── 14. 运行时关键文件存在性 ──────────────────────────────
+echo -e "${YELLOW}[14/16] 🌐 运行时关键文件检查${NC}"
 RUNTIME_FAIL=0
 for f in src/panel.html src/daemon.js src/store.js bin/creditdaddy.js start-gw.mjs; do
   if [ ! -f "$f" ]; then
@@ -236,8 +264,8 @@ if [ $RUNTIME_FAIL -eq 0 ]; then
 fi
 echo ""
 
-# ── 14. 产品线覆盖一致性 ──────────────────────────────────
-echo -e "${YELLOW}[14/15] 📊 产品线覆盖检查（description 文案是否陈旧）${NC}"
+# ── 15. 产品线覆盖一致性 ──────────────────────────────────
+echo -e "${YELLOW}[15/16] 📊 产品线覆盖检查（description 文案是否陈旧）${NC}"
 # src/constants.js 的 PROVIDERS 是产品线的唯一事实来源，新增产品线后各文案应同步提及
 PROVIDERS=$(node -e "
 import('./src/constants.js').then(({ PROVIDERS, productOf }) => {
@@ -268,8 +296,8 @@ else
 fi
 echo ""
 
-# ── 15. i18n 词典覆盖（漏网中文文案） ──────────────────────
-echo -e "${YELLOW}[15/15] 🌐 i18n 词典覆盖检查${NC}"
+# ── 16. i18n 词典覆盖（漏网中文文案） ──────────────────────
+echo -e "${YELLOW}[16/16] 🌐 i18n 词典覆盖检查${NC}"
 if node scripts/check-i18n.js > /tmp/i18n-check.txt 2>&1; then
   echo -e "  ${GREEN}✓ 面板与运行时中文文案全部被词典覆盖${NC}"
 else

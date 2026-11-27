@@ -7570,15 +7570,26 @@ function markAnnouncementsSeen(ids) {
   annWriteJson(ANN_SEEN_KEY, merged);
   renderAnnouncementsBadge();
 }
+// 写缓存：空结果不得覆盖非空旧缓存——在线源临时故障（未 push / 全镜像 404）且随包兜底也为空时，
+// 用空数组落盘会把用户已看到的公告整份冲掉，表现为「暂无公告」（1.8.4-test.25 事故）。
+// 返回本次真正生效的列表，供渲染决定是否需要标「缓存模式」。
+function persistAnnouncementsFeed(items) {
+  const prev = normalizeAnnouncementsFeed(annReadJson(ANN_CACHE_KEY, null));
+  if (items.length === 0 && prev.length > 0) {
+    annWriteJson(ANN_SYNC_KEY, Date.now());
+    return prev;
+  }
+  annWriteJson(ANN_CACHE_KEY, { items });
+  annWriteJson(ANN_SYNC_KEY, Date.now());
+  return items;
+}
 async function syncAnnouncementsCache() {
   if (annSyncInFlight) return;
   if (Date.now() - Number(annReadJson(ANN_SYNC_KEY, 0)) < ANN_SYNC_TTL_MS) return;
   annSyncInFlight = true;
   try {
     const data = await api('/api/announcements');
-    const items = normalizeAnnouncementsFeed(data);
-    annWriteJson(ANN_CACHE_KEY, { items });
-    annWriteJson(ANN_SYNC_KEY, Date.now());
+    persistAnnouncementsFeed(normalizeAnnouncementsFeed(data));
     renderAnnouncementsBadge();
   } catch {
     // 后台静默同步失败时保留旧缓存
@@ -7638,11 +7649,11 @@ async function openAnnouncementsModal(forceCheck = false) {
   try {
     const data = await api(forceCheck ? '/api/announcements?check=1' : '/api/announcements');
     if (seq !== annLoadSeq) return;
-    const items = normalizeAnnouncementsFeed(data);
-    annWriteJson(ANN_CACHE_KEY, { items });
-    annWriteJson(ANN_SYNC_KEY, Date.now());
+    // 源返回空而本地缓存非空 → 视为公告源临时故障，保留并按「缓存模式」展示旧公告，绝不覆盖缓存
+    const items = persistAnnouncementsFeed(normalizeAnnouncementsFeed(data));
+    const degraded = data && Array.isArray(data.items) && data.items.length === 0 && items.length > 0;
     annCurrentIds = items.map((it) => it.id);
-    renderAnnouncementsBody(items, { stale: false });
+    renderAnnouncementsBody(items, { stale: degraded });
     const shownIds = items.slice(0, ANN_MAX_DISPLAY).map((it) => it.id);
     if (shownIds.length) markAnnouncementsSeen(shownIds);
     else renderAnnouncementsBadge();

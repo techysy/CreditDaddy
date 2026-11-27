@@ -69,7 +69,8 @@ ndjson 的 direct 行 `upstreamHost` 全为 `null`，CD 的 `isSelfHostedUpstrea
 
 ## 防范清单
 
-1. 本地打桌面前：`rm -rf desktop/server && mkdir -p desktop/server && cp -r bin src package.json README.md CHANGELOG.md desktop/server/ && node scripts/gen-build-info.js desktop/server/build.json`，核对 build.json commit = HEAD。
+1. 本地打桌面前：`npm run stage --prefix desktop`（等价 CI 的 "Stage app bundle"，内部即 `node scripts/stage-bundle.js desktop`），核对 `desktop/server/build.json` 的 commit = HEAD。
+   - **别手敲 `cp -r` 清单**：2026-11-25 的 1.8.4-test.25 公告事故就是手敲清单漏了 `announcements.json`（本条命令 10-21 写下时就漏了它），CI 的 Stage 步骤有、本地没有，随包兜底公告整份丢失。拷贝清单从此只维护 `scripts/stage-bundle.js` 一份，`npm run dist` 已自动调用它，`scripts/release-check.sh` 第 11 项会拦住缺失。
 2. 改推送 source 命名时，旧 source 必须带一次性清理（DELETE），否则升级用户旧卡挂满 TTL。
 3. 客户端上游指向本机 10R 的场景，用量同步必须以「10R 是否已记账」为分界（viaRelay / upstreamHost），导入只补 10R 没见过的。
 4. 删 usageHistory 后必须同步修正 usageDaily 聚合，且改库时停服务、先备份、以备份为 ground truth 逐天重写。

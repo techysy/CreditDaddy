@@ -19,6 +19,55 @@ const { closeArchiveStream } = await import('../src/logger.js');
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
+/**
+ * 零依赖 vm 执行桩：把 panel.html 内联脚本跑起来，供公告前端逻辑测试直接调用其函数。
+ * fetchImpl 可注入，用于模拟 /api/announcements 的各种返回（正常 / 空 items / 抛错）。
+ */
+async function loadPanelAnnCtx(html, fetchImpl) {
+  const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>/);
+  assert.ok(scriptMatch, 'panel.html 未找到内联脚本');
+  const store = {};
+  const elements = new Map();
+  const makeEl = (id) => ({
+    id, _innerHTML: '', textContent: '', hidden: false, disabled: false, value: '', checked: false,
+    dataset: {}, style: new Proxy({}, { get: () => '', set: () => true }),
+    classList: { add(){}, remove(){}, toggle(){ return false; }, contains(){ return false; } },
+    addEventListener(){}, removeEventListener(){}, querySelector(){ return null; }, querySelectorAll(){ return []; },
+    get innerHTML() { return this._innerHTML; }, set innerHTML(v) { this._innerHTML = String(v); },
+  });
+  const doc = {
+    getElementById(id) { if (!elements.has(id)) elements.set(id, makeEl(id)); return elements.get(id); },
+    querySelector() { return makeEl('q'); },
+    querySelectorAll() { return []; },
+    createElement(t) { return makeEl(t); },
+    addEventListener(){}, removeEventListener(){},
+    documentElement: makeEl('html'), body: makeEl('body'), head: makeEl('head'),
+  };
+  const ctx = {
+    console, document: doc,
+    localStorage: {
+      getItem: (k) => (k in store ? store[k] : null),
+      setItem: (k, v) => { store[k] = String(v); },
+      removeItem: (k) => { delete store[k]; },
+    },
+    sessionStorage: { getItem: () => null, setItem(){}, removeItem(){} },
+    location: { href: 'http://127.0.0.1:47860/', origin: 'http://127.0.0.1:47860', search: '', pathname: '/', hash: '', reload(){} },
+    navigator: { language: 'zh-CN', clipboard: { writeText: async () => {} } },
+    fetch: fetchImpl || (async () => ({ ok: true, status: 200, headers: new Map(), json: async () => ({ items: [] }), text: async () => '{}' })),
+    URL, Blob, Event, CustomEvent: Event, AbortController, AbortSignal: globalThis.AbortSignal,
+    NodeFilter: { SHOW_TEXT: 4, SHOW_ELEMENT: 1 }, FormData: class {},
+    setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {}, queueMicrotask,
+    requestAnimationFrame: () => 0, cancelAnimationFrame: () => {},
+    getComputedStyle: () => ({ getPropertyValue: () => '' }),
+    matchMedia: undefined,
+    addEventListener(){}, removeEventListener(){}, dispatchEvent(){ return true; },
+  };
+  ctx.window = ctx; ctx.globalThis = ctx; ctx.self = ctx;
+  vm.createContext(ctx);
+  vm.runInContext(scriptMatch[1], ctx);
+  return { ctx, doc, store };
+}
+
 test('announcements.json：数据结构与首期公告字段完备', async () => {
   const raw = JSON.parse(await fs.readFile(path.join(ROOT, 'announcements.json'), 'utf8'));
   assert.ok(raw._format && typeof raw._format === 'object', '缺少 _format 规范说明');
@@ -274,6 +323,52 @@ test('panel.html：捐赠反倒卖声明、公告按钮/弹窗、90天过滤、1
   assert.ok(enHtml.includes('Critical Card'));
   assert.ok(enHtml.includes('English Body'));
   assert.ok(enHtml.includes('Learn more'));
+});
+
+test('panel.html：空结果不得覆盖非空公告缓存（源临时故障不再显示「暂无公告」）', async () => {
+  const html = await fs.readFile(path.join(ROOT, 'src/panel.html'), 'utf8');
+  const today = new Date().toISOString().slice(0, 10);
+  const cachedItems = [
+    { id: 'keep-1', date: today, level: 'critical', title: '保留公告一', body: '正文一' },
+    { id: 'keep-2', date: today, level: 'feature', title: '保留公告二', body: '正文二' },
+  ];
+  const feedResponse = (items) => async () => ({
+    ok: true, status: 200, headers: new Map(),
+    json: async () => ({ items }),
+    text: async () => JSON.stringify({ items }),
+  });
+
+  // ── A. 弹窗：源返回空 items，本地缓存非空 → 缓存不动、按缓存渲染并标「缓存模式」 ──
+  const a = await loadPanelAnnCtx(html, feedResponse([]));
+  a.store['cd.announcements.cache'] = JSON.stringify({ items: cachedItems });
+  await a.ctx.openAnnouncementsModal(true);
+  assert.deepEqual(JSON.parse(a.store['cd.announcements.cache']).items.map((x) => x.id), ['keep-1', 'keep-2'],
+    '在线源返回空时不得用空数组覆盖已缓存的公告');
+  const bodyA = a.doc.getElementById('announcements-body').innerHTML;
+  assert.ok(bodyA.includes('保留公告一'), '应继续展示缓存公告');
+  assert.ok(!bodyA.includes('暂无公告'), '不得显示「暂无公告」');
+  assert.ok(bodyA.includes('当前显示最近缓存'), '应提示当前为缓存模式');
+
+  // ── B. 弹窗：源返回非空 → 正常覆盖缓存并渲染新内容 ──
+  const b = await loadPanelAnnCtx(html, feedResponse([{ id: 'fresh-1', date: today, level: 'info', title: '新公告', body: '新正文' }]));
+  b.store['cd.announcements.cache'] = JSON.stringify({ items: cachedItems });
+  await b.ctx.openAnnouncementsModal(true);
+  assert.deepEqual(JSON.parse(b.store['cd.announcements.cache']).items.map((x) => x.id), ['fresh-1'], '非空结果应覆盖缓存');
+  assert.ok(b.doc.getElementById('announcements-body').innerHTML.includes('新公告'));
+
+  // ── C. 弹窗：缓存本就为空且源也为空 → 才允许显示「暂无公告」 ──
+  const c = await loadPanelAnnCtx(html, feedResponse([]));
+  await c.ctx.openAnnouncementsModal(true);
+  assert.ok(c.doc.getElementById('announcements-body').innerHTML.includes('暂无公告'));
+
+  // ── D. 后台静默同步同样不得覆盖缓存 ──
+  const d = await loadPanelAnnCtx(html, feedResponse([]));
+  d.store['cd.announcements.cache'] = JSON.stringify({ items: cachedItems });
+  d.store['cd.announcements.syncedAt'] = JSON.stringify(0);
+  await d.ctx.syncAnnouncementsCache();
+  assert.deepEqual(JSON.parse(d.store['cd.announcements.cache']).items.map((x) => x.id), ['keep-1', 'keep-2'],
+    '后台同步拿到空结果同样不得清空缓存');
+  assert.equal(Number(d.store['cd.announcements.syncedAt']) > 0, true, '拿到空结果也算同步过，不应每次都重试');
 });
 
 test.after(() => closeArchiveStream());

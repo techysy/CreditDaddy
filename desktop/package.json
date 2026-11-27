@@ -8,8 +8,9 @@
   "license": "AGPL-3.0-only",
   "scripts": {
     "clean:dist": "node ../scripts/clean-dist.js",
-    "dist": "node ../scripts/clean-dist.js && electron-builder --win --x64",
-    "dist:mac": "node ../scripts/clean-dist.js && electron-builder --mac"
+    "stage": "node ../scripts/stage-bundle.js desktop",
+    "dist": "node ../scripts/clean-dist.js && node ../scripts/stage-bundle.js desktop && electron-builder --win --x64",
+    "dist:mac": "node ../scripts/clean-dist.js && node ../scripts/stage-bundle.js desktop && electron-builder --mac"
   },
   "devDependencies": {
     "electron": "^37.2.0",
