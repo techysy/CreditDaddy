@@ -7,7 +7,7 @@
     "link": "可选，显示「了解更多」按钮",
     "note": "id 唯一且不变更（未读红点与已读标记依赖它）；本文件推送到 main 即生效，无需发版；条数纪律：公告只放「持续生效/仍需用户行动」的内容，功能发布类随版本进更新日志，不留长挂；展示门禁：弹窗只渲染最新 10 条（MAX_DISPLAY_ITEMS=10，超出自动收起），正文一两句话讲完，细节走链接或更新日志"
   },
-  "updatedAt": "2026-11-25",
+  "updatedAt": "2026-11-27",
   "items": [
     {
       "id": "2026-11-25-free-opensource-official",
@@ -24,18 +24,18 @@
       "date": "2026-11-25",
       "level": "warning",
       "title": "豆包每日签到仅限个人账号，飞书企业号不支持",
-      "body": "豆包激励任务仅面向个人账号开放，飞书企业账号无法参与；若触发风控拦截（710010702），请在面板点击「打开豆包」使用客户端完成当日签到。",
+      "body": "豆包激励任务仅面向个人账号开放，飞书企业账号无法参与；若触发风控拦截（710010702），无需重新登录，在面板点「打开豆包」由客户端完成当日签到即可（较新版本会自动调起客户端代点，无需手动）。",
       "titleEn": "Doubao daily check-in supports personal accounts only (Feishu enterprise excluded)",
-      "bodyEn": "Doubao's check-in campaign is limited to personal accounts — Feishu enterprise accounts are not eligible. If risk control triggers (710010702), click \"Open Doubao\" in the panel to complete check-in in the desktop app."
+      "bodyEn": "Doubao's check-in campaign is limited to personal accounts — Feishu enterprise accounts are not eligible. If risk control triggers (710010702) you don't need to sign in again: click \"Open Doubao\" in the panel and check in inside the client (newer builds launch it and tap check-in for you)."
     },
     {
       "id": "2026-11-25-tenrouter-integration",
       "date": "2026-11-25",
       "level": "feature",
-      "title": "支持与 10Router 联动：一键同步账号与外部额度卡",
-      "body": "在「10Router」页签填写地址与虚拟 Key 后，可将本机托管账号及小米 MiMo / River / ModelScope / LongCat / WPS 灵犀等外部额度卡同步至 10Router。",
-      "titleEn": "10Router integration: one-click account & external quota card sync",
-      "bodyEn": "Configure your 10Router endpoint and virtual key in the 10Router tab to sync managed accounts and external quota cards (Xiaomi MiMo, River, ModelScope, LongCat, WPS Lingxi) to 10Router.",
+      "title": "支持与 10Router 联动：一键同步账号、用量与外部额度卡",
+      "body": "在「10Router」页签填写地址与虚拟 Key 后，可把本机托管账号、真实用量（ZCode / OpenCode / mirasim / 妙手 / Croli 等）与外部免费额度卡（Token Harbor / MiniMax / 小米 MiMo / River / ModelScope / LongCat 等）同步至 10Router。",
+      "titleEn": "10Router integration: one-click account, usage and quota-card sync",
+      "bodyEn": "Configure your 10Router endpoint and virtual key in the 10Router tab to sync managed accounts, real usage (ZCode, OpenCode, mirasim, CatPaw, Croli, etc.) and external free quota cards (Token Harbor, MiniMax, Xiaomi MiMo, River, ModelScope, LongCat, etc.) to 10Router.",
       "link": "https://github.com/techysy/10router"
     }
   ]
