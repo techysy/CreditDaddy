@@ -406,3 +406,77 @@ test('checkinDoubao：服务端返回 710010702 且客户端正运行时提示�
     _setCdpForTests(null);
   }
 });
+
+// ── 面板徽章「未领取」与「已签到」矛盾的根因回归（2026-11-27 用户实测）──
+// 现象：日志已打出「豆包 就地重探通过（累计 2200 点，签到已签）」，账号行徽章仍是「未领取」，
+// 两者互相矛盾且看着像「签到不生效」。根因两条，本用例各钉一条：
+//   ① daemon 的重探路径读到上游 checkedIn=true 只写进日志，不落 lastResult / qoderDailyDone
+//      ——账号行 lastResult 恒 null，面板 statusOf 只能落到兜底「未领取」；
+//   ② /api/status 的 todayByProduct 缺 doubao 键，面板回退 state.today（Qoder 的 10 点翻日界），
+//      而签到轮落库按 0 点界（dayKey(provider)）——每天 0–10 点两处必然错开，
+//      即便补了 ① 也翻不成「今日已领」。
+// 全程 stub globalThis.fetch，绝不真打上游（detail 接口返回 DETAIL_SIGNED 样例）。
+test('重探读到上游已签 → 落 lastResult(already) + todayDone，且 /api/status 的 doubao 日界与落库同源', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'creditdaddy-doubao-badge-'));
+  fs.writeFileSync(path.join(home, 'settings.json'), JSON.stringify({ panelKey: '', panelKeyHash: '' }));
+  const accId = 'db-badge-1';
+  fs.writeFileSync(path.join(home, 'accounts.json'), JSON.stringify([{
+    id: accId, name: '豆包 (工作)', provider: 'doubao', uid: '2939432207653084', token: '',
+    meta: { cookieSiteSession: { cookie: 'sessionid=abc; uid=2939432207653084', capturedAt: '2026-11-27T03:26:34.000Z' }, cookieSiteId: 'doubao' },
+    lastResult: null, lastCheckin: null, createdAt: '2026-11-27T03:26:34.000Z',
+  }], null, 2));
+
+  const savedHome = process.env.CREDITDADDY_HOME;
+  process.env.CREDITDADDY_HOME = home;
+  const real = globalThis.fetch;
+  const seen = [];
+  globalThis.fetch = async (url, init) => {
+    seen.push(String(url));
+    if (String(url).includes('/detail/')) return mkRes(DETAIL_SIGNED);
+    return mkRes({ code: 0 });
+  };
+  let daemon;
+  try {
+    daemon = await import('../src/daemon.js');
+    const { server, port } = await daemon.startDaemon(0, '127.0.0.1');
+    try {
+      const call = async (method, p, body) => {
+        const res = await real(`http://127.0.0.1:${port}${p}`, {
+          method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined,
+        });
+        return { status: res.status, body: await res.json().catch(() => ({})) };
+      };
+
+      const rp = await call('POST', '/api/cookie-sites/doubao/reprobe', { accountId: accId });
+      assert.equal(rp.status, 200, '重探应成功：' + JSON.stringify(rp.body));
+      assert.equal(rp.body.results[0].ok, true, '上游会话有效');
+      assert.equal(rp.body.results[0].balance, 600, '体验额度照旧回填');
+
+      const row = JSON.parse(fs.readFileSync(path.join(home, 'accounts.json'), 'utf8')).find((a) => a.id === accId);
+      assert.equal(row.lastResult?.status, 'already',
+        '上游已签必须落 lastResult=already——此前恒 null，面板徽章停在「未领取」与日志矛盾');
+      assert.match(row.lastResult.message, /已签到/);
+      assert.equal(row.lastResult.amount, 200, '签到发放额随上游 reward 落库（徽章带 +N）');
+      assert.ok(row.lastCheckin, 'lastCheckin 补记');
+
+      const st = JSON.parse(fs.readFileSync(path.join(home, 'state.json'), 'utf8'));
+      assert.ok(st.qoderDailyDone?.[accId], 'todayDone 必须补记该账号的签到业务日');
+
+      const status = await call('GET', '/api/status');
+      assert.equal(status.body.todayByProduct.doubao, st.qoderDailyDone[accId],
+        '面板按 todayByProduct[product] 比对徽章，两处日界必须同源（缺 doubao 键时回退 Qoder 10 点界，0–10 点必然错开）');
+
+      // 未签场景不得反填 failed（真实失败结果不能被一次重探冲掉）
+      globalThis.fetch = async (url) => (String(url).includes('/detail/') ? mkRes(DETAIL_UNSIGNED) : mkRes({ code: 0 }));
+      await call('POST', '/api/cookie-sites/doubao/reprobe', { accountId: accId });
+      const row2 = JSON.parse(fs.readFileSync(path.join(home, 'accounts.json'), 'utf8')).find((a) => a.id === accId);
+      assert.equal(row2.lastResult.status, 'already', '未签时保留上一次结果，不写 failed');
+    } finally {
+      await new Promise((r) => server.close(r));
+    }
+  } finally {
+    globalThis.fetch = real;
+    process.env.CREDITDADDY_HOME = savedHome;
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});

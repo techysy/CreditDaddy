@@ -256,6 +256,46 @@ const flush = () => new Promise((r) => setImmediate(() => setImmediate(() => set
   } catch (e) {
     asserts.push('mirasim 渲染断言: ' + e.message);
   }
+  // ── 账号会话签到徽章三态（2026-11-27 用户实测：点 ▶ 后徽章仍「未领取」，与日志「签到已签」互相矛盾）──
+  // statusOf 是顶层函数声明（挂在上下文全局上），state 是顶层 const（只能按词法环境求值）。
+  try {
+    evalIn(`(function () {
+      state.accounts = (state.accounts || []).concat([{ id: 'db1', provider: 'doubao', product: 'doubao', name: '豆包 (工作)', meta: {} }]);
+      state.status = Object.assign({}, state.status, { today: '2026-11-16', todayByProduct: { doubao: '2026-11-16' }, todayDone: {} });
+      return true;
+    })()`);
+    const badgeOf = (setup) => vm.runInContext(
+      `(function () { ${setup}; var a = state.accounts.filter(function (x) { return x.id === 'db1'; })[0]; return statusOf(a).text; })()`, ctx);
+    check(badgeOf('') === '未领取', '豆包未签时徽章基线不对：' + badgeOf(''));
+    check(badgeOf("state.busy['db1'] = true;") === '签到中…',
+      '签到进行中徽章仍是静态文案——用户要的就是这一条显性 loading（豆包走本机客户端自动化要好几秒）');
+    check(badgeOf("delete state.busy['db1']; state.status.todayDone = { db1: '2026-11-16' };") === '今日已领',
+      'todayDone 命中当日后徽章没翻成「今日已领」（缺 todayByProduct.doubao 时 0–10 点必然错开，就是这里）');
+    check(badgeOf("state.status.todayDone = { db1: '2026-11-15' };") === '未领取',
+      '昨日签到记录不得继续挂「今日已领」（日界比对失效）');
+  } catch (e) { asserts.push('豆包徽章断言: ' + e.message); }
+  // ── 额度批次重绘次数（2026-11-27 用户实测「点按钮/卡片/组件就开始闪动」）──
+  // loadQuotas 原先每拉完一个账号就 render() 一次，render 是整块 innerHTML 重建——N 个账号
+  // 就是 N 次全页重绘，带 transition 的卡片/按钮/进度条每次从头播动画 = 闪动。现改为整批
+  // 只重绘一次。这里包一层计数把「一批 = 一次 render」钉死，防止退回逐条重绘。
+  try {
+    vm.runInContext(`
+      window.__renderCount = 0;
+      var __origRender = render;
+      render = function () { window.__renderCount++; return __origRender.apply(null, arguments); };
+    `, ctx);
+    const n = 30;
+    vm.runInContext(`
+      state.accounts = [];
+      for (var i = 0; i < ${n}; i++) state.accounts.push({ id: 'q' + i, provider: 'autoclaw-cn', product: 'autoclaw', name: '用户' + i, uid: 'u' + i, token: '', meta: {} });
+      state.quotas = {};
+      window.__renderCount = 0;
+    `, ctx);
+    await vm.runInContext('loadQuotas()', ctx);
+    for (let i = 0; i < 20; i++) await flush();
+    const rc = vm.runInContext('window.__renderCount', ctx);
+    check(rc <= 2, `一轮 loadQuotas 触发了 ${rc} 次全页 render（${n} 个账号）——应整批只重绘一次，逐账号 render 就是「闪动」根因`);
+  } catch (e) { asserts.push('额度批次重绘断言: ' + e.message); }
   // ── 第二轮：模拟 daemon fail-closed（未设面板访问密码时的非本机来源一律 403）──
   // 「读不到」必须明确说出来，且**不得**再渲染成「接入 10Router」引导页/空态（用户投诉的根因）。
   // 面板里 state / tr 是顶层 const（不挂在 globalThis 上），只能在上下文内操作

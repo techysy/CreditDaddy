@@ -51,7 +51,7 @@ import { fileURLToPath } from 'node:url';
 import { logger, getLogs, readArchiveJsonl } from './logger.js';
 import {
   loadAccounts,
-  zcodeFlavor, loadState, withAccounts, publicAccount, dataDir, loadSettings, saveSettings, withSettings, normalizeAccountInput,
+  zcodeFlavor, loadState, withAccounts, withState, publicAccount, dataDir, loadSettings, saveSettings, withSettings, normalizeAccountInput,
 } from './store.js';
 import { addAccount, importAccounts, refreshContext } from './accounts.js';
 import { productImpl, prepareCroliAccount } from './providers.js';
@@ -553,8 +553,31 @@ async function reprobeCookieAccount(site, a) {
           cookieSiteSession: { cookie, capturedAt: hit.meta?.cookieSiteSession?.capturedAt || now },
           quotaSnapshot: { used: 0, total: st.totalAmount, isCreditBalance: true, at: now },
         };
+        // 上游说今天已签 = 权威事实：把它落进账号状态。此前只写进日志（「签到已签」），
+        // 账号行 lastResult 恒 null、todayDone 也不记，面板徽章永远显示「未领取」，
+        // 与「签到已成功」互相矛盾（2026-11-27 用户实测：日志 2200 笔、徽章未领取）。
+        // 只在 checkedIn 时写——未签不能反填 failed，那会把真实失败结果冲掉。
+        if (st.checkin?.checkedIn) {
+          hit.lastResult = {
+            status: 'already',
+            message: '今天已签到（就地重探读自上游）',
+            amount: st.checkin.rewardAmount || 0,
+            ...(st.checkin.continuousDays ? { streakDays: st.checkin.continuousDays } : {}),
+            at: now,
+          };
+          hit.lastCheckin = hit.lastCheckin || now;
+        }
         hit.updatedAt = now;
       });
+      if (st.checkin?.checkedIn) {
+        // 签到轮的「今日已领」日界表同步补记，口径与 runTickInner 一致（按 provider 翻日）
+        const doneKey = dayKey(Date.now(), 'doubao');
+        await withState((fresh) => {
+          const memo = fresh && typeof fresh.qoderDailyDone === 'object' && fresh.qoderDailyDone ? fresh.qoderDailyDone : {};
+          memo[a.id] = doneKey;
+          fresh.qoderDailyDone = memo;
+        });
+      }
       logger.info('COOKIE-SITE', '{name} 就地重探通过（累计 {amount} 点，签到{signed}）', { name: site.name, amount: st.totalAmount, signed: st.checkin?.checkedIn ? '已签' : '未签' });
       return finish({ id: a.id, name: a.name, ok: true, identity: null, balance: st.totalAmount, quotaSnapshot: { used: 0, total: st.totalAmount, isCreditBalance: true, at: now } });
     }
@@ -2784,6 +2807,9 @@ async function handleApi(req, res, url) {
         meoo: dayKey(Date.now(), 'meoo'),       // Meoo 首登积分线：同为 0 点翻日
         dumate: dayKey(Date.now(), 'dumate'),   // DuMate 每日登录赠送积分：0 点翻日
         croli: dayKey(Date.now(), 'croli'),
+        quwork: dayKey(Date.now(), 'quwork'),   // QuWork 每日签到：0 点翻日——缺这一行时面板回退
+                                                // state.today（Qoder 的 10 点界），每天 0–10 点徽章与落库日界错开、永远翻不成「今日已领」
+        doubao: dayKey(Date.now(), 'doubao'),   // 豆包（账号会话签到线）：0 点翻日，同上
         autoclaw: dayKey(Date.now(), 'autoclaw'),   // AutoClaw 每日签到：上游按北京时间 0 点换日（10R autoclawCheckin 同口径）
         zcode: dayKey(Date.now(), 'zcode'),     // ZCode 活动领取：单日活动 0 点刷新——徽标按日界而非 26h 窗口（2026-11-20 用户实测「还有前一天的领取记录」）
       },

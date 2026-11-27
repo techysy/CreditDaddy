@@ -2106,6 +2106,10 @@ function statusOf(a) {
     }
     return { cls: '', text: '', msg: '' };
   }
+  // 进行中优先：从点了「立即签到 / 立即领取」到结果返回之前，徽章显性显示「签到中…」，
+  // 而不是继续挂着「未领取」——豆包走本机客户端自动化通道要好几秒，只让按钮转圈、
+  // 徽章不动，用户看不出系统在工作，只能干等 toast（2026-11-27 用户实测反馈）。
+  if (state.busy && state.busy[a.id]) return { cls: 'pending', text: T('签到中…'), msg: '', busy: true };
   if (a.provider === 'workbuddy-intl') return { cls: '', text: '', msg: '' };   // 国际版无签到动作（活跃领取线已删），不显示徽标
   const byProd = (state.status && state.status.todayByProduct) || {};
   const today = byProd[a.product] || (state.status && state.status.today);
@@ -4837,6 +4841,13 @@ async function refreshAccountList() {
 }
 let quotaRun = 0;
 let quotaLoadedAt = 0;
+// 一轮额度刷新**只在批次结束时重绘一次**（2026-11-27 用户实测「点按钮/卡片/组件就开始闪动」）：
+// 原先 worker 每拉完一个账号就 render() 一次——render 是整块 innerHTML 重建，实测 52 个账号
+// = 52 次全页 render / 156 次重建（约 560ms）。卡片上的 .card / .icon-btn / .seg 都带
+// transition，元素每次被销毁重建，动画就从头播一遍——连起来看就是界面在「闪动」。
+// 更糟的是这条路径不只在点击后跑：loadAccounts 尾部、每 2 分钟的定时刷新、以及从托盘/后台
+// 切回的 visibilitychange 都会各来一轮，所以用户觉得「经常」无缘无故也在闪。
+// 批次中途不重绘是可接受的：账号行本就显示「读取积分中…」占位，最多数百毫秒后一次到位。
 async function loadQuotas(ids, opts) {
   const live = !!(opts && opts.live);
   const run = ++quotaRun;
@@ -4855,10 +4866,11 @@ async function loadQuotas(ids, opts) {
       if (run !== quotaRun) continue;   // 已被新一轮取代：丢弃本条，不写不渲染
       if (err) state.quotas[id] = { error: err.message, authDead: errAuth };
       else state.quotas[id] = quota;
-      render();
     }
   };
   await Promise.all([worker(), worker(), worker()]);
+  // 被新一轮取代的旧批次不抢着重绘（新批次自己会画），避免交错渲染
+  if (run === quotaRun) render();
 }
 let logTabView = null;   // 当前日志标签所属的视图：切到别的视图时才重置跟随，同一视图内保留手动切换
 function followLogTab() {
