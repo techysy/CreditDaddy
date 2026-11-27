@@ -185,3 +185,39 @@ test('fetchViaProxy：隧道内证书不可信仍按握手失败报错（不得�
     await new Promise((r) => { proxy.close(); origin.close(); r(); });
   }
 });
+
+// PR #74 补的握手段治理：此前 request 尚未创建时 signal 还没接上，黑洞代理能把
+// 整条调用链吊死。现在 await 握手段接上了外部取消——握手挂死时 abort 必须尽快掐断。
+test('fetchViaProxy：TLS 握手挂死时外部 abort 尽快了结（不得吊满墙钟）', async () => {
+  // 假代理：CONNECT 回 200 后一言不发——TLS ClientHello 得不到回应，握手永远挂着。
+  // 记下服务端侧 socket：客户端 destroy 走 RST 时对端不一定同步感知，收尾要自己销毁，
+  // 否则 close() 等不到连接清空，测试进程的事件循环排不空
+  const conns = [];
+  const srv = http.createServer();
+  srv.on('connect', (req, client, head) => {
+    void req; void head;
+    conns.push(client);
+    client.write('HTTP/1.1 200 Connection established\r\n\r\n');
+    client.on('error', () => {});
+  });
+  const port = await listen(srv);
+  zc.setProxyUrl(`http://127.0.0.1:${port}`);
+  zc.setProxyFirst(true);
+  const ctrl = new AbortController();
+  setTimeout(() => ctrl.abort(), 150);
+  const t0 = Date.now();
+  try {
+    await assertNoUncaught(async () => {
+      await assert.rejects(
+        zc.fetchJsonRace('https://cd-tunnel.test/quota', { timeoutMs: 15000, signal: ctrl.signal }),
+        '外部取消应让握手段尽快失败',
+      );
+    });
+    assert.ok(Date.now() - t0 < 8000, `abort 后应尽快了结，不该吊满 15s 墙钟（实际 ${Date.now() - t0}ms）`);
+  } finally {
+    zc.setProxyFirst(false);
+    zc.setProxyUrl(null);
+    for (const c of conns) c.destroy();
+    await new Promise((r) => srv.close(r));
+  }
+});

@@ -301,6 +301,10 @@ function connectTunnel(proxyUrl, target) {
     const req = http.request({ host: p.hostname, port: Number(p.port) || 80, method: 'CONNECT', path: target, headers, timeout: 10000 });
     req.on('connect', (res, socket) => {
       if (res.statusCode !== 200) { socket.destroy(); reject(new Error(`代理隧道失败（CONNECT ${res.statusCode}）`)); return; }
+      // CONNECT 成功到 TLS 接管之间有个无人监听的窗口（await 让出微任务的那一拍）：代理此时
+      // 断链，裸 socket 的 'error' 没有监听者 → 按未捕获异常掀翻进程（issue #72 同族）。
+      // 兜住即可，不吞真实故障：TLS 层的错误仍会在 tlsSocket 上照常抛出给请求方。
+      socket.on('error', () => {});
       resolve(socket);
     });
     req.on('error', reject);
@@ -319,13 +323,26 @@ async function fetchViaProxy(url, { method = 'GET', headers = {}, body = null, t
   if (isHttps) {
     const socket = await connectTunnel(proxy, `${u.hostname}:443`);
     const tlsSocket = tls.connect({ socket, servername: u.hostname });
-    // issue #72 里同一函数的另一处同类隐患（报告者把 2026-10-05 那次崩溃归到这里）：
+    // issue #72 同一函数内的另一处隐患（报告者把 2026-10-05 那次崩溃归到这里）：
     // tls.connect() 只给底层裸 socket 挂了监听，tlsSocket 自己要到交给 https.request 那一刻
     // 才有监听者 —— 握手失败若落在这个交接窗口里就按 Unhandled 'error' event 掀翻守护进程。
-    // 挂一个常驻监听封住窗口：'error' 是广播语义，req 自己的错误路径（实测由 Node 转成
-    // 「Client network socket disconnected before secure TLS connection was established」）
-    // 照常走，请求该失败还是失败，只是不再升级成进程级异常。
+    // 常驻空监听封住窗口（PR #73）；再改成 await 握手完成（PR #74）：握手失败按普通请求
+    // 错误抛给调用方（fetchJsonRace 照常回退另一条路），且握手段从此被外部取消管住——
+    // 此前 request 尚未创建，signal 与 timeout 都还没接上，黑洞代理能把整条调用链吊死。
+    // 'error' 是广播语义：req 自己的错误路径照常走，请求该失败还是失败。
     tlsSocket.on('error', () => {});
+    await new Promise((up, down) => {
+      const off = () => { tlsSocket.removeListener('secureConnect', ok); tlsSocket.removeListener('error', fail); signal?.removeEventListener('abort', onAbort); };
+      const ok = () => { off(); up(); };
+      const fail = (e) => { off(); tlsSocket.destroy(); down(e); };
+      const onAbort = () => fail(Object.assign(new Error('请求已取消'), { name: 'AbortError' }));
+      tlsSocket.once('secureConnect', ok);
+      tlsSocket.once('error', fail);
+      if (signal) {
+        if (signal.aborted) return fail(signal.reason || new Error('请求已取消'));
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+    });
     requestOpts = {
       hostname: u.hostname, port: 443, path: u.pathname + u.search, method,
       headers: { ...headers, Host: u.host }, timeout: timeoutMs,
@@ -351,9 +368,10 @@ async function fetchViaProxy(url, { method = 'GET', headers = {}, body = null, t
       // 流式转发：经代理的响应（含网关 SSE 补全）逐块到达，而不是整包收完才 resolve——
       // 此前代理优先模式下客户端在整个生成期间一个字节都收不到，首 token 超时必然误报
       const pass = new PassThrough();
-      // 必须挂一个 'error' 监听：上游中途掐断时 pass.destroy(err) 会发 'error'，
+      // 必须挂一个 'error' 监听：上游中途掐断时 pass.destroy(err) 会发 'error'（下一 tick），
       // 调用方若还没开始读 body，就没有监听者，Node 会按 Unhandled 'error' event
-      // 直接把整个守护进程带走（#72）。读 body 的一方仍会从迭代里拿到这个错误。
+      // 直接把整个守护进程带走（#72：47860 停摆 19 小时）。读 body 的一方仍会从迭代里
+      // 拿到这个错误——pass 已进入 errored 状态，body 读取照常 reject，调用方语义不变。
       pass.on('error', () => {});
       res.pipe(pass);
       res.on('error', (e) => pass.destroy(e));
